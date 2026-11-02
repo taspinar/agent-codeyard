@@ -8,7 +8,7 @@ order: 5
 
 ## The risk policy
 
-The <a href="../risk-policy/#risk">risk level of a feature</a> is computed from the policy file, [`.agents/policies/risk.conf`](https://github.com/taspinar/agentic-coding-template/blob/main/.agents/policies/risk.conf), one `<key>: <value>` per line with paths. Like the rules of the gate, it is always read from the base branch, so a feature that changes it is classified by the old one, and is high risk because it changed a policy.
+The <a href="../risk-policy/#risk">risk level of a feature</a> is computed from the policy file, [`.agents/policies/risk.conf`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/policies/risk.conf), one `<key>: <value>` per line with paths. Like the rules of the gate, it is always read from the base branch, so a feature that changes it is classified by the old one, and is high risk because it changed a policy.
 
 Example classes for an application (not the shipped policy):
 
@@ -70,7 +70,7 @@ A profile never changes what a high-risk feature gets: under every profile it ha
 
 ## Shipped configuration
 
-The active lines of [.agents/policies/risk.conf](https://github.com/taspinar/agentic-coding-template/blob/main/.agents/policies/risk.conf):
+The active lines of [.agents/policies/risk.conf](https://github.com/taspinar/agent-codeyard/blob/main/.agents/policies/risk.conf):
 
 ```text
 default: medium

@@ -20,12 +20,12 @@ It updates only the files that belong to the template, and never commits or push
 
 A repository created from the template does not receive the template's later improvements. `./scripts/sync-template.sh` brings them over:
 
-- It touches only the files listed under `paths:` in [`.agents/template.conf`](https://github.com/taspinar/agentic-coding-template/blob/main/.agents/template.conf): the workflow scripts, prompts, policies, schemas, the CI and guardrails workflows, and the workflow documentation. Your code, your requirements, your roadmap, and your `scripts/verify.conf` stay yours.
+- It touches only the files listed under `paths:` in [`.agents/template.conf`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/template.conf): the workflow scripts, prompts, policies, schemas, the CI and guardrails workflows, and the workflow documentation. Your code, your requirements, your roadmap, and your `scripts/verify.conf` stay yours.
 - A file you did not change is replaced. A file both sides changed is merged, and a conflict is left in the file and reported. A file the template removed is reported, never deleted.
 - To keep a listed file as your own, add `:(exclude)<path>` to the list.
 - The script never commits or pushes: you review the result and open a pull request.
 
-What each file in the repository is for is in the [project map](https://github.com/taspinar/agentic-coding-template/blob/main/docs/project-map.md).
+What each file in the repository is for is in the [project map](https://github.com/taspinar/agent-codeyard/blob/main/docs/project-map.md).
 
 ## Versions and conflicts
 
@@ -33,4 +33,4 @@ Work on a branch and inspect the listed template commits. `--from <commit>` choo
 
 A conflict exits with status 1 and leaves the conflict for you to resolve. Files removed upstream are reported, never deleted automatically. Newly owned files are copied only when absent or safely matched; local content is protected. Review the result, resolve conflicts, run `./scripts/verify.sh --all`, commit and open a pull request. The script never commits or pushes. `LICENSE` stays yours.
 
-See [Taking over template changes](https://github.com/taspinar/agentic-coding-template/blob/main/docs/development.md#taking-over-template-changes) for the full merge table and version-selection rules.
+See [Taking over template changes](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#taking-over-template-changes) for the full merge table and version-selection rules.

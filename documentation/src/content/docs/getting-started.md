@@ -17,14 +17,14 @@ Sign in to GitHub once with `gh auth login`. Each coding agent signs in through 
 
 ## 1. Create your repository
 
-[Create a repository from the template](https://github.com/taspinar/agentic-coding-template/generate) and clone it. Then delete `documentation/` and `.github/workflows/pages.yml`: they are this website, not part of your project. Keep, replace, or remove `LICENSE`, the MIT licence of the template, for your own project.
+[Create a repository from the template](https://github.com/taspinar/agent-codeyard/generate) and clone it. Then delete `documentation/` and `.github/workflows/pages.yml`: they are this website, not part of your project. Keep, replace, or remove `LICENSE`, the MIT licence of the template, for your own project.
 
 Then set up GitHub. The scripts point out risky changes, but only GitHub can enforce who merges:
 
 - Add a ruleset for `main` that requires a pull request and the CI check.
 - Replace the placeholder `@YOUR_GITHUB_USERNAME` in `.github/CODEOWNERS` with your account.
 
-The [repository setup guide](https://github.com/taspinar/agentic-coding-template/blob/main/docs/repository-setup.md) has every setting; <a href="../github-setup/#github">GitHub setup</a> explains why they matter.
+The [repository setup guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/repository-setup.md) has every setting; <a href="../github-setup/#github">GitHub setup</a> explains why they matter.
 
 ## 2. Check your setup
 
@@ -83,4 +83,4 @@ The run implements the feature, runs your checks, has it reviewed, fixes what th
 
 To stay closer to the work, run the steps one at a time, starting with `./scripts/start-feature.sh <issue>`. <a href="../detailed-workflow/">The workflow</a> explains each step.
 
-For a complete sample project, read the [worked example](https://github.com/taspinar/agentic-coding-template/blob/main/docs/example.md).
+For a complete sample project, read the [worked example](https://github.com/taspinar/agent-codeyard/blob/main/docs/example.md).

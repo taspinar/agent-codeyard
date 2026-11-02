@@ -51,7 +51,7 @@ and any other placeholder you find, with an acceptance criterion that none
 remains. The new `README.md` must keep a short section on the development
 workflow that links to `docs/workflow.md` for the commands and to the template
 the repository was created from,
-<https://github.com/taspinar/agentic-coding-template>, so that a contributor
+<https://github.com/taspinar/agent-codeyard>, so that a contributor
 can look them up. You may not change those files yourself.
 
 Prefer independently deliverable vertical slices when they fit the product.

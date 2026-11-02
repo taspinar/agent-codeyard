@@ -8,7 +8,7 @@ order: 4
 
 ## Agent roles and models
 
-A role is a job in the workflow, not a person or an account. Each role has an agent and a model, set in [`.agents/agents.conf`](https://github.com/taspinar/agentic-coding-template/blob/main/.agents/agents.conf), one role per line:
+A role is a job in the workflow, not a person or an account. Each role has an agent and a model, set in [`.agents/agents.conf`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/agents.conf), one role per line:
 
 ```
 implementer: claude opus
@@ -47,7 +47,7 @@ The levels come from the features that built the template: a feature that change
 
 ## Shipped configuration
 
-The active lines of [.agents/agents.conf](https://github.com/taspinar/agentic-coding-template/blob/main/.agents/agents.conf):
+The active lines of [.agents/agents.conf](https://github.com/taspinar/agent-codeyard/blob/main/.agents/agents.conf):
 
 ```text
 project-grill: claude fable
