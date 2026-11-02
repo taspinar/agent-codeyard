@@ -10,8 +10,8 @@ set -euo pipefail
 site="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-url="https://taspinar.github.io"
-repository="https://github.com/taspinar/agentic-coding-template/blob/main"
+url="https://agentcodeyard.com"
+repository="https://github.com/taspinar/agent-codeyard/blob/main"
 failures=0
 
 fail() {
@@ -50,7 +50,7 @@ expect_fault() {
   fi
 }
 
-for base in /agentic-coding-template/ /; do
+for base in /agent-codeyard/ /; do
   output "$work/good" "$base"
   "$site/check.sh" "$work/good" "$base" >/dev/null 2>&1 || fail "a correct output under $base does not pass"
   rm -rf "$work/good"
@@ -66,10 +66,10 @@ sed -i 's|doctor.sh|scripts/lib/risk.sh tests/lib-fakes.sh documentation/check.s
 expect_fault missing-qualified-script / \
   'sed -i "s|doctor.sh|scripts/lib/not-real.sh|" index.html' "not in the repository"
 
-expect_fault missing-page /agentic-coding-template/ \
-  'rm -r docs' "links to /agentic-coding-template/docs/#intro, which is not in the output"
-expect_fault outside-base /agentic-coding-template/ \
-  'sed -i "s|/agentic-coding-template/docs/|/docs/|" index.html' "which is outside the base path"
+expect_fault missing-page /agent-codeyard/ \
+  'rm -r docs' "links to /agent-codeyard/docs/#intro, which is not in the output"
+expect_fault outside-base /agent-codeyard/ \
+  'sed -i "s|/agent-codeyard/docs/|/docs/|" index.html' "which is outside the base path"
 expect_fault missing-place / \
   'sed -i "s|id=\"intro\"||" docs/index.html' "which is not on that page"
 expect_fault missing-anchor / \
@@ -78,8 +78,8 @@ expect_fault missing-repository-file / \
   'sed -i "s|docs/workflow.md|docs/missing.md|" index.html' "docs/missing.md, which is not in the repository"
 expect_fault missing-script / \
   'sed -i "s|doctor.sh|no-such-script.sh|" index.html' "names no-such-script.sh, which is not in scripts/"
-expect_fault missing-font /agentic-coding-template/ \
-  'rm fonts/f.woff2' "uses /agentic-coding-template/fonts/f.woff2, which is not in the output"
+expect_fault missing-font /agent-codeyard/ \
+  'rm fonts/f.woff2' "uses /agent-codeyard/fonts/f.woff2, which is not in the output"
 expect_fault missing-canonical / \
   'sed -i "s|rel=\"canonical\"|rel=\"x\"|" docs/index.html' "has no canonical address"
 expect_fault sitemap-page / \

@@ -273,7 +273,7 @@ When the agent's triage proposal is disproportionate, you can supply your decisi
 
 The file contains one decision per finding in the triage schema. `--proposal <file>` optionally records the original proposal. Critical and major findings remain `FIX_NOW`; every `DEFER` needs a follow-up Issue and every `ACCEPT` a rationale. The script starts no agent, refuses `--unattended`, shows your decisions for confirmation, creates any follow-up Issues, then asks again before storing and publishing the complete artifact. The Issue comment records your account and reason. This does not bypass review or publication gates.
 
-See [Owner-directed triage in the command reference](https://github.com/taspinar/agentic-coding-template/blob/main/docs/development.md#owner-directed-triage) for the schema and recovery after declining.
+See [Owner-directed triage in the command reference](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#owner-directed-triage) for the schema and recovery after declining.
 
 ## Skipping a review explicitly
 
@@ -283,8 +283,8 @@ Under the shipped policy every feature needs independent review before commit. A
 
 An optional technical plan lives in `.agents/plans/`; link it with `./scripts/update-issue-with-plan.sh <issue> <plan>`. The Issue owns scope and acceptance criteria; the plan owns implementation details. Do not turn each plan step into a separate Issue.
 
-Reviewers and triage receive earlier rounds and their approved decisions. A continuing finding identifies its predecessor as unresolved or worsened; it cannot lower the earlier severity or weaken an unresolved `FIX_NOW` decision. Accepted or deferred findings are not raised again without a worsening caused by the change. See [review history](https://github.com/taspinar/agentic-coding-template/blob/main/docs/development.md#earlier-rounds-and-re-raised-findings).
+Reviewers and triage receive earlier rounds and their approved decisions. A continuing finding identifies its predecessor as unresolved or worsened; it cannot lower the earlier severity or weaken an unresolved `FIX_NOW` decision. Accepted or deferred findings are not raised again without a worsening caused by the change. See [review history](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#earlier-rounds-and-re-raised-findings).
 
 After you merge, run `./scripts/cleanup-worktree.sh <issue>` from the primary checkout. No workflow script merges for you.
 
-The [workflow reference](https://github.com/taspinar/agentic-coding-template/blob/main/docs/workflow.md) describes the artifacts and approvals of every step; the [development guide](https://github.com/taspinar/agentic-coding-template/blob/main/docs/development.md) holds the complete command options.
+The [workflow reference](https://github.com/taspinar/agent-codeyard/blob/main/docs/workflow.md) describes the artifacts and approvals of every step; the [development guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md) holds the complete command options.

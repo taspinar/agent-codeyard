@@ -23,7 +23,7 @@
 # Usage:
 #   ./documentation/check.sh --build
 #       Runs the unit tests of src/, checks the tokens of src/styles/, builds
-#       the site under the project path (/agentic-coding-template/) and under
+#       the site under the project path (/agent-codeyard/) and under
 #       the root (/), and checks both outputs. Needs the dependencies: npm ci
 #       in documentation/ first. After a rename, update the project path in
 #       the build loop below and this comment; keep default_site_url in sync
@@ -45,7 +45,7 @@ site="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 root="$(cd "$site/.." && pwd -P)"
 repository="$(sed -n 's/^ *repository: "\(.*\)",$/\1/p' "$site/site.config.ts")"
 [[ -n "$repository" ]] || { echo "documentation: no repository in site.config.ts" >&2; exit 1; }
-default_site_url="https://taspinar.github.io"
+default_site_url="https://agentcodeyard.com"
 problems=0
 
 problem() {
@@ -196,7 +196,7 @@ if [[ "${1:-}" == "--build" || "${1:-}" == "--browser" ]]; then
   (cd "$site" && node --test "src/**/*.test.ts" >"$work/tests.log" 2>&1) ||
     { cat "$work/tests.log" >&2; problem "the unit tests of src/ fail"; }
   for css in "$site"/src/styles/*.css; do check_tokens "$css"; done
-  for base in /agentic-coding-template/ /; do
+  for base in /agent-codeyard/ /; do
     output="$work/output-$(echo "$base" | tr -d /)"
     (cd "$site" && SITE_URL="$default_site_url" BASE_PATH="$base" ASTRO_TELEMETRY_DISABLED=1 \
       npx --no-install astro build --silent --outDir "$output") ||

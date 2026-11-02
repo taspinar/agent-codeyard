@@ -397,10 +397,13 @@ Repositories created from this template should normally not themselves
 be marked as template repositories unless they are intentionally
 intended to become new templates.
 
-## 13. Template website: a future rename or custom domain
+## 13. Template website: a rename or custom domain
 
-These steps apply only when retaining the template's website. They do not
-rename this repository or deploy a domain now. Configure product names,
+These steps apply only when retaining the template's website. The template
+has taken them once: the repository is now `taspinar/agent-codeyard`, and the
+site is served from the custom domain `https://agentcodeyard.com` with the
+base path `/`. The steps remain the procedure for a later change of the name
+or the address. Configure product names,
 repository URL, site origin and the default base path in `documentation/site.config.ts`. Internal navigation uses that base
 path. The validation defaults in `documentation/check.sh` are separate.
 
@@ -409,8 +412,8 @@ that file, use `BASE_PATH=/new-repository-name/` for local builds, and update
 the website and repository links in `README.md`. Audit literal repository
 links in the documentation content too: they link to source files, not through
 the site's navigation helper. In `documentation/check.sh`, replace
-`/agentic-coding-template/` in the `for base in … /` list with the new
-project base path, retaining `/`, and keep `default_site_url` in sync with
+the project base path (currently `/agent-codeyard/`) in the `for base in … /`
+list with the new one, retaining `/`, and keep `default_site_url` in sync with
 the site origin in `site.config.ts` (update it if the owner or domain changes).
 Update the path in the check's usage comment and `documentation/validation.md`
 too. Run `documentation/check.sh --build` to build, link-check and browser-test

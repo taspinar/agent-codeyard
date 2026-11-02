@@ -3,7 +3,7 @@
 Run `npm ci` in this directory, then `npm run check`. The documentation check
 is also run by the repository's existing verification and the Pages workflow.
 It builds and link-checks the project path (currently
-`/agentic-coding-template/`) and `/`, runs the site's
+`/agent-codeyard/`) and `/`, runs the site's
 unit and search tests, and uses Playwright Chromium and axe-core on every
 built HTML page, including 404, in light and dark themes at 375, 768 and
 1440 pixels. Serious/critical violations and text contrast failures fail the

@@ -6,7 +6,7 @@ A GitHub template for building software with AI coding agents. It provides a
 repeatable workflow for planning projects, implementing features, checking the
 results, and reviewing changes before they are merged.
 
-**Documentation:** <https://taspinar.github.io/agentic-coding-template/>
+**Documentation:** <https://agentcodeyard.com/>
 
 ## How it works
 
@@ -63,7 +63,7 @@ the template itself.
 
 | You want to | Read |
 |---|---|
-| Understand the workflow, with a diagram | [The documentation site](https://taspinar.github.io/agentic-coding-template/) |
+| Understand the workflow, with a diagram | [The documentation site](https://agentcodeyard.com/) |
 | Set up GitHub for a new project | [docs/repository-setup.md](docs/repository-setup.md) |
 | Look up a command or an option | [docs/development.md](docs/development.md) |
 | See every step, artifact, and approval | [docs/workflow.md](docs/workflow.md) |
