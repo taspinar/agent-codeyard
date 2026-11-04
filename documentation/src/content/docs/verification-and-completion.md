@@ -4,6 +4,27 @@ description: "Checks, evidence reuse, budgets and the completion gate."
 order: 6
 ---
 
+## "The agent says done" against "verified done"
+
+A coding agent ends a session by saying it is done. That is a claim: the agent may have skipped a criterion, misread one, or stopped when its time ran out. In Codeyard a feature counts as done only when three things hold, and a script checks each before the commit:
+
+- **The checks pass** for exactly the content that is committed: your tests, linters and builds, run by `./scripts/verify.sh`.
+- **The completion record** names every acceptance criterion of the Issue with its status and the evidence that shows it.
+- **An independent reviewer** of another provider checked those claims against the code and the tests, and no critical or major finding is left. The one exception is a low-risk feature that your risk policy lets skip the review: it is committed as not reviewed, and its merge needs your approval.
+
+### One criterion and its evidence
+
+A real example: Issue [#265](https://github.com/taspinar/agent-codeyard/issues/265) changed the About page of this site, and one of its acceptance criteria was that the social preview image states the profile condition. The completion record, which [pull request 266](https://github.com/taspinar/agent-codeyard/pull/266) carries in its description, says:
+
+```text
+- met: The social preview note states the profile condition.
+  (documentation/og-image.svg reads 'low risk may skip review under the
+  light profile'; documentation/public/og.png re-rendered with node
+  og-image.mjs and inspected: the line fits under the bypass without overlap)
+```
+
+The criterion is in the words of the Issue, the status is `met`, and the evidence names the file, what it holds, and the command that produced it. The reviewer reads that claim against the diff; a claim the code does not support comes back as a finding. The rest of this page describes the checks and the record in detail.
+
 <a id="verification"></a>
 
 ## Project checks and workflow checks

@@ -1,8 +1,24 @@
 ---
-title: "Technical reference"
-description: "Scripts, repository files and the records of your runs."
+title: "Technical reference (advanced)"
+description: "Advanced: every script, repository file and record of your runs, by function and by location."
 order: 10
 ---
+
+This page is advanced. You do not need it to run the workflow: <a href="../getting-started/">Getting started</a> and the <a href="../reference/workflow/">workflow reference</a> are enough for that. It is for changing the configuration, reading a script, or finding where a record is kept. The list below groups the files by what they do; the sections after it list them by where they are, with a link to each.
+
+<a id="by-function"></a>
+
+## Files by function
+
+- **Plan the project.** Scripts: `start-planning.sh`, `review-planning.sh`, `revise-planning.sh`, `finish-planning.sh`. Files: `docs/PROJECT_REQUIREMENTS.md`, `docs/architecture.md`, `docs/roadmap.md`, `docs/decisions/`, `docs/PLANNING_APPROVAL.md`; the prompts `project-grill.md`, `project-planner.md`, `planning-reviewer.md`, `planning-reviser.md`; `scripts/lib/planning.sh`. Listed under <a href="#project-documents">Project documents</a>, <a href="#workflow-scripts">Workflow scripts</a>.
+- **Build a feature.** Scripts: `create-feature-issue.sh`, `start-feature.sh`, `update-issue-with-plan.sh`, `run-feature.sh`. Files: `AGENTS.md`, `implementer.md`, `planner.md`; `.agents/plans/`, `.agents/handoffs/`, `.agents/completion/`, `.agents/summaries/`, `.agents/manual-steps/`; `scripts/lib/completion.sh`, `scripts/lib/scope.sh`, `scripts/lib/issue-comments.sh`. Listed under <a href="#workflow-scripts">Workflow scripts</a>, <a href="#working-directories">Working directories</a>.
+- **Run the checks.** Scripts: `verify.sh`, `check-docs.sh`. Files: `scripts/verify.conf`, `scripts/verify-workflow.conf`, `.agents/verification/`, `tests/`; `scripts/lib/verification.sh`. Listed under <a href="#rules-and-configuration">Rules and configuration</a>.
+- **Review and decide on findings.** Scripts: `review-feature.sh`, `check-review.sh`, `triage-review.sh`, `apply-triage.sh`. Files: `reviewer.md`, `triage-reviewer.md`, `triage-implementer.md`; the review and triage schemas; `.agents/reviews/`, `.agents/triage/`; `scripts/lib/review-data.sh`, `scripts/lib/review-run.sh`. Listed under <a href="#agent-contracts-and-schemas">Agent contracts and schemas</a>.
+- **Risk and the owner's approval.** Scripts: `check-risk.sh`, `check-guardrails.sh`. Files: `.agents/policies/risk.conf`, `.agents/policies/guardrails.conf`, `.github/CODEOWNERS`, `.agents/approval-requests/`; `scripts/lib/risk.sh`, `scripts/lib/guardrails.sh`, `scripts/lib/fingerprint.sh`. Listed under <a href="#rules-and-configuration">Rules and configuration</a>, <a href="#script-libraries">Script libraries</a>.
+- **Commit and publish.** Scripts: `finish-feature.sh`, `publish-feature.sh`, `record-post-merge.sh`, `cleanup-worktree.sh`. Files: `.agents/attribution.conf`; `scripts/lib/attribution.sh`, `scripts/lib/github.sh`. Listed under <a href="#workflow-scripts">Workflow scripts</a>.
+- **Agents and their permissions.** Files: `.agents/agents.conf`, `.agents/policies/`; `scripts/lib/agent.sh`. Listed under <a href="#rules-and-configuration">Rules and configuration</a>.
+- **Records and learning.** Scripts: `report-runs.sh`, `show-experience.sh`, `analyze-runs.sh`. Files: `.agents/run/`, `.agents/records/`, `.agents/experience/`, `.agents/analysis/`; `analyst.md`; `scripts/lib/records.sh`, `scripts/lib/experience.sh`, `scripts/lib/report.jq`. Listed under <a href="#records">What is recorded on your machine</a>.
+- **Setup and template updates.** Scripts: `doctor.sh`, `sync-template.sh`. Files: `.agents/template.conf`, `docs/repository-setup.md`, `.github/`. Listed under <a href="#rules-and-configuration">Rules and configuration</a>.
 
 <a id="records"></a>
 

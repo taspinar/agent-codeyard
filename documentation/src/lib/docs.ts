@@ -6,7 +6,7 @@
 export type Page = { id: string; title?: string };
 
 export const groups: { label?: string; pages: Page[] }[] = [
-  { pages: [{ id: "index" }, { id: "getting-started" }] },
+  { pages: [{ id: "index" }, { id: "new-to-agentic-coding" }, { id: "getting-started" }] },
   { label: "Concepts", pages: [{ id: "risk-policy" }, { id: "verification-and-completion" }, { id: "agent-roles" }] },
   { label: "Workflow", pages: [{ id: "detailed-workflow" }, { id: "reference/workflow", title: "Workflow reference" }] },
   { label: "Reference", pages: [{ id: "configuration-and-security" }, { id: "technical-reference" }] },

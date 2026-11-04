@@ -4,12 +4,26 @@ description: "Create your repository and take your first feature from idea to pu
 order: 1
 ---
 
-## What you need
+<a id="what-you-need"></a>
+
+## Before you start
+
+**What you need:**
 
 - Git and Bash
 - The [GitHub CLI](https://cli.github.com/), signed in to your account
 - `jq` 1.6 or later
-- As shipped you need Claude Code and Codex: Claude implements, Codex reviews. A feature review needs a second provider; `review-feature.sh` refuses a reviewer of the implementer’s provider.
+- Two coding agents of different providers. As shipped, Claude Code implements and Codex reviews; `review-feature.sh` refuses a reviewer of the implementer’s provider.
+
+**What you should know:** how to work in a terminal, and the basics of Git and GitHub: a commit, a branch, a pull request. If those are new, read <a href="../new-to-agentic-coding/">New to agentic coding? Start here</a> first.
+
+**What you will do by hand:** the scripts do not do these for you.
+
+- Sign in to GitHub and to each coding agent.
+- Create the repository from the template and delete the template's website from it.
+- Set up GitHub: a ruleset for `main` and your account in `.github/CODEOWNERS` (step 1 below).
+- Approve the requirements and the plan, and merge the planning pull request.
+- Read and merge every feature pull request: no script merges.
 
 ## Sign in
 
@@ -17,7 +31,14 @@ Sign in to GitHub once with `gh auth login`. Each coding agent signs in through 
 
 ## 1. Create your repository
 
-[Create a repository from the template](https://github.com/taspinar/agent-codeyard/generate) and clone it. Then delete `documentation/` and `.github/workflows/pages.yml`: they are this website, not part of your project. Keep, replace, or remove `LICENSE`, the MIT licence of the template, for your own project.
+There is no installer: a project is a new repository created from the template. With the GitHub CLI:
+
+```
+gh repo create my-project --template taspinar/agent-codeyard --private --clone
+cd my-project
+```
+
+Or [create it on GitHub](https://github.com/taspinar/agent-codeyard/generate) and clone it. Then delete `documentation/` and `.github/workflows/pages.yml`: they are this website, not part of your project. Keep, replace, or remove `LICENSE`, the MIT licence of the template, for your own project.
 
 Then set up GitHub. The scripts point out risky changes, but only GitHub can enforce who merges:
 

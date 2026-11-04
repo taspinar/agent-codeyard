@@ -4,11 +4,22 @@ description: "Choose providers and models for every role and risk level."
 order: 4
 ---
 
+## The roles in plain words
+
+A role is a job in the workflow, not a person or an account. Four jobs do most of the work:
+
+- **The planner** asks you about a new project and writes its requirements, its design and its list of features. In the configuration these are `project-grill` and `project-planner`; a second agent, the `planning-reviewer`, reviews the plan before you approve it.
+- **The builder** implements one feature at a time and writes its tests. In the configuration it is the `implementer`.
+- **The reviewer** reads the finished change and reports problems. It cannot edit files, and it must come from another provider than the builder.
+- **The fixer** repairs the review findings that were chosen to be fixed now, and nothing else. In the configuration it is the `triage-implementer`; the `triage` role proposes which findings it gets.
+
+You choose which agent and which model does each job. The template's own choice is below; nothing requires it.
+
 <a id="roles"></a>
 
 ## Agent roles and models
 
-A role is a job in the workflow, not a person or an account. Each role has an agent and a model, set in [`.agents/agents.conf`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/agents.conf), one role per line:
+Each role has an agent and a model, set in [`.agents/agents.conf`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/agents.conf), one role per line:
 
 ```
 implementer: claude opus
