@@ -1,15 +1,18 @@
 ---
-// Why Agent Codeyard exists, its principles and design decisions, its history, the
-// research behind it and the open work. From the earlier site's history,
-// research and possible-improvements pages (commit 6a62f84), corrected and
-// extended as the audit of #235 lists (items 2, 8–16, 18); each history phase
-// and decision links to the pull requests that built it.
+// Why Agent Codeyard exists, who maintains it, its principles, what it can do
+// now and what it cannot; then its design decisions, its history, the research
+// behind it and the open work (order of #275). From the earlier site's
+// history, research and possible-improvements pages (commit 6a62f84),
+// corrected and extended as the audit of #235 lists (items 2, 8–16, 18); each
+// history phase and decision links to the pull requests that built it. The
+// limits follow the docs (configuration-and-security, new-to-agentic-coding)
+// and the open Issues; Codeyard's own terms are explained at their first use.
 import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Section from "../components/Section.astro";
 import Table from "../components/Table.astro";
 import { site } from "../../site.config";
-import { issue, pull, repoFile } from "../lib/links";
+import { href, issue, pull, repoFile } from "../lib/links";
 
 const prs = (numbers: number[]) => numbers.map((number) => ({ number, url: pull(number) }));
 
@@ -20,15 +23,15 @@ const history = [
   { title: "Structured planning", when: "September 2026", prs: prs([22]),
     text: "A planning process before the first feature: from an idea to agreed requirements, an architecture and a roadmap." },
   { title: "Records instead of reports", when: "2 October", prs: prs([31, 35, 39, 42, 43, 49, 50, 51]),
-    text: "Checks that relied on the agent's own word (the tests passed, the review covers the current code) became records a script can check: one command for the checks, structured review and triage data tied to the reviewed version, read-only reviewers, and a planning review with an approval tied to the approved documents." },
+    text: "Checks that relied on the agent's own word (the tests passed, the review covers the current code) became records a script can check: one command for the checks, structured data of the reviews and of the decisions on their findings, tied to the reviewed version, read-only reviewers, and a planning review with an approval tied to the approved documents." },
   { title: "Reliability from real use", when: "6–7 October", prs: prs([61, 71, 74, 76, 77, 79, 81]),
-    text: "A feature resumes from a handoff note, a passed verification is reused for unchanged content, an approved plan has a change process, a later review can read only what changed, and a project takes over template changes with a script." },
+    text: "A feature resumes from a handoff note, the short note a session keeps so that the next one can continue, a passed verification is reused for unchanged content, an approved plan has a change process, a later review can read only what changed, and a project takes over template changes with a script." },
   { title: "Unattended runs", when: "8–10 October", prs: prs([89, 90, 91, 95, 100, 101]),
-    text: "One command takes a feature from its Issue to an open pull request; it does not merge. A script, not an agent, decides whether a step succeeded and retries a temporary failure; “blocked” means only that a person has to decide; whether a change needs the owner's approval is no longer left to the agent that made it." },
+    text: "One command takes a feature from its Issue to an open pull request without waiting for you; it does not merge. A script, not an agent, decides whether a step succeeded and retries a temporary failure; “blocked” means only that a person has to decide; whether a change needs the owner's approval is no longer left to the agent that made it." },
   { title: "Learning from runs", when: "13–21 October", prs: prs([126, 136, 138, 139, 140, 164, 168]),
-    text: "The scripts commit and close an Issue only when the implementer's completion record says the work is complete. Every run records its durations and tokens; a report, the experience of each run and an analysis by a read-only agent follow. The owner can give triage decisions directly, with an audit trail, and a feature can wait for evidence that cannot exist yet." },
+    text: "The scripts commit and close an Issue only when the implementer's completion record says the work is complete. Every run records its durations and tokens; a report, the experience of each run and an analysis by a read-only agent follow. The owner can give the decisions on review findings directly, with an audit trail, and a feature can wait for evidence that cannot exist yet." },
   { title: "Effort by risk", when: "26–28 October", prs: prs([185, 194, 197, 198, 199, 200, 202, 211, 213, 214]),
-    text: "Every feature gets a computed risk level that selects the models and what the review rounds require; workflow profiles make low-risk work lighter in one line. The owner's comments reach every agent of a feature, and the implementer asks before it invents an answer. Budgets measure without failing, and approval requests are tied to the content tree." },
+    text: "Every feature gets a computed risk level that selects the models and what the review rounds require; workflow profiles, a one-line choice of how much process a project wants, make low-risk work lighter. The owner's comments reach every agent of a feature, and the implementer asks before it invents an answer. Budgets measure without failing, and an approval request is tied to a checksum of exactly the content that was reviewed." },
   { title: "Corrections from the first analysis", when: "27–29 October", prs: prs([183, 208, 215, 222, 223, 224, 225, 228, 229]),
     text: "Agent attribution became configurable and is disabled by default; Codex may write the runtime files it needs. The five proposals of the run analysis of 28 October were built: earlier review decisions in every round, a recorded reason for every stop, timed checks, warnings about undeclared models. Test escalation was narrowed to removed or changed lines, and the owner can raise the level before the first session." },
   { title: "This website", when: "30 October", prs: prs([244, 245, 246, 247, 248]),
@@ -37,8 +40,10 @@ const history = [
     text: "Features, Examples and About written from the repository's own records; accessibility, performance and publication checked, with a guide for a rename and a custom domain; the browser check detects a missing browser instead of installing one on every run." },
   { title: "The product-first redesign", when: "31 October", prs: prs([260, 261, 262, 263]),
     text: "A product-first homepage, from the problem through the route of one feature, risk, review and the owner's gates to the records of one real feature. The workflow map became an explorer with the detail of each step, Features were organised around engineering problems and Examples by risk, and the workflow reference moved into the regrouped docs." },
-  { title: "Agent Codeyard", when: "31 October", prs: prs([264]),
-    text: "The site took the name Agent Codeyard, with a social preview image for every page; the repository, its URLs and the scripts kept their names, so generated projects are unaffected." },
+  { title: "Agent Codeyard", when: "31 October – 2 November", prs: prs([264, 266, 268]),
+    text: "The site took the name Agent Codeyard, with a social preview image for every page, and About named the maintainer. Two days later the repository and the site moved to agent-codeyard and agentcodeyard.com; the scripts kept their names." },
+  { title: "Value first", when: "4 November", prs: prs([276, 277, 278, 281]),
+    text: "After the owner's editorial audit of 3 November (#269), the homepage, Features, Examples and the docs were rewritten for a developer who has not heard of Codeyard: the value first, the technical proof as the deeper layer." },
 ];
 
 // The frameworks compared, from the earlier research page, statuses corrected (#235, item 9).
@@ -54,7 +59,7 @@ const frameworks = [
 const improvements = [
   { name: "Separate agent identity", what: "A GitHub identity with limited rights for the agents, so an approval is one the agent cannot give itself", status: "Not built", ref: 99 },
   { name: "GitHub approval rules", what: "A ruleset, required checks and code-owner review that GitHub enforces on the merge", status: "Available once you configure them: Codeyard cannot set them for you, and doctor.sh warns when the ruleset is missing" },
-  { name: "Second reviewer", what: "One review of the behaviour and one of the engineering quality", status: "Not built. High risk already gets the stronger model and always the full triage", ref: 66 },
+  { name: "Second reviewer", what: "One review of the behaviour and one of the engineering quality", status: "Not built. High risk already gets the stronger model, and no profile lightens how its findings are decided", ref: 66 },
   { name: "Periodic run analysis", what: "The analysis of feature runs on a schedule", status: "Not built. analyze-runs.sh runs when you start it", ref: 131 },
   { name: "Selective CI", what: "Running the tests a change affects", status: "Partly: check groups and partial checks in repair rounds; affected-test selection is not built" },
   { name: "Model selection by cost", what: "Choosing a model by what a task needs and what it costs", status: "Partly: a model per role and risk level; selection by cost is not built" },
@@ -65,11 +70,13 @@ const improvements = [
   { name: "Remote runs, a dashboard, several repositories", what: "Runs that continue on a server, a browser view of them, work across repositories", status: "Not built" },
 ];
 ---
-<Base title="About" description="Why Agent Codeyard exists, its engineering principles and design decisions, how it evolved, the research behind it, and how to take part.">
-  <PageHead title="About" lede={`${site.name}, formerly ${site.formerName}: why it exists, what it is built on, and how it got here.`}>
+<Base title="About" description="Why Agent Codeyard exists, who maintains it, its engineering principles, what it can and cannot do today, its design decisions, how it evolved, and the research behind it.">
+  <PageHead title="About" lede={`Why ${site.name} exists, who maintains it, what it is built on, and what it can and cannot do today.`}>
     <ol class="contents">
       <li><a href="#why">Why Codeyard exists</a></li>
+      <li><a href="#maintainer">Who maintains it</a></li>
       <li><a href="#principles">Engineering principles</a></li>
+      <li><a href="#limits">What it can do now, and what it cannot</a></li>
       <li><a href="#decisions">Design decisions</a></li>
       <li><a href="#history">History</a></li>
       <li><a href="#research">Research</a></li>
@@ -80,25 +87,53 @@ const improvements = [
 
   <Section id="why" title="Why Codeyard exists">
     <p class="lede">Coding agents can plan a project, implement features, write tests and review changes. Using them across a whole development process raises questions they do not answer themselves.</p>
-    <p>How do you keep the requirements consistent? How do you know a change was reviewed and tested, and that the review and the tests saw the code that is merged? How do you let agents work on their own without giving up the decisions that matter? The answers are established engineering practices, applied to work with agents. Three shaped Codeyard most:</p>
+    <p>How do you keep the requirements consistent? How do you know a change was reviewed and tested, and that the review and the tests saw the code that is merged? How do you let agents work on their own without giving up the decisions that matter? The answers are established engineering practices, applied to work with agents. These shaped Codeyard most:</p>
     <ul class="rules">
       <li><b>Clear requirements reduce rework.</b> Every plan starts with a round of questions and your approval, and every feature with the implementer's check that the Issue settles what it needs.</li>
-      <li><b>Independent reviews catch what the author misses.</b> Under the shipped risk policy, every feature is reviewed by a read-only agent of another provider before it can be committed, and every finding gets an explicit decision. A project can let low-risk features skip the review; their merge then needs the owner.</li>
+      <li><b>Independent reviews catch what the author misses.</b> Under the shipped risk policy, the settings file that says how much checking each kind of change gets, every feature is reviewed by a read-only agent of another provider before it can be committed, and every finding gets an explicit decision: fix it now, defer it to a new Issue, or accept it with a reason. A project can let low-risk features skip the review; their merge then needs the owner.</li>
       <li><b>Approval does not rest on an agent's judgement alone.</b> Rules about what a change touches come first; the reviewer's assessment comes on top and can only make the outcome stricter.</li>
       <li><b>Not an assistant.</b> Codeyard writes no code: Claude Code and Codex do. Codeyard is the workflow around them, in shell scripts and plain files in your repository, with no platform to host.</li>
     </ul>
   </Section>
 
+  <Section id="maintainer" title="Who maintains it">
+    <p class="lede">{site.name} is an open-source project by Ahmet Taspinar, founder of <a href="https://jidai.nl/">JIDAI</a>, who maintains it and merges its pull requests.</p>
+    <p>Until 31 October 2026 it was called {site.formerName}, a name that described what it is: a template a new repository starts from. The site took the name {site.name} in <a href={pull(264)}>PR #264</a>, and the repository followed on 2 November as <a href={site.repository}>{site.repository.replace(/^https:\/\/github\.com\//, "")}</a> (<a href={pull(268)}>PR #268</a>). Codeyard is built with its own workflow: <a href={href("examples/")}>Examples</a> follows its own features from Issue to merge.</p>
+  </Section>
+
   <Section id="principles" title="Engineering principles">
     <Fragment slot="note">From the history below and <a href={repoFile("docs/workflow.md")}><code>docs/workflow.md</code></a>.</Fragment>
     <ul class="rules">
-      <li><b>Manual first.</b> Deciding on findings, the planning loop and the unattended run were each a manual routine before they were a script.</li>
+      <li><b>Manual first.</b> Deciding on findings, the planning loop and the unattended run, one command that takes a feature to a pull request without waiting for you, were each a manual routine before they were a script.</li>
       <li><b>Evidence before automation.</b> Recorded reviews and verification came before the command that runs a feature alone; without them an unattended run would have nothing to stop on.</li>
       <li><b>A script decides, not an agent.</b> Whether a step succeeded, whether a review is current, what the risk level is: computed from the repository, never taken from an agent's report.</li>
-      <li><b>Effort follows risk.</b> A documentation fix and a change to the gate do not get the same treatment; high-risk work keeps every control under every profile.</li>
+      <li><b>Effort follows risk.</b> A documentation fix and a change to the workflow's own checks do not get the same treatment; high-risk work keeps every control, whatever the project's profile, its one-line choice of how much process it wants.</li>
       <li><b>Controls only get stricter.</b> Any source can raise a level or require approval; nothing an agent controls can lower it, and the rules are read from the base branch.</li>
       <li><b>Driven by real use.</b> Once real work depended on the template, most changes answered something that had gone wrong, and since October the run records show what.</li>
     </ul>
+  </Section>
+
+  <Section id="limits" title="What it can do now, and what it cannot">
+    <Fragment slot="note">The limits as the docs state them: <a href={href("docs/configuration-and-security/")}>Configuration and security</a> and <a href={href("docs/new-to-agentic-coding/#when-codeyard-is-relevant")}>When Codeyard is relevant</a>. Short answers: the <a href={href("faq/")}>FAQ</a>.</Fragment>
+    <div class="split">
+      <div><h3>It can</h3><ul>
+        <li>Start a new project from the template with <code>gh repo create --template</code>, and plan it with you: requirements, architecture and roadmap, reviewed by another provider and approved by you</li>
+        <li>Take each feature from its Issue to an open pull request, step by step or unattended, on its own branch in its own worktree, a second working folder of the same repository</li>
+        <li>Compute a risk level for each change from the files it touches, and scale the review and the models to it</li>
+        <li>Refuse a reviewer of the implementer's own provider, and run every reviewer read-only</li>
+        <li>Commit only when the checks passed and the implementer's completion record, its account of each acceptance criterion, a condition the Issue sets, with what shows it, says the work is complete</li>
+        <li>Mark a pull request that changes a protected file, has a major or breaking impact on the architecture, or skipped the review as needing your approval</li>
+        <li>Record every run on your machine and let a read-only agent analyse the records</li>
+      </ul></div>
+      <div><h3>It cannot, today</h3><ul>
+        <li>Adopt an existing repository: a project starts from the template (<a href={issue(170)}>#170</a>), and there is no installer</li>
+        <li>Stop an agent from merging on its own: no script merges, but an agent has the GitHub rights of the account that started it until it gets an identity of its own (<a href={issue(99)}>#99</a>). Only the repository settings of <a href={href("docs/github-setup/")}>GitHub setup</a> make GitHub refuse a merge</li>
+        <li>Isolate the agents: they run on your machine, as you, with the sandbox and permission settings of their own tools, and a worktree separates working files only. It is not a security boundary on its own</li>
+        <li>Run other coding agents: the scripts start Claude Code and Codex</li>
+        <li>Tell you what a feature costs in money: it records time and tokens, not a price</li>
+        <li>Run on a server, show a dashboard, or work across several repositories</li>
+      </ul></div>
+    </div>
   </Section>
 
   <Section id="decisions" title="Design decisions">
@@ -110,8 +145,8 @@ const improvements = [
         <tr><th scope="row">A reviewer of another provider</th><td data-col="why">An agent of the same family shares the implementer's blind spots; the shipped pair is Claude and Codex.</td><td data-col="source"><a href={pull(211)}>PR #211</a></td></tr>
         <tr><th scope="row">Evidence tied to content</th><td data-col="why">A review or a verification counts only for the content it saw; any change makes it stale.</td><td data-col="source"><a href={pull(42)}>#42</a>, <a href={pull(74)}>#74</a>, <a href={pull(200)}>#200</a></td></tr>
         <tr><th scope="row">Scripts decide outcomes</th><td data-col="why">An unattended run needs a judge that does not depend on how a session ended.</td><td data-col="source"><a href={pull(101)}>PR #101</a></td></tr>
-        <tr><th scope="row">The completion gate</th><td data-col="why">A session that ends is not a finished feature.</td><td data-col="source"><a href={pull(126)}>PR #126</a></td></tr>
-        <tr><th scope="row">Your merge</th><td data-col="why">No script merges; protected changes and major architecture impact wait for the owner.</td><td data-col="source"><a href={pull(100)}>PR #100</a></td></tr>
+        <tr><th scope="row">The completion gate</th><td data-col="why">A session that ends is not a finished feature: the scripts commit only when the implementer's completion record says every criterion is met.</td><td data-col="source"><a href={pull(126)}>PR #126</a></td></tr>
+        <tr><th scope="row">Your merge</th><td data-col="why">No script merges; for a protected change, a change that skipped the review, or a major impact on the architecture, the workflow records a request for the owner's approval, which only the repository settings on GitHub enforce.</td><td data-col="source"><a href={pull(100)}>PR #100</a></td></tr>
         <tr><th scope="row">A computed risk level</th><td data-col="why">Read from the diff and the base branch's rules, so a feature cannot classify itself lower.</td><td data-col="source"><a href={pull(194)}>PR #194</a></td></tr>
         <tr><th scope="row">Local run records</th><td data-col="why">Measurement without sending anything anywhere.</td><td data-col="source"><a href={pull(136)}>PR #136</a></td></tr>
         <tr><th scope="row">Issues when ready</th><td data-col="why">A feature becomes an Issue when you are ready to build it; the roadmap is not turned into a backlog in advance.</td><td data-col="source"><a href={pull(44)}>PR #44</a></td></tr>
@@ -173,7 +208,7 @@ const improvements = [
 
   <Section id="contribute" title="Source, licence and contributing">
     <dl class="facts">
-      <dt>maintainer</dt><dd>Agent Codeyard is an open-source project by Ahmet Taspinar, founder of <a href="https://jidai.nl/">JIDAI</a>.</dd>
+      <dt>maintainer</dt><dd>Ahmet Taspinar, <a href="#maintainer">who maintains it</a></dd>
       <dt>source</dt><dd><a href={site.repository}>{site.repository.replace(/^https:\/\//, "")}</a></dd>
       <dt>licence</dt><dd>MIT, in <a href={repoFile("LICENSE")}><code>LICENSE</code></a>. A project created from the template chooses its own licence.</dd>
       <dt>contributing</dt><dd><a href={repoFile("CONTRIBUTING.md")}><code>CONTRIBUTING.md</code></a>: changes start from an Issue, on a feature branch, following <a href={repoFile("AGENTS.md")}><code>AGENTS.md</code></a></dd>

@@ -1,4 +1,5 @@
-// sitemap.xml: every page of the site, with its full address.
+// sitemap.xml: every page of the site, with its full address. The FAQ is
+// linked from the pages and the footer, not from the navigation.
 import type { APIRoute } from "astro";
 import { getCollection } from "astro:content";
 import { href, sections } from "../lib/links";
@@ -8,6 +9,7 @@ export const GET: APIRoute = async ({ site }) => {
   const paths = [
     "",
     ...sections.map((section) => section.path).filter((path) => path !== "docs/"),
+    "faq/",
     ...docs.map((page) => (page.id === "index" ? "docs/" : `docs/${page.id}/`)),
   ];
   const urls = paths.map((path) => `  <url><loc>${new URL(href(path), site).href}</loc></url>`);
