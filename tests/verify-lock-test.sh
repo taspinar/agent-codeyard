@@ -147,22 +147,43 @@ wait "$holder" || { cat "$tmp/holder.out" >&2; fail "the holding run failed"; }
 [[ ! -e "$lock" ]] || fail "the slot was not released when the run ended"
 grep -Fq "Verification passed" "$tmp/holder.out" || fail "the holding run did not pass"
 
-# Released when the run is terminated.
+# Released when the run is terminated, after its check is stopped too: the
+# check is not let go here, so only the run's SIGTERM to its group ends it.
 start_holder "$tmp/one"
 pid="$(holder_verify_pid)"
+group="$(sed -n 's/^group=//p' "$lock/owner")"
 kill -TERM "$pid"
-touch "$WORK_GO"
 { wait "$holder"; } 2>/dev/null || true
 [[ ! -e "$lock" ]] || fail "the slot was not released when the run was terminated"
+kill -0 -- "-$group" 2>/dev/null && fail "the check of a terminated run was not stopped"
 
-# After a crash (SIGKILL, no trap runs) the lock is stale: the next run
-# removes it, says so, and takes the slot.
+# After a crash (SIGKILL, no trap runs) the heavy check that the holder
+# started runs on, in the process group that the lock records: the slot is
+# still held, and a competing run neither removes the lock nor starts a check.
 start_holder "$tmp/one"
 pid="$(holder_verify_pid)"
+group="$(sed -n 's/^group=//p' "$lock/owner")"
+[[ "$group" =~ ^[1-9][0-9]*$ ]] || fail "the holder did not record the process group of its check: '$group'"
 kill -KILL "$pid"
 { wait "$holder"; } 2>/dev/null || true
 [[ -e "$lock" ]] || fail "the crash left no lock, so the recovery was not tested"
+kill -0 -- "-$group" 2>/dev/null || fail "the heavy check ended with its holder, so the orphaned check was not tested"
+: >"$WORK_LOG.two"
+status=0
+WORK_LOG="$WORK_LOG.two" run_verify "$tmp/two" "$tmp/orphan.out" || status=$?
+[[ "$status" -eq 75 ]] || { cat "$tmp/orphan.out" >&2; fail "a run took the slot while a check of the crashed holder still ran: exit $status"; }
+grep -Fq "process group $group" "$tmp/orphan.out" || { cat "$tmp/orphan.out" >&2; fail "the busy run did not name the check that still runs"; }
+[[ -e "$lock/owner" ]] || fail "the lock was removed while a check of the crashed holder still ran"
+[[ ! -s "$WORK_LOG.two" ]] || fail "a run started a check while a check of the crashed holder still ran"
+
+# Once no process of that group remains, the lock is stale: the next run
+# removes it, says so, and takes the slot.
 touch "$WORK_GO"
+for ((waited = 0; waited < 300; waited++)); do
+  kill -0 -- "-$group" 2>/dev/null || break
+  sleep 0.1
+done
+kill -0 -- "-$group" 2>/dev/null && fail "the orphaned heavy check did not end"
 run_verify "$tmp/two" "$tmp/recover.out" || { cat "$tmp/recover.out" >&2; fail "a run after a crash did not recover the slot"; }
 grep -Fq "removed the stale lock" "$tmp/recover.out" || fail "the recovery did not say that it removed a stale lock"
 [[ ! -e "$lock" ]] || fail "the recovered slot was not released"

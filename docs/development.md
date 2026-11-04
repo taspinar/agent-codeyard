@@ -281,14 +281,22 @@ and holds it until the run ends:
 - A run of the light checks only, such as `--only lint`, takes no slot and
   runs while another run holds it. A run with a heavy check holds the slot
   for its light checks too.
+- The run that holds the slot starts each check in a process group of its
+  own and records the group in the lock (`group=` in the file `owner`)
+  before the check begins. The check's standard input is `/dev/null`.
 - The slot is released when the run ends, also by `Ctrl-C`, `SIGTERM`, or
-  `SIGHUP` (the check that is running finishes first). After a crash or
-  `SIGKILL` the lock stays; the next run finds that its process no longer
-  exists, with the same PID and start time, removes it, says so, and takes
-  the slot. A process that reused the PID is not taken for the holder. Only
-  a holder that is confirmed gone is stale: when its process cannot be
-  inspected, as a process of another user in a shared `VERIFY_LOCK_DIR` may
-  not be, the run reports the slot `BUSY` and keeps the lock.
+  `SIGHUP`: the run first stops the check that is running, with `SIGTERM` to
+  its process group. If the check has not ended within ten seconds, the lock
+  stays until it has.
+- After a crash or `SIGKILL` the lock stays. A check that the run started
+  can outlive it, and while any process of the recorded group exists, the
+  slot is still held: the next run reports it `BUSY` with the group. Only
+  when the holder no longer exists, with the same PID and start time, and no
+  process of its group remains does the next run remove the lock, say so,
+  and take the slot. A process that reused the PID is not taken for the
+  holder. Only a run that is confirmed over is stale: when a process cannot
+  be inspected, as a process of another user in a shared `VERIFY_LOCK_DIR`
+  may not be, the run reports the slot `BUSY` and keeps the lock.
 - A verification that a heavy check starts, inside the run that holds the
   slot, runs in that slot instead of waiting for it. The holder passes
   `VERIFY_LOCK_TOKEN` to its checks; a run counts as nested only when the
@@ -300,8 +308,10 @@ file `owner` in the lock directory, check them with `ps -p <pid> -o pid,lstart,a
 and stop exactly that process: `kill <pid>`. Do not stop processes by a
 match on their name, such as `pkill -f verify.sh`: that ends the
 verification of every other worktree too. A heavy check that a killed
-holder started can outlive it; find it by its working directory, the holder's
-worktree, before you start another heavy run.
+holder started can outlive it and keeps the slot held; the `BUSY` line and
+the file `owner` name its process group. List it with
+`ps -o pid,pgid,lstart,args -g <group>` and stop exactly that group:
+`kill -- -<group>`.
 
 Like any line of these files, adding the `heavy:` line is sensitive and
 changing or removing it is protected by the merge approval gate.

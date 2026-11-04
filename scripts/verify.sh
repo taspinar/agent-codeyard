@@ -532,6 +532,25 @@ duration_budget() {
   duration_exceeded=$((duration_exceeded + 1))
 }
 
+# run_check <command> <output>
+# Runs a check in the worktree and returns its exit status. With an <output>
+# file (a budget check) its output is kept there too.
+run_check() {
+  if [[ -n "$2" ]]; then
+    (
+      unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
+      unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
+      cd "$root" && bash -eo pipefail -c "$1"
+    ) 2>&1 | tee "$2"
+    return "${PIPESTATUS[0]}"
+  fi
+  (
+    unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
+    unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
+    cd "$root" && bash -eo pipefail -c "$1"
+  )
+}
+
 results=()
 failed=0
 exceeded=0
@@ -572,20 +591,31 @@ for index in "${!names[@]}"; do
   # starts, as the self-tests do, must not write into that run's records, and
   # must not use the agent or attribution configuration that was chosen for
   # that run. The output of a budget check is kept: it is the measurement.
-  if [[ "$budget" == "yes" ]]; then
-    output="$scratch/budget-$name.out"
+  output=""
+  [[ "$budget" != "yes" ]] || output="$scratch/budget-$name.out"
+  if [[ -n "${verify_lock_acquired:-}" ]]; then
+    # The run holds the slot: the check runs in a process group of its own
+    # (job control), which the lock records before the check starts, so that
+    # the slot stays held while any process of the check lives, also after a
+    # crash of this run. Its standard input is /dev/null: a job outside the
+    # terminal's foreground group must not read from it.
+    set -m
     (
-      unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
-      unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
-      cd "$root" && bash -eo pipefail -c "$command"
-    ) 2>&1 | tee "$output"
-    status="${PIPESTATUS[0]}"
+      verify_lock_await_group "$$" || exit 1
+      run_check "$command" "$output"
+    ) </dev/null &
+    check_pid=$!
+    set +m
+    if ! verify_lock_record_group "$check_pid"; then
+      # The check waits for that record: it is stopped and fails.
+      echo "Error: the process group of check '$name' could not be recorded in the lock $(verify_lock_path)." >&2
+      kill -TERM -- "-$check_pid" 2>/dev/null || true
+    fi
+    wait "$check_pid"
+    status=$?
+    verify_lock_record_group ""
   else
-    (
-      unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
-      unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
-      cd "$root" && bash -eo pipefail -c "$command"
-    )
+    run_check "$command" "$output"
     status=$?
   fi
   set -e
