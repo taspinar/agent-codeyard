@@ -118,6 +118,8 @@ export const feature: Step[] = [
     facts: [
       ["who", "Implementer agent; the model follows the risk level"],
       ["script", "`./scripts/start-feature.sh <issue> [slug]`, or `--resume` to continue"],
+      ["input", "The Issue with the comments of the owner, members and collaborators of the repository, never those of anyone else and not the workflow's own reports; a comment added later counts from the next session"],
+      ["input", "An optional plan in `.agents/plans/`, linked to the Issue with `./scripts/update-issue-with-plan.sh <issue> <plan>`: the Issue owns the scope and the acceptance criteria, the plan the implementation details"],
       ["result", "Changes in the feature worktree, a completion record and a summary of the changes"],
       ["not done if", "The completion record does not say complete or awaiting evidence, or the handoff note lists remaining work"],
       ["blocked if", "The feature needs clarification or another decision of yours: answer in the handoff note or in a comment on the Issue, then resume; the next session implements"],
@@ -146,6 +148,8 @@ export const feature: Step[] = [
       ["result", "A review tied to the current content; a change afterwards needs a new review"],
       ["refused if", "The verification does not pass, unless `--unverified \"<reason>\"` records why; the commit still needs the checks to pass"],
       ["refused if", "The reviewer would be of the provider that implemented"],
+      ["changes only", "In `run-feature.sh` a later round reviews only the changes when the policy allows it, the previous round is valid, the base of the branch is the same and the risk level did not rise; otherwise the complete feature, and the run says why"],
+      ["earlier rounds", "A round gets the decisions of the earlier rounds. An accepted or deferred finding is not raised again unless the change made it worse; a continuing finding names its predecessor and cannot lower its severity or weaken an unresolved fix-now decision"],
     ],
   },
   {
@@ -157,6 +161,7 @@ export const feature: Step[] = [
       ["script", "`./scripts/triage-review.sh <review-json>`"],
       ["result", "Recorded decisions, published on the Issue"],
       ["your decision", "Step by step you approve the decisions, or give your own with `--decisions <file>` `--reason \"<why>\"`; unattended, read them on the Issue afterwards"],
+      ["owner-directed", "With `--decisions` no agent starts: `--proposal <file>` records the original proposal, the script shows your decisions for confirmation, creates the follow-up Issues and asks again before it stores and publishes; it refuses `--unattended`. Critical and major findings stay fix now, a deferral needs a follow-up Issue and an acceptance a rationale"],
     ],
   },
   {
@@ -178,6 +183,7 @@ export const feature: Step[] = [
       ["script", "`./scripts/finish-feature.sh <issue> \"<summary>\"`"],
       ["refused if", "The completion record is missing or does not say complete or awaiting evidence, the verification does not pass, or the latest review is stale, does not cover the complete feature, or has a critical or major finding"],
       ["without review", "Low risk with `low: review: none` is committed as not reviewed; the owner can also skip the review with `--no-review \"<reason>\"`, which is recorded"],
+      ["partial", "`--partial` commits unfinished work as your explicit choice; its pull request is a draft that leaves the Issue open"],
       ["important", "This step does not push or merge"],
     ],
   },
@@ -198,7 +204,7 @@ export const feature: Step[] = [
     facts: [
       ["who", "You, or a maintainer by your repository's rules; no script merges"],
       ["script", "`./scripts/check-guardrails.sh` lists what needs you"],
-      ["after the merge", "`./scripts/cleanup-worktree.sh <issue>`"],
+      ["after the merge", "`./scripts/cleanup-worktree.sh <issue>`, from the primary checkout"],
     ],
   },
   {

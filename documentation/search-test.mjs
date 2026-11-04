@@ -15,7 +15,7 @@ if (process.argv[2]) {
   const [output, base] = process.argv.slice(2);
   const pages = JSON.parse(await readFile(join(output, 'search-index.json'), 'utf8'));
   const docs = pages.filter(p => p.url.startsWith(`${base}docs/`));
-  assert.equal(docs.length, 12);
+  assert.equal(docs.length, 13);
   for (const [query, slug] of [['Troubleshooting', 'troubleshooting'], ['GitHub setup', 'github-setup']]) {
     const results = searchPages(docs, query);
     assert(results.some(p => p.url === `${base}docs/${slug}/`));

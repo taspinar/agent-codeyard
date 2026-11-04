@@ -5,9 +5,11 @@ order: 0
 ---
 import { href } from "../../lib/links";
 
-Start with <a href={href("docs/getting-started/")}>Getting started</a>, then follow the <a href={href("docs/detailed-workflow/")}>step reference</a> through planning, implementation, verification and review. The sidebar covers configuration, risk policy, GitHub settings and recovery.
+New to coding agents, pull requests or independent reviews? Read <a href={href("docs/new-to-agentic-coding/")}>New to agentic coding? Start here</a> first. If you already work with a coding agent, start with <a href={href("docs/getting-started/")}>Getting started</a>. <a href={href("docs/detailed-workflow/")}>How the workflow works</a> explains the route and its choices; the <a href={href("docs/reference/workflow/")}>workflow reference</a> lists the command, the inputs and outputs and the stop conditions of every step. The sidebar covers configuration, risk policy, GitHub settings and recovery.
 
 The workflow runs on your machine. As shipped, Claude implements and Codex reviews, so install both providers. You approve planning and merge pull requests; no script merges for you. Under the shipped policy every feature is reviewed. A project can explicitly allow Low features to skip review; their merge then needs the owner.
+
+A project starts from the template. Adopting Codeyard in an existing repository is not supported yet ([Issue 170](https://github.com/taspinar/agent-codeyard/issues/170)); <a href={href("docs/updating/")}>Updating a Codeyard-based project</a> covers taking over later template changes in a project that started from it.
 
 ## Find a command or setting
 

@@ -1,75 +1,116 @@
 ---
 title: "Troubleshooting"
-description: "Resume interrupted work and resolve checks, stale evidence and agent failures."
+description: "Find the symptom or the message you see, and the first fix to try."
 order: 9
 ---
 
-## If something goes wrong
+Find what you see below: a symptom, or the words a script printed. Each entry starts with the one fix to try first; the text after it says why. A script that stops always prints its reason and, where there is one, the command that continues.
 
-### A tool is missing, or GitHub is not signed in
+<a id="if-something-goes-wrong"></a>
 
-Run `./scripts/doctor.sh`. It names what is missing.
+## Setup and agents
+
+### "… is not installed", or GitHub is not signed in
+
+**First fix:** run `./scripts/doctor.sh` and do what it names.
+
+It checks the tools, the agents of `.agents/agents.conf`, your Git identity and whether you can push, and prints an install or sign-in command for what is missing.
 
 ### An agent does not start, or rejects the model
 
-Check the agent and the model of that role in `.agents/agents.conf`, and that the agent's command-line tool is signed in. The workflow passes the model name on as you wrote it.
+**First fix:** check the line of that role in `.agents/agents.conf`, and sign in to the agent's own command-line tool.
+
+The workflow passes the model name on as you wrote it and never replaces it, so a typo in the model reaches the agent as it is.
+
+### "This is a usage limit of …, not a defect"
+
+**First fix:** run the same step again after the time the provider names.
+
+The provider refused the session because a usage or rate limit is reached; the script shows the provider's own message. An unattended run retries the step and writes the limit into its log.
+
+### "the reviewer would use …, the provider the implementer ran with"
+
+**First fix:** give the `reviewer` role another provider in `.agents/agents.conf`, or pass `--agent` and `--model` to `review-feature.sh`.
+
+The reviewer must come from another provider than the implementer, at every risk level. The message also appears as "the reviewer and the implementer would both use …". See <a href="../agent-roles/#roles">Agent roles and models</a>.
+
+## Checks and reviews
 
 ### A check fails
 
-`./scripts/verify.sh` prints which check failed and its output. A feature cannot be reviewed or committed until the checks pass.
+**First fix:** read the output that `./scripts/verify.sh` prints for the failing check, and repair that check.
 
-### A script says a review is no longer current
+A feature cannot be reviewed or committed until the checks pass. To have it reviewed anyway, `review-feature.sh <issue> --unverified "<reason>"` records the reason; it is an exception, not a pass, and the commit still needs every check.
 
-The code changed after the review. Run `./scripts/review-feature.sh <issue>` again.
+### "the latest review (…) is stale: the code changed after it"
 
-### A script says the plan approval is not current
+**First fix:** run `./scripts/review-feature.sh <issue>` again.
 
-The requirements or the roadmap changed after you approved them. Changes to an approved plan go through <a href="../detailed-workflow/#step-change">the change process</a>.
+A review belongs to the exact content it reviewed. New commits on the base branch alone do not make it stale; a change of the feature does. See <a href="../verification-and-completion/#verification">project checks and workflow checks</a>.
 
-### A session or a run was interrupted
+### "the latest review (round …) covers only the changes since round …"
 
-Continue with `./scripts/start-feature.sh <issue> --resume`, or run `./scripts/run-feature.sh <issue>` again: it picks up where it stopped.
+**First fix:** run `./scripts/review-feature.sh <issue>` without `--changes`.
 
-<a id="handles"></a>
-
-## Situations the workflow handles
-
-### The plan has to change
-
-You do not edit an approved plan by hand. A change request goes through review and approval again: <a href="../detailed-workflow/#step-change">update an approved plan</a>.
-
-### A run is interrupted
-
-The implementer keeps a handoff note with what is done and what remains, so the work continues without the earlier conversation: `start-feature.sh <issue> --resume`, or `run-feature.sh <issue>` again. An unattended run retries a temporary failure itself. When an agent needs a decision from you, it stops and leaves its question in the note.
-
-### The issue leaves a decision open
-
-The implementer asks before it invents an answer: it writes its questions in the handoff note and the run stops. Answer there or in a comment on the issue, and run the feature again. See <a href="../detailed-workflow/#step-implement">implement the feature</a>.
-
-### Results are no longer current
-
-A verification result belongs to the exact content that was checked: change the code and the checks run again. A review belongs to the content that was reviewed: when that changes, the scripts ask for a new review. If the base branch was merged into the feature in the meantime, a later review has to cover the complete feature, not only the recent changes. The approval of the plan lapses in the same way when the requirements or the roadmap change. See <a href="../verification-and-completion/#verification">project checks and workflow checks</a> for the details.
-
-### An agent hits a usage limit
-
-When the provider of an agent refuses a session because a usage or rate limit is reached, the script shows the provider's own message and says that it is a usage limit, not a defect: run the step again after the time the provider names. An unattended run retries the step and writes the limit into its log, so you can see afterward why it stopped.
-
-### The network fails while a feature starts
-
-Reading the issue is tried again when the connection or GitHub fails for a moment; an issue that does not exist, or a refusal, stops at once with its reason. An unattended run tries the start again, like any other temporary failure.
-
-### The base branch moved after a feature was finished
-
-Merge the base branch into the feature branch and publish again: `git merge origin/main`, then `./scripts/publish-feature.sh <issue>`. The pull request is still described by the commit of the finished feature and still closes the issue. Any other commit after the finish needs a new finish first.
+A feature is committed only on a review of the complete feature.
 
 ### A review has findings
 
-Each finding gets one of three recorded decisions: fix it now (`FIX_NOW`), defer it to a follow-up issue (`DEFER`), or accept it with a reason (`ACCEPT`). See <a href="../detailed-workflow/#step-triage">decide what to do with review findings</a>.
+**First fix:** run `./scripts/triage-review.sh <review>` and decide on each finding.
 
-### You need a review although a check fails
+Each finding gets one recorded decision: fix it now (`FIX_NOW`), defer it to a follow-up Issue (`DEFER`), or accept it with a reason (`ACCEPT`). Critical and major findings are always fixed. See <a href="../detailed-workflow/#step-triage">decide on the findings</a>.
 
-`review-feature.sh <issue> --unverified "<reason>"` reviews work whose verification fails, and records the reason. It is an exception, not a pass: the checks still count as failed, and the feature cannot be committed until they pass.
+## Planning
 
-### Your checks, and the checks of the workflow
+### "the planning has not been approved", or "a planning document changed after the planning was approved"
 
-Your project's tests and linters are one list; the tests of the workflow scripts are another. See <a href="../verification-and-completion/#verification">project checks and workflow checks</a>.
+**First fix:** for a new plan, approve it with `./scripts/finish-planning.sh` in its planning worktree and merge it; for a plan you changed, go through <a href="../detailed-workflow/#step-change">the change process</a>.
+
+`create-feature-issue.sh` creates no Issue from a plan whose approval is missing or stale. You do not edit an approved plan by hand: a change request goes through the review and your approval again.
+
+### "the latest planning review (…) is stale"
+
+**First fix:** run `./scripts/review-planning.sh` again.
+
+A planning document changed after the review.
+
+<a id="handles"></a>
+<a id="situations-the-workflow-handles"></a>
+
+## Stopped or interrupted runs
+
+### A session or a run was interrupted
+
+**First fix:** when you work step by step, resume the interrupted step: `./scripts/start-feature.sh <issue> --resume`. When an unattended run was interrupted, run `./scripts/run-feature.sh <issue>` again; it continues where the feature stands.
+
+The implementer keeps a handoff note with what is done and what remains, so the work continues without the earlier conversation. An unattended run retries a temporary failure itself, such as a short loss of the network while it reads the Issue.
+
+### "an agent needs a decision; its question is in the handoff note"
+
+**First fix:** answer the question in `.agents/handoffs/<issue>.md` or in a comment on the Issue, then run the feature again.
+
+The implementer asks before it invents an answer to a decision that the Issue, the requirements and the architecture leave open. The next session reads your answer and implements. See <a href="../detailed-workflow/#step-implement">implement the feature</a>.
+
+### "the implementer wrote no completion record", or "the handoff note … lists remaining work"
+
+**First fix:** resume the feature: `./scripts/start-feature.sh <issue> --resume`, or `run-feature.sh <issue>` again.
+
+The commit needs a completion record that says complete or awaiting evidence, and a handoff note without remaining work. A session that ended is not a finished feature. To commit unfinished work on purpose, `finish-feature.sh` takes `--partial`. See <a href="../verification-and-completion/">Verification and completion</a>.
+
+### "could not read the comments of Issue #…"
+
+**First fix:** check that GitHub is reachable and `gh` is signed in, then run the step again.
+
+The implementer does not start without your comments on the Issue, since it would work without your clarifications. An Issue that does not exist, or a refusal, stops at once with its reason.
+
+## Commit and publish
+
+### "… must run on feature/<issue>-*. Current branch: …"
+
+**First fix:** go to the worktree of the feature, whose path `start-feature.sh` printed, and run the script there.
+
+### The base branch moved after the feature was finished
+
+**First fix:** merge the base branch into the feature branch and publish again: `git merge origin/main`, then `./scripts/publish-feature.sh <issue>`.
+
+The pull request is still described by the commit of the finished feature and still closes the Issue. Any other commit after the finish needs a new finish first. Once the base was merged in, a later review has to cover the complete feature, not only the recent changes.

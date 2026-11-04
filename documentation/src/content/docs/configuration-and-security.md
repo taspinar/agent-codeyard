@@ -1,14 +1,15 @@
 ---
 title: "Configuration and security"
-description: "Permissions, attribution and the changes that need the owner."
+description: "Sandbox and permission limits, the changes that need the owner, and attribution."
 order: 2
 ---
 
-<a id="attribution"></a>
+## The limits in short
 
-## Agent attribution
-
-Coding agents name themselves in what they commit: Claude Code adds a `Co-Authored-By` trailer to a commit and a "Generated with Claude Code" line to a pull request. Whether your project wants that is one setting in [`.agents/attribution.conf`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/attribution.conf): `agent-attribution: disabled`, which the template ships so that the work is published under the owner's own name, or `allowed`, which a project selects by changing the line if it wants its agents named. With `disabled`, `AGENTS.md` tells the agents, the Claude sessions the scripts start get the matching setting, and `finish-feature.sh` and `publish-feature.sh` refuse a commit of the feature with an agent's trailer and a description with generated attribution text, each reported on its own. Co-authors who are people are never rejected, and the history of the base is never touched. Codex has no attribution setting and Cursor's is set per user, not per project: `doctor.sh` says so instead of claiming that they are configured.
+- **An agent runs on your machine, as you.** It uses the sandbox and permission settings of its own command-line tool. It is not in a container or a virtual machine: all agents share your machine, your network, and the services that run there, and a worktree separates working files only.
+- **Each step gets one of three permission profiles:** write, unattended, or read-only. Reviewers are always read-only. If an agent cannot enforce its profile, the script stops instead of starting it with more rights.
+- **On GitHub, an agent has the rights of the account that started it.** If you may merge, so may the agent, until agents get an identity of their own ([Issue 99](https://github.com/taspinar/agent-codeyard/issues/99)). Only the settings of <a href="../github-setup/">GitHub setup</a> make GitHub refuse a merge.
+- **Some changes always need you:** a protected path, a change the reviewer rates as major or breaking for the architecture, and a feature committed without a review are marked as needing your approval (<a href="#gate">changes that need the owner</a>). No script merges.
 
 <a id="profiles"></a>
 
@@ -47,5 +48,12 @@ The reviewer also says how much a change affects the architecture. A "major" or 
 **The approval request.** When a feature needs you, `finish-feature.sh` writes `.agents/approval-requests/<issue>.json` and commits it with the feature: what you are asked to approve and why. It names the content tree, a checksum of exactly the content that was verified and reviewed, which `finish-feature.sh` and `publish-feature.sh` print next to the commit. The request is for display only: no script acts on it, and no agent takes it as an instruction. `check-guardrails.sh` computes the content tree again from the commit and refuses a request that names another one, and CI runs that check on every pull request.
 
 Your approval is your own review of the pull request on GitHub, bound to the commit you see. Nothing an agent can write counts as it. That the approval really comes from you is enforced by GitHub only once agents have an identity of their own ([Issue 99](https://github.com/taspinar/agent-codeyard/issues/99)); until then the scripts ask for your approval in the same cases as before.
+
+<a id="attribution"></a>
+
+## Agent attribution
+
+Coding agents name themselves in what they commit: Claude Code adds a `Co-Authored-By` trailer to a commit and a "Generated with Claude Code" line to a pull request. Whether your project wants that is one setting in [`.agents/attribution.conf`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/attribution.conf): `agent-attribution: disabled`, which the template ships so that the work is published under the owner's own name, or `allowed`, which a project selects by changing the line if it wants its agents named. With `disabled`, `AGENTS.md` tells the agents, the Claude sessions the scripts start get the matching setting, and `finish-feature.sh` and `publish-feature.sh` refuse a commit of the feature with an agent's trailer and a description with generated attribution text, each reported on its own. Co-authors who are people are never rejected, and the history of the base is never touched. Codex has no attribution setting and Cursor's is set per user, not per project: `doctor.sh` says so instead of claiming that they are configured.
+
 
 See the [development guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md) for command options, and <a href="../github-setup/">GitHub setup</a> for the settings that enforce merges.

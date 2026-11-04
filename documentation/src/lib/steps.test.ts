@@ -33,7 +33,7 @@ test("the tabs: who acts and the decision; the command and what goes in and out;
   assert.deepEqual(rows("overview").map((row) => row.label), ["Who acts"]);
   assert.deepEqual(rows("technical").map((row) => row.label), ["Command", "Inputs and outputs"]);
   assert.deepEqual(rows("failure").map((row) => row.label), ["Stops, retries and exceptions"]);
-  assert.deepEqual(rows("failure")[0].facts.map((fact) => fact.label), ["refused if", "refused if"]);
+  assert.deepEqual(rows("failure")[0].facts.map((fact) => fact.label), ["refused if", "refused if", "changes only", "earlier rounds"]);
   assert.equal(rows("technical")[0].facts[0].shown, false, "a single command needs no sub-label");
   assert.equal(rows("technical")[1].facts[0].shown, true, "inputs and outputs keep their label");
 });
@@ -64,5 +64,5 @@ test("a reference field keeps the original labels where it gathers several or is
   const rows = reference(feature.find((step) => step.id === "commit-the-feature")!);
   assert.deepEqual(rows.map((row) => row.label), ["Who acts", "Command", "Stops, retries and exceptions"]);
   assert.equal(rows[0].facts[0].shown, false);
-  assert.deepEqual(rows[2].facts.map((fact) => [fact.label, fact.shown]), [["refused if", true], ["without review", true], ["important", true]]);
+  assert.deepEqual(rows[2].facts.map((fact) => [fact.label, fact.shown]), [["refused if", true], ["without review", true], ["partial", true], ["important", true]]);
 });
