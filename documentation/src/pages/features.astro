@@ -21,6 +21,7 @@ const contents = [
   { id: "review", title: "Independent review" },
   { id: "risk", title: "Risk-proportionate workflow" },
   { id: "unattended", title: "Safe unattended execution" },
+  { id: "learn", title: "Learning from your runs" },
   { id: "authority", title: "Human authority" },
 ];
 
@@ -329,6 +330,22 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
         <tr><th scope="row">You</th><td data-col="what raises the level">The Issue label <code>risk: high</code> or <code>risk: medium</code>, or <code>--risk</code>, before the first session.</td></tr>
       </tbody>
     </Table>
+    <p>The level, the workflow profile and the permissions of an agent are three separate settings. The level describes the change. The profile, one line in <code>risk.conf</code>, says how much ceremony the project wants for low and medium risk; without the line the project keeps the policy it has. The permissions follow the role: implementers write, reviewers only read, and unattended sessions ask nothing.</p>
+    <Table matrix>
+      <caption>What each level gets under each profile. Under both profiles every commit needs the full verification and only you merge. The light column shows what changes from standard.</caption>
+      <thead><tr><th scope="col">level</th><th scope="col">standard</th><th scope="col">light</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><span class="lvl low">low</span></th>
+          <td data-col="standard"><p>Reviewed by another provider; full triage.</p><p>As shipped there is no low class: changes start at medium.</p></td>
+          <td data-col="light" class="changed"><p><span class="chg">changed</span> Documentation and process files are low. No review: the commit says so, and the merge needs your approval.</p></td></tr>
+        <tr><th scope="row"><span class="lvl medium">medium</span></th>
+          <td data-col="standard"><p>Reviewed; full triage.</p><p>Implementer: Claude opus.</p></td>
+          <td data-col="light" class="changed"><p><span class="chg">changed</span> Reviewed; light triage: minor findings and suggestions can be accepted or deferred without a fix round.</p></td></tr>
+        <tr><th scope="row"><span class="lvl high">high</span></th>
+          <td data-col="standard"><p>Reviewed; full triage.</p><p>Implementer: Claude fable.</p></td>
+          <td data-col="light"><p>Unchanged: reviewed, full triage, the stronger model. No profile can remove these.</p></td></tr>
+      </tbody>
+    </Table>
     <p>Any source can raise the level; nothing lowers it. A low level exists only under <code>profile: light</code>, which adds a low class for documentation and process files and lets a low feature go without a review, said in the commit and the pull request, with your approval of the merge. Under both profiles every commit needs the full verification and only you merge. High always keeps every control.</p>
     <dl class="facts">
       <dt>key</dt><dd><code>profile: light | standard</code>; per level, <code>&lt;level&gt;: verification | review | triage: &lt;value&gt;</code></dd>
@@ -370,11 +387,54 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
       <li><b>Never merges.</b> The run ends at an open pull request and never removes a worktree.</li>
     </ul>
     <pre role="region" class="excerpt" aria-label="Excerpt of the run record of feature 241"><span class="src">.agents/records/feature-241.jsonl · run of PR #249, excerpt</span>{record}</pre>
-    <p>Every run leaves such a record on your machine: each step and its duration, the agent, model and level, the verification seconds, the findings and why a run stopped. <code>report-runs.sh</code> summarises it per feature and <code>analyze-runs.sh</code> lets a read-only analyst propose changes; <a href={href("#learn")}>the analysis of 28 October 2026</a> is how Codeyard found what to change in itself.</p>
+    <p>Every run leaves such a record on your machine: each step and its duration, the agent, model and level, the verification seconds, the findings and why a run stopped. <code>report-runs.sh</code> summarises it per feature and <code>analyze-runs.sh</code> lets a read-only analyst propose changes; <a href="#learn">learning from your runs</a> shows how, and <a href={href("examples/#analysis")}>the analysis of 28 October 2026</a> is how Codeyard found what to change in itself.</p>
     <dl class="facts">
       <dt>records</dt><dd><code>.agents/records/feature-&lt;issue&gt;.jsonl</code> in the primary checkout, ignored by Git, format <code>run-record/v1</code> (<a href={`${repoFile("docs/development.md")}#run-records`}><code>docs/development.md</code></a>)</dd>
       <dt>docs</dt><dd><a href={href("docs/technical-reference/#what-is-recorded-on-your-machine")}>What is recorded on your machine</a></dd>
       <dt>built in</dt><dd><a href={pull(136)}>PR #136</a> to <a href={pull(140)}>#140</a> (records), <a href={pull(223)}>#223</a> (stops)</dd>
+    </dl>
+  </Section>
+
+  <Section id="learn" title="Learning from your runs">
+    <Fragment slot="note">With <code>report-runs.sh</code>, <code>show-experience.sh</code> and <code>analyze-runs.sh</code>. <a href={`${repoFile("docs/development.md")}#run-records`}>The records in detail</a>.</Fragment>
+    <p class="lede">The same problem can cost review rounds in feature after feature without anyone noticing. Every run leaves a record, and a read-only analyst reads the records of many features and proposes what to change.</p>
+    <p>A record holds the review rounds and their findings, what the triage decided, the checks that failed, why a run stopped, and the time and tokens of each step. After a number of features you start the analysis; it changes nothing, and each proposal goes where you decide.</p>
+    <figure class="plain">
+      <svg class="lines learn" viewBox="0 0 1240 236" role="img" aria-labelledby="learn-t" aria-describedby="learn-words">
+        <title id="learn-t">The run records of several features run into one analysis. Its proposals pass your decision, and each goes to its own place with the review that applies there.</title>
+        <text class="note" x="110" y="14" text-anchor="middle">the last n features</text>
+        <path class="l2" d="M40 30 H200 L280 110"/>
+        <path class="l2" d="M40 70 H200 L240 110"/>
+        <path class="l2" d="M40 110 H500"/>
+        <path class="l2" d="M40 150 H200 L240 110"/>
+        <path class="l2" d="M40 190 H200 L280 110"/>
+        <circle class="dot" cx="200" cy="30" r="8"/><circle class="dot" cx="200" cy="70" r="8"/><circle class="dot" cx="200" cy="110" r="8"/><circle class="dot" cx="200" cy="150" r="8"/><circle class="dot" cx="200" cy="190" r="8"/>
+        <text class="sub" x="200" y="226" text-anchor="middle">run records</text>
+        <path class="l1" d="M500 110 H620 L680 50 H900 M620 110 H900 M620 110 L680 170 H900"/>
+        <circle class="dot" cx="400" cy="110" r="10"/><text class="st" x="400" y="86" text-anchor="middle">Analysis</text><text class="sub k" x="400" y="142" text-anchor="middle">analyze-runs.sh</text><text class="sub" x="400" y="162" text-anchor="middle">read-only</text>
+        <rect class="gate" x="510" y="100" width="20" height="20" transform="rotate(45 520 110)"/><text class="st" x="520" y="86" text-anchor="middle">You decide</text>
+        <circle class="dot" cx="900" cy="50" r="8"/><text class="sub" x="918" y="55">ADR, instruction, skill, docs</text>
+        <circle class="dot" cx="900" cy="110" r="8"/><text class="sub" x="918" y="115">a check in a script</text>
+        <circle class="dot" cx="900" cy="170" r="8"/><text class="sub" x="918" y="175">an Issue, here or in the template</text>
+        <text class="note" x="760" y="226" text-anchor="middle">each with the review that applies there</text>
+      </svg>
+      <ol class="words lines-words" id="learn-words">
+        <li><b>Run records</b><small>of the last n features: rounds, findings, triage, stops, time and tokens</small></li>
+        <li><b>Analysis</b><small class="k">analyze-runs.sh --last 10</small><p class="cond">A read-only agent; it changes nothing.</p></li>
+        <li class="you"><b>You decide</b></li>
+        <li><b>Each proposal in its place</b><small>an ADR, an agent instruction, a skill, the documentation, a check in a script, or an Issue, here or in the template</small><p class="cond">with the review that applies there</p></li>
+      </ol>
+    </figure>
+    <ul class="rules">
+      <li><b>A finding needs two runs.</b> One observation stays a hypothesis, and “not enough evidence” is a valid outcome.</li>
+      <li><b>Every conclusion cites its records,</b> and says which differences in task size, model and workflow version it considered.</li>
+      <li><b>Nothing changes by itself.</b> Each proposal names its place, and you take it through the review and approval there.</li>
+      <li><b>Repeatable, and nothing counted twice.</b> Each analysis keeps its input and sources; evidence an earlier analysis used is marked as such.</li>
+    </ul>
+    <p class="needs">You start an analysis by hand; running it periodically is an open Issue (<a href={issue(131)}>#131</a>).</p>
+    <dl class="facts">
+      <dt>scripts</dt><dd><a href={repoFile("scripts/analyze-runs.sh")}><code>analyze-runs.sh</code></a>, <a href={repoFile("scripts/report-runs.sh")}><code>report-runs.sh</code></a>, <a href={repoFile("scripts/show-experience.sh")}><code>show-experience.sh</code></a></dd>
+      <dt>example</dt><dd><a href={href("examples/#analysis")}>The analysis of 28 October 2026</a>: 41 runs, five Issues</dd>
     </dl>
   </Section>
 
@@ -414,12 +474,15 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
         <li>The risk level, and that no agent lowers it</li>
         <li>A reviewer of another provider, read-only</li>
         <li>Verification before review and before commit</li>
+        <li>A current review of the complete feature before commit</li>
         <li>The completion gate and the triage rules</li>
-        <li>Rules read from the base branch</li>
+        <li>Sandboxed implementers</li>
+        <li>Rules read from the base branch, so a change cannot loosen its own checks</li>
       </ul></div>
       <div><h3>Your GitHub settings enforce</h3><ul>
         <li>A ruleset on <code>main</code> that requires a pull request and the CI check; <code>doctor.sh</code> warns when it is missing</li>
         <li>Code-owner review, once you replace the placeholder in <a href={repoFile(".github/CODEOWNERS")}><code>CODEOWNERS</code></a></li>
+        <li>Who may bypass the rules</li>
         <li>An approval the agent cannot give itself: needs a separate agent identity, <a href={issue(99)}>not built yet</a></li>
       </ul></div>
     </div>

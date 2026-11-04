@@ -30,6 +30,15 @@ const changed: Record<number, string[]> = {
   213: ["scripts/run-feature.sh", ".agents/prompts/implementer.md", "scripts/lib/completion.sh", "tests/run-feature-test.sh"],
 };
 
+// The proposals of the run analysis of 28 October 2026 that became Issues.
+const proposals = [
+  { issue: 216, change: "Record the step and the reason of every stop", pull: 223 },
+  { issue: 217, change: "Give every later review round the earlier decisions", pull: 222 },
+  { issue: 218, change: "Stop a false partial completion in the handoff note", pull: 221 },
+  { issue: 219, change: "Time every check and budget the self-test suite", pull: 224 },
+  { issue: 220, change: "Warn about calls of models that agents.conf does not declare", pull: 225 },
+];
+
 // The review rounds of #217: the run record and the comments on the Issue.
 const rounds = [
   { round: 1, kind: "complete feature", verdict: "CHANGES REQUIRED", finding: "M1, major: earlier approved decisions can disappear when a newer triage is invalid", decision: "FIX_NOW", link: comment(217, "6482184594") },
@@ -53,6 +62,7 @@ const mediumRounds = [
       <li><a href="#e2e">High risk, end to end: #217</a></li>
       <li><a href="#features">High risk, more runs: #189, #193, #204, #16</a></li>
       <li><a href="#medium">Medium risk: #241</a></li>
+      <li><a href="#analysis">Codeyard's analysis of its own runs</a></li>
       <li><a href="#absent">What is not shown</a></li>
       <li><a href="#sources">Where the figures come from</a></li>
     </ol>
@@ -75,7 +85,7 @@ const mediumRounds = [
 
   <Section id="e2e" title="High risk, end to end: #217">
     <Fragment slot="note"><a href={issue(217)}>Issue #217</a>, <a href={pull(222)}>PR #222</a>. One unattended run of <code>run-feature.sh</code>, 28 October 2026.</Fragment>
-    <p class="lede">The feature that gave every later review round the decisions of the earlier ones. It came out of Codeyard's analysis of its own runs, and it is followed here from its requirements to the merge.</p>
+    <p class="lede">The feature that gave every later review round the decisions of the earlier ones. It came out of <a href="#analysis">Codeyard's analysis of its own runs</a>, and it is followed here from its requirements to the merge.</p>
 
     <h3>Requirements</h3>
     <p>The run analysis of 28 October 2026 found that in five runs the reviewer raised a finding again as unresolved after it had been fixed, and that in one feature it raised findings again that the triage had accepted. The Issue asks that every review after round 1 receives the decisions of all earlier rounds, that a finding names the one it continues (<code>unresolved</code> or <code>worsened</code>), and that the stored review is checked against the recorded decisions. It has six acceptance criteria; the last one reads “No gate is weakened: a FIX_NOW finding that is really unresolved is still reported and still blocks.” Out of scope: the triage rules, the round limit, and the owner-exception mechanism.</p>
@@ -151,16 +161,42 @@ const mediumRounds = [
     </ol>
 
     <h3>The pull request</h3>
-    <p>The description of <a href={pull(222)}>PR #222</a> carries the completion record with evidence for all six criteria, the verification, the review line, the risk level with its reasons, and the merge approval block. The <a href={href("#trace")}>home page</a> shows it annotated.</p>
-    <pre role="region" class="excerpt" aria-label="Excerpt of the description of pull request 222"><span class="src">{pull(222).replace(/^https:\/\//, "")} · excerpt</span>Review: round 5, PASS WITH MINOR FINDINGS, by codex (gpt-6-luna); triage published on #217
+    <p>The description of <a href={pull(222)}>PR #222</a> carries the completion record with evidence for all six criteria, the verification, the review line, the risk level with its reasons, and the merge approval block. Every block is written by <code>finish-feature.sh</code> and <code>publish-feature.sh</code>, not by the agent.</p>
+    <div class="artifact">
+      <pre role="region" tabindex="0" class="record" aria-label="Excerpt of the description of pull request 222"><span class="src">{pull(222).replace(/^https:\/\//, "")} · excerpt</span><span class="pin" aria-hidden="true">1</span><mark>Completion: complete</mark>
+- met: A complete review in round 3 or later, started
+  by run-feature.sh or by hand without --changes,
+  receives the decisions of every approved triage …
 
-Merge approval:
-- required from the project owner, for exactly this commit
+<span class="pin" aria-hidden="true">2</span><mark>Verification:</mark>
+- ./scripts/verify.sh passed
+
+<span class="pin" aria-hidden="true">3</span><mark>Review: round 5, PASS WITH MINOR FINDINGS,</mark>
+<mark>by codex (gpt-6-luna)</mark>; triage published on #217
+
+<span class="pin" aria-hidden="true">4</span><mark>Risk: high</mark>
+- .agents/prompts/reviewer.md: a policy, an agent
+  contract, or a schema is changed
+
+<span class="pin" aria-hidden="true">5</span><mark>Merge approval:</mark>
+- required from the project owner, for exactly
+  this commit
 [...]
-- scripts/review-feature.sh: the file defines or carries out the workflow and its gate
-- the independent review classified the impact on the architecture as major: [...]
+- scripts/review-feature.sh: the file defines or
+  carries out the workflow and its gate
+- the independent review classified the impact on
+  the architecture as major: [...]
 [...]
-- approval request: .agents/approval-requests/217.json (asks and records; grants nothing)</pre>
+- approval request: .agents/approval-requests/217.json
+  (asks and records; grants nothing)</pre>
+      <ol class="notes">
+        <li><span class="pin" aria-hidden="true">1</span><div><b>Completion record</b><span>The implementer's claim, criterion by criterion, with evidence. A session that ends is not a finished Issue.</span></div></li>
+        <li><span class="pin" aria-hidden="true">2</span><div><b>Verification</b><span>A recorded run on exactly this content; reused while nothing changes, never a partial check.</span></div></li>
+        <li><span class="pin" aria-hidden="true">3</span><div><b>Independent review</b><span>Another provider, read-only. Every later round gets the earlier decisions; a re-raised finding names the one it continues.</span></div></li>
+        <li><span class="pin" aria-hidden="true">4</span><div><b>Risk level</b><span>Computed again at every step from the diff and the rules of the base branch, with its reasons.</span></div></li>
+        <li><span class="pin" aria-hidden="true">5</span><div><b>Your approval</b><span>Protected changes wait for you; the approval is bound to the commit.</span></div></li>
+      </ol>
+    </div>
   </Section>
 
   <Section id="features" title="High risk, more runs">
@@ -277,6 +313,25 @@ Merge approval:
 Risk: medium
 [...]
 - profile: none</pre>
+  </Section>
+
+  <Section id="analysis" title="Codeyard's analysis of its own runs">
+    <Fragment slot="note">With <code>analyze-runs.sh</code>, 28 October 2026. <a href={href("features/#learn")}>Learning from your runs</a>.</Fragment>
+    <p class="lede">Codeyard ran its read-only analyst on its own run records: 41 runs of 19 features. The proposals that held up became Issues of this repository.</p>
+    <p>Among the findings: in five runs the reviewer raised a fixed finding again as unresolved; six of seven failed runs recorded no reason for the stop; the self-test suite had grown from 463 s to 915 s in two days. Five proposals became Issues, all merged:</p>
+    <Table>
+      <thead><tr><th scope="col">issue</th><th scope="col">change</th><th scope="col">result</th></tr></thead>
+      <tbody>
+        {proposals.map((proposal) => (
+          <tr>
+            <th scope="row"><a href={issue(proposal.issue)}>#{proposal.issue}</a></th>
+            <td data-col="change">{proposal.change}</td>
+            <td data-col="result"><a href={pull(proposal.pull)}>PR #{proposal.pull}</a></td>
+          </tr>
+        ))}
+      </tbody>
+    </Table>
+    <p>#217 is the feature <a href="#e2e">followed end to end</a> on this page.</p>
   </Section>
 
   <Section id="absent" title="What is not shown">

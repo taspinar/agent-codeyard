@@ -166,6 +166,7 @@ p { margin: 0 0 var(--s-4); max-width: var(--measure); text-wrap: pretty; }
 .hero { padding-block: var(--s-7) var(--s-6); }
 .hero-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: var(--s-5) var(--s-7); align-items: end; }
 .hero-side .lede { margin-top: 0; }
+.hero-copy { margin-top: var(--s-4); max-width: var(--measure-lede); color: var(--ink-2); }
 .route { margin-left: 0; margin-right: 0; }
 .hero h1 { font-size: var(--t-display); max-width: var(--measure-display); letter-spacing: var(--track-display); line-height: var(--lh-display); }
 .hero h1 em { font-style: normal; color: var(--line-ink); }
@@ -177,6 +178,9 @@ p { margin: 0 0 var(--s-4); max-width: var(--measure); text-wrap: pretty; }
 
 /* The route map */
 .route { margin-top: var(--s-7); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: var(--s-5) 0 var(--s-4); }
+/* On the home page the route map is a section of its own: the section rules are its hairlines. */
+.route-sec .route { margin-top: 0; border: 0; padding: 0; }
+.route-sec .needs { margin-top: var(--s-4); max-width: var(--measure-wide); }
 .route-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--s-3) var(--s-6); align-items: baseline; }
 .route-head h2 { font-size: var(--t-lg); font-weight: var(--w-bold); letter-spacing: 0; }
 .switches { display: flex; flex-wrap: wrap; gap: var(--s-3) var(--s-6); }
