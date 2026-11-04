@@ -186,6 +186,74 @@ handoff_remaining() {
     found { emit($0) }' "$1"
 }
 
+# handoff_finding_checks <handoff-note> [<triage-name>]
+# Prints the check that the triage implementer recorded for each finding it
+# was given (.agents/prompts/triage-implementer.md), one line per check:
+# <triage-name> TAB <finding-id> TAB <value> TAB <evidence>. A check is a line
+# '- <finding-id>: <value> — <evidence>' under a heading 'Triage <name>' of
+# any level; the next heading ends the section. <finding-id> is an id as the
+# review gives it (C1, MIN1). <value> is fixed, refuted,
+# not_reproduced, or not_executable, and the evidence is required: a line
+# with another value, without evidence (a none-word or only delimiters and
+# punctuation), or outside such a heading is not a check. With <triage-name>, only the section of that triage counts. The
+# lines are the implementer's statement: they resolve nothing by themselves.
+handoff_finding_checks() {
+  [[ -f "$1" ]] || return 0
+  awk -v only="${2:-}" '
+    /^[[:space:]]*#/ {
+      triage = ""
+      line = $0
+      if (line ~ /^[[:space:]]*#+[[:space:]]+[Tt]riage[[:space:]]+`?[^`[:space:]]+`?[[:space:]]*$/) {
+        sub(/^[[:space:]]*#+[[:space:]]+[Tt]riage[[:space:]]+`?/, "", line)
+        sub(/`?[[:space:]]*$/, "", line)
+        triage = line
+      }
+      next
+    }
+    triage == "" || (only != "" && triage != only) { next }
+    match($0, /^[[:space:]]*[-*][[:space:]]+`?[[:upper:]]+[[:digit:]]+`?:[[:space:]]+`?(fixed|refuted|not_reproduced|not_executable)`?[[:space:]]+(—|–|--?)[[:space:]]+/) {
+      head = substr($0, 1, RLENGTH)
+      evidence = substr($0, RLENGTH + 1)
+      gsub(/\t/, " ", evidence)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", evidence)
+      if (tolower(evidence) ~ /^(none|nothing|n\/a|-|tbd)?[.]?$/) next
+      # Delimiters and punctuation alone are no evidence: "— —".
+      if (evidence !~ /[[:alnum:]]/) next
+      sub(/^[[:space:]]*[-*][[:space:]]+`?/, "", head)
+      id = head
+      sub(/[`:].*/, "", id)
+      value = head
+      sub(/^[^:]*:[[:space:]]+`?/, "", value)
+      sub(/[`[:space:]].*/, "", value)
+      printf "%s\t%s\t%s\t%s\n", triage, id, value, evidence
+    }' "$1"
+}
+
+# triage_check_outcomes <handoff-note> <triage-json>
+# Prints, for each FIX_NOW finding of the triage, what the implementer's
+# check in the section of that triage says: <finding-id> TAB <outcome> TAB
+# <evidence>. <outcome> is the recorded value; 'missing' when the finding has
+# no check, and 'conflicting' when its checks differ in value or in evidence
+# (identical lines count once). Only 'fixed' is resolved; every other outcome
+# leaves the finding open until a later fix records 'fixed' or a new triage
+# decides otherwise.
+triage_check_outcomes() {
+  local checks
+
+  checks="$(handoff_finding_checks "$1" "$(basename "$2")")"
+  jq -r --arg checks "$checks" '
+    ($checks | split("\n") | map(select(length > 0) | split("\t")
+      | {id: .[1], value: .[2], evidence: (.[3:] | join(" "))})) as $lines
+    | .decisions[] | select(.decision == "FIX_NOW") | .finding_id as $id
+    | [$lines[] | select(.id == $id)] as $mine
+    | if ($mine | length) == 0 then "\($id)\tmissing\t"
+      elif ($mine | map([.value, .evidence]) | unique | length) > 1
+      then "\($id)\tconflicting\t\($mine | map(.value) | unique | join(", "))\(
+        if ($mine | map(.value) | unique | length) == 1 then ", with differing evidence" else "" end)"
+      else "\($id)\t\($mine[-1].value)\t\($mine[-1].evidence)"
+      end' "$2"
+}
+
 # completion_summary_present <root> <issue>
 # Succeeds when the implementer wrote the summary of the changes that the
 # commit message is made from. An unattended run needs it: nobody edits the

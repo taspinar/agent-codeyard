@@ -115,6 +115,13 @@ fixed, and its review artifact is under `.agents/reviews/`.
     `reason` says how; it is required.
 - Leave `previous` null for a new finding.
 
+The section may also list what the implementer recorded about each finding to
+fix: `fixed`, or returned to the triage as `refuted`, `not_reproduced`, or
+`not_executable`, with its evidence. It is the implementer's statement, not
+evidence: check a `fixed` claim against the code, and report a returned
+finding that still holds as `unresolved`, with what you found about the
+recorded check.
+
 Judge the change, not the titles: a finding continues an earlier one when it
 is about the same defect, whatever it is called. The script checks
 `previous` against the recorded decisions and refuses the review when it

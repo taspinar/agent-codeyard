@@ -171,6 +171,7 @@ export const feature: Step[] = [
     facts: [
       ["who", "Implementer agent"],
       ["script", "`./scripts/apply-triage.sh <triage-json>`"],
+      ["per finding", "The implementer names the class of the defect and looks for it in the files the feature changes; a claim it can check, it runs first. It records fixed, refuted, not reproduced or not executable; a finding it returns keeps its code and stays fix now until the triage decides again"],
       ["next", "`./scripts/review-feature.sh <issue> --changes`, then `./scripts/review-feature.sh <issue>`"],
     ],
   },

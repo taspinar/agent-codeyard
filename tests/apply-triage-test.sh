@@ -382,6 +382,40 @@ record_reviewed_tree "$repo" "$repo/$review" "$repo/$triage"
 MOCK_WRITE_ACTION="printf 'fixed\n' >>'$repo/feature.txt'" run_apply "$repo" y "$triage" || fail "applying fixes with a handoff note failed"
 grep -Fq "There is a handoff note: .agents/handoffs/13.md" "$repo.log" || fail "the handoff note was not named to the agent"
 
+# The agent is told the heading of its checks (#292), and the script names a
+# finding returned without a fix, or without a check, as still FIX_NOW.
+grep -Fq "under
+the heading '## Triage feature-13-apply-test-review-01-triage.json'" "$repo.log" ||
+  fail "the agent was not told the heading of its checks"
+grep -Fq -- "- C1: no check recorded" "$repo.out" || fail "a finding without a check was not named: $(cat "$repo.out")"
+grep -Fq "These findings stay FIX_NOW" "$repo.out" || fail "a finding without a check was not said to stay open"
+for value in refuted not_reproduced not_executable; do
+  repo="$(setup_repo "returned-$value")"
+  printf '.agents/handoffs/\n' >>"$repo/.gitignore"
+  record_reviewed_tree "$repo" "$repo/$review" "$repo/$triage"
+  MOCK_WRITE_ACTION="mkdir -p '$repo/.agents/handoffs' && printf '## Triage feature-13-apply-test-review-01-triage.json\n\n- C1: $value — ran the reproduction\n' >'$repo/.agents/handoffs/13.md'" \
+    run_apply "$repo" y "$triage" || fail "applying fixes with a returned finding failed"
+  grep -Fq "Returned to the triage" "$repo.out" || fail "a $value finding was not returned to the triage"
+  grep -Fq -- "- C1: $value — ran the reproduction" "$repo.out" || fail "the $value check was not shown"
+  grep -Fq "These findings stay FIX_NOW" "$repo.out" || fail "a $value finding was not said to stay FIX_NOW"
+  grep -Fq "./scripts/triage-review.sh" "$repo.out" || fail "the existing triage step was not named for a $value finding"
+done
+# A fixed finding, with its evidence, is resolved; a check under the heading
+# of another triage counts for nothing.
+repo="$(setup_repo checked-fixed)"
+printf '.agents/handoffs/\n' >>"$repo/.gitignore"
+record_reviewed_tree "$repo" "$repo/$review" "$repo/$triage"
+MOCK_WRITE_ACTION="mkdir -p '$repo/.agents/handoffs' && printf '## Triage feature-13-apply-test-review-01-triage.json\n- C1: fixed — tests/a-test.sh passes\n' >'$repo/.agents/handoffs/13.md'" \
+  run_apply "$repo" y "$triage" || fail "applying a fixed finding failed"
+grep -Fq -- "- C1: fixed — tests/a-test.sh passes" "$repo.out" || fail "the fixed check was not shown"
+if grep -Fq "These findings stay FIX_NOW" "$repo.out"; then fail "a fixed finding was said to stay open"; fi
+repo="$(setup_repo checked-elsewhere)"
+printf '.agents/handoffs/\n' >>"$repo/.gitignore"
+record_reviewed_tree "$repo" "$repo/$review" "$repo/$triage"
+MOCK_WRITE_ACTION="mkdir -p '$repo/.agents/handoffs' && printf '## Triage feature-13-apply-test-review-02-triage.json\n- C1: fixed — tests/a-test.sh passes\n' >'$repo/.agents/handoffs/13.md'" \
+  run_apply "$repo" y "$triage" || fail "applying with a check of another triage failed"
+grep -Fq -- "- C1: no check recorded" "$repo.out" || fail "a check under another triage counted for this one"
+
 # Without the option, no answer still means that nothing starts.
 repo="$(setup_repo no-answer)"
 run_apply "$repo" "" "$triage" || fail "declining by an empty answer returned an error"

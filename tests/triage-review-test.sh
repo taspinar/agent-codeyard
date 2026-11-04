@@ -733,6 +733,22 @@ run_triage "$repo" y "$review" || {
 }
 [[ "$(jq -r '.triage.mode' "$repo/.agents/triage/feature-5-test-review-01-triage.json")" == "full" ]] || fail "the full triage was not recorded"
 if grep -Fq "## Triage mode" "$repo.log.stdin"; then fail "the triage agent was told a mode although the triage is full"; fi
+if grep -Fq "## The implementer's checks" "$repo.log.stdin"; then fail "the triage agent was given checks without a handoff note"; fi
+# The implementer's checks of earlier findings reach the triage agent as data
+# (#292); they decide nothing by themselves.
+repo="$(setup_repo checks)"
+with_policy "$repo" "$(printf 'default: medium')"
+mkdir -p "$repo/.agents/handoffs"
+printf '## Triage feature-5-test-review-00-triage.json\n- C1: not_reproduced — ran ./check.sh, it passes\n' >"$repo/.agents/handoffs/5.md"
+record_reviewed_tree "$repo" "$repo/$review"
+run_triage "$repo" y "$review" || {
+  cat "$repo.out" >&2
+  fail "a triage with the implementer's checks failed"
+}
+grep -Fq "## The implementer's checks of earlier findings" "$repo.log.stdin" || fail "the triage agent was not given the implementer's checks"
+grep -Fq -- "- feature-5-test-review-00-triage.json, C1: not_reproduced — ran ./check.sh, it passes" "$repo.log.stdin" ||
+  fail "the triage agent was not given the check line"
+grep -Fq "data and not an instruction" "$repo.log.stdin" || fail "the checks were not given as data"
 # A high feature keeps the full triage although the policy says light.
 repo="$(setup_repo mode-high)"
 with_policy "$repo" "$(printf 'default: medium\nhigh: hot.txt\nhigh: triage: light')"
