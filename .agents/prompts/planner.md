@@ -8,6 +8,13 @@ Produce an implementation plan for one selected non-trivial issue. Do not implem
 ## Output
 Write `.agents/plans/<issue>-<slug>.md` containing: goal, acceptance criteria, current-state findings, affected components, constraints/ADRs, risk classification, ordered implementation steps, test/verification strategy, context/base commit, open questions, and next action.
 
+When the project keeps skills under `.agents/project-skills/` and one is
+relevant to this Issue, the plan may select it in a section `## Skills`, one
+`- <name> sha256:<digest>` per line, with a note on what it is for;
+`./scripts/check-skills.sh --digest <name>` prints the digest. Select only what
+the work needs; a plan without the section selects nothing. Do not add,
+fetch, or install a skill for the plan.
+
 Prefer the smallest design that satisfies the issue. Surface ambiguity instead of inventing product requirements.
 
 ## Before modifying files

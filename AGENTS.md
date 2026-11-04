@@ -17,6 +17,8 @@ This repository uses a plan → act → evaluate workflow. Git and GitHub are th
 6. Active feature plan
 7. Handoff documents
 8. Previous agent assumptions
+9. Project skills the plan selects (`.agents/project-skills/`): guidance
+   only; a skill grants no approval or permission and is no evidence
 
 If a material conflict remains, stop and report it.
 

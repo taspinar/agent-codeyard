@@ -44,6 +44,7 @@ Some changes make a feature high whatever the classes say:
 | **Shared test fixtures** | Any change to the libraries many tests load (`test-fixtures`), also an added line or a new file | High, since such a file can change every test |
 | **The verification configuration** | A changed or removed line in `scripts/verify.conf` or `scripts/verify-workflow.conf` | High |
 | **Policies, prompts, schemas** | A change to an existing file under `.agents/policies/`, `.agents/prompts/`, or `.agents/schemas/` | High |
+| **Project skills** | A change to an existing file of a skill under `.agents/project-skills/` (<a href="../agent-roles/#skills">project skills</a>) | High |
 | **Manifests** | A change to an existing dependency or toolchain file that the policy names under `manifests` | High |
 
 **What each level requires.** The policy can also say, per level, what the review rounds of `run-feature.sh` need, one `<level>: <kind>: <value>` per line:
@@ -65,7 +66,7 @@ The template writes no such line, so every level gets the full verification, rev
 Every feature has a risk level: low, medium, or high. The workflow computes it; you can raise it with the label `risk: high` or `risk: medium`, or `--risk`. Nobody can lower it. It is the highest of three things:
 
 - **The paths the feature changes**, by the classes of the risk policy. A path that no class names gets the default.
-- **Fixed escalations to high** that no policy turns off, such as a removed or changed line of an existing test, a changed or removed line of the verification configuration, or a change to an existing file under `.agents/policies/`, `.agents/prompts/`, or `.agents/schemas/`. An added file does not escalate by itself; protected paths remain high by their class. Any change to shared test fixtures, including an added line, escalates.
+- **Fixed escalations to high** that no policy turns off, such as a removed or changed line of an existing test, a changed or removed line of the verification configuration, a change to an existing file under `.agents/policies/`, `.agents/prompts/`, or `.agents/schemas/`, or a change to an existing project skill. An added file does not escalate by itself; protected paths remain high by their class. Any change to shared test fixtures, including an added line, escalates.
 - **What the agents say**: the implementer can record a higher level, and a reviewer who rates the impact on the architecture as major or breaking makes the feature high.
 
 The level can be raised, never lowered: a lower claim is ignored and reported. The rules are read from the base branch, so a feature cannot relax the rules it is classified by. The level decides which model an agent uses (<a href="../agent-roles/#roles">agent roles and models</a>) and what the review rounds require (<a href="#policy-settings">the risk policy</a>). It does not replace the merge approval: a protected path still needs you. The scripts print the level with its reasons, the commit and the pull request record it, and `./scripts/check-risk.sh` shows it for the current worktree.

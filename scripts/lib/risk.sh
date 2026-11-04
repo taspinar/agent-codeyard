@@ -14,7 +14,9 @@
 #    path), any change under the shared test fixtures the policy names
 #    (test-fixtures, also an added line or file), a change to an existing
 #    file under .agents/policies/, .agents/prompts/, or .agents/schemas/
-#    (the policy itself among them), and a change to an existing dependency
+#    (the policy itself among them), a change to an existing file of a
+#    project skill under .agents/project-skills/ (lib/skills.sh), which is
+#    agent instruction like a contract, and a change to an existing dependency
 #    or toolchain manifest the policy names. Apart from the test fixtures, an
 #    escalation reads only changed or removed existing lines and files: a
 #    file the feature adds, and the lines of a new file, never escalate by
@@ -71,6 +73,9 @@ RISK_BUILTIN_TESTS=(tests test)
 RISK_BUILTIN_TEST_FIXTURES=(tests/lib-fakes.sh)
 # A change under these escalates to high in every project.
 RISK_ESCALATION_DIRS=(.agents/policies .agents/prompts .agents/schemas)
+# The project skills (lib/skills.sh): guidance an agent follows, so a change
+# to an existing one escalates like a change to an agent contract.
+RISK_SKILL_DIRS=(.agents/project-skills)
 # Left out of the diff: the artifacts a run writes while it works.
 RISK_EXCLUDES=(":(exclude).agents/reviews" ":(exclude).agents/triage" ":(exclude).agents/run/records" ":(exclude).agents/records")
 # What a level requires of the workflow, '<level>: <kind>: <value>' in the
@@ -646,6 +651,18 @@ risk_classify() {
       printf 'high\t%s\t%s\n' "$path" "a policy, an agent contract, or a schema is changed"
     fi
   done < <(risk_existing_changed "$root" "$from" "$to" "${RISK_ESCALATION_DIRS[@]}")
+
+  # An existing file of a project skill that is changed or removed: a new
+  # version of the guidance the agents follow. A skill the feature adds keeps
+  # the class of its path.
+  while IFS=$'\t' read -r level path; do
+    [[ -n "$path" ]] || continue
+    if [[ "$level" == "D" ]]; then
+      printf 'high\t%s\t%s\n' "$path" "a file of a project skill is removed"
+    else
+      printf 'high\t%s\t%s\n' "$path" "a file of a project skill is changed"
+    fi
+  done < <(risk_existing_changed "$root" "$from" "$to" "${RISK_SKILL_DIRS[@]}")
 
   # An existing manifest the project names that is changed or removed.
   specs=()

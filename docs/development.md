@@ -2084,7 +2084,9 @@ authorization, a migration, the infrastructure, or a dependency file is
    shared library of the tests can change every test; a change to an
    existing file under
    `.agents/policies/`, `.agents/prompts/`, or `.agents/schemas/`, the policy
-   itself among them; and a change to an existing manifest the policy names.
+   itself among them; a change to an existing file of a project skill under
+   `.agents/project-skills/` ("Project skills"), which is agent instruction
+   like a contract; and a change to an existing manifest the policy names.
    Apart from the test fixtures, an escalation reads only changed or removed
    existing lines and files, never their content: a file the feature adds,
    and the lines of a new file, never escalate by themselves, whatever they
@@ -2735,6 +2737,121 @@ evidence as `already_analysed`, and the report marks a conclusion that rests
 on it as used by an earlier analysis: the same observations are no new,
 independent evidence. The input holds the compact records; the analyst reads
 more only where a conclusion needs it.
+
+## Project skills
+
+A skill is a piece of guidance for an agent, such as a design method or a
+writing rule, that someone else published or the project wrote. The template
+bundles none and needs none. A project may keep a few in its repository, and
+a feature plan selects the ones the work needs: only then does an agent read
+one. A project without skills has nothing to install, configure, or run, and
+every step works as before.
+
+**Where they live.** One directory per skill, `.agents/project-skills/<name>/`,
+with its guidance files and its metadata in `skill.conf`:
+
+```text
+.agents/project-skills/plain-labels/
+  SKILL.md       the guidance an agent reads
+  LICENSE        the upstream licence, for third-party content
+  skill.conf     the metadata
+```
+
+The directory is not `.agents/skills/` or `.claude/skills/` on purpose: Codex
+and Claude Code discover those by themselves, and differently, so a skill
+there would reach one role and not the other, and without a plan selecting
+it. The scripts give the files to every role by path instead.
+
+**The metadata.** One `<key>: <value>` per line:
+
+```text
+origin: third-party
+source: https://github.com/example/interface-skills
+revision: 3f6c2a91d0b4e7c85a1f29e6b0d3c4a7e8f91b25
+license: MIT
+license-file: LICENSE
+content: adapted
+changes: kept the section on button and link labels; dropped the install script and the hooks
+files: SKILL.md
+digest: sha256:9c1e4f...
+```
+
+| Key | Meaning |
+|---|---|
+| `origin` | `project` for a skill the project wrote, `third-party` for one taken from elsewhere |
+| `files` | The files an agent reads, relative to the directory: the content that is retained |
+| `digest` | `sha256:<hex>` of those files: what `sha256sum <files> \| sha256sum` prints in the directory, and what `./scripts/check-skills.sh --digest <name>` prints |
+| `source`, `revision`, `license`, `content` | Required for `third-party`: where it comes from, the full commit hash it was taken at (a branch or a tag can move), its licence, and `upstream` or `adapted` |
+| `changes` | What differs from upstream; required for `adapted` |
+| `license-file`, `description` | Optional |
+
+A skill holds guidance only: the directory may hold `skill.conf`, its
+licence file, and the files it lists, and none may be executable. A script,
+an installer, a hook, or a download of an upstream skill is left out when the
+skill is taken over; using one is separate work with its own reviewed scope.
+
+**Selecting skills.** The plan of the Issue selects skills in a section
+`## Skills`, one per line, pinned by digest, with a note on what it is for:
+
+```markdown
+## Skills
+
+- plain-labels sha256:9c1e4f... for the labels of the settings form
+```
+
+`start-feature.sh`, `review-feature.sh`, and `apply-triage.sh` read the
+selection and list the files in the prompt of the implementer, the reviewer,
+and the fix session: the same files for every role and every provider. A
+selection that does not resolve stops the step before an agent starts, and
+says why: a skill that does not exist, metadata that is not valid, or a
+pinned digest that is not the digest of the files now, with the source and
+revision of a third-party skill. A plan without the section selects nothing.
+
+**What a skill cannot do.** It is guidance below every other source
+(`AGENTS.md`, "Source precedence"): the Issue, the ADRs, `AGENTS.md`, the
+architecture, and the plan come first. It cannot waive the owner's approval,
+widen permissions, change a policy, or change the scope. Following it is no
+evidence: the completion record cites a test, a check, or a file, never that
+a skill was read, and a design skill does not show accessibility or
+correctness. The contracts of the implementer and the reviewer say so, and
+the reviewer reports a record that cites a skill as evidence.
+
+**Changing a skill.** A new version is an ordinary reviewed change: the
+files, the `digest` in `skill.conf`, and the digest in the plans that should
+use it change in one feature. A change to an existing file of a skill makes
+the feature `high` (see "The risk level of a feature"), as a change to an
+agent contract does. `.agents/project-skills/` belongs to the project, not to
+the template: `sync-template.sh` never adds, changes, or selects a skill, so
+no project is opted in by an update.
+
+**The check.** `./scripts/check-skills.sh` checks the metadata of every skill
+and that its files still have the recorded digest; the template runs it in
+its verification (`skills` in `scripts/verify.conf`), and a project without
+skills passes. `--issue <n>` checks the selection of the plan of Issue `<n>`
+and prints the files to read. The check reads and hashes files, nothing else:
+it installs, fetches, and runs nothing.
+
+**An example.** A project keeps the skill above, `plain-labels`, whose rule
+is "name a button after the action it performs, and say what will happen,
+not how". The plan of an Issue that adds a settings form selects it. Without
+the skill the implementer wrote:
+
+```html
+<button type="submit">Submit</button>
+<a href="/settings/reset">Click here</a>
+```
+
+With the skill in its prompt it wrote:
+
+```html
+<button type="submit">Save changes</button>
+<a href="/settings/reset">Reset to the default settings</a>
+```
+
+The reviewer read the same `SKILL.md`, found one more "OK" on the
+confirmation dialog, and reported it as a minor finding that names the rule.
+The completion record cites the test that checks the labels of the form, not
+the skill.
 
 ## Linking a feature plan
 
