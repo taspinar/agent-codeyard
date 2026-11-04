@@ -569,8 +569,29 @@ html:not(.js) .hint { display: none; }
 .words.timeline p { font-size: var(--t-sm); color: var(--ink-2); margin: var(--s-1) 0 0; max-width: var(--measure); }
 .excerpt { margin: 0; border-top: 2px solid var(--ink); background: var(--ground-2); padding: var(--s-4); font: var(--t-record)/var(--lh-code) var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .excerpt .src { display: block; color: var(--ink-3); margin-bottom: var(--s-2); }
+/* Features: the contents in groups, a group's head, and each feature as its
+   problem, what Codeyard does and what you get, then its technical proof. */
+.contents.grouped { columns: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 var(--s-6); max-width: none; }
+.contents.grouped > li { padding: 0; border-bottom: 0; counter-increment: none; }
+.contents.grouped > li::before { content: none; }
+.contents.grouped > li > a { display: block; padding: var(--s-2) 0; border-bottom: 1px solid var(--rule); font-weight: var(--w-bold); }
+.contents.grouped ol { list-style: none; margin: 0; padding: 0; }
+main section.group { border-top: 2px solid var(--ink); padding-bottom: 0; }
+.group .lede { margin-top: var(--s-3); }
+.group + section { border-top: 0; }
+.sec > header h3 { font-size: var(--t-xl); font-weight: var(--w-heavy); letter-spacing: var(--track-heading); }
+.pitch { display: grid; grid-template-columns: 12rem minmax(0, 1fr); margin: 0; border-top: 2px solid var(--ink); max-width: var(--measure-wide); }
+.pitch dt, .pitch dd { padding: var(--s-3) 0; border-bottom: 1px solid var(--rule); }
+.pitch dt { font-weight: var(--w-bold); padding-right: var(--s-4); }
+.pitch dd { margin: 0; }
+.pitch dd:first-of-type { font-size: var(--t-lg); line-height: var(--lh-lede); }
+.body > .proof { margin-top: var(--s-7); padding-top: var(--s-3); border-top: 2px solid var(--ink); margin-bottom: 0; font-size: var(--t-md); font-weight: var(--w-bold); line-height: var(--lh-heading); }
+.split h5 { font-size: var(--t-md); font-weight: var(--w-bold); line-height: var(--lh-heading); letter-spacing: var(--track-snug); margin: 0 0 var(--s-3); padding-bottom: var(--s-2); border-bottom: 2px solid var(--ink); }
 @media (max-width: 760px) {
   .contents { columns: 1; }
+  .contents.grouped { grid-template-columns: minmax(0, 1fr); }
+  .pitch { grid-template-columns: minmax(0, 1fr); }
+  .pitch dt { padding-bottom: 0; border-bottom: 0; }
 }
 
 /* Native disclosures keep the article close on small screens, including without JS. */

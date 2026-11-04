@@ -1,13 +1,14 @@
 ---
 // A section of a page: the heading column (h2 and a short note naming the
 // source) beside the body column. The heading column is sticky while the grid
-// has two columns.
-interface Props { id: string; title: string }
-const { id, title } = Astro.props;
+// has two columns. A section inside a group of a page takes an h3.
+interface Props { id: string; title: string; level?: 2 | 3 }
+const { id, title, level = 2 } = Astro.props;
+const Heading = level === 3 ? "h3" : "h2";
 ---
 <section id={id} aria-labelledby={`${id}-h`}>
   <div class="wrap sec">
-    <header><h2 id={`${id}-h`}>{title}</h2>{Astro.slots.has("note") && <p><slot name="note" /></p>}</header>
+    <header><Heading id={`${id}-h`}>{title}</Heading>{Astro.slots.has("note") && <p><slot name="note" /></p>}</header>
     <div class="body"><slot /></div>
   </div>
 </section>
