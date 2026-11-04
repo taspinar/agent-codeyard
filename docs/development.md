@@ -1158,7 +1158,11 @@ The note outweighs the record: remaining work listed there means not complete,
 whatever the record says. A line there that only says a category has nothing
 left, a label followed by `none`, `nothing`, `n/a`, `no` or `-` (such as
 `FIX_NOW findings: none.`), is not work; a label followed by anything else
-is. Two things are never evidence: a partial run of the checks
+is. Nor is such a line whose `none` ends a sentence with an explanation after
+it, after `.`, `!`, `;`, a dash, or a parenthesis (`None. The owner's approval
+stays pending on GitHub.`); a sentence that goes on from the word (`None of
+the tests pass`, `None, except the docs`) is work, and the gate names the line.
+Two things are never evidence: a partial run of the checks
 (`verify.sh --only`), which is not a verification, and a budget check of
 `scripts/verify.conf` or `scripts/verify-workflow.conf` (see "Budgets"),
 which is a measurement that never fails the verification. A record whose
@@ -1661,9 +1665,16 @@ git merge origin/main
 
 The script takes the statement, the description, and the title from the
 commit that `finish-feature.sh` made: merge commits of the base after it are
-passed over, since they change nothing of the feature itself. Any other
+passed over, since they change nothing of the feature itself. So is a commit
+after such a merge that fixes what the merge broke, such as a link to a page
+the base moved, when it changes only files that the merges of the base
+changed since the finish, none that the feature changed up to the finish
+(what the review covered), and no protected path, and the finish commit has
+no approval request (it names the content of exactly that commit). Any other
 commit after the finish has no statement, and the pull request becomes a
-draft until the feature is finished again. Run `./scripts/verify.sh --all`
+draft until the feature is finished again; its description names the commit
+that stands in the way and what to do: undo it into the working tree, review
+it, and finish again. Run `./scripts/verify.sh --all`
 after the merge; a review that was done before it covered the feature, not
 the merge.
 

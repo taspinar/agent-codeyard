@@ -398,3 +398,125 @@ guardrails_finish_commit() {
   done
   git -C "$root" rev-parse "$commit"
 }
+
+# guardrails_finish_after_fixes <root> <issue> <head> <base-ref>...
+# Prints the commit that finish-feature.sh made (the one whose message holds
+# a 'Completion:' statement), from <head> back over the merges of the base
+# (guardrails_finish_commit) and over the fixes of such a merge: commits
+# with one parent, after a merge of the base, that change only paths that
+# the merges of the base changed since the finish, none that the feature
+# changed up to its finish (what the review covered), and no protected path.
+# A finish commit with an approval request takes no fix: the request names
+# the content tree of exactly that commit.
+#
+# The first line is the commit. When a commit after the finish stands in
+# the way, it is <head>, and the second line says which commit and what to
+# do. Without a finish commit on the branch it is <head> alone.
+guardrails_finish_after_fixes() {
+  local root="$1"
+  local issue="$2"
+  local head
+  local commit
+  local finish=""
+  local fixes=()
+  local fix
+  local short
+  local ref
+  local fork=""
+  local feature_paths
+  local merged_paths
+  local path
+  local protected
+  local redo
+
+  head="$(git -C "$root" rev-parse "$3")"
+  shift 3
+  commit="$head"
+  while :; do
+    commit="$(guardrails_finish_commit "$root" "$commit" "$@")"
+    if git -C "$root" log -1 --format=%B "$commit" | grep -q '^Completion: '; then
+      finish="$commit"
+      break
+    fi
+    for ref in "$@"; do
+      if git -C "$root" rev-parse --verify --quiet "$ref^{commit}" >/dev/null &&
+        git -C "$root" merge-base --is-ancestor "$commit" "$ref" 2>/dev/null; then
+        # The base itself: the branch has no finish commit.
+        printf '%s\n' "$head"
+        return 0
+      fi
+    done
+    if git -C "$root" rev-parse --verify --quiet "$commit^2" >/dev/null; then
+      printf '%s\n' "$head"
+      printf 'the merge %s (%s) after the finish brings in more than the base; finish the feature again with ./scripts/finish-feature.sh %s\n' \
+        "$(git -C "$root" rev-parse --short "$commit")" "$(git -C "$root" log -1 --format=%s "$commit")" "$issue"
+      return 0
+    fi
+    git -C "$root" rev-parse --verify --quiet "$commit^1" >/dev/null || {
+      printf '%s\n' "$head"
+      return 0
+    }
+    fixes+=("$commit")
+    commit="$(git -C "$root" rev-parse "$commit^1")"
+  done
+  if [[ "${#fixes[@]}" -eq 0 ]]; then
+    printf '%s\n' "$finish"
+    return 0
+  fi
+
+  for ref in "$@"; do
+    git -C "$root" rev-parse --verify --quiet "$ref^{commit}" >/dev/null || continue
+    fork="$(git -C "$root" merge-base "$finish" "$ref")" && break
+  done
+  feature_paths=""
+  [[ -z "$fork" ]] || feature_paths="$(git -C "$root" diff --name-only --no-renames "$fork" "$finish")"
+  for fix in "${fixes[@]}"; do
+    short="$(git -C "$root" rev-parse --short "$fix")"
+    # The way out of each case: the commit back into the working tree, and
+    # the feature reviewed and finished again, so that a finish commit with a
+    # new statement is the head.
+    redo="undo it into the working tree (git reset --soft $short^), review the change with ./scripts/review-feature.sh $issue, and finish the feature again with ./scripts/finish-feature.sh $issue"
+    if [[ -z "$fork" ]]; then
+      printf '%s\n' "$head"
+      printf 'the commit %s (%s) after the finish commit cannot be checked: the base of the feature is not known; %s\n' \
+        "$short" "$(git -C "$root" log -1 --format=%s "$fix")" "$redo"
+      return 0
+    fi
+    if [[ -z "$(git -C "$root" rev-list --merges "$finish..$fix^")" ]]; then
+      printf '%s\n' "$head"
+      printf 'the commit %s (%s) changes the feature after the finish commit %s, with no merge of the base before it; %s\n' \
+        "$short" "$(git -C "$root" log -1 --format=%s "$fix")" "$(git -C "$root" rev-parse --short "$finish")" "$redo"
+      return 0
+    fi
+    if git -C "$root" cat-file -e "$finish:$GUARDRAILS_APPROVAL_REQUESTS/$issue.json" 2>/dev/null; then
+      printf '%s\n' "$head"
+      printf 'the commit %s (%s) comes after the finish commit %s, whose approval request names the content of exactly that commit; %s\n' \
+        "$short" "$(git -C "$root" log -1 --format=%s "$fix")" "$(git -C "$root" rev-parse --short "$finish")" "$redo"
+      return 0
+    fi
+    merged_paths="$(git -C "$root" diff --name-only --no-renames "$finish" "$fix^")"
+    while IFS= read -r path; do
+      [[ -n "$path" ]] || continue
+      if grep -Fqx -- "$path" <<<"$feature_paths"; then
+        printf '%s\n' "$head"
+        printf 'the commit %s (%s) changes %s, which the feature changed and the review covered; %s\n' \
+          "$short" "$(git -C "$root" log -1 --format=%s "$fix")" "$path" "$redo"
+        return 0
+      fi
+      if ! grep -Fqx -- "$path" <<<"$merged_paths"; then
+        printf '%s\n' "$head"
+        printf 'the commit %s (%s) changes %s, which no merge of the base changed since the finish, so it is not a fix of a merge; %s\n' \
+          "$short" "$(git -C "$root" log -1 --format=%s "$fix")" "$path" "$redo"
+        return 0
+      fi
+    done < <(git -C "$root" diff --name-only --no-renames "$fix^" "$fix")
+    protected="$(guardrails_classify "$root" "$*" "$fix^" "$fix" | awk -F '\t' '$1 == "protected" { print $2; exit }')"
+    if [[ -n "$protected" ]]; then
+      printf '%s\n' "$head"
+      printf 'the commit %s (%s) changes the protected path %s, and the merge approval was decided for the finish commit; %s\n' \
+        "$short" "$(git -C "$root" log -1 --format=%s "$fix")" "$protected" "$redo"
+      return 0
+    fi
+  done
+  printf '%s\n' "$finish"
+}
