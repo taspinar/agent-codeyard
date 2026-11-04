@@ -20,6 +20,11 @@ records_arguments=("$@")
 # for a CI that spreads the same checks over parallel jobs. Such a partial
 # run is never a verification: it records nothing.
 #
+# A check that runs one part of a split test suite declares that part, a file
+# that lists its tests: '<name> [<group>] partition <file>: <command>'.
+# verify.sh only lists the declarations (--partitions); scripts/check-ci-groups.sh
+# checks them against the partition files. A budget check declares none.
+#
 # A check may be a budget: '<name> [<group>] budget: <command>'. It measures
 # something (a duration, a size, a count) against a target and exits non-zero
 # over it. Such a result is a measurement, not a failure: the summary shows it
@@ -44,13 +49,14 @@ config="$root/scripts/verify.conf"
 workflow_config="$root/scripts/verify-workflow.conf"
 
 comment_pattern='^[[:space:]]*(#.*)?$'
-check_pattern='^([a-z0-9][a-z0-9-]*)([[:space:]]*\[([a-z0-9][a-z0-9-]*)\])?([[:space:]]+budget)?:[[:space:]]*(.*[^[:space:]])[[:space:]]*$'
+check_pattern='^([a-z0-9][a-z0-9-]*)([[:space:]]*\[([a-z0-9][a-z0-9-]*)\])?([[:space:]]+partition[[:space:]]+([^[:space:]:]+))?([[:space:]]+budget)?:[[:space:]]*(.*[^[:space:]])[[:space:]]*$'
 default_group="default"
 
 usage() {
   echo "Usage: $0 [--all] [--reuse]"
   echo "       $0 [--all] --only <group>[,<group>...]"
   echo "       $0 --groups"
+  echo "       $0 --partitions"
   echo
   echo "Runs the checks in scripts/verify.conf. The workflow self-tests in"
   echo "scripts/verify-workflow.conf run only when a file listed under 'paths:' in"
@@ -66,6 +72,9 @@ usage() {
   echo
   echo "--groups prints the groups that have a check, one per line."
   echo
+  echo "A check declared as '<name> [<group>] partition <file>: <command>' runs the tests"
+  echo "that <file> lists. --partitions prints '<file> <name>' for each such check."
+  echo
   echo "A check declared as '<name> [<group>] budget: <command>' is a budget: when it"
   echo "exits non-zero, the summary shows BUDGET with its output, and the verification"
   echo "passes when every other check passed. A budget check that does not finish or"
@@ -80,13 +89,14 @@ usage() {
 
 config_fail() {
   echo "Error: $*" >&2
-  echo "Declare required checks as '<name>: <command>', '<name> [<group>]: <command>', or '<name> [<group>] budget: <command>', and a target for their duration as 'budget-seconds: <n>'." >&2
+  echo "Declare required checks as '<name>: <command>', '<name> [<group>]: <command>', '<name> [<group>] partition <file>: <command>', or '<name> [<group>] budget: <command>', and a target for their duration as 'budget-seconds: <n>'." >&2
   exit 1
 }
 
 run_all=0
 reuse=0
 list_groups=0
+list_partitions=0
 only=""
 partial=0
 while [[ $# -gt 0 ]]; do
@@ -94,6 +104,10 @@ while [[ $# -gt 0 ]]; do
     --all) run_all=1 ;;
     --reuse) reuse=1 ;;
     --groups) list_groups=1 ;;
+    --partitions)
+      list_groups=1
+      list_partitions=1
+      ;;
     --only)
       [[ $# -ge 2 && "$2" =~ ^[a-z0-9][a-z0-9-]*(,[a-z0-9][a-z0-9-]*)*$ ]] || usage
       only="$2"
@@ -224,6 +238,7 @@ seconds_text() {
 names=()
 commands=()
 groups=()
+partitions=()
 budgets=()
 workflow_paths=""
 budget_seconds=""
@@ -231,8 +246,8 @@ project_budget_seconds=""
 workflow_budget_seconds=""
 
 # load_checks <file> <paths-entry>
-# Appends the checks of <file> to names, commands, groups, and budgets ('yes'
-# for a budget check). With <paths-entry> 'yes', the reserved entry 'paths:'
+# Appends the checks of <file> to names, commands, groups, partitions (the
+# declared partition file, or empty), and budgets ('yes' for a budget check). With <paths-entry> 'yes', the reserved entry 'paths:'
 # sets workflow_paths instead of declaring a check. The reserved entry
 # 'budget-seconds:' sets budget_seconds, the target for the duration of the
 # checks of <file>.
@@ -244,6 +259,7 @@ load_checks() {
   local line_number=0
   local name
   local group
+  local partition
   local budget
   local value
   local existing
@@ -257,10 +273,12 @@ load_checks() {
 
     name="${BASH_REMATCH[1]}"
     group="${BASH_REMATCH[3]}"
-    budget="${BASH_REMATCH[4]:+yes}"
-    value="${BASH_REMATCH[5]}"
+    partition="${BASH_REMATCH[5]}"
+    budget="${BASH_REMATCH[6]:+yes}"
+    value="${BASH_REMATCH[7]}"
     if [[ "$paths_entry" == "yes" && "$name" == "paths" ]]; then
       [[ -z "$group" ]] || config_fail "'paths' takes no group on line $line_number of $label."
+      [[ -z "$partition" ]] || config_fail "'paths' is not a check and declares no partition, on line $line_number of $label."
       [[ -z "$budget" ]] || config_fail "'paths' is not a check and cannot be a budget, on line $line_number of $label."
       [[ -z "$workflow_paths" ]] ||
         config_fail "'paths' is declared more than once in $label."
@@ -268,8 +286,8 @@ load_checks() {
       continue
     fi
     if [[ "$name" == "budget-seconds" ]]; then
-      [[ -z "$group" && -z "$budget" ]] ||
-        config_fail "'budget-seconds' is a target, not a check: it takes no group and is no budget check, on line $line_number of $label."
+      [[ -z "$group" && -z "$partition" && -z "$budget" ]] ||
+        config_fail "'budget-seconds' is a target, not a check: it takes no group, declares no partition, and is no budget check, on line $line_number of $label."
       [[ "$value" =~ ^[1-9][0-9]*$ ]] ||
         config_fail "'budget-seconds' needs a whole number of seconds greater than 0, on line $line_number of $label: $value"
       [[ -z "$budget_seconds" ]] ||
@@ -277,6 +295,8 @@ load_checks() {
       budget_seconds="$value"
       continue
     fi
+    [[ -z "$partition" || -z "$budget" ]] ||
+      config_fail "the budget check $name declares the partition $partition on line $line_number of $label: a budget fails nothing, so its tests would not be required."
     for existing in ${names[@]+"${names[@]}"}; do
       [[ "$existing" != "$name" ]] ||
         config_fail "duplicate check name on line $line_number of $label: $name"
@@ -284,6 +304,7 @@ load_checks() {
     names+=("$name")
     commands+=("$value")
     groups+=("${group:-$default_group}")
+    partitions+=("$partition")
     budgets+=("${budget:-no}")
   done <"$file"
 }
@@ -361,6 +382,12 @@ known_groups=""
 for group in "${groups[@]}"; do
   in_list "$group" "$known_groups" || known_groups="${known_groups:+$known_groups,}$group"
 done
+if [[ "$list_partitions" -eq 1 ]]; then
+  for i in "${!names[@]}"; do
+    [[ -z "${partitions[i]}" ]] || printf '%s\t%s\n' "${partitions[i]}" "${names[i]}"
+  done
+  exit 0
+fi
 if [[ "$list_groups" -eq 1 ]]; then
   printf '%s\n' "${known_groups//,/$'\n'}"
   exit 0

@@ -1,0 +1,132 @@
+# An optional parallel CI: an example to adapt, not a workflow of this
+# repository. The default CI is .github/workflows/ci.yml, one job that runs
+# ./scripts/verify.sh --all; keep it until one job takes too long.
+#
+# docs/development.md, "A parallel CI", explains the recipe. To adopt it,
+# give the checks of scripts/verify.conf the groups below, copy this file
+# over .github/workflows/ci.yml, and replace the group jobs with the groups
+# that ./scripts/verify.sh --groups prints. The example groups:
+#
+#   lint [code]: ...            fast checks, independent
+#   unit-tests [code]: ...
+#   site-build [build]: ...     the producer: writes dist/
+#   browser-tests [e2e]: ...    the consumer: tests the dist/ of build
+#   (checks without a group)    the group 'default'
+#
+# Each group job declares the group it runs, as 'env: VERIFY_GROUP: <group>',
+# and runs ./scripts/verify.sh --all --only "$VERIFY_GROUP". The declaration
+# is the contract: the mapping job checks the declarations, not the commands.
+#
+# The required check of the branch protection stays 'verify': here it is the
+# aggregate job, which passes only when every group job succeeded.
+
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Read only for every job; a job that needs more says so itself. pull_request
+# runs the code of the pull request without the secrets of the repository.
+permissions:
+  contents: read
+
+jobs:
+  # The mapping of the groups onto the jobs of this file, as the jobs declare
+  # it. Where a suite is split, add the partitions the checks declare:
+  # --tests '<pathspec>' --partition <file>...
+  mapping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that every group is declared by exactly one job
+        run: ./scripts/check-ci-groups.sh --workflow .github/workflows/ci.yml
+
+  group-code:
+    env:
+      VERIFY_GROUP: code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/verify.sh --all --only "$VERIFY_GROUP"
+
+  group-default:
+    env:
+      VERIFY_GROUP: default
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/verify.sh --all --only "$VERIFY_GROUP"
+
+  # The producer. The artifact carries the run and the commit it was built
+  # from, and its name carries the run, so a consumer can refuse any other.
+  group-build:
+    env:
+      VERIFY_GROUP: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/verify.sh --all --only "$VERIFY_GROUP"
+      - name: Record where the build comes from
+        run: printf '%s %s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" >dist/BUILT_BY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.run_id }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  # The consumer: starts only after the producer succeeded, and takes the
+  # artifact of this run. download-artifact without run-id reads only the
+  # current run; the check of BUILT_BY makes that explicit.
+  group-e2e:
+    needs: group-build
+    env:
+      VERIFY_GROUP: e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ github.run_id }}
+          path: dist/
+      - name: Check that the build is of this run and this commit
+        run: |
+          expected="$GITHUB_RUN_ID $GITHUB_SHA"
+          actual="$(cat dist/BUILT_BY)"
+          [ "$actual" = "$expected" ] || { echo "dist/ was built by '$actual', not by '$expected'." >&2; exit 1; }
+      - run: ./scripts/verify.sh --all --only "$VERIFY_GROUP"
+
+  # The one required check. 'always()' makes it run when a job it needs failed,
+  # was cancelled, or was skipped: a skipped required check counts as passed
+  # in a branch protection, so it must never be skipped itself. It fails
+  # unless every job it needs succeeded and every group has its job here.
+  verify:
+    if: always()
+    needs: [mapping, group-code, group-default, group-build, group-e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that every required job succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: ./scripts/check-ci-groups.sh --results "$NEEDS"
+
+  # Deployment, when the project has one: only after the aggregate check
+  # passed, only for the default branch, and the only job that may write.
+  # The environment keeps its own protection, such as a required reviewer.
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ github.run_id }}
+          path: dist/
+      - run: ./scripts/deploy.sh dist/

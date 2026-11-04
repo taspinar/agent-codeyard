@@ -396,6 +396,23 @@ expect_failure "$project" "a group name with a capital must fail"
 project="$(setup_project empty-group "lint []: ruff check .")"
 expect_failure "$project" "an empty group must fail"
 
+# A check may declare the partition of a split suite it runs. The field
+# changes nothing about the run; --partitions lists the declarations.
+project="$(setup_project partitions "lint [code]: ruff check ." "unit-1 [code] partition ci/unit-1.txt: pytest one" \
+  "unit-2 partition ci/unit-2.txt: pytest two")"
+run_with "$project" || fail "a configuration with partitions failed"
+[[ "$(ran "$project")" == "ruff check .;pytest one;pytest two;" ]] || fail "not every check ran with partitions: $(ran "$project")"
+run_with "$project" --groups || fail "--groups failed with partitions"
+[[ "$(tr '\n' ',' <"$project/out.log")" == "code,default," ]] || fail "--groups with partitions printed: $(cat "$project/out.log")"
+run_with "$project" --partitions || fail "--partitions failed"
+[[ "$(tr '\t\n' ' ,' <"$project/out.log")" == "ci/unit-1.txt unit-1,ci/unit-2.txt unit-2," ]] ||
+  fail "--partitions printed: $(cat "$project/out.log")"
+[[ ! -e "$project/tools.log" ]] || fail "--partitions ran a check"
+project="$(setup_project budget-partition "unit-1 partition ci/unit-1.txt budget: pytest one")"
+expect_failure "$project" "a budget check that declares a partition must fail"
+project="$(setup_project empty-partition "unit-1 partition: pytest one")"
+expect_failure "$project" "a partition field without a file must fail"
+
 # A partial run is never a verification: it records nothing, whichever
 # groups it runs, and it leaves a record of a complete run alone. A failing
 # partial run removes the record, like any failing run.

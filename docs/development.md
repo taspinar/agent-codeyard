@@ -96,14 +96,19 @@ tests-in-a-browser [e2e]: pytest tests/e2e
 - `./scripts/verify.sh --groups` prints the groups that have a check.
 - A check without a group is in the group `default`.
 - An unknown group is an error, so a renamed group cannot pass unnoticed.
+- A check that runs one part of a split test suite declares that part after
+  its group: `<name> [<group>] partition <file>: <command>`.
+  `./scripts/verify.sh --partitions` prints the declarations; the run does not
+  change (see "A parallel CI").
 
 Groups exist for a CI that has outgrown one job: each job runs
 `./scripts/verify.sh --all --only <group>`, and one job that needs all of them
 is the required check. Every check stays declared in `scripts/verify.conf`
 or `scripts/verify-workflow.conf`; none is declared in the workflow file.
 Such a CI has to run **every** group, `default` included, or a check that is
-added without a group runs on a laptop and never in CI. Compare the output of
-`--groups` with the groups of the workflow file in a test of the project.
+added without a group runs on a laptop and never in CI.
+`./scripts/check-ci-groups.sh` compares the output of `--groups` with the
+groups that the jobs of the workflow file declare; see "A parallel CI".
 
 A partial run is never a verification. With `--only` nothing is recorded as
 passed, nothing is written into the record of a run it was started in, and
@@ -115,6 +120,103 @@ records the content as partially checked, and the commit still needs the full
 verification. A failing partial run removes an
 existing record, like any failing run. The workflow self-tests keep their own
 rule with `--only`: they run when a workflow file changed, or with `--all`.
+
+### A parallel CI
+
+The CI of the template, `.github/workflows/ci.yml`, is one job that runs
+`./scripts/verify.sh --all`. That is the default and stays supported: it
+needs no mapping, no artifacts between jobs, and no aggregate check. A
+parallel CI is an option for a project whose checks fall into independent,
+expensive groups. `docs/examples/parallel-ci.yml` is a complete example to
+adapt; it is not a workflow of the template.
+
+**What it buys.** Parallel jobs shorten the time until the required check
+reports, the elapsed time, to roughly that of the longest chain of jobs. They
+do not reduce the compute: every job checks out the repository, installs its
+tools, and starts its runner, so the total runner time, and the cost of
+paid runners, grows with every job. Parallelism adds no value when the
+verification is already fast (a few minutes), when one group takes nearly all
+of the time, when the groups depend on each other in one chain, when the
+setup of a job costs more than the checks it runs, or when the runners are
+too few to run the jobs at once. Measure first: the durations that
+`verify.sh` records per check (see "Recorded verification") show which
+checks dominate.
+
+**The recipe.**
+
+- Give the checks of `scripts/verify.conf` groups, as in "Groups of checks".
+  Each group runs in one job named `group-<group>`, which **declares** its
+  group in its own field, the job-level `env: VERIFY_GROUP: <group>`, and
+  runs `./scripts/verify.sh --all --only "$VERIFY_GROUP"`. The group is
+  written in the file, not taken from an expression or a matrix. The checks
+  stay in `scripts/verify.conf`; the workflow names only groups.
+- **The declarations are the contract.** `scripts/check-ci-groups.sh`
+  checks what the jobs and the checks declare, and never reads a command to
+  find out what it runs: no search in the text of a step or a check, no
+  parsing of a shell command. A job runs the group it declares; a reviewer
+  of the workflow sees one field to compare with the command beside it.
+- Independent groups run at the same time. A consumer that needs the output
+  of another group declares `needs: group-<producer>`, so it starts only
+  after the producer succeeded. The producer uploads its output as an
+  artifact whose name carries `github.run_id`, with a file that records the
+  run and the commit it was built from; the consumer downloads it without
+  `run-id`, which reads only the current run, and refuses an artifact whose
+  record names another run or commit. A re-run of a failed job keeps the run
+  and the commit, so it reads the output of the same run.
+- One aggregate job is the required check, named `verify` like the job of the
+  default CI, so the branch protection does not change when a project
+  switches. It `needs` every group job and runs with `if: always()`: a job
+  that is skipped because a job it needs failed reports as passed in a branch
+  protection, so the required check itself must never be skipped. It runs
+  `./scripts/check-ci-groups.sh --results "$NEEDS"` with
+  `NEEDS: ${{ toJSON(needs) }}`, which fails unless every group has its job
+  there and every job ended with `success`: a failed, cancelled, skipped, or
+  missing job fails it.
+- A job that may be skipped legitimately, say a preview that runs only for
+  pull requests from the repository, is named with `--may-skip <job>`: it may
+  be `success` or `skipped`, never anything else. A group job cannot be
+  named; its checks are required.
+- One job runs `./scripts/check-ci-groups.sh --workflow
+  .github/workflows/ci.yml`, and the aggregate job needs it. It fails unless
+  every group of `verify.sh --groups` is declared by exactly one job: a group
+  no job declares (a check was added to a new group, or to `default` without
+  a `group-default` job), a group two jobs declare, a group that has no
+  check, a group from an expression, a declaration in a job not named
+  `group-<group>`, a job `group-<...>` without a declaration, and a
+  `VERIFY_GROUP` outside the job-level `env` (in a step, or in a flow
+  mapping `env: { ... }`) fail it.
+- Where one suite is split over several checks, each part is a partition: a
+  file that lists its test files, one per line. The check that runs a
+  partition declares it in its own field, after the group:
+  `unit-1 [unit-1] partition ci/unit-1.txt: pytest $(cat ci/unit-1.txt)`.
+  `./scripts/verify.sh --partitions` lists the declarations, and a budget
+  check cannot declare one, since a budget fails nothing.
+  `./scripts/check-ci-groups.sh --tests '<pathspec>' --partition <file>...`
+  fails when a test file is in no partition or in two, when a partition lists
+  a file that is not a test, when a partition does not exist, when no check
+  or more than one declares a partition, and when a check declares a
+  partition that is not given with `--partition`. A check that runs a
+  partition without declaring it therefore fails the mapping, whatever its
+  command reads, and a new test cannot drop out of CI. Run it in the
+  `mapping` job or as a check of `scripts/verify.conf`.
+- Deployment, when the project has one, `needs: verify` and runs only for the
+  default branch. It is the only job with write permissions, under an
+  environment that keeps its own protection, such as a required reviewer.
+
+**Permissions and untrusted code.** The workflow sets `permissions: contents:
+read` for every job; a job that needs more declares it for itself. The jobs
+run on `pull_request`, which gives the code of a pull request no secrets of
+the repository; never use `pull_request_target` for jobs that run that code.
+The approval protections stay as they are: the `Guardrails` workflow, the
+branch protection that requires `verify`, and the merge approval gate do not
+depend on how many jobs CI has. The example pins actions by their major
+version tag, like the workflows of the template.
+
+**What a project does not need.** The recipe uses `verify.sh` and its
+groups, nothing else: no scheduler, no runner service, and no
+project-specific machinery for provenance of results or for selecting the
+tests of a change. A project that needs such things adds them as checks of
+its own groups.
 
 ### Budgets
 
