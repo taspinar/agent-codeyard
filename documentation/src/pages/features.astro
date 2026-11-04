@@ -57,6 +57,7 @@ const record = `{"schema":"run-record/v1",[...]"time":"2026-10-30T19:27:28Z",
 ---
 <Base title="Features" description="Eight problems of building software with Claude Code and Codex, and what Agent Codeyard does about each: requirements and architecture before code, isolated features, evidence per criterion, independent review, process that scales with risk, safe unattended runs and human authority.">
   <PageHead title="Features" lede="Agent Codeyard does not write code; Claude Code and Codex do. It answers the problems around the code, in three groups. Each feature starts with the problem, what Codeyard does about it and what you get; the technical proof under it shows the files, the settings and a real record it left.">
+    <p class="needs">Who it is for, what it costs and whether it works with an existing repository: the <a href={href("faq/")}>FAQ</a>.</p>
     <ol class="contents grouped">
       {groups.map((group) => (
         <li><a href={`#${group.id}`}>{group.title}</a>
@@ -166,7 +167,7 @@ const record = `{"schema":"run-record/v1",[...]"time":"2026-10-30T19:27:28Z",
 8. Previous agent assumptions
 
 If a material conflict remains, stop and report it.</pre>
-    <p>An accepted ADR outranks the Issue, so a feature cannot quietly change the design: an implementer that would have to stops and reports the conflict, a new ADR enters as <code>Proposed</code>, and every added, changed or removed ADR needs your approval before the merge. The reviewer classifies each feature's impact on the architecture; major or breaking makes the feature high risk and needs you too.</p>
+    <p>An accepted ADR outranks the Issue, so a feature cannot quietly change the design: an implementer that would have to stops and reports the conflict, a new ADR enters as <code>Proposed</code>, and a pull request that adds, changes or removes an ADR is marked as needing your approval before the merge. The reviewer classifies each feature's impact on the architecture; major or breaking makes the feature high risk and needs you too.</p>
     <dl class="facts">
       <dt>files</dt><dd><a href={repoFile("docs/architecture.md")}><code>docs/architecture.md</code></a>, <a href={repoFile("docs/decisions/README.md")}><code>docs/decisions/</code></a>, <a href={repoFile("docs/roadmap.md")}><code>docs/roadmap.md</code></a></dd>
       <dt>docs</dt><dd><a href={href("docs/detailed-workflow/#create-the-project-plan")}>Create the project plan</a>, <a href={href("docs/detailed-workflow/#approve-the-plan")}>Approve the plan</a></dd>
@@ -345,7 +346,7 @@ CHANGES REQUIRED</pre>
     <Fragment slot="note">Configured in <a href={repoFile(".agents/policies/risk.conf")}><code>risk.conf</code></a>. <a href={href("docs/risk-policy/")}>Risk policy</a> in the docs.</Fragment>
     <dl class="pitch">
       <dt>The problem</dt><dd>A typo fix and a change to the merge rules go through the same process: either the typo waits on ceremony, or the risky change gets too little.</dd>
-      <dt>What Codeyard does</dt><dd>Every feature gets a risk level, low, medium or high, computed by a script from the files it changes. You can raise it; no agent lowers it. The level picks the stronger model for high risk and how strict the review rounds are. A project can also choose a workflow profile, <code>standard</code> or <code>light</code>, for how much process low and medium risk get. Under <code>profile: light</code>, or with <code>low: review: none</code>, a low-risk change can go without review; its merge then needs your approval.</dd>
+      <dt>What Codeyard does</dt><dd>Every feature gets a risk level, low, medium or high, computed by a script from the files it changes. You can raise it; no agent lowers it. The level picks the stronger model for high risk and how strict the review rounds are. A project can also choose a workflow profile, <code>standard</code> or <code>light</code>, for how much process low and medium risk get. Under <code>profile: light</code>, or with <code>low: review: none</code>, a low-risk change can go without review; its pull request then says that the merge needs your approval.</dd>
       <dt>What you get</dt><dd>Effort goes where the risk is, and a high-risk change keeps every control under every profile.</dd>
     </dl>
     <h4 class="proof">Technical proof</h4>
@@ -387,12 +388,12 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
     </Table>
     <p>Any source can raise the level; nothing lowers it. The level, the workflow profile and the agents' permissions are three separate settings: the level describes the change, the profile how much process the project wants for low and medium risk, and the permissions follow the role (implementers write, reviewers only read, unattended sessions ask nothing).</p>
     <Table matrix>
-      <caption>What each level gets under each profile. Under both profiles every commit needs the full verification and only you merge. The light column shows what changes from standard; a project without a profile line keeps the policy it has.</caption>
+      <caption>What each level gets under each profile. Under both profiles every commit needs the full verification and no script merges. The light column shows what changes from standard; a project without a profile line keeps the policy it has.</caption>
       <thead><tr><th scope="col">level</th><th scope="col">standard</th><th scope="col">light</th></tr></thead>
       <tbody>
         <tr><th scope="row"><span class="lvl low">low</span></th>
           <td data-col="standard"><p>Reviewed by another provider; full triage.</p><p>As shipped there is no low class: changes start at medium.</p></td>
-          <td data-col="light" class="changed"><p><span class="chg">changed</span> Documentation and process files are low. No review: the commit and the pull request say so, and the merge needs your approval.</p></td></tr>
+          <td data-col="light" class="changed"><p><span class="chg">changed</span> Documentation and process files are low. No review: the commit and the pull request say so, and ask for your approval of the merge.</p></td></tr>
         <tr><th scope="row"><span class="lvl medium">medium</span></th>
           <td data-col="standard"><p>Reviewed; full triage.</p><p>Implementer: Claude opus.</p></td>
           <td data-col="light" class="changed"><p><span class="chg">changed</span> Reviewed; light triage: minor findings and suggestions can be accepted or deferred without a fix round.</p></td></tr>
@@ -401,7 +402,7 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
           <td data-col="light"><p>Unchanged: reviewed, full triage, the stronger model. No profile can remove these.</p></td></tr>
       </tbody>
     </Table>
-    <p>Without a profile, a project can set the same exceptions one by one in <code>risk.conf</code>: a <code>low:</code> class of its own paths, and <code>low: review: none</code>, which lets a low feature go without review, with your approval of the merge. High always keeps every control.</p>
+    <p>Without a profile, a project can set the same exceptions one by one in <code>risk.conf</code>: a <code>low:</code> class of its own paths, and <code>low: review: none</code>, which lets a low feature go without review; its pull request then asks for your approval of the merge. High always keeps every control.</p>
     <dl class="facts">
       <dt>key</dt><dd><code>profile: light | standard</code>; per level, <code>&lt;level&gt;: verification | review | triage: &lt;value&gt;</code></dd>
       <dt>model per level</dt><dd><code>implementer@high: claude fable</code> in <a href={repoFile(".agents/agents.conf")}><code>agents.conf</code></a></dd>
@@ -466,13 +467,13 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
     <Fragment slot="note">Configured in <a href={repoFile(".agents/policies/guardrails.conf")}><code>guardrails.conf</code></a>. <a href={href("docs/configuration-and-security/#changes-that-need-the-owner")}>Changes that need the owner</a> in the docs.</Fragment>
     <dl class="pitch">
       <dt>The problem</dt><dd>With agents doing the work, it becomes unclear which decisions are still yours, and a feature could quietly loosen the rules that check it.</dd>
-      <dt>What Codeyard does</dt><dd>No script merges. You agree the requirements, approve the plan, answer the questions, and merge. The guardrails, a list of protected files such as the ADRs, the CI workflows that GitHub runs on every pull request, and the files of the workflow's own gate, make a pull request that changes them wait for your approval of exactly its commit. The rules are read from the branch the pull request goes into, so a feature cannot loosen its own gate.</dd>
+      <dt>What Codeyard does</dt><dd>No script merges. You agree the requirements, approve the plan, answer the questions, and merge. The guardrails, a list of protected files such as the ADRs, the CI workflows that GitHub runs on every pull request, and the files of the workflow's own gate, mark a pull request that changes them as needing your approval of exactly its commit. That is a notice the workflow records: GitHub refuses a merge only as far as the repository settings in <a href={href("docs/github-setup/")}>GitHub setup</a> make it. The rules are read from the branch the pull request goes into, so a feature cannot loosen its own gate.</dd>
       <dt>What you get</dt><dd>The decisions that matter stay with you, and each pull request says whether it needs your approval, and why. One limit: until agents get a GitHub identity of their own (<a href={issue(99)}>#99</a>), an agent runs with the GitHub rights of the account that started it, so if you may merge, so may the agent.</dd>
     </dl>
     <h4 class="proof">Technical proof</h4>
     <figure class="plain">
       <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="authority-t" aria-describedby="authority-words">
-        <title id="authority-t">Your decisions: you agree the requirements and approve the plan; a feature asks you only when it needs a decision; a pull request that changes a protected path, has a major or breaking impact or no review needs your approval of exactly its commit; and only you merge.</title>
+        <title id="authority-t">Your decisions: you agree the requirements and approve the plan; a feature asks you only when it needs a decision; a pull request that changes a protected path, has a major or breaking impact or no review is marked as needing your approval of exactly its commit; and the merge is left to you, no script merges.</title>
         <path class="branch" d="M780 90 L820 50 H970 L1010 90"/>
         <rect class="gate" x="885" y="40" width="20" height="20" transform="rotate(45 895 50)"/>
         <text class="note" x="895" y="24" text-anchor="middle">protected path, major impact or no review</text>
@@ -482,17 +483,17 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
         <rect class="gate" x="290" y="80" width="20" height="20" transform="rotate(45 300 90)"/><text class="st" x="300" y="127" text-anchor="middle">Plan</text><text class="sub k" x="300" y="147" text-anchor="middle">finish-planning.sh</text>
         <rect class="gate-o" x="530" y="80" width="20" height="20" transform="rotate(45 540 90)"/><text class="st" x="540" y="127" text-anchor="middle">Questions</text><text class="sub" x="540" y="147" text-anchor="middle">you answer, when asked</text>
         <circle class="dot" cx="780" cy="90" r="10"/><text class="st" x="780" y="127" text-anchor="middle">Pull request</text><text class="sub" x="780" y="147" text-anchor="middle">rules from the base branch</text>
-        <rect class="gate" x="1000" y="80" width="20" height="20" transform="rotate(45 1010 90)"/><text class="st" x="1010" y="127" text-anchor="middle">Merge</text><text class="sub" x="1010" y="147" text-anchor="middle">only you</text>
+        <rect class="gate" x="1000" y="80" width="20" height="20" transform="rotate(45 1010 90)"/><text class="st" x="1010" y="127" text-anchor="middle">Merge</text><text class="sub" x="1010" y="147" text-anchor="middle">by you</text>
       </svg>
       <ol class="words" id="authority-words">
         <li class="you"><b>Requirements</b><small>you agree them with the Project Grill</small></li>
         <li class="you"><b>Plan</b><small class="k">finish-planning.sh</small></li>
         <li class="ask"><b>Questions</b><small>you answer, only when a feature asks</small></li>
         <li><b>Pull request</b><small>the rules are read from the base branch</small><p class="cond">A protected path, a major or breaking impact, or no review: your approval of exactly this commit.</p></li>
-        <li class="you"><b>Merge</b><small>only you; no script merges</small></li>
+        <li class="you"><b>Merge</b><small>by you; no script merges</small></li>
       </ol>
     </figure>
-    <p>Your approval is needed when a feature changes a protected path, when the reviewer classifies its impact on the architecture as major or breaking, or when there is no review. Always protected: every ADR, the CI workflows, the files that carry out the gate, and a changed or removed line of the check lists. The rules are read from the base branch, so a feature cannot loosen its own gate.</p>
+    <p>A pull request is marked as needing your approval when a feature changes a protected path, when the reviewer classifies its impact on the architecture as major or breaking, or when there is no review. Always protected: every ADR, the CI workflows, the files that carry out the gate, and a changed or removed line of the check lists. The rules are read from the base branch, so a feature cannot loosen its own gate. The mark is a statement, not a lock: only the repository settings make GitHub enforce it.</p>
     <pre role="region" class="excerpt" aria-label="Excerpt of the description of pull request 222"><span class="src">{bare(pull(222))} · excerpt</span>Merge approval:
 - required from the project owner, for exactly this commit
 [...]

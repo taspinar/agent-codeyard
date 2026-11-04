@@ -25,6 +25,8 @@ order: 1
 - Approve the requirements and the plan, and merge the planning pull request.
 - Read and merge every feature pull request: no script merges.
 
+Questions about cost, existing repositories or what agents may do without you: the <a href="../../faq/">FAQ</a>.
+
 ## Sign in
 
 Sign in to GitHub once with `gh auth login`. Each coding agent signs in through its own command-line tool. The workflow reads no tokens: do not put API keys or tokens in a file of the repository.

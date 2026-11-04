@@ -1,0 +1,58 @@
+---
+// Short answers to the questions a newcomer asks first, from the facts of the
+// repository (#275): the scripts, the policies and the open Issues. Each
+// answer names its source; the detail stays in the docs.
+import Base from "../layouts/Base.astro";
+import PageHead from "../components/PageHead.astro";
+import Section from "../components/Section.astro";
+import { href, issue, repoFile } from "../lib/links";
+---
+<Base title="FAQ" description="Short answers about Agent Codeyard: who it is for, whether it replaces your coding agent or IDE, existing repositories, cost, what agents may do without you, and when a change is reviewed.">
+  <PageHead title="FAQ" lede="Short answers to the first questions about Agent Codeyard, each with where the detail is.">
+    <ol class="contents">
+      <li><a href="#who">Who is it for?</a></li>
+      <li><a href="#replace">Does it replace Claude Code, Codex or an IDE?</a></li>
+      <li><a href="#existing">Can I use it with my existing repository?</a></li>
+      <li><a href="#cost">How much does it cost?</a></li>
+      <li><a href="#permission">Can agents make changes without my permission?</a></li>
+      <li><a href="#review">Is independent review always mandatory?</a></li>
+    </ol>
+  </PageHead>
+
+  <Section id="who" title="Who is it for?">
+    <Fragment slot="note">What you need: <a href={href("docs/getting-started/")}>Getting started</a>.</Fragment>
+    <p class="lede">Developers and teams who already use command-line coding agents and GitHub, and want structure around them.</p>
+    <p>You work in a terminal and a Git repository: it is not a no-code tool. You need Git, the GitHub CLI, <code>jq</code>, Claude Code and Codex. If pull requests or coding agents are new to you, <a href={href("docs/new-to-agentic-coding/")}>New to agentic coding?</a> explains them first.</p>
+  </Section>
+
+  <Section id="replace" title="Does it replace Claude Code, Codex or an IDE?">
+    <Fragment slot="note">The agents and their models: <a href={repoFile(".agents/agents.conf")}><code>agents.conf</code></a>.</Fragment>
+    <p class="lede">No. Codeyard writes no code: Claude Code and Codex do, and you keep your editor.</p>
+    <p>Codeyard is the process around the agents: shell scripts, instructions for the agents and policy files that live in your repository. The scripts start the agents for each step, check their work and record what happened. As shipped, Claude writes the code and Codex reviews it; those are the two providers the scripts can start.</p>
+  </Section>
+
+  <Section id="existing" title="Can I use it with my existing repository?">
+    <Fragment slot="note">Planned in <a href={issue(170)}>#170</a>.</Fragment>
+    <p class="lede">Not yet. A project starts as a new repository from the template.</p>
+    <p>There is no installer: you create the repository with <code>gh repo create --template</code>, as <a href={href("docs/getting-started/")}>Getting started</a> shows. Bringing an existing repository into the workflow is <a href={issue(170)}>planned in #170</a> and not built. A project that started from the template can take over later template changes: <a href={href("docs/updating/")}>Updating a Codeyard-based project</a>.</p>
+  </Section>
+
+  <Section id="cost" title="How much does it cost?">
+    <Fragment slot="note">The licence: <a href={repoFile("LICENSE")}><code>LICENSE</code></a>.</Fragment>
+    <p class="lede">Codeyard itself is free and open source, under the MIT licence. The coding agents it runs may cost money.</p>
+    <p>Claude Code and Codex are paid for through your own accounts with their providers, and every feature runs at least one writing agent and, unless your settings let a low-risk change skip it, one reviewing agent. No estimate of the cost per feature or per workflow is published. Each run records the time and the tokens of every step on your machine, but not a cost in money.</p>
+  </Section>
+
+  <Section id="permission" title="Can agents make changes without my permission?">
+    <Fragment slot="note">The limits in the docs: <a href={href("docs/configuration-and-security/")}>Configuration and security</a> and <a href={href("docs/github-setup/")}>GitHub setup</a>.</Fragment>
+    <p class="lede">Inside a feature, yes: that is their job. The workflow asks for you at the decisions that matter, and no script merges.</p>
+    <p>You approve the requirements and the plan before any feature is built, you answer when an agent stops with a question, and the workflow leaves the merge to you. A pull request that changes a protected file, that the reviewer rates as major for the architecture, or that skipped the review carries a request for your approval, which the workflow records; whether GitHub enforces it depends on your repository settings, below. In between, the agents write the code and the tests on the feature's own branch, and the scripts run the checks, commit and open the pull request. Step by step, you also approve what happens to each review finding, and the agent asks before it runs a command that its tool's permission settings do not allow. In an unattended run, one command that takes a feature to a pull request without waiting for you, nothing is asked: what would need your permission is refused instead.</p>
+    <p>What GitHub enforces is a separate matter. An agent works with the GitHub rights of the account that started it: if you may merge, so may the agent. Only the repository settings in <a href={href("docs/github-setup/")}>GitHub setup</a> make GitHub refuse a merge, and an approval that the agent cannot give itself needs a separate identity for the agent, which is <a href={issue(99)}>not built yet (#99)</a>.</p>
+  </Section>
+
+  <Section id="review" title="Is independent review always mandatory?">
+    <Fragment slot="note">The policy: <a href={repoFile(".agents/policies/risk.conf")}><code>risk.conf</code></a>. The levels: <a href={href("features/#risk")}>Risk-proportionate workflow</a>.</Fragment>
+    <p class="lede">Under the default policy, yes: every change is reviewed by an agent of another provider, which can only read.</p>
+    <p>A project can choose less: with the one-line setting <code>profile: light</code>, or with <code>low: review: none</code> in its risk policy, the file that says how much checking each kind of change gets, a low-risk change, such as documentation, skips the review. The commit and the pull request then say that it was not reviewed, and the pull request asks for your approval of the merge; your repository settings on GitHub decide whether that is enforced. A high-risk change is always reviewed, and when a change is reviewed, the script refuses a reviewer of the implementer's own provider.</p>
+  </Section>
+</Base>

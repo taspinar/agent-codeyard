@@ -29,10 +29,10 @@ const runs = [
 // Without and with Codeyard, row by row; each "with" names what the scripts do.
 const compare = [
   { topic: "Unclear requests", without: "The agent guesses what you meant, and the guess is then reviewed as if it were the requirement.", with: "Requirements and a plan are agreed with you first. An agent that meets an open decision stops with its questions, and you answer." },
-  { topic: "Review", without: "The agent that wrote the code checks it, or nobody does.", with: "An agent of another provider reviews the change, and it can only read. As shipped, Claude writes, Codex reviews, and every change is reviewed. A project can change that in its risk policy, the settings file that says how much checking each kind of change gets: the profile, a one-line choice of how much ceremony the project wants, set to profile: light, or the setting low: review: none, lets a low-risk change skip the review, and only those do. The commit and the pull request then record that it was not reviewed, and the merge needs your approval." },
+  { topic: "Review", without: "The agent that wrote the code checks it, or nobody does.", with: "An agent of another provider reviews the change, and it can only read. As shipped, Claude writes, Codex reviews, and every change is reviewed. A project can change that in its risk policy, the settings file that says how much checking each kind of change gets: the profile, a one-line choice of how much ceremony the project wants, set to profile: light, or the setting low: review: none, lets a low-risk change skip the review, and only those do. The commit and the pull request then record that it was not reviewed, and that its merge needs your approval." },
   { topic: "Is it finished?", without: "A session that ends looks like finished work.", with: "For each acceptance criterion, the condition the change must meet, the agent records whether it is met and what shows it. The tests ran on exactly the code that is committed, and that the reviewer read when the change was reviewed." },
   { topic: "Process", without: "A typo and a change to a security check get the same treatment.", with: "Each change gets a risk level from what it touches. High risk gets the stronger model and keeps every control." },
-  { topic: "Merge", without: "You find out afterwards what the agent changed and whether it touched something sensitive.", with: "No script merges. You merge every pull request, and changes to protected files wait for your approval." },
+  { topic: "Merge", without: "You find out afterwards what the agent changed and whether it touched something sensitive.", with: "No script merges; the workflow leaves the merge to you. A pull request that changes a protected file says that it needs your approval. That is a notice, not a lock: an agent has the GitHub rights of the account that started it, so only your repository settings on GitHub can stop a merge." },
   { topic: "Afterwards", without: "What happened in a session is gone with the terminal.", with: "Every run leaves a record: the review rounds and findings, if it was reviewed, what was decided, the checks, and why a run stopped." },
 ];
 ---
@@ -66,13 +66,13 @@ const compare = [
   </Section>
 
   <Section id="who" title="Who it is for">
-    <Fragment slot="note">What you need: the <a href={href("docs/")}>getting-started guide</a>.</Fragment>
+    <Fragment slot="note">What you need: the <a href={href("docs/")}>getting-started guide</a>. Cost, existing repositories and more: the <a href={href("faq/")}>FAQ</a>.</Fragment>
     <p class="lede">Developers and teams who already use command-line coding agents and GitHub, and want structure around them. It is not a no-code tool: you work in a terminal and a Git repository.</p>
     <p>Codeyard is not an application and not an agent. It is a set of shell scripts, agent instructions and policy files that live in your repository. A new project starts from the template with <code>gh repo create --template</code>; there is no installer and no platform to host. Bringing an existing repository into the workflow is <a href={issue(170)}>planned in #170</a> and not built yet.</p>
     <div class="ledger" role="group" aria-label="Who does what">
       <div><h3>The agents</h3><ul><li>Write the code and the tests</li><li>Review a change, read-only</li><li>Propose the triage: fix, defer or accept each finding</li></ul></div>
       <div><h3>Codeyard</h3><ul><li>Computes the risk level of each change</li><li>Picks the agent and model for the level</li><li>Refuses a review by the implementer's own provider</li><li>Commits only verified, complete work, reviewed unless your settings let a low-risk change skip the review</li></ul></div>
-      <div><h3>You</h3><ul><li>Approve the plan</li><li>Answer what the agents cannot decide</li><li>Approve protected changes</li><li>Merge</li></ul></div>
+      <div><h3>You</h3><ul><li>Approve the plan</li><li>Answer what the agents cannot decide</li><li>Approve protected changes</li><li>Merge; only GitHub settings enforce it</li></ul></div>
     </div>
   </Section>
 
@@ -109,7 +109,7 @@ const compare = [
           <path class="trunk" d="M755 130 H1130"/>
           <!-- review bypass: low risk under the light profile -->
           <path class="branch bypass" d="M450 136 V200 L472 222 H733 L755 200 V136"/>
-          <text class="note bypass-note" x="602" y="250" text-anchor="middle">low risk, light profile: no review, and the merge needs your approval</text>
+          <text class="note bypass-note" x="602" y="250" text-anchor="middle">low risk, light profile: no review, your approval requested</text>
           <!-- stations -->
           <g><circle class="dot" cx="50" cy="130" r="10"/><text class="st" x="50" y="167" text-anchor="middle">Issue</text><text class="sub" x="50" y="186" text-anchor="middle">from the roadmap</text></g>
           <g><circle class="dot" cx="210" cy="130" r="10"/><text class="st" x="210" y="167" text-anchor="middle">Implement</text><text class="sub k" x="210" y="186" text-anchor="middle" data-k="impl">claude opus</text></g>
@@ -118,7 +118,7 @@ const compare = [
           <g class="r-dim"><circle class="dot" cx="680" cy="130" r="10"/><text class="st" x="680" y="167" text-anchor="middle">Findings</text><text class="sub" x="680" y="186" text-anchor="middle" data-k="triage">each finding decided</text></g>
           <g><circle class="dot" cx="830" cy="130" r="10"/><text class="st" x="830" y="167" text-anchor="middle">Commit</text><text class="sub" x="830" y="186" text-anchor="middle">only when complete</text></g>
           <g><circle class="dot" cx="970" cy="130" r="10"/><text class="st" x="970" y="167" text-anchor="middle">Pull request</text><text class="sub" x="970" y="186" text-anchor="middle">CI checks</text></g>
-          <g><rect class="gate" x="1120" y="120" width="20" height="20" transform="rotate(45 1130 130)"/><text class="st" x="1130" y="167" text-anchor="middle">Merge</text><text class="sub" x="1130" y="186" text-anchor="middle">by you</text><text class="sub bypass-note" x="1130" y="204" text-anchor="middle">approval required</text></g>
+          <g><rect class="gate" x="1120" y="120" width="20" height="20" transform="rotate(45 1130 130)"/><text class="st" x="1130" y="167" text-anchor="middle">Merge</text><text class="sub" x="1130" y="186" text-anchor="middle">by you</text><text class="sub bypass-note" x="1130" y="204" text-anchor="middle">approval requested</text></g>
         </svg>
         <ul slot="legend" class="legend" aria-hidden="true">
           <li><svg width="28" height="8"><path d="M2 4 H26" stroke="var(--line)" stroke-width="6" stroke-linecap="round"/></svg>the route</li>
@@ -177,7 +177,7 @@ const compare = [
   <Section id="risk" title="More risk, more evidence">
     <Fragment slot="note">The levels, the profiles and what each changes: <a href={href("features/#risk")}>Risk-proportionate workflow</a>, the checking scaled to what a change risks.</Fragment>
     <p>Each change gets a risk level, low, medium or high, computed from the files it touches. An agent cannot lower it; you can raise it. The level picks the model that writes the change and what the review rounds require, and high risk always keeps every control. As shipped there is no low level, so every change is reviewed.</p>
-    <p>A project can choose less ceremony with one line, <code>profile: light</code>: documentation and process files are then low risk and skip the review, as a low class of its own does with <code>low: review: none</code>. The commit says so, and the merge then needs your approval. Under every setting each commit needs the full checks, and only you merge.</p>
+    <p>A project can choose less ceremony with one line, <code>profile: light</code>: documentation and process files are then low risk and skip the review, as a low class of its own does with <code>low: review: none</code>. The commit says so, and the pull request records that its merge needs your approval; your repository settings on GitHub decide whether GitHub enforces it. Under every setting each commit needs the full checks, and no script merges.</p>
   </Section>
 
   <Section id="review" title="The agent that writes the code does not judge it">
@@ -198,7 +198,7 @@ const compare = [
       <li class="you"><b>Approve the plan</b><span>Architecture and roadmap, after a review by another provider; you merge the planning pull request.</span></li>
       <li class="ask"><b>Answer when asked</b><span>An implementer that finds a decision unclear stops with its questions instead of guessing.</span></li>
       <li class="you"><b>Decide on the findings</b><span>When a change is reviewed: step by step you approve the triage; unattended, the triage is recorded for you to read.</span></li>
-      <li class="you"><b>Merge</b><span>Every pull request; a protected change, a change that skipped the review, or a review that sees major impact on the architecture asks for your approval by name.</span></li>
+      <li class="you"><b>Merge</b><span>Every pull request; a protected change, a change that skipped the review, or a review that sees major impact on the architecture asks for your approval by name. The workflow records the request; only your repository settings make GitHub enforce it.</span></li>
     </ol>
   </Section>
 
@@ -283,11 +283,11 @@ const compare = [
       triage: bypass ? "none" : profile === "light" && level !== "high" ? "minor ones may wait" : "each finding decided",
       merge: "by you",
       caption: bypass
-        ? "<strong>Low risk, light profile.</strong> Documentation and process files skip the review. The commit records that it was not reviewed, and the merge waits for your approval."
+        ? "<strong>Low risk, light profile.</strong> Documentation and process files skip the review. The commit records that it was not reviewed, and the pull request asks for your approval."
         : level === "high"
           ? "<strong>High risk.</strong> The stronger model implements, every finding is decided before the commit, and no profile can remove the review or lower the level."
           : level === "low"
-            ? "<strong>Low risk, standard profile.</strong> Reviewed by another provider, unless the project sets <code>low: review: none</code> or the light profile: then a low-risk change skips the review, the commit records it, and the merge needs your approval. As shipped there is no low class; a project adds one in risk.conf."
+            ? "<strong>Low risk, standard profile.</strong> Reviewed by another provider, unless the project sets <code>low: review: none</code> or the light profile: then a low-risk change skips the review, the commit records it, and the pull request asks for your approval. As shipped there is no low class; a project adds one in risk.conf."
             : profile === "light"
               ? "<strong>Medium risk, light profile.</strong> Reviewed; minor findings and suggestions can be accepted or deferred without another fix round."
               : "<strong>Medium risk.</strong> Claude implements and Codex reviews, so the reviewer always comes from another provider, and the merge stays with you.",
