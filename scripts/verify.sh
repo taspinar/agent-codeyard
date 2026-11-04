@@ -38,6 +38,16 @@ records_arguments=("$@")
 # slowest checks, recorded as a budget result like that of a budget check;
 # it fails nothing. A partial run (--only) and a file whose checks did not
 # run compare with nothing.
+#
+# Each of the two files may declare one 'heavy: <check>...': checks of that
+# file that need the machine to themselves. A run that is going to start one
+# takes the machine-wide slot for heavy verification first
+# (scripts/lib/verify-lock.sh), shared by every session and worktree of the
+# machine, and holds it until it ends. When another run holds it, the run
+# reports the holder, starts no check, records nothing, and exits with status
+# 75: the machine is busy, which says nothing about the code. A run without a
+# heavy check, such as --only of the light groups, takes no slot. Without a
+# 'heavy:' line nothing is locked.
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 config="$root/scripts/verify.conf"
@@ -75,12 +85,18 @@ usage() {
   echo "all checks of that file in one run. Over it, the summary shows BUDGET with the"
   echo "total, the target, and the five slowest checks; the verification still passes"
   echo "when every check passed. A partial run compares with nothing."
+  echo
+  echo "A line 'heavy: <check>...' in either file names checks that need the machine to"
+  echo "themselves. A run that starts one first takes the machine-wide slot for heavy"
+  echo "verification (\$VERIFY_LOCK_DIR, by default /tmp/agentic-verify-<uid>). When"
+  echo "another run holds it, the summary shows BUSY with that run, no check runs,"
+  echo "nothing is recorded, and the exit status is 75. Without the line nothing locks."
   exit 1
 }
 
 config_fail() {
   echo "Error: $*" >&2
-  echo "Declare required checks as '<name>: <command>', '<name> [<group>]: <command>', or '<name> [<group>] budget: <command>', and a target for their duration as 'budget-seconds: <n>'." >&2
+  echo "Declare required checks as '<name>: <command>', '<name> [<group>]: <command>', or '<name> [<group>] budget: <command>', a target for their duration as 'budget-seconds: <n>', and the checks that need the machine to themselves as 'heavy: <check>...'." >&2
   exit 1
 }
 
@@ -165,7 +181,9 @@ fi
 # results and the durations of the checks (lib/verification.sh), and the
 # index of a fingerprint.
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/verify.XXXXXX")"
-trap 'rm -rf "$scratch"' EXIT
+# The slot for heavy verification is given back however the run ends; a
+# signal ends it through this trap too.
+trap 'rm -rf "$scratch"; ! declare -F verify_lock_release >/dev/null || verify_lock_release' EXIT
 budgets_file="$scratch/budgets"
 durations_file="$scratch/durations"
 
@@ -229,13 +247,15 @@ workflow_paths=""
 budget_seconds=""
 project_budget_seconds=""
 workflow_budget_seconds=""
+heavy=()
 
 # load_checks <file> <paths-entry>
 # Appends the checks of <file> to names, commands, groups, and budgets ('yes'
 # for a budget check). With <paths-entry> 'yes', the reserved entry 'paths:'
 # sets workflow_paths instead of declaring a check. The reserved entry
 # 'budget-seconds:' sets budget_seconds, the target for the duration of the
-# checks of <file>.
+# checks of <file>. The reserved entry 'heavy:' sets heavy to 'yes' for the
+# checks of <file> that it names.
 load_checks() {
   local file="$1"
   local paths_entry="$2"
@@ -247,6 +267,11 @@ load_checks() {
   local budget
   local value
   local existing
+  local first="${#names[@]}"
+  local heavy_names=""
+  local heavy_line=0
+  local heavy_list=()
+  local index
 
   budget_seconds=""
   while IFS= read -r line || [[ -n "$line" ]]; do
@@ -277,6 +302,15 @@ load_checks() {
       budget_seconds="$value"
       continue
     fi
+    if [[ "$name" == "heavy" ]]; then
+      [[ -z "$group" && -z "$budget" ]] ||
+        config_fail "'heavy' names checks, it is not a check: it takes no group and is no budget check, on line $line_number of $label."
+      [[ "$heavy_line" -eq 0 ]] ||
+        config_fail "'heavy' is declared more than once in $label."
+      heavy_names="$value"
+      heavy_line="$line_number"
+      continue
+    fi
     for existing in ${names[@]+"${names[@]}"}; do
       [[ "$existing" != "$name" ]] ||
         config_fail "duplicate check name on line $line_number of $label: $name"
@@ -285,7 +319,18 @@ load_checks() {
     commands+=("$value")
     groups+=("${group:-$default_group}")
     budgets+=("${budget:-no}")
+    heavy+=(no)
   done <"$file"
+
+  read -r -a heavy_list <<<"$heavy_names"
+  for name in ${heavy_list[@]+"${heavy_list[@]}"}; do
+    for ((index = first; index < ${#names[@]}; index++)); do
+      [[ "${names[$index]}" != "$name" ]] || break
+    done
+    [[ "$index" -lt "${#names[@]}" ]] ||
+      config_fail "'heavy' on line $heavy_line of $label names '$name', which is not a check of $label."
+    heavy[$index]=yes
+  done
 }
 
 # in_list <value> <comma-separated-list>
@@ -399,6 +444,43 @@ if [[ "$recordable" -eq 1 ]]; then
   fi
 fi
 
+# The slot for heavy verification, taken only when a heavy check is going to
+# run. A run that finds it busy starts no check and records nothing: it is
+# not a verification, and not a failure of a check.
+heavy_run=0
+for index in "${!names[@]}"; do
+  [[ "${heavy[$index]}" == "yes" ]] || continue
+  [[ "$index" -lt "$project_count" || -z "$workflow_skipped" ]] || continue
+  [[ "$partial" -eq 0 ]] || in_list "${groups[$index]}" "$only" || continue
+  heavy_run=1
+done
+if [[ "$heavy_run" -eq 1 ]]; then
+  [[ -f "$root/scripts/lib/verify-lock.sh" ]] ||
+    config_fail "'heavy' needs scripts/lib/verify-lock.sh, which is missing."
+  source "$root/scripts/lib/verify-lock.sh"
+  lock_status=0
+  verify_lock_acquire "$root" "${RECORDS_RUN_ID:-none}" || lock_status=$?
+  if [[ "$lock_status" -ne 0 ]]; then
+    echo
+    echo "== Verification summary =="
+    if [[ "$lock_status" -eq "$VERIFY_LOCK_BUSY" ]]; then
+      echo "BUSY  the slot for heavy verification of this machine is held by $verify_lock_holder_text"
+      echo "Verification not run: the machine is busy with another heavy verification. This is not a failure of the code, no check ran, and nothing was recorded. Run again when that run has ended." >&2
+    else
+      echo "BUSY  the slot for heavy verification could not be taken: its lock $(verify_lock_path) cannot be created"
+      echo "Verification not run: set VERIFY_LOCK_DIR to a directory that every session of this machine can write. No check ran, and nothing was recorded." >&2
+    fi
+    exit "$VERIFY_LOCK_BUSY"
+  fi
+  if [[ -n "$verify_lock_acquired" ]]; then
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    echo
+    echo "Holding the slot for heavy verification of this machine (lock $(verify_lock_path), PID $$)."
+  fi
+fi
+
 # record_duration <index> <ms> <result>
 # Keeps the duration of a check that ran: for the duration budgets below, and
 # with lib/verification.sh for the record and the run record. <result> is
@@ -450,6 +532,25 @@ duration_budget() {
   duration_exceeded=$((duration_exceeded + 1))
 }
 
+# run_check <command> <output>
+# Runs a check in the worktree and returns its exit status. With an <output>
+# file (a budget check) its output is kept there too.
+run_check() {
+  if [[ -n "$2" ]]; then
+    (
+      unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
+      unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
+      cd "$root" && bash -eo pipefail -c "$1"
+    ) 2>&1 | tee "$2"
+    return "${PIPESTATUS[0]}"
+  fi
+  (
+    unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
+    unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
+    cd "$root" && bash -eo pipefail -c "$1"
+  )
+}
+
 results=()
 failed=0
 exceeded=0
@@ -490,20 +591,31 @@ for index in "${!names[@]}"; do
   # starts, as the self-tests do, must not write into that run's records, and
   # must not use the agent or attribution configuration that was chosen for
   # that run. The output of a budget check is kept: it is the measurement.
-  if [[ "$budget" == "yes" ]]; then
-    output="$scratch/budget-$name.out"
+  output=""
+  [[ "$budget" != "yes" ]] || output="$scratch/budget-$name.out"
+  if [[ -n "${verify_lock_acquired:-}" ]]; then
+    # The run holds the slot: the check runs in a process group of its own
+    # (job control), which the lock records before the check starts, so that
+    # the slot stays held while any process of the check lives, also after a
+    # crash of this run. Its standard input is /dev/null: a job outside the
+    # terminal's foreground group must not read from it.
+    set -m
     (
-      unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
-      unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
-      cd "$root" && bash -eo pipefail -c "$command"
-    ) 2>&1 | tee "$output"
-    status="${PIPESTATUS[0]}"
+      verify_lock_await_group "$$" || exit 1
+      run_check "$command" "$output"
+    ) </dev/null &
+    check_pid=$!
+    set +m
+    if ! verify_lock_record_group "$check_pid"; then
+      # The check waits for that record: it is stopped and fails.
+      echo "Error: the process group of check '$name' could not be recorded in the lock $(verify_lock_path)." >&2
+      kill -TERM -- "-$check_pid" 2>/dev/null || true
+    fi
+    wait "$check_pid"
+    status=$?
+    verify_lock_record_group ""
   else
-    (
-      unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
-      unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
-      cd "$root" && bash -eo pipefail -c "$command"
-    )
+    run_check "$command" "$output"
     status=$?
   fi
   set -e
