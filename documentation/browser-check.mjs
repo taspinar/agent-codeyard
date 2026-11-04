@@ -102,6 +102,41 @@ try {
       await page.keyboard.press('Enter');
       assert.equal(await page.locator('html').getAttribute('data-theme'), theme === 'light' ? 'dark' : 'light');
       await page.keyboard.press('Enter');
+      // The explorer opens on the guided route of #241 at its first step,
+      // with who acts; the routes of the exceptions follow from their first step.
+      // The summary is one short line; the first step explains its terms.
+      assert.match(await page.locator('[data-summary]').innerText(), /^Issue #241\s*·\s*medium risk\s*·\s*unattended$/);
+      assert.match(await page.locator('[data-caption="text"]').innerText(), /unattended, without stopping for you.*Its risk is medium: risk is a policy level/s);
+      assert.match(await page.locator('[data-caption="lead"]').innerText(), /^Step 1 of 12\.$/);
+      assert.equal(await page.locator('[data-caption="who"]').innerText(), 'You:');
+      assert(await page.locator('[data-workflow]').evaluate(e => e.classList.contains('walking')));
+      assert(!await page.locator('.advanced form').isVisible(), 'The switches start under the closed advanced controls');
+      // The guided map: the feature's route first, no planning line, no script or model names.
+      const guidedMap = async () => page.evaluate(() => ({
+        planning: getComputedStyle(document.querySelector('.workflow .map [data-key="p-plan"]')).display !== 'none',
+        names: [...document.querySelectorAll('.workflow .map .sub.k')].some(e => getComputedStyle(e).display !== 'none'),
+        box: document.querySelector('.workflow .map').getAttribute('viewBox'),
+      }));
+      assert.deepEqual(await guidedMap(), { planning: false, names: false, box: '-30 215 1260 267' }, 'The guided map shows the feature only, without script and model names');
+      assert.equal(await page.locator('[data-key="n-bypass"]').textContent(), 'low risk: no review if the project allows it; then you approve the merge');
+      assert.equal(await page.locator('.map [data-label="f-findings.sub"]').textContent(), 'a decision per finding');
+      await tabTo('[data-route="repair"]');
+      await page.keyboard.press('Enter');
+      assert.equal(await page.locator('[data-route="repair"]').getAttribute('aria-pressed'), 'true');
+      assert.match(await page.locator('[data-summary]').innerText(), /checks fail/);
+      assert.match(await page.locator('[data-caption="lead"]').innerText(), /^Step 1 of/);
+      await tabTo('[data-action="next"]');
+      await page.keyboard.press('Enter');
+      assert.match(await page.locator('[data-caption="who"]').innerText(), /implementer/);
+      await tabTo('.advanced summary');
+      await page.keyboard.press('Enter');
+      assert(await page.locator('.advanced form').isVisible());
+      // The disclosure's toggle event is queued: wait for the redraw it starts.
+      await page.waitForFunction(() => !document.querySelector('.workflow').classList.contains('guided'));
+      assert.deepEqual(await guidedMap(), { planning: true, names: true, box: '-30 0 1260 482' }, 'Under the advanced controls the map shows the planning line and the script and model names');
+      await tabTo('[data-action="reset"]');
+      await page.keyboard.press('Enter');
+      assert.equal(await page.locator('[data-route="repair"]').getAttribute('aria-pressed'), 'false');
       for (const name of ['risk', 'profile', 'run', 'part', 'situation']) {
         const radios = page.locator(`input[name="${name}"]`);
         assert(await radios.count() > 1);
@@ -252,6 +287,10 @@ try {
       }
       await p.goto(origin + base + 'workflow/');
       assert(await p.locator('#workflow-words').isVisible());
+      assert(await p.locator('.guide-static').isVisible(), 'Without JavaScript the guided route of #241 is a timeline in words');
+      assert.match(await p.locator('[data-summary]').innerText(), /^Issue #241\s*·\s*medium risk\s*·\s*unattended$/, 'Without JavaScript the summary is that of the #241 timeline');
+      assert(!await p.locator('[data-key="w-planning"]').isVisible() && await p.locator('[data-key="w-feature"]').isVisible(), 'Without JavaScript the words list is that of one feature, as #241 ran');
+      assert(!await p.locator('.routes').isVisible() && !await p.locator('.advanced').isVisible());
       assert(!await p.locator('.map-actions').isVisible());
       assert(!await p.locator('.hint').isVisible() && !await p.locator('.reset').isVisible());
       assert.equal(await p.locator('.station, .detail-btn').count(), 0, 'Without JavaScript nothing pretends to open the step detail');

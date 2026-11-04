@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "45b7ce2b9ed037d232ba3451ae26d2fcc738f6c6",
+  "commit": {
+    "branch": "feature/274-workflow-a-guided-route",
+    "parent": "3dccc9e16a83bcc6e60e27f14077a8cb984f993b",
+    "base": "3dccc9e16a83bcc6e60e27f14077a8cb984f993b"
+  },
+  "review": {
+    "round": 7,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the completion record leaves a criterion of the owner_approval gate pending: Owner approval: screenshots of the guided default and the advanced view (375 and 1440 px, both themes) recorded for the owner's approval on this Issue before finishing"
+  ],
+  "explanation": "Issue #274: Workflow: a guided route first, the switches under advanced controls (audit step 5). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
