@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "c3b3e8e22911513b4c9c47e540ccf246f276538d",
+  "commit": {
+    "branch": "feature/175-add-an-optional-machine",
+    "parent": "cb180b5fc0923f633f68fa2204bc4442ecc4af84",
+    "base": "cb180b5fc0923f633f68fa2204bc4442ecc4af84"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The feature adds shared machine-wide verification locking infrastructure in scripts/lib/verify-lock.sh and changes verification behavior in scripts/verify.sh and scripts/run-feature.sh. The sensitive and protected workflow changes were reviewed as part of the complete diff. "
+  ],
+  "explanation": "Issue #175: Add an optional machine-wide lock for heavy local verification. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

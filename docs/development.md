@@ -251,6 +251,61 @@ Two limits:
 A record made without the workflow self-tests does not stand in for a run that
 needs them, such as `--reuse --all`.
 
+### Heavy checks and the machine-wide slot
+
+Feature worktrees share the machine: two sessions that run a browser suite or
+a full build at the same time compete for CPU, memory, and the browser, and a
+check can time out for no fault of the code. A project can name the checks
+that need the machine to themselves, in either file, once per file:
+
+```text
+heavy: site-build tests-in-a-browser
+```
+
+The line is optional, and without it nothing is locked: that is the default,
+and the template ships none. With it, a run that is going to start one of the
+named checks first takes the one slot for heavy verification of the machine,
+and holds it until the run ends:
+
+- The slot is a lock directory outside every worktree,
+  `/tmp/agentic-verify-<uid>/lock`, the same for every session and worktree of
+  the user. `VERIFY_LOCK_DIR` names another directory, for example one that
+  several users share, or one that a sandboxed agent can write. `TMPDIR` is
+  not used: it differs between sessions, and the slot would not be shared.
+- A run that finds the slot held starts no check, records nothing (an
+  existing record of a pass stays as it is), and exits with status 75. Its
+  summary shows `BUSY` with the holder: its run, its PID, its worktree, and
+  since when. That is not a failed verification and not a defect:
+  `run-feature.sh` does not send it to the implementer for repair, but stops
+  with status 75. There is no queue; run again when the holder has ended.
+- A run of the light checks only, such as `--only lint`, takes no slot and
+  runs while another run holds it. A run with a heavy check holds the slot
+  for its light checks too.
+- The slot is released when the run ends, also by `Ctrl-C`, `SIGTERM`, or
+  `SIGHUP` (the check that is running finishes first). After a crash or
+  `SIGKILL` the lock stays; the next run finds that its process no longer
+  exists, with the same PID and start time, removes it, says so, and takes
+  the slot. A process that reused the PID is not taken for the holder. Only
+  a holder that is confirmed gone is stale: when its process cannot be
+  inspected, as a process of another user in a shared `VERIFY_LOCK_DIR` may
+  not be, the run reports the slot `BUSY` and keeps the lock.
+- A verification that a heavy check starts, inside the run that holds the
+  slot, runs in that slot instead of waiting for it. The holder passes
+  `VERIFY_LOCK_TOKEN` to its checks; a run counts as nested only when the
+  token is the one in the lock and the holder is one of its own ancestors, so
+  a copied or stale token does not get past the slot.
+
+To end a holder, take its PID and worktree from the `BUSY` line or from the
+file `owner` in the lock directory, check them with `ps -p <pid> -o pid,lstart,args`,
+and stop exactly that process: `kill <pid>`. Do not stop processes by a
+match on their name, such as `pkill -f verify.sh`: that ends the
+verification of every other worktree too. A heavy check that a killed
+holder started can outlive it; find it by its working directory, the holder's
+worktree, before you start another heavy run.
+
+Like any line of these files, adding the `heavy:` line is sensitive and
+changing or removing it is protected by the merge approval gate.
+
 ### References in the documentation
 
 `./scripts/check-docs.sh` checks that the tracked Markdown files name files

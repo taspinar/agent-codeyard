@@ -819,6 +819,24 @@ expect_sessions "$repo" 1 1 0 0
 grep -Fq "unstable checks" <<<"$(log_of "$repo")" || fail "checks that failed in turn were not recorded as unstable"
 if grep -Fq "Repair attempt" <<<"$(log_of "$repo")"; then fail "a repair was started although no check failed twice"; fi
 
+# A verification that finds the slot for heavy verification of the machine
+# held by another run is no defect: nothing is repaired, and the run stops
+# with status 75. The slot is held by this test shell.
+slot="$tmp/slot"
+mkdir -p "$slot/lock"
+printf 'token=other\npid=%s\nstarted=%s\nworktree=/elsewhere\nrun=other-run\nsince=now\n' \
+  "$$" "$(LC_ALL=C ps -o lstart= -p $$ | sed 's/^ *//; s/ *$//')" >"$slot/lock/owner"
+repo="$(VERIFY_CONF="heavy: sound
+sound: test ! -e broken.txt" setup_repo busy)"
+VERIFY_LOCK_DIR="$slot" run_feature "$repo" 2 thing
+expect_stopped "$repo" 75 "the slot for heavy verification of this machine is held by another run"
+expect_sessions "$repo" 1 0 0 0
+grep -Fq "| busy | the slot for heavy verification of this machine is held by run other-run, PID $$, worktree /elsewhere" <<<"$(log_of "$repo")" ||
+  fail "the busy slot and its holder are not in the log of the feature"
+if grep -Fq "Repair attempt" <<<"$(log_of "$repo")"; then fail "a busy slot was sent to the implementer for repair"; fi
+if grep -Fq "## Verification failed" "$repo-2-thing/.agents/handoffs/2.md" 2>/dev/null; then fail "a busy slot was recorded as a failed verification"; fi
+rm -rf "$slot"
+
 # A verification that fails twice is repaired by the implementer, which is
 # given the failing checks in the handoff note.
 repo="$(setup_repo repaired)"
