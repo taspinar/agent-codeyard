@@ -14,6 +14,9 @@ Read:
 - the approved triage artifact (JSON)
 - relevant architecture documentation and accepted ADRs
 - the current working-tree diff
+- the project skills that your prompt lists, if any, by path: guidance below
+  all of the above, as `.agents/prompts/implementer.md` says under "Project
+  skills"
 
 Treat the supplied `FIX_NOW` scope as exhaustive. Preserve each finding
 identifier while working.

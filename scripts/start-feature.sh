@@ -11,6 +11,7 @@ source "$script_dir/lib/completion.sh"
 source "$script_dir/lib/fingerprint.sh"
 source "$script_dir/lib/issue-comments.sh"
 source "$script_dir/lib/risk.sh"
+source "$script_dir/lib/skills.sh"
 
 usage() {
   echo "Usage: $0 <issue-number> [slug] [base-branch] [--agent <agent>] [--model <model>] [--risk <level>] [--unattended]"
@@ -41,6 +42,23 @@ usage() {
   echo "  $0 4 multiplayer --agent claude --model fable"
   echo "  $0 4 --resume"
   exit 1
+}
+
+# read_skills <worktree> <how to continue>: the project skills that the plan
+# of the Issue selects (lib/skills.sh), as the paragraph of the prompt in
+# SKILLS_PROMPT. Every role of the feature reads the same files. A selection
+# that does not resolve stops before an agent works with other guidance than
+# the plan chose.
+read_skills() {
+  if ! skills_resolve "$1" "$issue"; then
+    echo "Error: the project skills that the plan of Issue #$issue selects do not resolve:" >&2
+    skills_problems_text >&2
+    echo "Correct the selection in the plan or the skill, then $2." >&2
+    records_stop "${0##*/}" "the project skills that the plan selects do not resolve"
+    exit 1
+  fi
+  SKILLS_PROMPT="$(skills_prompt "$SKILLS_FILES")"
+  [[ -z "$SKILLS_FILES" ]] || echo "  Skills:   $(printf '%s\n' "$SKILLS_FILES" | awk 'NR > 1 { printf ", " } { printf "%s", $0 }')"
 }
 
 resume=0
@@ -318,6 +336,7 @@ ${newer%$'\n'}"
 work has to be read from the repository."
   fi
   read_comments
+  read_skills "$worktree" "run ./scripts/start-feature.sh $issue --resume"
   echo
 
   RESUME_PROMPT="Read and follow .agents/prompts/implementer.md.
@@ -345,7 +364,7 @@ date with where the work stands then (implementer contract, 'Completion').
 
 Work only on this issue.
 
-Do not commit, push, merge, or deploy.${COMMENTS_PROMPT}"
+Do not commit, push, merge, or deploy.${COMMENTS_PROMPT}${SKILLS_PROMPT}"
 
   run_session "$worktree" "$RESUME_PROMPT"
   exit 0
@@ -483,6 +502,10 @@ if [[ -f "$setup" ]]; then
   echo
 fi
 
+# The plan that selects them is the one of the new worktree, from the base.
+read_skills "$worktree" "run ./scripts/start-feature.sh $issue --resume"
+[[ -z "$SKILLS_FILES" ]] || echo
+
 START_PROMPT="Read and follow .agents/prompts/implementer.md.
 
 Your assigned work item is GitHub Issue #${issue}.
@@ -493,6 +516,6 @@ Read the matching .agents/plans/${issue}-*.md if one exists.
 
 Work only on this issue.
 
-Do not commit, push, merge, or deploy.${COMMENTS_PROMPT}"
+Do not commit, push, merge, or deploy.${COMMENTS_PROMPT}${SKILLS_PROMPT}"
 
 run_session "$worktree" "$START_PROMPT"

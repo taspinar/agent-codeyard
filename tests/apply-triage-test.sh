@@ -131,6 +131,22 @@ if grep -Fq "Deferred cleanup" "$repo.log" || grep -Fq "Accepted rename" "$repo.
 fi
 grep -Fq "Verification passed." "$repo.out" || fail "the result was not verified"
 
+# The fix session reads the skills the plan selects, as the implementer and
+# the reviewer did.
+repo="$(setup_repo skills)"
+mkdir -p "$repo/.agents/project-skills/plain-labels" "$repo/.agents/plans"
+printf '# Plain labels\n' >"$repo/.agents/project-skills/plain-labels/SKILL.md"
+printf 'origin: project\nfiles: SKILL.md\n' >"$repo/.agents/project-skills/plain-labels/skill.conf"
+digest="$(cd "$repo" && ./scripts/check-skills.sh --digest plain-labels)"
+printf 'digest: %s\n' "$digest" >>"$repo/.agents/project-skills/plain-labels/skill.conf"
+printf '# Plan\n\n## Skills\n\n- plain-labels %s\n' "$digest" >"$repo/.agents/plans/13-apply-test.md"
+record_reviewed_tree "$repo" "$repo/$review" "$repo/$triage"
+run_apply "$repo" y "$triage" || {
+  cat "$repo.out" >&2
+  fail "applying a triage of a feature whose plan selects a skill failed"
+}
+grep -Fq -- "- .agents/project-skills/plain-labels/SKILL.md" "$repo.log" || fail "the fix session was not given the skill file"
+
 # Declining, and a triage without FIX_NOW findings, start no agent.
 repo="$(setup_repo decline)"
 run_apply "$repo" n "$triage" || fail "declined apply returned an error"

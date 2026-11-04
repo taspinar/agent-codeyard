@@ -292,6 +292,30 @@ expect_level "$repo" high "a removed agent contract escalates"
 expect_reason "$repo" ".agents/prompts/implementer.md: a policy, an agent contract, or a schema is removed" \
   "the removed contract was not given as the reason"
 
+# A project skill is agent instruction: a change to a file of a skill that
+# the base has escalates, and a skill the feature adds keeps the class of its
+# path.
+repo="$(setup_repo skill-changed "$lenient")"
+git -C "$repo" switch -q main
+mkdir -p "$repo/.agents/project-skills/plain-labels"
+printf '# Plain labels\n' >"$repo/.agents/project-skills/plain-labels/SKILL.md"
+git -C "$repo" add .agents/project-skills
+git -C "$repo" commit -qm "Add a skill"
+git -C "$repo" branch -q -f feature/5-thing main
+git -C "$repo" switch -q feature/5-thing
+printf 'Use "OK" everywhere.\n' >>"$repo/.agents/project-skills/plain-labels/SKILL.md"
+expect_level "$repo" high "a changed project skill escalates"
+expect_reason "$repo" ".agents/project-skills/plain-labels/SKILL.md: a file of a project skill is changed" \
+  "the changed skill was not given as the reason"
+git -C "$repo" rm -q -f .agents/project-skills/plain-labels/SKILL.md
+expect_level "$repo" high "a removed project skill escalates"
+expect_reason "$repo" ".agents/project-skills/plain-labels/SKILL.md: a file of a project skill is removed" \
+  "the removed skill was not given as the reason"
+repo="$(setup_repo skill-added "$lenient")"
+mkdir -p "$repo/.agents/project-skills/plain-labels"
+printf '# Plain labels\n' >"$repo/.agents/project-skills/plain-labels/SKILL.md"
+expect_level "$repo" low "a project skill the feature adds does not escalate by itself"
+
 # An escalation reads only changed or removed existing lines and files. A
 # file the feature adds never escalates by itself, whatever it holds: not a
 # schema, a policy, a manifest, or a verification configuration that the

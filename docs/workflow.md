@@ -376,6 +376,9 @@ Each kind of state has one place:
 - `docs/architecture.md`: current system design.
 - ADRs: why significant architecture decisions were made.
 - `.agents/plans/`: active implementation state for complex work.
+- `.agents/project-skills/`: optional guidance the project keeps, with its
+  source, revision, and licence; an agent reads a skill only when the plan of
+  its Issue selects it (`docs/development.md`, "Project skills").
 - `.agents/handoffs/`: per Issue, the implementer's continuation note for a
   session that resumes the work. A working file, ignored by Git.
 - `.agents/manual-steps/`: per Issue, the steps a feature needs from the
