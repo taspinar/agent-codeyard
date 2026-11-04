@@ -11,7 +11,8 @@ usage() {
   echo "Run in the feature worktree after finish-feature.sh. Pushes the branch and"
   echo "opens the pull request. The description is the message of the commit that"
   echo "finish-feature.sh made, also after the base branch was merged into the"
-  echo "feature to bring it up to date, and the manual steps; an open pull request"
+  echo "feature to bring it up to date and commits fixed what the merge broke"
+  echo "without changing what the review covered, and the manual steps; an open pull request"
   echo "gets it again, replacing its description. The risk level in it is computed"
   echo "here again from the diff and the rules of the base, never copied from the"
   echo "commit. It never merges."
@@ -102,10 +103,19 @@ done
 # change nothing of the feature itself and come after the finish commit, so
 # the statement, the description, and the title are taken from the commit
 # before them (guardrails_finish_commit, which check-guardrails.sh uses the
-# same way). Any other commit after the finish needs a new finish.
-finish_commit="$(guardrails_finish_commit "$root" HEAD "origin/$feature_base" "$feature_base")"
+# same way). So are commits after such a merge that fix what it broke
+# without changing what the review covered (guardrails_finish_after_fixes).
+# Any other commit after the finish needs a new finish; finish_blocked says
+# which commit stands in the way and what to do.
+finish_lines="$(guardrails_finish_after_fixes "$root" "$issue" HEAD "origin/$feature_base" "$feature_base")"
+finish_commit="$(printf '%s\n' "$finish_lines" | sed -n 1p)"
+finish_blocked="$(printf '%s\n' "$finish_lines" | sed -n 2p)"
 if [[ "$finish_commit" != "$(git -C "$root" rev-parse HEAD)" ]]; then
   echo "The branch merged its base after the feature was finished; the pull request is described by the finish commit $(git -C "$root" rev-parse --short "$finish_commit")."
+  if [[ -n "$(git -C "$root" rev-list --no-merges "$finish_commit..HEAD")" ]]; then
+    echo "The commits after it that are no merge of the base change only what those merges changed, nothing that the review covered:"
+    git -C "$root" log --no-merges --format='  %h %s' "$finish_commit..HEAD"
+  fi
 fi
 
 # The content tree of the finish commit (lib/fingerprint.sh): its content
@@ -172,6 +182,8 @@ elif [[ "$committed_completion" == "complete" || "$committed_completion" == "awa
   not_closing="the commit says the feature is $committed_completion, but the completion gate does not pass now ($gate_status)"
 elif [[ -n "$committed_completion" ]]; then
   not_closing="the feature was committed as $committed_completion"
+elif [[ -n "$finish_blocked" ]]; then
+  not_closing="$finish_blocked"
 else
   not_closing="the commit has no completion statement of finish-feature.sh"
 fi

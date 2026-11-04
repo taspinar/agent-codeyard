@@ -749,6 +749,122 @@ git -C "$repo" commit -qam "Change the marker by hand"
 run_publish "$repo" 12 || fail "publishing a commit after the finish failed"
 if grep -Fqx "Closes #12" "$repo.gh.body"; then fail "a commit after the finish closes the Issue"; fi
 grep -Fq -- "--draft" "$repo.gh" || fail "a commit after the finish was not opened as a draft"
+short="$(git -C "$repo" rev-parse --short HEAD)"
+expect_open "$repo" "a commit changed the feature after the finish" \
+  "the commit $short (Change the marker by hand) changes the feature after the finish commit $(git -C "$repo" rev-parse --short HEAD^), with no merge of the base before it; undo it into the working tree (git reset --soft $short^), review the change with ./scripts/review-feature.sh 12, and finish the feature again with ./scripts/finish-feature.sh 12"
+
+# A fix after a merge of the base that repairs what the merge brought in,
+# without changing what the review covered, is passed over too (#285): the
+# finish commit describes the pull request, which closes the Issue. A fix
+# that changes anything else stands in the way, and the description names
+# that commit and what to do.
+# merged_repo <label>: a finished feature that merged a base with a new page
+# and a protected configuration afterwards.
+merged_repo() {
+  local repo
+
+  repo="$(setup_repo "$1")"
+  git -C "$repo" checkout -q main
+  mkdir -p "$repo/.agents/policies" "$repo/config"
+  printf 'see the old page\n' >"$repo/page.txt"
+  printf 'protected: config/\n' >"$repo/.agents/policies/guardrails.conf"
+  printf 'setting\n' >"$repo/config/app.conf"
+  git -C "$repo" add page.txt .agents/policies/guardrails.conf config/app.conf
+  git -C "$repo" commit -qm "A page and a protected configuration on main"
+  git -C "$repo" push -q origin main
+  git -C "$repo" checkout -q feature/12-marker
+  git -C "$repo" merge -q --no-ff --no-edit origin/main
+  printf '%s\n' "$repo"
+}
+# expect_fix_blocked <repo> <description> <reason after the commit's name>
+expect_fix_blocked() {
+  local short
+
+  short="$(git -C "$1" rev-parse --short HEAD)"
+  run_publish "$1" 12 || { cat "$1.out" >&2; fail "publishing failed although $2"; }
+  expect_open "$1" "$2" \
+    "the commit $short ($(git -C "$1" log -1 --format=%s HEAD)) $3; undo it into the working tree (git reset --soft $short^), review the change with ./scripts/review-feature.sh 12, and finish the feature again with ./scripts/finish-feature.sh 12"
+}
+
+repo="$(merged_repo fix-after-merge)"
+printf 'see the new page\n' >"$repo/page.txt"
+git -C "$repo" commit -qam "Fix the link that the merge broke"
+run_publish "$repo" 12 || { cat "$repo.out" >&2; fail "publishing a fix after a merge of the base failed"; }
+grep -Fqx "Closes #12" "$repo.gh.body" || { cat "$repo.gh.body" >&2; fail "a fix of a merge of the base hid the finish commit"; }
+grep -Fq "Finish commit: $(git -C "$repo" rev-parse HEAD~2)" "$repo.out" || fail "the finish commit before the merge and the fix was not printed"
+grep -Fq "  $(git -C "$repo" rev-parse --short HEAD) Fix the link that the merge broke" "$repo.out" || fail "the fix that was passed over was not named"
+grep -Fq "pr create --head feature/12-marker --title Add the marker" "$repo.gh" || fail "the title after a fix is not that of the finish commit"
+if grep -Fq -- "--draft" "$repo.gh"; then fail "a feature with a fix of a merge was opened as a draft"; fi
+# Two fixes after two merges are passed over as well.
+printf 'more\n' >>"$repo/page.txt"
+git -C "$repo" commit -qam "Fix the page again"
+git -C "$repo" checkout -q main
+printf 'later\n' >"$repo/later.txt"
+git -C "$repo" add later.txt
+git -C "$repo" commit -qm "Later on main"
+git -C "$repo" push -q origin main
+git -C "$repo" checkout -q feature/12-marker
+git -C "$repo" merge -q --no-ff --no-edit origin/main
+printf 'fixed\n' >"$repo/later.txt"
+git -C "$repo" commit -qam "Fix the later file"
+rm -f "$repo.gh" "$repo.gh.body"
+run_publish "$repo" 12 || { cat "$repo.out" >&2; fail "publishing fixes after two merges failed"; }
+grep -Fqx "Closes #12" "$repo.gh.body" || { cat "$repo.out" >&2; fail "fixes after two merges hid the finish commit"; }
+
+repo="$(merged_repo fix-changes-feature)"
+printf 'see the new page\n' >>"$repo/feature.txt"
+git -C "$repo" commit -qam "Fix the marker after the merge"
+expect_fix_blocked "$repo" "a fix after a merge changed what the review covered" \
+  "changes feature.txt, which the feature changed and the review covered"
+
+repo="$(merged_repo fix-adds-work)"
+printf 'new\n' >"$repo/unreviewed.txt"
+git -C "$repo" add unreviewed.txt
+git -C "$repo" commit -qm "Add a file after the merge"
+expect_fix_blocked "$repo" "a commit after a merge added work that no merge brought in" \
+  "changes unreviewed.txt, which no merge of the base changed since the finish, so it is not a fix of a merge"
+
+repo="$(merged_repo fix-protected)"
+printf 'changed\n' >"$repo/config/app.conf"
+git -C "$repo" commit -qam "Fix the configuration after the merge"
+expect_fix_blocked "$repo" "a fix after a merge changed a protected path" \
+  "changes the protected path config/app.conf, and the merge approval was decided for the finish commit"
+
+# A fix before the merge is a change of the feature, whatever comes after it.
+repo="$(setup_repo fix-before-merge)"
+printf 'tidy\n' >"$repo/tidy.txt"
+git -C "$repo" add tidy.txt
+git -C "$repo" commit -qm "Tidy before the merge"
+fix="$(git -C "$repo" rev-parse --short HEAD)"
+git -C "$repo" checkout -q main
+printf 'meanwhile\n' >"$repo/other.txt"
+git -C "$repo" add other.txt
+git -C "$repo" commit -qm "Meanwhile on main"
+git -C "$repo" push -q origin main
+git -C "$repo" checkout -q feature/12-marker
+git -C "$repo" merge -q --no-ff --no-edit origin/main
+run_publish "$repo" 12 || fail "publishing a commit before a merge of the base failed"
+expect_open "$repo" "a commit before the merge changed the feature" \
+  "the commit $fix (Tidy before the merge) changes the feature after the finish commit $(git -C "$repo" rev-parse --short HEAD^1~1), with no merge of the base before it; undo it into the working tree (git reset --soft $fix^), review the change with ./scripts/review-feature.sh 12, and finish the feature again with ./scripts/finish-feature.sh 12"
+
+# A finish commit with an approval request takes no fix: the request names
+# the content of exactly that commit.
+repo="$(setup_repo fix-after-request)"
+mkdir -p "$repo/.agents/approval-requests"
+printf '{}\n' >"$repo/.agents/approval-requests/12.json"
+git -C "$repo" add .agents/approval-requests/12.json
+git -C "$repo" commit -q --amend --no-edit
+git -C "$repo" checkout -q main
+printf 'see the old page\n' >"$repo/page.txt"
+git -C "$repo" add page.txt
+git -C "$repo" commit -qm "A page on main"
+git -C "$repo" push -q origin main
+git -C "$repo" checkout -q feature/12-marker
+git -C "$repo" merge -q --no-ff --no-edit origin/main
+printf 'see the new page\n' >"$repo/page.txt"
+git -C "$repo" commit -qam "Fix the link that the merge broke"
+expect_fix_blocked "$repo" "a fix came after a finish commit with an approval request" \
+  "comes after the finish commit $(git -C "$repo" rev-parse --short HEAD~2), whose approval request names the content of exactly that commit"
 
 
 # Agent attribution. With 'disabled', nothing is pushed while a commit of the

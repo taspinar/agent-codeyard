@@ -9,6 +9,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/agent.sh"
 source "$script_dir/lib/review-data.sh"
 source "$script_dir/lib/fingerprint.sh"
+source "$script_dir/lib/skills.sh"
 
 usage() {
   echo "Usage: $0 <triage-json> [--agent <agent>] [--model <model>] [--unattended] [--continue] [--checks <group>[,<group>...]]"
@@ -222,6 +223,11 @@ fix_scope="$(jq -r --slurpfile review "$source_review_path" '
     "- Triage rationale: \($d.rationale)\n"
 ' "$triage_path")"
 
+# The project skills that the plan selects (lib/skills.sh), the files the
+# implementer and the reviewer were given.
+skills_resolve "$root" "$source_issue" ||
+  fail "the project skills that the plan of Issue #$source_issue selects do not resolve:"$'\n'"$(skills_problems_text)"$'\n'"Correct the selection in the plan or the skill, and review again."
+
 echo "Approved FIX_NOW scope from $triage_relative:"
 echo
 printf '%s\n' "$fix_scope"
@@ -254,6 +260,7 @@ ${fix_scope}
 
 Do not implement any DEFER or ACCEPT finding.
 Do not commit, push, merge, deploy, or create/close Issues."
+start_prompt+="$(skills_prompt "$SKILLS_FILES")"
 if [[ -n "$source_issue" && -f "$root/.agents/handoffs/$source_issue.md" ]]; then
   start_prompt+="
 

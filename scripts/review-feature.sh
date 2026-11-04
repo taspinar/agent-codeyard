@@ -15,6 +15,7 @@ source "$script_dir/lib/guardrails.sh"
 source "$script_dir/lib/risk.sh"
 source "$script_dir/lib/completion.sh"
 source "$script_dir/lib/issue-comments.sh"
+source "$script_dir/lib/skills.sh"
 
 fail() {
   echo "Error: $*" >&2
@@ -564,6 +565,14 @@ if [[ -f "$approval_request" ]]; then
   } >>"$context_file"
 fi
 
+# The project skills that the plan selects (lib/skills.sh): the files the
+# implementer was given, so that the reviewer judges the work against the
+# same guidance. A selection that does not resolve is reported here, not
+# guessed.
+skills_resolve "$root" "$issue" ||
+  fail "the project skills that the plan of Issue #$issue selects do not resolve:"$'\n'"$(skills_problems_text)"$'\n'"Correct the selection in the plan or the skill, and review again."
+SKILLS_PROMPT="$(skills_prompt "$SKILLS_FILES")"
+
 echo "Preparing independent review:"
 echo "  Issue:    #$issue"
 echo "  Branch:   $branch"
@@ -579,6 +588,9 @@ if [[ -n "$previous_review" ]]; then
 fi
 if [[ "$changes_only" -eq 1 ]]; then
   echo "  Scope:    only the changes since round $previous_round"
+fi
+if [[ -n "$SKILLS_FILES" ]]; then
+  echo "  Skills:   $(printf '%s\n' "$SKILLS_FILES" | awk 'NR > 1 { printf ", " } { printf "%s", $0 }')"
 fi
 if [[ -n "$checks" ]]; then
   echo "  Checks:   only the groups ${checks//,/, } (a partial check, not a verification)"
@@ -623,6 +635,8 @@ Read the previous review (JSON):
 Check whether its findings have been resolved, but perform an independent review of the complete current implementation. Do not limit the review to the previous findings."
   fi
 fi
+
+START_PROMPT+="$SKILLS_PROMPT"
 
 if [[ -n "$checks" ]]; then
   START_PROMPT+="

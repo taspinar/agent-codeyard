@@ -23,7 +23,7 @@ agent_library_dir="${BASH_SOURCE[0]%/*}"
 source "$agent_library_dir/records.sh"
 source "$agent_library_dir/attribution.sh"
 
-AGENT_ROLES="project-grill project-planner planning-reviewer implementer reviewer triage triage-implementer analyst"
+AGENT_ROLES="project-grill project-planner planning-reviewer implementer reviewer triage triage-implementer analyst assessor"
 # The roles that run for a feature, with its risk level; a '<role>@<level>'
 # line of another role never applies.
 AGENT_FEATURE_ROLES="implementer reviewer triage triage-implementer"

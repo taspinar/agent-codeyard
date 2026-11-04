@@ -79,6 +79,20 @@ setup_repo() {
   printf '%s\n' "$repo"
 }
 
+# add_selected_skill <repo> <issue> [<digest>]: a project skill plain-labels
+# and a plan of the Issue that selects it, at its digest or the one given.
+add_selected_skill() {
+  local dir="$1/.agents/project-skills/plain-labels"
+  local digest
+
+  mkdir -p "$dir" "$1/.agents/plans"
+  printf '# Plain labels\n\nName a button after its action.\n' >"$dir/SKILL.md"
+  printf 'origin: project\nfiles: SKILL.md\n' >"$dir/skill.conf"
+  digest="$(cd "$1" && ./scripts/check-skills.sh --digest plain-labels)"
+  printf 'origin: project\nfiles: SKILL.md\ndigest: %s\n' "$digest" >"$dir/skill.conf"
+  printf '# Plan\n\n## Skills\n\n- plain-labels %s\n' "${3:-$digest}" >"$1/.agents/plans/$2-thing.md"
+}
+
 run_start() {
   local repo="$1"
   shift
@@ -428,5 +442,30 @@ run_start "$repo" 16 thing || fail "starting the feature to resume failed"
 rm -f "$repo.log"
 if MOCK_GH_COMMENTS_FAIL=1 run_start "$repo" 16 --resume; then fail "a session resumed without the comments of its Issue"; fi
 [[ ! -e "$repo.log" ]] || fail "the resumed implementer started without the comments of its Issue"
+
+# The skills the plan selects reach the implementer by path, for a new
+# session and for --resume; a selection that does not resolve starts no
+# implementer and says what does not match.
+repo="$(setup_repo skills)"
+add_selected_skill "$repo" 17
+printf '# Plan\n\n## Skills\n\n- plain-labels sha256:%064d\n' 0 >"$repo/.agents/plans/18-thing.md"
+git -C "$repo" add .agents
+git -C "$repo" -c user.name=Test -c user.email=test@example.com commit -qm "Select a skill"
+git -C "$repo" push -q origin main
+run_start "$repo" 17 thing || {
+  cat "$repo.out" >&2
+  fail "starting a feature whose plan selects a skill failed"
+}
+grep -Fq "Read these files by path" "$repo.log" || fail "the implementer was not told to read the selected skills"
+grep -Fq -- "- .agents/project-skills/plain-labels/SKILL.md" "$repo.log" || fail "the implementer was not given the skill file"
+grep -Fq "Skills:   .agents/project-skills/plain-labels/SKILL.md" "$repo.out" || fail "the selected skill was not shown"
+rm -f "$repo.log"
+run_start "$repo" 17 --resume || fail "resuming a feature whose plan selects a skill failed"
+grep -Fq -- "- .agents/project-skills/plain-labels/SKILL.md" "$repo.log" || fail "the resumed implementer was not given the skill file"
+rm -f "$repo.log"
+if run_start "$repo" 18 thing; then fail "a feature started with a selected version that does not match"; fi
+[[ ! -e "$repo.log" ]] || fail "an implementer started with a selected version that does not match"
+grep -Fq "selects the skill 'plain-labels' at sha256:0000000000000000000000000000000000000000000000000000000000000000, but its files are at sha256:" "$repo.out" ||
+  fail "the mismatched version was not reported: $(cat "$repo.out")"
 
 echo "start-feature tests passed"

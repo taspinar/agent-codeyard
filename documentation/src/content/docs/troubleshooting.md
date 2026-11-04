@@ -42,6 +42,12 @@ The reviewer must come from another provider than the implementer, at every risk
 
 A feature cannot be reviewed or committed until the checks pass. To have it reviewed anyway, `review-feature.sh <issue> --unverified "<reason>"` records the reason; it is an exception, not a pass, and the commit still needs every check.
 
+### "BUSY  the slot for heavy verification of this machine is held by …"
+
+**First fix:** wait until the run it names has ended, then run the same command again.
+
+Another session or worktree is running the checks that your project marked `heavy:` in `scripts/verify.conf`. Nothing was checked and nothing is wrong with your code; the exit status is 75. To stop the holder instead, check the PID it names with `ps -p <pid> -o pid,lstart,args` and stop exactly that process, not every process with a matching name. When the line says that the holder's process has ended but its check (a process group) still runs, a check of a crashed run is still busy: the slot frees itself when it ends, or stop exactly that group with `kill -- -<group>` after checking it with `ps -o pid,pgid,args -g <group>`. When the line adds that the holder's process "cannot be checked from this run", its owner is another user whose processes this run cannot see: ask that user, or the owner of the shared `VERIFY_LOCK_DIR`, whether the run still exists before removing the lock directory by hand. See <a href="../verification-and-completion/#heavy-checks-on-a-shared-machine">heavy checks on a shared machine</a>.
+
 ### "the latest review (…) is stale: the code changed after it"
 
 **First fix:** run `./scripts/review-feature.sh <issue>` again.
@@ -95,7 +101,7 @@ The implementer asks before it invents an answer to a decision that the Issue, t
 
 **First fix:** resume the feature: `./scripts/start-feature.sh <issue> --resume`, or `run-feature.sh <issue>` again.
 
-The commit needs a completion record that says complete or awaiting evidence, and a handoff note without remaining work. A session that ended is not a finished feature. To commit unfinished work on purpose, `finish-feature.sh` takes `--partial`. See <a href="../verification-and-completion/">Verification and completion</a>.
+The commit needs a completion record that says complete or awaiting evidence, and a handoff note without remaining work. Under "Remaining", `None.` may carry an explanation after it (`None. The owner approves on GitHub.`); `None of the tests pass` is work, and the message names the line. A session that ended is not a finished feature. To commit unfinished work on purpose, `finish-feature.sh` takes `--partial`. See <a href="../verification-and-completion/">Verification and completion</a>.
 
 ### "could not read the comments of Issue #…"
 
@@ -113,4 +119,4 @@ The implementer does not start without your comments on the Issue, since it woul
 
 **First fix:** merge the base branch into the feature branch and publish again: `git merge origin/main`, then `./scripts/publish-feature.sh <issue>`.
 
-The pull request is still described by the commit of the finished feature and still closes the Issue. Any other commit after the finish needs a new finish first. Once the base was merged in, a later review has to cover the complete feature, not only the recent changes.
+The pull request is still described by the commit of the finished feature and still closes the Issue. So does a commit after the merge that fixes only what the merge brought in, without touching the files of the feature, a protected path, or a feature that needs the owner's approval. Any other commit after the finish needs a new finish first; the pull request names that commit and what to do. Once the base was merged in, a later review has to cover the complete feature, not only the recent changes.

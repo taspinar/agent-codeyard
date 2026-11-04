@@ -36,6 +36,7 @@ reviewer: codex gpt-6-luna
 | `triage` | Proposes what to do with each review finding |
 | `triage-implementer` | Fixes the findings that were selected |
 | `analyst` | Compares the runs of several features and proposes improvements, read-only (<a href="../technical-reference/#learning">learning from your runs</a>) |
+| `assessor` | Writes the report and the proposal of an assessment of an existing repository, read-only (`assess-repository.sh`) |
 
 The supported agents are Claude Code (`claude`) and Codex (`codex`). You can override the agent and the model for one run with `--agent` and `--model` on a workflow script. The model you name is passed to the agent as it is: the workflow never replaces it with another one, and an unknown agent is an error.
 
@@ -52,9 +53,19 @@ A role of a feature (`implementer`, `reviewer`, `triage`, `triage-implementer`) 
 | `triage` | Claude, `sonnet` | The same |
 | `project-grill`, `project-planner` | Claude, `fable` | |
 | `planning-reviewer` | Codex, `gpt-6-astra` | |
-| `analyst` | Claude, `fable` | |
+| `analyst`, `assessor` | Claude, `fable` | |
 
 The levels come from the features that built the template: a feature that changes the workflow and its gate, which is high risk, needed one or two rounds with the strongest model and many with a weaker one, while the other features did not need it. Codex stays supported as implementer for a project that configures it.
+
+<a id="skills"></a>
+
+## Project skills
+
+A skill is guidance for an agent, such as a design method or a writing rule. The template bundles none, and a project without skills has nothing to install or set up. A project that wants one keeps it in its repository, in `.agents/project-skills/<name>/`, with a `skill.conf` that says where it comes from: the source, the exact commit, the licence, whether it is the upstream text or an adapted one and what changed, and a checksum of its files.
+
+The plan of a feature selects the skills the work needs, each pinned by that checksum. The builder, the reviewer, and the fixer are then given the same files by path, whatever their agent would discover by itself, so Claude and Codex read the same guidance. A skill that does not exist, or whose files no longer match the selected checksum, stops the step with a message that says which.
+
+A skill is the lowest source of guidance: the Issue, the decision records, `AGENTS.md`, and the plan come first. It cannot waive your approval, widen an agent's permissions, or count as evidence that a feature is done; a test or a check does that. Nothing in a skill is installed, downloaded, or run. A new version of a skill is an ordinary reviewed change, and a change to an existing skill makes the feature high risk, as a change to an agent's instructions does. `./scripts/check-skills.sh` checks the metadata in the verification. The [development guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md) has the format and a worked example.
 
 ## Shipped configuration
 
@@ -71,4 +82,5 @@ triage: claude sonnet
 triage-implementer: claude opus
 triage-implementer@high: claude fable
 analyst: claude fable
+assessor: claude fable
 ```

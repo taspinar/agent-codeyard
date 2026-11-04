@@ -353,6 +353,71 @@ Two limits:
 A record made without the workflow self-tests does not stand in for a run that
 needs them, such as `--reuse --all`.
 
+### Heavy checks and the machine-wide slot
+
+Feature worktrees share the machine: two sessions that run a browser suite or
+a full build at the same time compete for CPU, memory, and the browser, and a
+check can time out for no fault of the code. A project can name the checks
+that need the machine to themselves, in either file, once per file:
+
+```text
+heavy: site-build tests-in-a-browser
+```
+
+The line is optional, and without it nothing is locked: that is the default,
+and the template ships none. With it, a run that is going to start one of the
+named checks first takes the one slot for heavy verification of the machine,
+and holds it until the run ends:
+
+- The slot is a lock directory outside every worktree,
+  `/tmp/agentic-verify-<uid>/lock`, the same for every session and worktree of
+  the user. `VERIFY_LOCK_DIR` names another directory, for example one that
+  several users share, or one that a sandboxed agent can write. `TMPDIR` is
+  not used: it differs between sessions, and the slot would not be shared.
+- A run that finds the slot held starts no check, records nothing (an
+  existing record of a pass stays as it is), and exits with status 75. Its
+  summary shows `BUSY` with the holder: its run, its PID, its worktree, and
+  since when. That is not a failed verification and not a defect:
+  `run-feature.sh` does not send it to the implementer for repair, but stops
+  with status 75. There is no queue; run again when the holder has ended.
+- A run of the light checks only, such as `--only lint`, takes no slot and
+  runs while another run holds it. A run with a heavy check holds the slot
+  for its light checks too.
+- The run that holds the slot starts each check in a process group of its
+  own and records the group in the lock (`group=` in the file `owner`)
+  before the check begins. The check's standard input is `/dev/null`.
+- The slot is released when the run ends, also by `Ctrl-C`, `SIGTERM`, or
+  `SIGHUP`: the run first stops the check that is running, with `SIGTERM` to
+  its process group. If the check has not ended within ten seconds, the lock
+  stays until it has.
+- After a crash or `SIGKILL` the lock stays. A check that the run started
+  can outlive it, and while any process of the recorded group exists, the
+  slot is still held: the next run reports it `BUSY` with the group. Only
+  when the holder no longer exists, with the same PID and start time, and no
+  process of its group remains does the next run remove the lock, say so,
+  and take the slot. A process that reused the PID is not taken for the
+  holder. Only a run that is confirmed over is stale: when a process cannot
+  be inspected, as a process of another user in a shared `VERIFY_LOCK_DIR`
+  may not be, the run reports the slot `BUSY` and keeps the lock.
+- A verification that a heavy check starts, inside the run that holds the
+  slot, runs in that slot instead of waiting for it. The holder passes
+  `VERIFY_LOCK_TOKEN` to its checks; a run counts as nested only when the
+  token is the one in the lock and the holder is one of its own ancestors, so
+  a copied or stale token does not get past the slot.
+
+To end a holder, take its PID and worktree from the `BUSY` line or from the
+file `owner` in the lock directory, check them with `ps -p <pid> -o pid,lstart,args`,
+and stop exactly that process: `kill <pid>`. Do not stop processes by a
+match on their name, such as `pkill -f verify.sh`: that ends the
+verification of every other worktree too. A heavy check that a killed
+holder started can outlive it and keeps the slot held; the `BUSY` line and
+the file `owner` name its process group. List it with
+`ps -o pid,pgid,lstart,args -g <group>` and stop exactly that group:
+`kill -- -<group>`.
+
+Like any line of these files, adding the `heavy:` line is sensitive and
+changing or removing it is protected by the merge approval gate.
+
 ### References in the documentation
 
 `./scripts/check-docs.sh` checks that the tracked Markdown files name files
@@ -416,6 +481,7 @@ per line:
 | `triage` | `triage-review.sh` |
 | `triage-implementer` | `apply-triage.sh` |
 | `analyst` | `analyze-runs.sh` (read-only) |
+| `assessor` | `assess-repository.sh` (read-only) |
 
 Supported providers are `codex` and `claude`. Set each model to one your
 account supports, and use a different provider for a reviewing role than for
@@ -1260,7 +1326,11 @@ The note outweighs the record: remaining work listed there means not complete,
 whatever the record says. A line there that only says a category has nothing
 left, a label followed by `none`, `nothing`, `n/a`, `no` or `-` (such as
 `FIX_NOW findings: none.`), is not work; a label followed by anything else
-is. Two things are never evidence: a partial run of the checks
+is. Nor is such a line whose `none` ends a sentence with an explanation after
+it, after `.`, `!`, `;`, a dash, or a parenthesis (`None. The owner's approval
+stays pending on GitHub.`); a sentence that goes on from the word (`None of
+the tests pass`, `None, except the docs`) is work, and the gate names the line.
+Two things are never evidence: a partial run of the checks
 (`verify.sh --only`), which is not a verification, and a budget check of
 `scripts/verify.conf` or `scripts/verify-workflow.conf` (see "Budgets"),
 which is a measurement that never fails the verification. A record whose
@@ -1763,9 +1833,16 @@ git merge origin/main
 
 The script takes the statement, the description, and the title from the
 commit that `finish-feature.sh` made: merge commits of the base after it are
-passed over, since they change nothing of the feature itself. Any other
+passed over, since they change nothing of the feature itself. So is a commit
+after such a merge that fixes what the merge broke, such as a link to a page
+the base moved, when it changes only files that the merges of the base
+changed since the finish, none that the feature changed up to the finish
+(what the review covered), and no protected path, and the finish commit has
+no approval request (it names the content of exactly that commit). Any other
 commit after the finish has no statement, and the pull request becomes a
-draft until the feature is finished again. Run `./scripts/verify.sh --all`
+draft until the feature is finished again; its description names the commit
+that stands in the way and what to do: undo it into the working tree, review
+it, and finish again. Run `./scripts/verify.sh --all`
 after the merge; a review that was done before it covered the feature, not
 the merge.
 
@@ -2175,7 +2252,9 @@ authorization, a migration, the infrastructure, or a dependency file is
    shared library of the tests can change every test; a change to an
    existing file under
    `.agents/policies/`, `.agents/prompts/`, or `.agents/schemas/`, the policy
-   itself among them; and a change to an existing manifest the policy names.
+   itself among them; a change to an existing file of a project skill under
+   `.agents/project-skills/` ("Project skills"), which is agent instruction
+   like a contract; and a change to an existing manifest the policy names.
    Apart from the test fixtures, an escalation reads only changed or removed
    existing lines and files, never their content: a file the feature adds,
    and the lines of a new file, never escalate by themselves, whatever they
@@ -2827,6 +2906,121 @@ on it as used by an earlier analysis: the same observations are no new,
 independent evidence. The input holds the compact records; the analyst reads
 more only where a conclusion needs it.
 
+## Project skills
+
+A skill is a piece of guidance for an agent, such as a design method or a
+writing rule, that someone else published or the project wrote. The template
+bundles none and needs none. A project may keep a few in its repository, and
+a feature plan selects the ones the work needs: only then does an agent read
+one. A project without skills has nothing to install, configure, or run, and
+every step works as before.
+
+**Where they live.** One directory per skill, `.agents/project-skills/<name>/`,
+with its guidance files and its metadata in `skill.conf`:
+
+```text
+.agents/project-skills/plain-labels/
+  SKILL.md       the guidance an agent reads
+  LICENSE        the upstream licence, for third-party content
+  skill.conf     the metadata
+```
+
+The directory is not `.agents/skills/` or `.claude/skills/` on purpose: Codex
+and Claude Code discover those by themselves, and differently, so a skill
+there would reach one role and not the other, and without a plan selecting
+it. The scripts give the files to every role by path instead.
+
+**The metadata.** One `<key>: <value>` per line:
+
+```text
+origin: third-party
+source: https://github.com/example/interface-skills
+revision: 3f6c2a91d0b4e7c85a1f29e6b0d3c4a7e8f91b25
+license: MIT
+license-file: LICENSE
+content: adapted
+changes: kept the section on button and link labels; dropped the install script and the hooks
+files: SKILL.md
+digest: sha256:9c1e4f...
+```
+
+| Key | Meaning |
+|---|---|
+| `origin` | `project` for a skill the project wrote, `third-party` for one taken from elsewhere |
+| `files` | The files an agent reads, relative to the directory: the content that is retained |
+| `digest` | `sha256:<hex>` of those files: what `sha256sum <files> \| sha256sum` prints in the directory, and what `./scripts/check-skills.sh --digest <name>` prints |
+| `source`, `revision`, `license`, `content` | Required for `third-party`: where it comes from, the full commit hash it was taken at (a branch or a tag can move), its licence, and `upstream` or `adapted` |
+| `changes` | What differs from upstream; required for `adapted` |
+| `license-file`, `description` | Optional |
+
+A skill holds guidance only: the directory may hold `skill.conf`, its
+licence file, and the files it lists, and none may be executable. A script,
+an installer, a hook, or a download of an upstream skill is left out when the
+skill is taken over; using one is separate work with its own reviewed scope.
+
+**Selecting skills.** The plan of the Issue selects skills in a section
+`## Skills`, one per line, pinned by digest, with a note on what it is for:
+
+```markdown
+## Skills
+
+- plain-labels sha256:9c1e4f... for the labels of the settings form
+```
+
+`start-feature.sh`, `review-feature.sh`, and `apply-triage.sh` read the
+selection and list the files in the prompt of the implementer, the reviewer,
+and the fix session: the same files for every role and every provider. A
+selection that does not resolve stops the step before an agent starts, and
+says why: a skill that does not exist, metadata that is not valid, or a
+pinned digest that is not the digest of the files now, with the source and
+revision of a third-party skill. A plan without the section selects nothing.
+
+**What a skill cannot do.** It is guidance below every other source
+(`AGENTS.md`, "Source precedence"): the Issue, the ADRs, `AGENTS.md`, the
+architecture, and the plan come first. It cannot waive the owner's approval,
+widen permissions, change a policy, or change the scope. Following it is no
+evidence: the completion record cites a test, a check, or a file, never that
+a skill was read, and a design skill does not show accessibility or
+correctness. The contracts of the implementer and the reviewer say so, and
+the reviewer reports a record that cites a skill as evidence.
+
+**Changing a skill.** A new version is an ordinary reviewed change: the
+files, the `digest` in `skill.conf`, and the digest in the plans that should
+use it change in one feature. A change to an existing file of a skill makes
+the feature `high` (see "The risk level of a feature"), as a change to an
+agent contract does. `.agents/project-skills/` belongs to the project, not to
+the template: `sync-template.sh` never adds, changes, or selects a skill, so
+no project is opted in by an update.
+
+**The check.** `./scripts/check-skills.sh` checks the metadata of every skill
+and that its files still have the recorded digest; the template runs it in
+its verification (`skills` in `scripts/verify.conf`), and a project without
+skills passes. `--issue <n>` checks the selection of the plan of Issue `<n>`
+and prints the files to read. The check reads and hashes files, nothing else:
+it installs, fetches, and runs nothing.
+
+**An example.** A project keeps the skill above, `plain-labels`, whose rule
+is "name a button after the action it performs, and say what will happen,
+not how". The plan of an Issue that adds a settings form selects it. Without
+the skill the implementer wrote:
+
+```html
+<button type="submit">Submit</button>
+<a href="/settings/reset">Click here</a>
+```
+
+With the skill in its prompt it wrote:
+
+```html
+<button type="submit">Save changes</button>
+<a href="/settings/reset">Reset to the default settings</a>
+```
+
+The reviewer read the same `SKILL.md`, found one more "OK" on the
+confirmation dialog, and reported it as a minor finding that names the rule.
+The completion record cites the test that checks the labels of the form, not
+the skill.
+
 ## Linking a feature plan
 
 To add or update the plan reference in an existing Issue:
@@ -2901,6 +3095,80 @@ is recorded, so the next sync continues from it.
 A template change can need a decision in the project, such as a new check or
 a changed step. Read the listed commits before merging the result; the sync
 only takes over files.
+
+## Assessing an existing repository
+
+```bash
+./scripts/assess-repository.sh ~/my-project               # facts, report, and proposal
+./scripts/assess-repository.sh ~/my-project --facts-only  # the facts only, without an agent
+```
+
+Run it from a clone of the template, with the path of a repository that does
+not use the workflow yet. It is the first of three steps of adopting one
+(#170): the assessment changes nothing, and the proposal it writes is the
+input of the adoption, which is not built yet.
+
+**It only reads.** The script runs none of the repository's code, tests, or
+installers. Git runs in the repository without optional locks, so the index
+is not refreshed, and without the file system monitor and the filter drivers
+of its configuration, which would run commands. Files that may hold a secret
+(`.env`, `.env.*`, keys, `credentials*.json`, `.npmrc`, `.netrc`, and the
+like) are named by path and never opened; deployment files are named by path
+only; a CI workflow passes a filter first, the only step that reads the
+file: it reads each line, as any filter must, but of an `env:` block it writes
+only the secrets referred to by name, so no value of an environment block is
+written to a file of the assessment or reaches a later step, the assessor, or
+the report. In the commands it does record, what looks like a key or a token and the value of a variable
+named like a secret are replaced. Symbolic links are not followed. When the
+branch, the commit, or the status of the repository differs afterwards, the
+assessment fails.
+
+**The facts** (`facts.json`): the layout and the entry points; the language
+and the package manager, from the manifests and lock files; the commands the
+project declares (package.json scripts, Makefile targets), the run steps of
+its CI, and those its tools run by convention (`go test ./...`, `pytest`),
+each marked by origin; the CI files with the secrets they refer to by name;
+the deployment files; the requirement, architecture, and decision documents
+and instructions for agents; the files that may hold a secret; the branch,
+the commit, and the uncommitted changes; and, against the template, the files
+an adoption would add, the paths where the repository already has a file
+(collisions, with whether they have uncommitted changes), and the directories
+both have (`.agents`, `.github`, `docs`, `scripts`, `tests`). The template's
+own product files stay behind: its site, `README.md`, `LICENSE`,
+`CONTRIBUTING.md`, `SECURITY.md`, its approval requests, and the placeholders
+`src/.gitkeep` and `infra/.gitkeep`.
+
+**The assessor is read-only**: a role of its own in `.agents/agents.conf`
+(`assessor`), run as a read-only session in an empty directory, with the
+facts on standard input and without the path of the repository, so that it
+cannot read the repository. It writes the report and its part of the
+proposal. What the script checks before it keeps them (one corrected attempt
+is allowed):
+
+- every fact cites the ids of the facts it rests on, and only those; an
+  assumption names its basis, and a question what it settles;
+- every collision has exactly one resolution, `keep-project`, `merge`,
+  `take-template`, or `ask-owner`, with a rationale; `take-template` is
+  refused for `AGENTS.md`, a script, a CI workflow, and a path with
+  uncommitted changes, which stay the project's until the owner resolves
+  them;
+- every verification command names a command of the facts, whose text the
+  script takes over, so that no command is invented;
+- the workflow profile, `light` or `standard`, has a rationale.
+
+**The output** is kept in `.agents/assessments/<repo>-<time>/` of the primary
+checkout of the template, ignored by Git, and nothing is written in the
+assessed repository: `facts.json`; `report.md`, whose observed facts,
+assumptions, and questions are separate sections and which says that every
+inference in it is *observed, not approved*, never an owner-approved
+requirement or a historical decision; and `proposal.json` (`adoption-proposal/v1`,
+status `proposed, not approved`) with the files to add, the collisions and
+their resolutions, the profile, the verification commands, the template
+version (the commit of the template checkout), the ownership for a later
+`sync-template.sh` (the `paths:` of `.agents/template.conf`, and an
+`:(exclude)` for every template file the project keeps), and what a later
+baseline would have to run, with its side effects. Every run makes a new
+directory; an earlier assessment is never changed.
 
 ## Lifecycle
 

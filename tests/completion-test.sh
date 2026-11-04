@@ -159,6 +159,21 @@ expect_remaining "labelled work in a list" \
   "Tests: the integration test|Plan steps: 3 to 9|the documentation|Findings: none of them fixed yet|Docs: no section yet|"
 expect_remaining "labelled none lines beside work" \
   '**Remaining:**\n- FIX_NOW findings: none.\n- step 3\n' "step 3|"
+# A none-word that ends a sentence, with an explanation after it, says that
+# nothing is left too (#285); a sentence that goes on from it is work.
+for nothing in "None. The owner's approval stays pending on GitHub (gate owner_approval)." \
+  '**None.** CI runs on the pull request.' 'None (the owner approves on GitHub)' \
+  'None; the pending gate is in the completion record.' 'None — pending CI' 'Nothing - see the record' \
+  'No remaining work. The owner approves the merge.' 'FIX_NOW findings: none. Deferred: #300.'; do
+  expect_remaining "none with an explanation: $nothing" "**Remaining:** $nothing\n" ""
+done
+expect_remaining "none with an explanation in a list beside work" \
+  '## Remaining\n- None. The owner approves on GitHub.\n- step 3\n' "step 3|"
+expect_remaining "a sentence that goes on from the none-word" \
+  '## Remaining\n- None of the tests pass yet\n- None, except the documentation\n- Nothing-specific cleanup\n- Docs: none-existent so far\n' \
+  "None of the tests pass yet|None, except the documentation|Nothing-specific cleanup|Docs: none-existent so far|"
+expect_remaining "an explanation on its own line after the none-word" \
+  '**Remaining:** None.\nThe documentation still needs a page.\n' "The documentation still needs a page.|"
 # The clarification line of the implementer is a part of its own, not work
 # that remains.
 expect_remaining "the clarification line after the list" \
@@ -287,6 +302,13 @@ expect_gate "a complete record with a note that agrees" complete
 # so the gate agrees with the record (#218).
 printf '**Remaining:**\nFIX_NOW findings: none.\n' >"$note"
 expect_gate "a complete record with a labelled none line under Remaining" complete
+# So does a none-word with an explanation (#285); work after it still names
+# the line in the reason.
+printf "**Remaining:** None. The owner's approval stays pending on GitHub (gate owner_approval).\n" >"$note"
+expect_gate "a complete record with a none line and an explanation under Remaining" complete
+printf '**Remaining:** None of the tests pass yet.\n' >"$note"
+expect_gate "a complete record against a note whose none-word starts work" partial \
+  "lists remaining work" "remaining: None of the tests pass yet."
 printf 'Issue 7 is complete.\n' >"$note"
 
 # The statement that finish-feature.sh puts in the commit message.

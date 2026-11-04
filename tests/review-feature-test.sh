@@ -80,6 +80,20 @@ setup_repo() {
   printf '%s\n' "$repo"
 }
 
+# add_selected_skill <repo> <issue> [<digest>]: a project skill plain-labels
+# and a plan of the Issue that selects it, at its digest or the one given.
+add_selected_skill() {
+  local dir="$1/.agents/project-skills/plain-labels"
+  local digest
+
+  mkdir -p "$dir" "$1/.agents/plans"
+  printf '# Plain labels\n\nName a button after its action.\n' >"$dir/SKILL.md"
+  printf 'origin: project\nfiles: SKILL.md\n' >"$dir/skill.conf"
+  digest="$(cd "$1" && ./scripts/check-skills.sh --digest plain-labels)"
+  printf 'origin: project\nfiles: SKILL.md\ndigest: %s\n' "$digest" >"$dir/skill.conf"
+  printf '# Plan\n\n## Skills\n\n- plain-labels %s\n' "${3:-$digest}" >"$1/.agents/plans/$2-thing.md"
+}
+
 run_review() {
   local repo="$1"
   shift
@@ -736,5 +750,21 @@ done
 repo="$(setup_repo comments-unreadable)"
 MOCK_GH_COMMENTS_FAIL=1 expect_no_review "$repo" "the comments of the Issue cannot be read" 7
 [[ ! -e "$repo.log" ]] || fail "the reviewer started without the comments of the Issue"
+
+# The reviewer reads the skills the plan selects, the same files as the
+# implementer; a selection that does not resolve is reported, not reviewed.
+repo="$(setup_repo skills)"
+add_selected_skill "$repo" 7
+run_review "$repo" 7 || {
+  cat "$repo.out" >&2
+  fail "a review of a feature whose plan selects a skill failed"
+}
+grep -Fq "Read these files by path" "$repo.log" || fail "the reviewer was not told to read the selected skills"
+grep -Fq -- "- .agents/project-skills/plain-labels/SKILL.md" "$repo.log" || fail "the reviewer was not given the skill file"
+repo="$(setup_repo skills-unknown)"
+mkdir -p "$repo/.agents/plans"
+printf '# Plan\n\n## Skills\n\n- frontend-design sha256:%064d\n' 0 >"$repo/.agents/plans/7-marker.md"
+expect_no_review "$repo" "the plan selects an unknown skill" 7
+grep -Fq "selects the skill 'frontend-design', which is unknown" "$repo.out" || fail "the unknown skill was not reported: $(cat "$repo.out")"
 
 echo "review-feature tests passed"

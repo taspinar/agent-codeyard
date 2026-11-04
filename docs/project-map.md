@@ -36,6 +36,7 @@ the website describes the current template.
 | `.agents/policies/` | Risk-based autonomy, execution limits, recovery, conflict resolution, and tool permissions |
 | `.agents/policies/guardrails.conf` | The paths of the project that the merge approval gate protects or names to the reviewer |
 | `.agents/policies/risk.conf` | The risk policy: the path classes `low`, `medium`, `high`, the `default`, the test files, the shared test fixtures (`test-fixtures`), and the manifests, from which the risk level of a feature is computed, and per level what the review rounds require (`verification: full` or `groups ...`, `review: full`, `delta`, or `none` for `low`), and the workflow profile (`profile: light` or `standard`) whose preset supplies the lines the file does not write |
+| `.agents/project-skills/` | Optional: the skills the project keeps, one directory per skill with its guidance files and `skill.conf` (origin, source, immutable revision, license, upstream or adapted, the files read, their digest). Only a plan that selects a skill makes an agent read it. The project's own; the template ships none and a sync never adds one |
 | `scripts/verify.conf` | The required verification checks of the project |
 | `scripts/verify-workflow.conf` | The self-tests of the workflow scripts and the workflow files they guard |
 | `.github/` | CI workflow, Issue templates, PR template, and code owners |
@@ -68,7 +69,7 @@ the website describes the current template.
 | `scripts/doctor.sh` | Checks the local prerequisites: the tools, the agent configuration, the Git commit identity, whether a Codex role with write access can write the runtime directories under `.agents/` inside its sandbox (one real `codex exec` session in a scratch repository), and reports the attribution preference and whether the clients can be made to follow it |
 | `scripts/check-docs.sh` | Checks that the tracked Markdown files name files that exist: relative links, and paths in backticks into a tracked directory. `--later` names paths that come later. The template runs it in its verification; a project can add it to `scripts/verify.conf` |
 | `scripts/check-ci-groups.sh` | For an optional parallel CI: checks the declarations of the mapping, never the commands: that every group of `verify.sh --groups` is declared by exactly one job `group-<group>` of a workflow file, as `env: VERIFY_GROUP: <group>` (`--workflow`), that every test file is in exactly one partition and every partition is declared by exactly one check, as `partition <file>` (`--tests` with `--partition`), and, in the aggregate job, that every job it needs succeeded (`--results`, with `--may-skip` for a modeled skip). The default CI of one job needs none of it |
-| `scripts/verify.sh` | Runs the checks in `scripts/verify.conf`, and the workflow self-tests when a workflow file changed or with `--all`; records a pass and skips a repeated run with `--reuse`; used by humans, agents, and CI. `--only <group>` runs the checks of named groups for a CI with parallel jobs; such a partial run records nothing. A check may declare the partition of a split test suite it runs (`<name> [<group>] partition <file>: <command>`); `--partitions` lists the declarations. A check declared as a budget (`<name> [<group>] budget: <command>`) is a measurement: over its target it is `BUDGET`, with its output, not `FAIL`, and the verification still passes. Times every check and records the durations; `budget-seconds: <n>` in either file is a target for the duration of its checks, shown as `BUDGET` with the slowest checks when exceeded |
+| `scripts/verify.sh` | Runs the checks in `scripts/verify.conf`, and the workflow self-tests when a workflow file changed or with `--all`; records a pass and skips a repeated run with `--reuse`; used by humans, agents, and CI. `--only <group>` runs the checks of named groups for a CI with parallel jobs; such a partial run records nothing. A check declared as a budget (`<name> [<group>] budget: <command>`) is a measurement: over its target it is `BUDGET`, with its output, not `FAIL`, and the verification still passes. Times every check and records the durations; `budget-seconds: <n>` in either file is a target for the duration of its checks, shown as `BUDGET` with the slowest checks when exceeded. `heavy: <check>...` in either file names checks that take the machine-wide slot for heavy verification first; a run that finds it held shows `BUSY` with the holder, runs nothing, and exits with 75 A check may declare the partition of a split test suite it runs (`<name> [<group>] partition <file>: <command>`); `--partitions` lists the declarations. |
 | `scripts/start-planning.sh` | Project Grill, requirements approval, and project planning in a planning worktree |
 | `scripts/review-planning.sh` | Independent, read-only review of the planning documents |
 | `scripts/revise-planning.sh` | The planner's decision per planning finding, then the revision |
@@ -88,9 +89,11 @@ the website describes the current template.
 | `scripts/check-guardrails.sh` | The merge approval gate: reports which changes of a feature need the owner's approval, by the rules of its base; recomputes the content tree of the commit with the exclusion list of the base and refuses an approval request that names another one or has a field its schema does not name |
 | `scripts/check-risk.sh` | The risk level of a feature, `low`, `medium`, or `high`, with every reason and what the level requires of the review rounds, by the risk policy of its base; exits 0, 1, or 2 for the level |
 | `scripts/check-review.sh` | Reports whether a review still matches what it covers |
+| `scripts/check-skills.sh` | Checks the metadata of the project skills, the skills a plan selects (`--issue`, which prints their files), and prints the digest of a skill (`--digest`); reads and hashes files only. A project without skills passes |
 | `scripts/update-issue-with-plan.sh` | Links an optional feature plan to its Issue |
 | `scripts/cleanup-worktree.sh` | Removes a merged worktree and its branch and updates `main` |
 | `scripts/sync-template.sh` | Takes over the template's changes since the version the project has; never commits |
+| `scripts/assess-repository.sh` | Assesses an existing repository for an adoption, read-only: the facts, a report of a read-only agent, and a proposal; runs none of its code and changes nothing in it |
 | `scripts/worktree-setup.sh` | Optional, written by the project: prepares a new feature worktree before the agent starts, for example by copying a dependency cache |
 
 ## Script libraries
@@ -105,12 +108,14 @@ the website describes the current template.
 | `scripts/lib/issue-comments.sh` | The comments of a feature Issue that are passed on to the implementer, the reviewer, and the triage agent: those of the owner, members, and collaborators, without the workflow's own reports, bounded in size |
 | `scripts/lib/fingerprint.sh` | Content fingerprints of a working tree, a commit, or a set of files, with the one fixed list of what is left out: the metadata the workflow writes about the content and the approval requests; a feature review's fingerprint also covers the completion record and the handoff note of its Issue |
 | `scripts/lib/verification.sh` | The record of the last passed verification of a working tree, the durations of its checks, and the results of its budget checks, with their report for the reviewer, the handoff note, the commit, and the run record |
+| `scripts/lib/verify-lock.sh` | The machine-wide slot for heavy verification: a lock directory outside every worktree, taken by a run of `verify.sh` that starts a check named under `heavy:`, released when it ends, recovered after a crash, and shared with a verification nested in it |
 | `scripts/lib/records.sh` | The run records: duration and token usage per run, step, and agent call, and the copy per feature or planning |
 | `scripts/lib/experience.sh` | The experience record of a feature run: what a script derives from the run, and the agent's optional notes once they are valid |
 | `scripts/lib/report.jq` | The report of `report-runs.sh`: totals, comparisons, and the summary for GitHub, from numeric fields only |
 | `scripts/lib/completion.sh` | The completion gate: validation of the implementer's completion record, the remaining work a handoff note lists, and the decision the scripts act on |
 | `scripts/lib/guardrails.sh` | The merge approval gate: the protected and sensitive paths on the diff, by the rules of the base, the decision with the reviewer's classification, the approval requests (writing, validation against their schema, display), and the finish commit of a branch that merged its base afterwards |
 | `scripts/lib/risk.sh` | The risk level of a feature: the path classes of `.agents/policies/risk.conf` on the diff, the fixed escalations, and what the agents recorded, of which the highest counts; and what a level requires of the review rounds, by the same policy; the presets of the workflow profiles `light` and `standard` |
+| `scripts/lib/skills.sh` | The project skills: their metadata, the digest of their files, the selection in a plan, and the paragraph of the prompt that `start-feature.sh`, `review-feature.sh`, and `apply-triage.sh` give every role of the feature |
 | `scripts/lib/scope.sh` | File-scope enforcement for write sessions: a snapshot of the worktree before and after, which leaves out the directories Git ignores as a whole |
 | `scripts/lib/planning.sh` | The planning scope and the planning approval check |
 
@@ -128,10 +133,12 @@ the website describes the current template.
 | `.agents/prompts/triage-reviewer.md` | `triage-review.sh` |
 | `.agents/prompts/triage-implementer.md` | `apply-triage.sh` |
 | `.agents/prompts/analyst.md` | `analyze-runs.sh` |
+| `.agents/prompts/assessor.md` | `assess-repository.sh` |
 | `.agents/schemas/review.schema.json` | Results of planning reviews |
 | `.agents/schemas/feature-review.schema.json` | Results of feature reviews: the same, with the reviewer's classification of the impact on the architecture |
 | `.agents/schemas/triage.schema.json` | Triage decisions |
 | `.agents/schemas/analysis.schema.json` | The result of an analysis of runs |
+| `.agents/schemas/assessment.schema.json` | The assessor's report and proposal for an assessment of a repository |
 | `.agents/schemas/approval-request.schema.json` | An approval request: references and an explanation only; `check-guardrails.sh` refuses a request with any other field |
 | `.agents/schemas/revision.schema.json` | Planning revision decisions |
 
@@ -149,6 +156,7 @@ the website describes the current template.
 | `.agents/run/` | The final messages, and for Codex the session logs, of agents that ran with `--unattended`; the mark of `run-feature.sh` that the implementation was completed, its log of interruptions (`<issue>-log`), and the output of a failed verification. Never part of a content fingerprint | No |
 | `.agents/plans/` | Optional feature plans; part of the content fingerprint, since a plan can change what a feature has to do | Yes |
 | `.agents/approval-requests/` | Per Issue, what the owner is asked to approve and why, written by `finish-feature.sh` when only the owner may merge: references and an explanation, never part of the content fingerprint, never an instruction, grants nothing | Yes |
+| `.agents/assessments/` | The assessments of `assess-repository.sh`: per repository and run its facts, report, and proposal | No |
 | `.agents/handoffs/` | Per Issue, the implementer's continuation note for a session that resumes the work (`start-feature.sh <issue> --resume`) | No |
 | `.agents/lessons/` | Recurring agent failures and the rules learned from them | Yes |
 | `tests/` | Integration tests of the workflow scripts, run by `verify.sh` when a workflow file changed, and always in CI | Yes |
