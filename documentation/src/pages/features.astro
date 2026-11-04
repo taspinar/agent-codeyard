@@ -1,9 +1,11 @@
 ---
-// The engineering problems the workflow answers, each with the mechanism, one
-// real artifact (an excerpt of a file of this repository, a published review,
-// a pull request or a run record), and the docs page with the detail. The
-// facts follow the scripts and policy files on main; every figure names its
-// Issue, pull request or run record.
+// The engineering problems the workflow answers, in three groups. Each starts
+// in plain words with the problem, what Agent Codeyard does about it and what
+// you get; under "Technical proof" follow the mechanism, one real artifact (an
+// excerpt of a file of this repository, a published review, a pull request or
+// a run record), and the docs page with the detail. The facts follow the
+// scripts and policy files on main; every figure names its Issue, pull request
+// or run record.
 import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Section from "../components/Section.astro";
@@ -13,15 +15,21 @@ import { href, issue, pull, repoFile } from "../lib/links";
 const comment = (number: number, id: string) => `${issue(number)}#issuecomment-${id}`;
 const bare = (url: string) => url.replace(/^https:\/\//, "");
 
-const contents = [
-  { id: "requirements", title: "Requirements before implementation" },
-  { id: "architecture", title: "Architecture before parallel work" },
-  { id: "isolation", title: "Isolated feature execution" },
-  { id: "evidence", title: "Evidence per acceptance criterion" },
-  { id: "review", title: "Independent review" },
-  { id: "risk", title: "Risk-proportionate workflow" },
-  { id: "unattended", title: "Safe unattended execution" },
-  { id: "authority", title: "Human authority" },
+const groups = [
+  { id: "planning", title: "Planning & consistency", features: [
+    { id: "requirements", title: "Requirements before implementation" },
+    { id: "architecture", title: "Architecture before parallel work" },
+    { id: "isolation", title: "Isolated feature execution" },
+  ] },
+  { id: "quality", title: "Quality & verification", features: [
+    { id: "evidence", title: "Evidence per acceptance criterion" },
+    { id: "review", title: "Independent review" },
+    { id: "risk", title: "Risk-proportionate workflow" },
+  ] },
+  { id: "control", title: "Automation & control", features: [
+    { id: "unattended", title: "Safe unattended execution" },
+    { id: "authority", title: "Human authority" },
+  ] },
 ];
 
 // The shipped .agents/agents.conf, with the permission profile each role runs under.
@@ -47,16 +55,32 @@ const record = `{"schema":"run-record/v1",[...]"time":"2026-10-30T19:27:28Z",
  "type":"agent-start","role":"reviewer","profile":"read-only",
  "agent":"codex","model":"gpt-6-luna","level":"medium",[...]}`;
 ---
-<Base title="Features" description="The engineering problems Agent Codeyard answers around Claude Code and Codex: requirements and architecture before code, isolated features, evidence per criterion, independent review, process that scales with risk, safe unattended runs and human authority.">
-  <PageHead title="Features" lede="Code generation is one step of engineering. These are the problems around it that the workflow answers, each with a real record it left and the docs page with the detail.">
-    <ol class="contents">
-      {contents.map((item) => <li><a href={`#${item.id}`}>{item.title}</a></li>)}
+<Base title="Features" description="Eight problems of building software with Claude Code and Codex, and what Agent Codeyard does about each: requirements and architecture before code, isolated features, evidence per criterion, independent review, process that scales with risk, safe unattended runs and human authority.">
+  <PageHead title="Features" lede="Agent Codeyard does not write code; Claude Code and Codex do. It answers the problems around the code, in three groups. Each feature starts with the problem, what Codeyard does about it and what you get; the technical proof under it shows the files, the settings and a real record it left.">
+    <ol class="contents grouped">
+      {groups.map((group) => (
+        <li><a href={`#${group.id}`}>{group.title}</a>
+          <ol>{group.features.map((item) => <li><a href={`#${item.id}`}>{item.title}</a></li>)}</ol>
+        </li>
+      ))}
     </ol>
   </PageHead>
 
-  <Section id="requirements" title="Requirements before implementation">
+  <section id="planning" class="group" aria-labelledby="planning-h">
+    <div class="wrap">
+      <h2 id="planning-h">Planning & consistency</h2>
+      <p class="lede">Before an agent writes code: what to build, how it fits the rest, and where the work happens.</p>
+    </div>
+  </section>
+
+  <Section id="requirements" title="Requirements before implementation" level={3}>
     <Fragment slot="note">From <a href={repoFile(".agents/prompts/implementer.md")}><code>implementer.md</code></a> and <a href={repoFile(".agents/prompts/project-grill.md")}><code>project-grill.md</code></a>. <a href={href("docs/detailed-workflow/")}>Every step</a> in the docs.</Fragment>
-    <p class="lede">An agent that meets an open decision invents an answer, and the invention is then reviewed as if it were the requirement. The workflow settles the requirements before the code, once per project and again per feature.</p>
+    <dl class="pitch">
+      <dt>The problem</dt><dd>You give an agent an Issue with a gap in it. The agent fills the gap with a guess, and the review then checks the code against the guess instead of against what you wanted.</dd>
+      <dt>What Codeyard does</dt><dd>Once per project, a requirements interview, the Project Grill, asks you about goals, users and scope until the requirements are written down. For each feature, the agent that writes the code first decides whether the Issue is clear. When a decision is open, it changes nothing and asks you.</dd>
+      <dt>What you get</dt><dd>Open questions reach you before any code is written, not as a surprise in review. You are asked only about decisions that change the scope, the behaviour, an interface, the data, the architecture, security or the acceptance criteria.</dd>
+    </dl>
+    <h4 class="proof">Technical proof</h4>
     <figure class="plain">
       <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="requirements-t" aria-describedby="requirements-words">
         <title id="requirements-t">Requirements before the code: the Project Grill agrees the project's requirements with you once; per feature the implementer reads the Issue and its context and decides whether it is clear. When it needs clarification the run stops, you answer, and it reads again; when it is clear it implements.</title>
@@ -81,11 +105,11 @@ const record = `{"schema":"run-record/v1",[...]"time":"2026-10-30T19:27:28Z",
       </ol>
     </figure>
     <div class="split">
-      <div><h3>Once per project</h3><ul>
+      <div><h5>Once per project</h5><ul>
         <li><code>start-planning.sh</code>: the Project Grill questions you about goals, users and scope until the requirements are agreed, and writes <code>docs/PROJECT_REQUIREMENTS.md</code>.</li>
         <li>An Issue cannot override them silently: where it would, the conflict is a question for you, with a proposed ADR or an update of the requirements as one option.</li>
       </ul></div>
-      <div><h3>Once per feature</h3><ul>
+      <div><h5>Once per feature</h5><ul>
         <li>The implementer reads the Issue, your comments on it, the requirements, the architecture, the ADRs and the code, and decides: clear, or needs clarification.</li>
         <li>Needs clarification: it changes nothing, writes its questions with options and a recommendation, and the run stops with status 3. You answer in the handoff note or on the Issue.</li>
       </ul></div>
@@ -96,16 +120,21 @@ const record = `{"schema":"run-record/v1",[...]"time":"2026-10-30T19:27:28Z",
   question under "Open questions" in the handoff note, with the decision it
   settles and, where you can, the options and your recommendation. [...]
   Nothing is reviewed or committed until the owner answers.</pre>
-    <p>Only decisions that affect the scope, the user experience, a public interface, the data model, the architecture, security, compatibility or the acceptance criteria are questions for you; names and private helpers are not. Only comments of the owner, members and collaborators reach the agents. On <a href={issue(16)}>#16</a>, the clarification gate itself, the owner's two comments settled the design and the run took 26 minutes from start to pull request (<a href={pull(213)}>PR #213</a>).</p>
+    <p>Names, private helpers and other choices the agent can make itself are not questions for you; it records them in the handoff note. Only comments of the owner, members and collaborators reach the agents. On <a href={issue(16)}>#16</a>, the clarification gate itself, the owner's two comments settled the design and the run took 26 minutes from start to pull request (<a href={pull(213)}>PR #213</a>).</p>
     <dl class="facts">
       <dt>docs</dt><dd><a href={href("docs/detailed-workflow/#clarify-the-requirements-project-grill")}>Clarify the requirements</a>, <a href={href("docs/detailed-workflow/#implement-the-feature")}>Implement the feature</a></dd>
       <dt>built in</dt><dd><a href={pull(22)}>PR #22</a> (planning), <a href={pull(213)}>#213</a> (clarification), <a href={pull(185)}>#185</a> (your comments)</dd>
     </dl>
   </Section>
 
-  <Section id="architecture" title="Architecture before parallel work">
+  <Section id="architecture" title="Architecture before parallel work" level={3}>
     <Fragment slot="note">From <a href={repoFile("AGENTS.md")}><code>AGENTS.md</code></a> and the planning scripts. <a href={href("docs/detailed-workflow/")}>Every step</a> in the docs.</Fragment>
-    <p class="lede">Features built in parallel drift apart unless they share one approved design. The architecture, the ADRs and the roadmap are written, reviewed and approved before the first feature starts, and every feature session reads them first.</p>
+    <dl class="pitch">
+      <dt>The problem</dt><dd>Several features built side by side each make their own design choices, and after a few weeks the code no longer follows one design.</dd>
+      <dt>What Codeyard does</dt><dd>The architecture, the roadmap and the first ADRs (architecture decision records: short files that each record one design decision) are written, reviewed by an agent of another AI provider, and approved by you before the first feature starts. Every feature session reads them first, and an accepted ADR outranks the Issue.</dd>
+      <dt>What you get</dt><dd>Features stay on one design. A change to that design is a decision you see and approve, not a side effect of a feature.</dd>
+    </dl>
+    <h4 class="proof">Technical proof</h4>
     <figure class="plain">
       <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="planning-t" aria-describedby="planning-words">
         <title id="planning-t">The planning line: plan, independent review of the plan, a decision per finding, your approval. A later change goes back through the review and your approval. Then the features start, and every feature session reads the approved documents first.</title>
@@ -145,9 +174,14 @@ If a material conflict remains, stop and report it.</pre>
     </dl>
   </Section>
 
-  <Section id="isolation" title="Isolated feature execution">
+  <Section id="isolation" title="Isolated feature execution" level={3}>
     <Fragment slot="note">Rules in <a href={repoFile("AGENTS.md")}><code>AGENTS.md</code></a>. <a href={href("docs/technical-reference/#working-directories")}>Working directories</a> in the docs.</Fragment>
-    <p class="lede">Two agents writing in one checkout overwrite each other, and an agent writing on <code>main</code> leaves nothing to review. Each feature is built on its own branch, in its own Git worktree beside the main checkout.</p>
+    <dl class="pitch">
+      <dt>The problem</dt><dd>Two agents that write in the same folder overwrite each other's files, and work written straight onto <code>main</code> leaves nothing to review.</dd>
+      <dt>What Codeyard does</dt><dd>Every feature gets its own branch and its own worktree: a second working folder of the same Git repository, beside your main checkout. One agent writes in it. A new session continues from the feature's handoff note, a short file that says what is done and what remains.</dd>
+      <dt>What you get</dt><dd>You can run several features side by side, stop one and resume it later, and each reaches you as its own pull request.</dd>
+    </dl>
+    <h4 class="proof">Technical proof</h4>
     <pre role="region" tabindex="0" class="term" aria-label="Terminal commands"><span class="c"># a branch feature/&lt;issue&gt;-&lt;slug&gt; and a worktree beside the main checkout</span>
 <span class="p">$ </span>./scripts/start-feature.sh 241
 <span class="c"># a new session continues from the handoff note, not the earlier conversation</span>
@@ -185,9 +219,21 @@ If a material conflict remains, stop and report it.</pre>
     </dl>
   </Section>
 
-  <Section id="evidence" title="Evidence per acceptance criterion">
+  <section id="quality" class="group" aria-labelledby="quality-h">
+    <div class="wrap">
+      <h2 id="quality-h">Quality & verification</h2>
+      <p class="lede">Before a change reaches you: proof that it does what the Issue asked, checked by an agent that did not write it, with an effort that matches the risk.</p>
+    </div>
+  </section>
+
+  <Section id="evidence" title="Evidence per acceptance criterion" level={3}>
     <Fragment slot="note">Configured in <a href={repoFile("scripts/verify.conf")}><code>verify.conf</code></a>. <a href={href("docs/verification-and-completion/")}>Verification and completion</a> in the docs.</Fragment>
-    <p class="lede">An agent session that ends normally says nothing about whether the work is finished. The implementer records, per acceptance criterion, whether it is met and what shows it, and one command records which content the checks passed for.</p>
+    <dl class="pitch">
+      <dt>The problem</dt><dd>An agent says it is done. That only means its session ended: it does not tell you which requirements are met, or whether the checks ran on the code you are about to merge.</dd>
+      <dt>What Codeyard does</dt><dd>The agent writes a completion record: for each acceptance criterion of the Issue, met or not, and what shows it. One command runs every check of the project and records the exact content they passed for by its fingerprint, a short code computed from the files that changes when any file changes. The completion gate, a step that reads the record, sends unfinished work back to the agent before anything is reviewed.</dd>
+      <dt>What you get</dt><dd>Every pull request lists each criterion with its evidence, and the checks it reports passed for exactly the content you review.</dd>
+    </dl>
+    <h4 class="proof">Technical proof</h4>
     <figure class="plain">
       <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="evidence-t" aria-describedby="evidence-words">
         <title id="evidence-t">Evidence before review: the implementer writes the completion record, verify.sh records a pass for the content, and the completion gate reads the record. Partial starts the implementer again; blocked stops the run until you answer; complete or awaiting_evidence goes on to the review.</title>
@@ -235,9 +281,14 @@ Verification:
     </dl>
   </Section>
 
-  <Section id="review" title="Independent review">
+  <Section id="review" title="Independent review" level={3}>
     <Fragment slot="note">Configured in <a href={repoFile(".agents/agents.conf")}><code>agents.conf</code></a>. <a href={href("docs/agent-roles/")}>Agent roles</a> in the docs.</Fragment>
-    <p class="lede">An agent that reviews its own work, or the work of its own model family, shares its blind spots. The reviewer of a feature comes from another provider than the implementer, runs read-only, and reviews exactly the content the verification passed for.</p>
+    <dl class="pitch">
+      <dt>The problem</dt><dd>An agent that reviews its own code, or code of its own model family, shares its blind spots: what it missed while writing, it tends to miss while reading.</dd>
+      <dt>What Codeyard does</dt><dd>A reviewer of another AI provider reads the change and cannot edit it; as shipped, Codex reviews what Claude wrote, and the script refuses a reviewer of the implementer's own provider. Each finding then goes through triage: deciding which findings to fix now, which to defer to a new Issue, and which to accept with a reason. Critical and major findings are always fixed.</dd>
+      <dt>What you get</dt><dd>A second, independent reading of every reviewed change, and a written decision on each finding, published on the Issue. A finding you settled once is not raised again as new in the next round.</dd>
+    </dl>
+    <h4 class="proof">Technical proof</h4>
     <figure class="plain">
       <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="review-t" aria-describedby="review-words">
         <title id="review-t">The review loop: the verified content is reviewed read-only by another provider, the triage proposes a decision per finding, and you approve the triage, or an unattended run approves it without asking. FIX_NOW findings are fixed, verified and reviewed in a new round; then the feature is committed.</title>
@@ -290,9 +341,14 @@ CHANGES REQUIRED</pre>
     </dl>
   </Section>
 
-  <Section id="risk" title="Risk-proportionate workflow">
+  <Section id="risk" title="Risk-proportionate workflow" level={3}>
     <Fragment slot="note">Configured in <a href={repoFile(".agents/policies/risk.conf")}><code>risk.conf</code></a>. <a href={href("docs/risk-policy/")}>Risk policy</a> in the docs.</Fragment>
-    <p class="lede">A typo and a change to the merge gate do not deserve the same process. Every feature gets a risk level, low, medium or high, computed from what it changes; the level picks the model of each writing role and what the review rounds require.</p>
+    <dl class="pitch">
+      <dt>The problem</dt><dd>A typo fix and a change to the merge rules go through the same process: either the typo waits on ceremony, or the risky change gets too little.</dd>
+      <dt>What Codeyard does</dt><dd>Every feature gets a risk level, low, medium or high, computed by a script from the files it changes. You can raise it; no agent lowers it. The level picks the stronger model for high risk and how strict the review rounds are. A project can also choose a workflow profile, <code>standard</code> or <code>light</code>, for how much process low and medium risk get. Under <code>profile: light</code>, or with <code>low: review: none</code>, a low-risk change can go without review; its merge then needs your approval.</dd>
+      <dt>What you get</dt><dd>Effort goes where the risk is, and a high-risk change keeps every control under every profile.</dd>
+    </dl>
+    <h4 class="proof">Technical proof</h4>
     <figure class="plain">
       <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="risk-t" aria-describedby="risk-words">
         <title id="risk-t">How the level is set: the classes of the changed paths, the escalations and your hint each give a level; the highest counts and nothing lowers it. The review can raise it again: an impact on the architecture classified as major or breaking makes the feature high.</title>
@@ -329,7 +385,23 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
         <tr><th scope="row">You</th><td data-col="what raises the level">The Issue label <code>risk: high</code> or <code>risk: medium</code>, or <code>--risk</code>, before the first session.</td></tr>
       </tbody>
     </Table>
-    <p>Any source can raise the level; nothing lowers it. A low level exists only under <code>profile: light</code>, which adds a low class for documentation and process files and lets a low feature go without a review, said in the commit and the pull request, with your approval of the merge. Under both profiles every commit needs the full verification and only you merge. High always keeps every control.</p>
+    <p>Any source can raise the level; nothing lowers it. The level, the workflow profile and the agents' permissions are three separate settings: the level describes the change, the profile how much process the project wants for low and medium risk, and the permissions follow the role (implementers write, reviewers only read, unattended sessions ask nothing).</p>
+    <Table matrix>
+      <caption>What each level gets under each profile. Under both profiles every commit needs the full verification and only you merge. The light column shows what changes from standard; a project without a profile line keeps the policy it has.</caption>
+      <thead><tr><th scope="col">level</th><th scope="col">standard</th><th scope="col">light</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><span class="lvl low">low</span></th>
+          <td data-col="standard"><p>Reviewed by another provider; full triage.</p><p>As shipped there is no low class: changes start at medium.</p></td>
+          <td data-col="light" class="changed"><p><span class="chg">changed</span> Documentation and process files are low. No review: the commit and the pull request say so, and the merge needs your approval.</p></td></tr>
+        <tr><th scope="row"><span class="lvl medium">medium</span></th>
+          <td data-col="standard"><p>Reviewed; full triage.</p><p>Implementer: Claude opus.</p></td>
+          <td data-col="light" class="changed"><p><span class="chg">changed</span> Reviewed; light triage: minor findings and suggestions can be accepted or deferred without a fix round.</p></td></tr>
+        <tr><th scope="row"><span class="lvl high">high</span></th>
+          <td data-col="standard"><p>Reviewed; full triage.</p><p>Implementer: Claude fable.</p></td>
+          <td data-col="light"><p>Unchanged: reviewed, full triage, the stronger model. No profile can remove these.</p></td></tr>
+      </tbody>
+    </Table>
+    <p>Without a profile, a project can set the same exceptions one by one in <code>risk.conf</code>: a <code>low:</code> class of its own paths, and <code>low: review: none</code>, which lets a low feature go without review, with your approval of the merge. High always keeps every control.</p>
     <dl class="facts">
       <dt>key</dt><dd><code>profile: light | standard</code>; per level, <code>&lt;level&gt;: verification | review | triage: &lt;value&gt;</code></dd>
       <dt>model per level</dt><dd><code>implementer@high: claude fable</code> in <a href={repoFile(".agents/agents.conf")}><code>agents.conf</code></a></dd>
@@ -338,9 +410,21 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
     </dl>
   </Section>
 
-  <Section id="unattended" title="Safe unattended execution">
+  <section id="control" class="group" aria-labelledby="control-h">
+    <div class="wrap">
+      <h2 id="control-h">Automation & control</h2>
+      <p class="lede">Running agents without watching them, and keeping the decisions that matter with you.</p>
+    </div>
+  </section>
+
+  <Section id="unattended" title="Safe unattended execution" level={3}>
     <Fragment slot="note">Limits in <a href={repoFile("scripts/run-feature.sh")}><code>run-feature.sh</code></a>, profiles in <a href={repoFile("scripts/lib/agent.sh")}><code>scripts/lib/agent.sh</code></a>. <a href={href("docs/detailed-workflow/#run-a-feature-unattended")}>Run a feature unattended</a> in the docs.</Fragment>
-    <p class="lede">An unattended run has nobody to ask and nobody watching. <code>run-feature.sh</code> takes a feature from its Issue to an open pull request without questions, inside fixed limits, and leaves a record of every step.</p>
+    <dl class="pitch">
+      <dt>The problem</dt><dd>An agent that runs while you are away has nobody to answer its questions and nobody to stop it when it goes round in circles.</dd>
+      <dt>What Codeyard does</dt><dd>An unattended run is one command, <code>run-feature.sh</code>, that takes a feature from its Issue to an open pull request without asking you anything. It works inside fixed limits: a writing agent is denied anything that would need your permission, the sessions, repairs and review rounds are capped, and an agent that needs your decision stops the run instead of guessing.</dd>
+      <dt>What you get</dt><dd>You can start a feature and come back to a pull request, or to one clear question, with a record of every step on your machine.</dd>
+    </dl>
+    <h4 class="proof">Technical proof</h4>
     <figure class="plain">
       <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="unattended-t" aria-describedby="unattended-words">
         <title id="unattended-t">An unattended run: run-feature.sh starts the implementer under the unattended profile, verifies, and runs the review rounds, with the fixes of each round, until an open pull request; there the run ends, and you merge. An agent that needs your decision stops the run with status 3.</title>
@@ -364,7 +448,7 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
       </ol>
     </figure>
     <ul class="rules">
-      <li><b>Bounded permissions.</b> A writing agent runs under the <code>unattended</code> profile: anything that would ask is denied, and it gets no MCP servers or apps from your configuration. Reviewers and triage run <code>read-only</code>.</li>
+      <li><b>Bounded permissions.</b> A writing agent runs under the <code>unattended</code> profile: anything that would ask is denied, and it gets no MCP servers (Model Context Protocol servers, programs that give an agent extra tools) or apps, the extra tools of your own agent configuration. Reviewers and triage run <code>read-only</code>.</li>
       <li><b>Bounded effort.</b> At most 5 review rounds in a run, and by default 4 implementer sessions, 3 retries of a failing agent call and 3 repairs of a failing verification.</li>
       <li><b>Stops instead of guesses.</b> An agent that needs your decision ends with a <code>BLOCKED:</code> line and the run exits with status 3. Running the same command again continues where the feature stands.</li>
       <li><b>Never merges.</b> The run ends at an open pull request and never removes a worktree.</li>
@@ -378,9 +462,14 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
     </dl>
   </Section>
 
-  <Section id="authority" title="Human authority">
+  <Section id="authority" title="Human authority" level={3}>
     <Fragment slot="note">Configured in <a href={repoFile(".agents/policies/guardrails.conf")}><code>guardrails.conf</code></a>. <a href={href("docs/configuration-and-security/#changes-that-need-the-owner")}>Changes that need the owner</a> in the docs.</Fragment>
-    <p class="lede">No script merges. The decisions that matter stay with you: the requirements, the plan, the answers to questions, and the merge, and some pull requests only you may approve.</p>
+    <dl class="pitch">
+      <dt>The problem</dt><dd>With agents doing the work, it becomes unclear which decisions are still yours, and a feature could quietly loosen the rules that check it.</dd>
+      <dt>What Codeyard does</dt><dd>No script merges. You agree the requirements, approve the plan, answer the questions, and merge. The guardrails, a list of protected files such as the ADRs, the CI workflows that GitHub runs on every pull request, and the files of the workflow's own gate, make a pull request that changes them wait for your approval of exactly its commit. The rules are read from the branch the pull request goes into, so a feature cannot loosen its own gate.</dd>
+      <dt>What you get</dt><dd>The decisions that matter stay with you, and each pull request says whether it needs your approval, and why. One limit: until agents get a GitHub identity of their own (<a href={issue(99)}>#99</a>), an agent runs with the GitHub rights of the account that started it, so if you may merge, so may the agent.</dd>
+    </dl>
+    <h4 class="proof">Technical proof</h4>
     <figure class="plain">
       <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="authority-t" aria-describedby="authority-words">
         <title id="authority-t">Your decisions: you agree the requirements and approve the plan; a feature asks you only when it needs a decision; a pull request that changes a protected path, has a major or breaking impact or no review needs your approval of exactly its commit; and only you merge.</title>
@@ -410,15 +499,15 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
 - scripts/review-feature.sh: the file defines or carries out the workflow and its gate
 - the independent review classified the impact on the architecture as major: [...]</pre>
     <div class="split">
-      <div><h3>Codeyard enforces</h3><ul>
+      <div><h5>Codeyard enforces</h5><ul>
         <li>The risk level, and that no agent lowers it</li>
         <li>A reviewer of another provider, read-only</li>
         <li>Verification before review and before commit</li>
         <li>The completion gate and the triage rules</li>
         <li>Rules read from the base branch</li>
       </ul></div>
-      <div><h3>Your GitHub settings enforce</h3><ul>
-        <li>A ruleset on <code>main</code> that requires a pull request and the CI check; <code>doctor.sh</code> warns when it is missing</li>
+      <div><h5>Your GitHub settings enforce</h5><ul>
+        <li>A ruleset on <code>main</code>, a GitHub setting that requires a pull request and the CI check (the checks GitHub runs on every pull request); <code>doctor.sh</code> warns when it is missing</li>
         <li>Code-owner review, once you replace the placeholder in <a href={repoFile(".github/CODEOWNERS")}><code>CODEOWNERS</code></a></li>
         <li>An approval the agent cannot give itself: needs a separate agent identity, <a href={issue(99)}>not built yet</a></li>
       </ul></div>
