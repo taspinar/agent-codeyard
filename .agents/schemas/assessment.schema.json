@@ -1,0 +1,92 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "facts", "assumptions", "questions", "collisions", "profile", "verification", "execution_needed"],
+  "properties": {
+    "summary": { "type": "string" },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["statement", "evidence"],
+        "properties": {
+          "statement": { "type": "string" },
+          "evidence": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["statement", "basis"],
+        "properties": {
+          "statement": { "type": "string" },
+          "basis": { "type": "string" }
+        }
+      }
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question", "why"],
+        "properties": {
+          "question": { "type": "string" },
+          "why": { "type": "string" }
+        }
+      }
+    },
+    "collisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "resolution", "rationale"],
+        "properties": {
+          "path": { "type": "string" },
+          "resolution": { "type": "string", "enum": ["keep-project", "merge", "take-template", "ask-owner"] },
+          "rationale": { "type": "string" }
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "rationale"],
+      "properties": {
+        "name": { "type": "string", "enum": ["light", "standard"] },
+        "rationale": { "type": "string" }
+      }
+    },
+    "verification": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "source", "rationale"],
+        "properties": {
+          "name": { "type": "string" },
+          "source": { "type": "string" },
+          "rationale": { "type": "string" }
+        }
+      }
+    },
+    "execution_needed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["what", "why", "side_effects"],
+        "properties": {
+          "what": { "type": "string" },
+          "why": { "type": "string" },
+          "side_effects": { "type": "string" }
+        }
+      }
+    }
+  }
+}
