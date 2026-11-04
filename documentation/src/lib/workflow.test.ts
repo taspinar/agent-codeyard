@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { agent, describe, initial, parseAgents, route, stateOf, switches, type State } from "./workflow.ts";
+import { agent, describe, example, follow, guide, guidedSummary, initial, parseAgents, route, routes, stateOf, switches, type State } from "./workflow.ts";
 
 const models = parseAgents(readFileSync(new URL("../../../.agents/agents.conf", import.meta.url), "utf8"));
 const view = (change: Partial<State>) => describe({ ...initial, ...change }, models);
@@ -45,10 +45,11 @@ test("high risk is never lighter: reviewed and fully triaged under every profile
   for (const profile of ["standard", "light"] as const) {
     const v = view({ risk: "high", profile });
     assert.ok(!v.off.includes("f-review"), profile);
-    assert.match(v.labels["f-findings.sub"], /^full triage/, profile);
+    assert.equal(v.labels["f-findings.sub"], "you approve each decision", profile);
+    assert.equal(view({ risk: "high", profile, run: "unattended" }).labels["f-findings.sub"], "a decision per finding", profile);
   }
-  assert.match(view({ risk: "medium", profile: "light" }).labels["f-findings.sub"], /^light triage/);
-  assert.match(view({ risk: "low", profile: "light" }).labels["f-findings.sub"], /^no triage/);
+  assert.match(view({ risk: "medium", profile: "light" }).labels["f-findings.sub"], /^minor ones may wait$/);
+  assert.equal(view({ risk: "low", profile: "light" }).labels["f-findings.sub"], "nothing to decide");
 });
 
 test("the implementer's model follows the risk level of agents.conf", () => {
@@ -140,4 +141,40 @@ test("the walkthrough pauses at the owner's decisions, and at the triage only st
   assert.deepEqual(paused({}), ["p-approve-req", "p-approve", "p-merge", "f-findings", "f-merge"]);
   assert.deepEqual(paused({ run: "unattended", part: "feature" }), ["f-merge"]);
   assert.deepEqual(paused({ situation: "unclear", part: "feature" }), ["f-answer", "f-findings", "f-merge"]);
+});
+
+test("the guided route follows #241 along the route the switches draw for its state, and says who acts at every step", () => {
+  const steps = guide(models);
+  const route241 = describe(example, models).walk;
+  assert.deepEqual(steps.map((step) => [step.key, step.lights]), route241.map((step) => [step.key, step.lights]));
+  assert.deepEqual(steps.map((step) => step.key), [
+    "f-issue", "f-implement", "f-checks", "f-review", "f-findings", "b-fix", "f-checks", "f-review", "f-findings", "f-commit", "f-pr", "f-merge",
+  ]);
+  for (const step of steps) assert.ok(step.who && step.text, step.key);
+  assert.deepEqual(steps.filter((step) => step.you).map((step) => step.key), ["f-issue", "f-merge"], "it stops at your decisions: the start and the merge");
+  assert.deepEqual(example, { part: "feature", run: "unattended", risk: "medium", profile: "standard", situation: "findings" }, "#241: one unattended run, medium risk, one major finding");
+});
+
+test("the guided routes are #241 first, then one exception each, step by step, and every step names who acts", () => {
+  assert.equal(routes[0].id, "example");
+  assert.deepEqual(follow("example", models).walk, guide(models));
+  assert.deepEqual(follow("unknown", models).walk, guide(models), "an unknown route is the guided one");
+  // The guided summary is one short line; the first step, shown under it, explains its terms.
+  assert.equal(follow("example", models).summary, guidedSummary);
+  assert.deepEqual(guidedSummary, ["Issue #241", "medium risk", "unattended"]);
+  const first = guide(models)[0].text;
+  assert.match(first, /unattended, without stopping for you, up to the pull request/);
+  assert.match(first, /Its risk is medium: risk is a policy level set by the files a change touches, and medium, the project's default, requires a review/);
+  const situation = (id: string) => routes.find((r) => r.id === id)!.state;
+  assert.equal(situation("repair").situation, "repair");
+  assert.equal(situation("unclear").situation, "unclear");
+  assert.equal(situation("findings").situation, "findings");
+  assert.equal(situation("high").risk, "high");
+  for (const r of routes.slice(1)) {
+    assert.equal(r.state.run, "steps", r.id);
+    const walk = follow(r.id, models).walk;
+    assert.deepEqual(walk, describe(r.state, models).walk, r.id);
+    for (const step of walk) assert.ok(step.who, `${r.id}: ${step.key}`);
+  }
+  assert.ok(follow("findings", models).walk.some((step) => step.key === "f-findings" && step.you), "step by step you approve the triage");
 });

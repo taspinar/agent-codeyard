@@ -1,9 +1,10 @@
 // The states of the workflow map on /workflow: what the drawing, its words
 // list, its scenario summary, its caption and its walkthrough show for a part of the workflow, a
-// way of running it, a risk level, a profile and a situation. The page
-// renders the initial state at build time and the map's script renders every
-// other state from the same function, so the drawing without JavaScript is
-// the initial state, complete.
+// way of running it, a risk level, a profile and a situation, and the guided
+// routes the explorer follows first: one real feature, then its exceptions. The page
+// renders the guided route of #241 at build time and the map's script renders
+// every other state from the same function, so the drawing and the summary
+// without JavaScript are those of the #241 timeline beside them.
 //
 // The facts are those of docs/development.md ("Project bootstrap workflow",
 // "Clarifying a feature", "Running a feature with one command", "What each
@@ -77,6 +78,8 @@ export interface Step {
   key: string;
   /** The elements that are on the route once this step is reached. */
   lights: string[];
+  /** Who acts, in plain words. */
+  who: string;
   /** What happens, for the caption. */
   text: string;
   /** A decision of yours: a walkthrough that plays pauses here. */
@@ -191,11 +194,15 @@ export function describe(state: State, models: Models): View {
   }
   if (situation !== "unclear") hidden.add("n-stop");
 
-  const triageMode = lightTriage ? "light triage" : "full triage";
+  // In plain words: a decision per finding; the light triage lets minor ones
+  // wait (step by step the diamond of the station says that you approve).
+  const findings = lightTriage
+    ? "minor ones may wait"
+    : unattended ? "a decision per finding" : "you approve each decision";
   const labels: Record<string, string> = {
     "f-implement.sub": implementer,
     "f-review.sub": noReview ? "not reviewed" : reviewer,
-    "f-findings.sub": noReview ? "no triage" : unattended ? `${triageMode}, an agent` : `${triageMode}, you approve`,
+    "f-findings.sub": noReview ? "nothing to decide" : findings,
     "f-commit.sub": noReview ? "not reviewed" : "completion gate",
     "f-merge.sub": "by you",
     "p-review.sub2": agent(models, "planning-reviewer", "medium"),
@@ -268,6 +275,32 @@ export function describe(state: State, models: Models): View {
   };
 }
 
+/** Who acts at each element of the walkthrough, in plain words. */
+function whoActs(key: string, unattended: boolean): string {
+  const who: Record<string, string> = {
+    "p-idea": "You",
+    "p-req": "You and Project Grill, an agent that asks",
+    "p-approve-req": "You",
+    "p-plan": "The planning agent",
+    "p-review": "The planning reviewer, an agent that cannot edit files",
+    "p-approve": "You",
+    "p-merge": "You",
+    "f-issue": "A script, started by you",
+    "f-implement": "The implementer, an agent",
+    "b-clarify": "The implementer",
+    "f-answer": "You",
+    "f-checks": "A script, verify.sh",
+    "b-repair": "The implementer",
+    "f-review": "The reviewer, an agent of another provider that cannot edit files",
+    "f-findings": unattended ? "The triage agent" : "The triage agent proposes, you approve",
+    "b-fix": "The implementer",
+    "f-commit": "A script, finish-feature.sh",
+    "f-pr": "A script, publish-feature.sh, then CI",
+    "f-merge": "You",
+  };
+  return who[key] ?? "";
+}
+
 function walk(state: State, models: Models): Step[] {
   const { part, run, risk, profile, situation } = state;
   const unattended = run === "unattended";
@@ -276,7 +309,7 @@ function walk(state: State, models: Models): Step[] {
   const noReview = risk === "low" && profile === "light";
   const steps: Step[] = [];
   const reach = (key: string, text: string, lights = into[key] ?? []) =>
-    steps.push({ key, lights: [...lights, key], text, ...(decisions.includes(key) && { you: true }) });
+    steps.push({ key, lights: [...lights, key], who: whoActs(key, unattended), text, ...(decisions.includes(key) && { you: true }) });
 
   if (part !== "feature") {
     reach("p-idea", "You describe the project in your own words, in docs/PROJECT_DESCRIPTION.md.");
@@ -333,6 +366,64 @@ function walk(state: State, models: Models): Step[] {
         : "You merge, by your repository's rules. Your approval is needed for a protected path or a major impact on the architecture.",
   );
   return steps;
+}
+
+/**
+ * The guided route: Issue #241 as it ran (PR #249, one unattended run of
+ * run-feature.sh on 30 October 2026), the first thing the explorer shows.
+ * Every figure is that of the Examples page (/examples/#medium), which names
+ * its sources: the Issue, its published review and triage, the description of
+ * PR #249 and the run record. Its route is the walkthrough of this state, so
+ * the guide moves along the map exactly as the switches would draw it.
+ */
+export const example: State = { part: "feature", run: "unattended", risk: "medium", profile: "standard", situation: "findings" };
+
+/** What happened at each step of #241, in the order of the walkthrough of `example`. */
+const ran: { key: string; who: string; text: string }[] = [
+  { key: "f-issue", who: "You", text: "Issue #241 says what to build: the Features, Examples and About pages of this site, from real repository evidence. Its six acceptance criteria, the conditions that say when the work is done, are what every later step checks against. You decide what is built and when: here with one command, run-feature.sh 241, which runs the feature unattended, without stopping for you, up to the pull request. Its risk is medium: risk is a policy level set by the files a change touches, and medium, the project's default, requires a review." },
+  { key: "f-implement", who: "The implementer, an agent (claude opus)", text: "In its own branch and its own working copy of the repository, a worktree, it first checked that the Issue left no decision open. It wrote the three pages and their styles in 11 minutes, then a completion record: for each acceptance criterion, whether it is met and the evidence that shows it." },
+  { key: "f-checks", who: "A script, verify.sh", text: "Every check the project declares ran: the tests, and the build and check of this site. They passed in 14 seconds. The pass is recorded for exactly this content; any change afterwards needs the checks again." },
+  { key: "f-review", who: "The reviewer, an agent of another provider (codex gpt-6-luna) that cannot edit files", text: "At medium risk, the level of any file that no rule of the risk policy names, every change is reviewed. Round 1 compared each acceptance criterion with the code and found one major problem: the Examples page linked the source files of one example only, and the Issue asked for every example." },
+  { key: "f-findings", who: "The triage agent (claude sonnet), because the run was unattended", text: "The triage is a decision per finding: fix it now, defer it to a later Issue, or accept it with a reason. A major finding is always fixed, so it decided fix now, and published the decision on the Issue for you to read. Run step by step, you approve this decision." },
+  { key: "b-fix", who: "The implementer (claude opus)", text: "It fixed only what was decided as fix now: it added the source files of the other four examples, in 85 seconds." },
+  { key: "f-checks", who: "A script, verify.sh", text: "The content changed, so the checks ran again. They passed in 15 seconds." },
+  { key: "f-review", who: "The reviewer (codex gpt-6-luna)", text: "Round 2 reviewed only the fix and found nothing. Round 3 reviewed the complete feature again: PASS." },
+  { key: "f-findings", who: "The triage agent", text: "With no finding left, there was nothing more to decide." },
+  { key: "f-commit", who: "A script, finish-feature.sh", text: "The completion gate: the commit is refused unless the completion record says complete, the checks passed for this exact content, and the latest review is current, covers the whole feature and has no critical or major finding. All three held, and the commit records them." },
+  { key: "f-pr", who: "A script, publish-feature.sh, then CI", text: "It pushed the branch and opened pull request #249, with the completion record, the verification, the review and the risk level in its description; CI, the checks on GitHub, ran them again. 13 minutes after the implementation started." },
+  { key: "f-merge", who: "You", text: "The owner read the pull request and merged it, half an hour later. No approval was required: the reviewer rated the impact on the architecture minor, and no protected path, a file whose change only the owner may approve, was touched. No script merges." },
+];
+
+/** The walkthrough of the guided route: the route of `example`, told as #241 ran it. Decisions of yours: the start and the merge. */
+export function guide(models: Models): Step[] {
+  const steps = walk(example, models);
+  if (steps.length !== ran.length) throw new Error(`guide: ${ran.length} steps for a route of ${steps.length}`);
+  return steps.map((step, i) => {
+    if (step.key !== ran[i].key) throw new Error(`guide: step ${i + 1} is ${ran[i].key}, the route reaches ${step.key}`);
+    const { you: _, ...rest } = step;
+    return { ...rest, who: ran[i].who, text: ran[i].text, ...((step.key === "f-issue" || step.you) && { you: true }) };
+  });
+}
+
+/** The routes a visitor can follow before any switch: #241 first, then one exception each, step by step. */
+const oneFeature: State = { part: "feature", run: "steps", risk: "medium", profile: "standard", situation: "none" };
+export const routes = [
+  { id: "example", name: "#241, as it ran", state: example },
+  { id: "repair", name: "a check fails", state: { ...oneFeature, situation: "repair" } },
+  { id: "unclear", name: "the Issue is unclear", state: { ...oneFeature, situation: "unclear" } },
+  { id: "findings", name: "the review finds problems", state: { ...oneFeature, situation: "findings" } },
+  { id: "high", name: "higher risk", state: { ...oneFeature, risk: "high" } },
+] as const satisfies readonly { id: string; name: string; state: State }[];
+
+/** The summary of #241, one short line; the text of its first step explains medium risk and unattended. */
+export const guidedSummary = ["Issue #241", "medium risk", "unattended"];
+
+/** The view of a route: the state's drawing, and for #241 its own walkthrough and summary. */
+export function follow(id: string, models: Models): View {
+  const chosen = routes.find((r) => r.id === id) ?? routes[0];
+  const view = describe(chosen.state, models);
+  if (chosen.id !== "example") return view;
+  return { ...view, summary: guidedSummary, walk: guide(models) };
 }
 
 /**

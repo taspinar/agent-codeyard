@@ -621,3 +621,24 @@ html:not(.js) .hint { display: none; }
   .trail li { padding: 0 0 var(--s-4); }
   .trail li::before { top: 0.2rem; left: calc(-1 * var(--s-4) - 0.5 * var(--stroke) - 0.55rem); }
 }
+
+/* The guided routes and the advanced controls (/workflow): the explorer opens
+   on the walkthrough of one real feature; a row of routes follows it or one
+   exception, and the switches sit under a disclosure. Without JavaScript the
+   guided route is a timeline in words, and neither row is shown. */
+.scenario [data-caption="who"] { color: var(--ink); }
+html.js .guide-static { display: none; }
+.guide-static h3 { font-size: var(--t-md); margin: 0 0 var(--s-3); }
+.routes { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-2) var(--s-3); margin-top: var(--s-4); }
+.routes-label { font: var(--w-semibold) var(--t-sm) var(--sans); color: var(--ink-3); }
+.routes button { font: var(--w-semibold) var(--t-sm) var(--sans); padding: var(--s-chip); border: 1px solid var(--rule); background: none; color: var(--ink-2); border-radius: 2px; cursor: pointer; }
+.routes button:hover { border-color: var(--rule-strong); color: var(--ink); }
+.routes button[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+.advanced { margin-top: var(--s-4); border-top: 1px solid var(--rule); padding-top: var(--s-3); }
+.advanced > summary { font: var(--w-semibold) var(--t-sm) var(--sans); color: var(--ink); cursor: pointer; width: fit-content; }
+.advanced[open] > summary { margin-bottom: var(--s-3); }
+.advanced-note { font-size: var(--t-sm); color: var(--ink-2); max-width: var(--measure-wide); margin: 0 0 var(--s-3); }
+.advanced .reset { margin-top: var(--s-3); }
+html:not(.js) .routes, html:not(.js) .advanced { display: none; }
+/* The guided map: the feature's route only, without script and model names. */
+.workflow.guided :is(.plan-part, .map .trunk.plan, .map .sub.k, .map [data-key="n-unattended"], .words small.k) { display: none; }
