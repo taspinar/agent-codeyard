@@ -36,6 +36,7 @@ reviewer: codex gpt-6-luna
 | `triage` | Proposes what to do with each review finding |
 | `triage-implementer` | Fixes the findings that were selected |
 | `analyst` | Compares the runs of several features and proposes improvements, read-only (<a href="../technical-reference/#learning">learning from your runs</a>) |
+| `assessor` | Writes the report and the proposal of an assessment of an existing repository, read-only (`assess-repository.sh`) |
 
 The supported agents are Claude Code (`claude`) and Codex (`codex`). You can override the agent and the model for one run with `--agent` and `--model` on a workflow script. The model you name is passed to the agent as it is: the workflow never replaces it with another one, and an unknown agent is an error.
 
@@ -52,7 +53,7 @@ A role of a feature (`implementer`, `reviewer`, `triage`, `triage-implementer`) 
 | `triage` | Claude, `sonnet` | The same |
 | `project-grill`, `project-planner` | Claude, `fable` | |
 | `planning-reviewer` | Codex, `gpt-6-astra` | |
-| `analyst` | Claude, `fable` | |
+| `analyst`, `assessor` | Claude, `fable` | |
 
 The levels come from the features that built the template: a feature that changes the workflow and its gate, which is high risk, needed one or two rounds with the strongest model and many with a weaker one, while the other features did not need it. Codex stays supported as implementer for a project that configures it.
 
@@ -81,4 +82,5 @@ triage: claude sonnet
 triage-implementer: claude opus
 triage-implementer@high: claude fable
 analyst: claude fable
+assessor: claude fable
 ```

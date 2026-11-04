@@ -379,6 +379,7 @@ per line:
 | `triage` | `triage-review.sh` |
 | `triage-implementer` | `apply-triage.sh` |
 | `analyst` | `analyze-runs.sh` (read-only) |
+| `assessor` | `assess-repository.sh` (read-only) |
 
 Supported providers are `codex` and `claude`. Set each model to one your
 account supports, and use a different provider for a reviewing role than for
@@ -2992,6 +2993,80 @@ is recorded, so the next sync continues from it.
 A template change can need a decision in the project, such as a new check or
 a changed step. Read the listed commits before merging the result; the sync
 only takes over files.
+
+## Assessing an existing repository
+
+```bash
+./scripts/assess-repository.sh ~/my-project               # facts, report, and proposal
+./scripts/assess-repository.sh ~/my-project --facts-only  # the facts only, without an agent
+```
+
+Run it from a clone of the template, with the path of a repository that does
+not use the workflow yet. It is the first of three steps of adopting one
+(#170): the assessment changes nothing, and the proposal it writes is the
+input of the adoption, which is not built yet.
+
+**It only reads.** The script runs none of the repository's code, tests, or
+installers. Git runs in the repository without optional locks, so the index
+is not refreshed, and without the file system monitor and the filter drivers
+of its configuration, which would run commands. Files that may hold a secret
+(`.env`, `.env.*`, keys, `credentials*.json`, `.npmrc`, `.netrc`, and the
+like) are named by path and never opened; deployment files are named by path
+only; a CI workflow passes a filter first, the only step that reads the
+file: it reads each line, as any filter must, but of an `env:` block it writes
+only the secrets referred to by name, so no value of an environment block is
+written to a file of the assessment or reaches a later step, the assessor, or
+the report. In the commands it does record, what looks like a key or a token and the value of a variable
+named like a secret are replaced. Symbolic links are not followed. When the
+branch, the commit, or the status of the repository differs afterwards, the
+assessment fails.
+
+**The facts** (`facts.json`): the layout and the entry points; the language
+and the package manager, from the manifests and lock files; the commands the
+project declares (package.json scripts, Makefile targets), the run steps of
+its CI, and those its tools run by convention (`go test ./...`, `pytest`),
+each marked by origin; the CI files with the secrets they refer to by name;
+the deployment files; the requirement, architecture, and decision documents
+and instructions for agents; the files that may hold a secret; the branch,
+the commit, and the uncommitted changes; and, against the template, the files
+an adoption would add, the paths where the repository already has a file
+(collisions, with whether they have uncommitted changes), and the directories
+both have (`.agents`, `.github`, `docs`, `scripts`, `tests`). The template's
+own product files stay behind: its site, `README.md`, `LICENSE`,
+`CONTRIBUTING.md`, `SECURITY.md`, its approval requests, and the placeholders
+`src/.gitkeep` and `infra/.gitkeep`.
+
+**The assessor is read-only**: a role of its own in `.agents/agents.conf`
+(`assessor`), run as a read-only session in an empty directory, with the
+facts on standard input and without the path of the repository, so that it
+cannot read the repository. It writes the report and its part of the
+proposal. What the script checks before it keeps them (one corrected attempt
+is allowed):
+
+- every fact cites the ids of the facts it rests on, and only those; an
+  assumption names its basis, and a question what it settles;
+- every collision has exactly one resolution, `keep-project`, `merge`,
+  `take-template`, or `ask-owner`, with a rationale; `take-template` is
+  refused for `AGENTS.md`, a script, a CI workflow, and a path with
+  uncommitted changes, which stay the project's until the owner resolves
+  them;
+- every verification command names a command of the facts, whose text the
+  script takes over, so that no command is invented;
+- the workflow profile, `light` or `standard`, has a rationale.
+
+**The output** is kept in `.agents/assessments/<repo>-<time>/` of the primary
+checkout of the template, ignored by Git, and nothing is written in the
+assessed repository: `facts.json`; `report.md`, whose observed facts,
+assumptions, and questions are separate sections and which says that every
+inference in it is *observed, not approved*, never an owner-approved
+requirement or a historical decision; and `proposal.json` (`adoption-proposal/v1`,
+status `proposed, not approved`) with the files to add, the collisions and
+their resolutions, the profile, the verification commands, the template
+version (the commit of the template checkout), the ownership for a later
+`sync-template.sh` (the `paths:` of `.agents/template.conf`, and an
+`:(exclude)` for every template file the project keeps), and what a later
+baseline would have to run, with its side effects. Every run makes a new
+directory; an earlier assessment is never changed.
 
 ## Lifecycle
 

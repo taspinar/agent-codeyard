@@ -91,6 +91,7 @@ the website describes the current template.
 | `scripts/update-issue-with-plan.sh` | Links an optional feature plan to its Issue |
 | `scripts/cleanup-worktree.sh` | Removes a merged worktree and its branch and updates `main` |
 | `scripts/sync-template.sh` | Takes over the template's changes since the version the project has; never commits |
+| `scripts/assess-repository.sh` | Assesses an existing repository for an adoption, read-only: the facts, a report of a read-only agent, and a proposal; runs none of its code and changes nothing in it |
 | `scripts/worktree-setup.sh` | Optional, written by the project: prepares a new feature worktree before the agent starts, for example by copying a dependency cache |
 
 ## Script libraries
@@ -130,10 +131,12 @@ the website describes the current template.
 | `.agents/prompts/triage-reviewer.md` | `triage-review.sh` |
 | `.agents/prompts/triage-implementer.md` | `apply-triage.sh` |
 | `.agents/prompts/analyst.md` | `analyze-runs.sh` |
+| `.agents/prompts/assessor.md` | `assess-repository.sh` |
 | `.agents/schemas/review.schema.json` | Results of planning reviews |
 | `.agents/schemas/feature-review.schema.json` | Results of feature reviews: the same, with the reviewer's classification of the impact on the architecture |
 | `.agents/schemas/triage.schema.json` | Triage decisions |
 | `.agents/schemas/analysis.schema.json` | The result of an analysis of runs |
+| `.agents/schemas/assessment.schema.json` | The assessor's report and proposal for an assessment of a repository |
 | `.agents/schemas/approval-request.schema.json` | An approval request: references and an explanation only; `check-guardrails.sh` refuses a request with any other field |
 | `.agents/schemas/revision.schema.json` | Planning revision decisions |
 
@@ -151,6 +154,7 @@ the website describes the current template.
 | `.agents/run/` | The final messages, and for Codex the session logs, of agents that ran with `--unattended`; the mark of `run-feature.sh` that the implementation was completed, its log of interruptions (`<issue>-log`), and the output of a failed verification. Never part of a content fingerprint | No |
 | `.agents/plans/` | Optional feature plans; part of the content fingerprint, since a plan can change what a feature has to do | Yes |
 | `.agents/approval-requests/` | Per Issue, what the owner is asked to approve and why, written by `finish-feature.sh` when only the owner may merge: references and an explanation, never part of the content fingerprint, never an instruction, grants nothing | Yes |
+| `.agents/assessments/` | The assessments of `assess-repository.sh`: per repository and run its facts, report, and proposal | No |
 | `.agents/handoffs/` | Per Issue, the implementer's continuation note for a session that resumes the work (`start-feature.sh <issue> --resume`) | No |
 | `.agents/lessons/` | Recurring agent failures and the rules learned from them | Yes |
 | `tests/` | Integration tests of the workflow scripts, run by `verify.sh` when a workflow file changed, and always in CI | Yes |

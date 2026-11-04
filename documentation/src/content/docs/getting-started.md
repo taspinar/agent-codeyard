@@ -42,6 +42,8 @@ cd my-project
 
 Or [create it on GitHub](https://github.com/taspinar/agent-codeyard/generate) and clone it. Then delete `documentation/` and `.github/workflows/pages.yml`: they are this website, not part of your project. Keep, replace, or remove `LICENSE`, the MIT licence of the template, for your own project.
 
+Have an existing repository instead? From a clone of the template, `./scripts/assess-repository.sh ~/my-project` assesses it without changing it: it runs none of its code, never opens a secret file such as `.env` or a key, keeps no value of a CI workflow's `env:` block (only the names of the secrets it refers to), and writes a report with a proposal (the files to add, the collisions, the verification commands) into `.agents/assessments/` of the template clone. The adoption itself is not built yet.
+
 Then set up GitHub. The scripts point out risky changes, but only GitHub can enforce who merges:
 
 - Add a ruleset for `main` that requires a pull request and the CI check.

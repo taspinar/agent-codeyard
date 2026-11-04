@@ -49,3 +49,6 @@ credentials*.json
 .agents/experience/
 # The analyses of analyze-runs.sh: their input, result, and report. Local.
 .agents/analysis/
+# The assessments of assess-repository.sh of a repository to adopt: its
+# facts, the report, and the proposal. Local.
+.agents/assessments/
