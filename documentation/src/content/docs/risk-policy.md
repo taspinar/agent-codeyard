@@ -6,14 +6,14 @@ order: 5
 
 ## A typo and a change to authentication
 
-A typo fixed in the README and a change to how users log in should not get the same treatment. The risk policy says which paths of your project are which, in one file. With these two lines, which a project could write for itself:
+A typo fixed in the user guide and a change to how users log in should not get the same treatment. The risk policy says which paths of your project are which, in one file. With these two lines, which a project could write for itself:
 
 ```text
 low: docs :(glob)**/*.md
 high: src/auth
 ```
 
-- **The typo** changes only a Markdown file, so the feature is **low** risk. Under the shipped rules it is still reviewed. A project that also writes `low: review: none`, or `profile: light`, commits it without a review; nobody assessed its impact, so its merge then needs your approval.
+- **The typo** changes only a Markdown file under `docs`, so the feature is **low** risk. Under the shipped rules it is still reviewed. A project that also writes `low: review: none`, or `profile: light`, commits it without a review; nobody assessed its impact, so its merge then needs your approval.
 - **The change to authentication** touches `src/auth`, so the feature is **high** risk. It gets the stronger implementer model of `implementer@high`, a review of the complete feature before the commit, and the full triage of every finding, under every profile. Nothing a feature writes can lower that level.
 
 The template itself ships neither line: it has `default: medium` and no `low` class, so until you add classes both changes are **medium** and both are reviewed. For example, the change of the template's own About page in [pull request 266](https://github.com/taspinar/agent-codeyard/pull/266) was recorded as "Risk: medium", each file with "no class of .agents/policies/risk.conf names it; the default is medium".

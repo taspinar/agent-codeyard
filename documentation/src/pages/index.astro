@@ -1,39 +1,29 @@
 ---
 // The home page, built from the approved design (design/DESIGN.md). Value
 // first (#270): the hero, what changes with Codeyard, and who it is for; then
-// the route of one feature and the technical proof as a short layer that
-// links to Features and Examples, where the detail lives. The facts follow the
-// scripts and policies; every example links to its Issue and pull request.
+// the route of one feature and the technical proof as short sections of two
+// or three sentences, each with one link to the page that holds the detail
+// (#284). The facts follow the scripts and policies.
 // The risk and profile switches of the route map are the one island; without
 // script the map shows medium risk under the standard profile, and the words
 // list carries the same route as text.
 import Base from "../layouts/Base.astro";
 import Section from "../components/Section.astro";
 import DiagramFrame from "../components/DiagramFrame.astro";
-import Table from "../components/Table.astro";
 import { site } from "../../site.config";
-import { href, issue, pull, repoFile } from "../lib/links";
+import { href, issue, pull } from "../lib/links";
 
 const [first, second] = site.tagline.split(/(?<=\.) /);
 const templateName = site.repository.replace(/^https:\/\/github\.com\//, "");
 
-// Recent features of this repository: run records and the published reviews.
-const runs = [
-  { issue: 217, change: "Give every later review round the earlier decisions", implementer: "claude opus", rounds: "5: two majors fixed, one minor accepted", verify: 1046, pull: 222 },
-  { issue: 193, change: "Treat performance budgets as measurements", implementer: "claude fable", rounds: "4: a major re-raised as unresolved, then fixed", verify: 761, pull: 199 },
-  { issue: 189, change: "Compute the risk level from one policy", implementer: "claude fable", rounds: "3, after a defect the owner found", verify: 572, pull: 194 },
-  { issue: 16, change: "Stop for questions before implementing", implementer: "claude opus", rounds: "1, no findings", verify: 849, pull: 213 },
-  { issue: 157, change: "Detect workflow complexity creep", implementer: "claude fable", rounds: "13 over two attempts, a finding open at the end of each" },
-];
-
 // Without and with Codeyard, row by row; each "with" names what the scripts do.
 const compare = [
-  { topic: "Unclear requests", without: "The agent guesses what you meant, and the guess is then reviewed as if it were the requirement.", with: "Requirements and a plan are agreed with you first. An agent that meets an open decision stops with its questions, and you answer." },
-  { topic: "Review", without: "The agent that wrote the code checks it, or nobody does.", with: "An agent of another provider reviews the change, and it can only read. As shipped, Claude writes, Codex reviews, and every change is reviewed. A project can change that in its risk policy, the settings file that says how much checking each kind of change gets: the profile, a one-line choice of how much ceremony the project wants, set to profile: light, or the setting low: review: none, lets a low-risk change skip the review, and only those do. The commit and the pull request then record that it was not reviewed, and that its merge needs your approval." },
-  { topic: "Is it finished?", without: "A session that ends looks like finished work.", with: "For each acceptance criterion, the condition the change must meet, the agent records whether it is met and what shows it. The tests ran on exactly the code that is committed, and that the reviewer read when the change was reviewed." },
+  { topic: "Unclear requests", without: "The agent guesses what you meant, and the guess is reviewed as if it were the requirement.", with: "Requirements and a plan are agreed with you first. An agent that meets an open decision stops with its questions." },
+  { topic: "Review", without: "The agent that wrote the code checks it, or nobody does.", with: "An agent of another provider reviews the change and can only read; as shipped, Claude writes and Codex reviews every change. A project can let low-risk changes skip the review in its risk policy, the settings file that says how much checking each kind of change gets: with profile: light, a one-line choice of how much ceremony it wants, or with low: review: none. The commit then says it was not reviewed, and its merge needs your approval." },
+  { topic: "Is it finished?", without: "A session that ends looks like finished work.", with: "For each acceptance criterion, the condition the change must meet, the agent records whether it is met and what shows it. The tests ran on exactly the committed code, the code the reviewer read when it was reviewed." },
   { topic: "Process", without: "A typo and a change to a security check get the same treatment.", with: "Each change gets a risk level from what it touches. High risk gets the stronger model and keeps every control." },
-  { topic: "Merge", without: "You find out afterwards what the agent changed and whether it touched something sensitive.", with: "No script merges; the workflow leaves the merge to you. A pull request that changes a protected file says that it needs your approval. That is a notice, not a lock: an agent has the GitHub rights of the account that started it, so only your repository settings on GitHub can stop a merge." },
-  { topic: "Afterwards", without: "What happened in a session is gone with the terminal.", with: "Every run leaves a record: the review rounds and findings, if it was reviewed, what was decided, the checks, and why a run stopped." },
+  { topic: "Merge", without: "You find out afterwards what the agent changed.", with: "No script merges. A pull request that changes a protected file says it needs your approval: a notice, not a lock, since an agent has the GitHub rights of the account that started it, and only your GitHub settings can stop a merge." },
+  { topic: "Afterwards", without: "What happened in a session is gone with the terminal.", with: "Every run leaves a record: the review rounds and findings, the decisions, the checks, and why a run stopped." },
 ];
 ---
 <Base description={site.description}>
@@ -145,66 +135,28 @@ const compare = [
   </section>
 
   <Section id="how" title="Plan once, then one line per feature">
-    <Fragment slot="note">Every step on the <a href={href("workflow/")}>workflow page</a>.</Fragment>
-    <figure class="plain">
-      <svg class="lines" viewBox="-20 0 1140 200" role="img" aria-labelledby="lines-t" aria-describedby="lines-words">
-        <title id="lines-t">Planning runs once: idea, requirements, plan, plan review, your approval. From the approved plan, each feature runs its own line from Issue to merge.</title>
-        <path class="l1" d="M40 50 H700"/>
-        <path class="l2" d="M700 50 L780 130 H1080"/>
-        <circle class="dot" cx="40" cy="50" r="9"/><text class="st" x="40" y="26" text-anchor="middle">Idea</text>
-        <circle class="dot" cx="210" cy="50" r="9"/><text class="st" x="210" y="26" text-anchor="middle">Requirements</text><text class="sub" x="210" y="80" text-anchor="middle">an agent asks you</text>
-        <circle class="dot" cx="380" cy="50" r="9"/><text class="st" x="380" y="26" text-anchor="middle">Plan</text><text class="sub" x="380" y="80" text-anchor="middle">architecture, roadmap</text>
-        <circle class="dot" cx="550" cy="50" r="9"/><text class="st" x="550" y="26" text-anchor="middle">Plan review</text><text class="sub" x="550" y="80" text-anchor="middle">another provider</text>
-        <rect class="gate" x="690" y="40" width="20" height="20" transform="rotate(45 700 50)"/><text class="st" x="700" y="26" text-anchor="middle">You approve</text>
-        <circle class="dot" cx="800" cy="130" r="9"/><text class="st" x="800" y="166" text-anchor="middle">Feature Issue</text>
-        <circle class="dot" cx="940" cy="130" r="9"/><text class="st" x="940" y="166" text-anchor="middle">Run</text><text class="sub" x="940" y="186" text-anchor="middle">build, check, review if required</text>
-        <rect class="gate" x="1070" y="120" width="20" height="20" transform="rotate(45 1080 130)"/><text class="st" x="1080" y="166" text-anchor="middle">Merge</text>
-      </svg>
-      <ol class="words lines-words" id="lines-words">
-        <li><b>Idea</b></li>
-        <li><b>Requirements</b><small>an agent asks you</small></li>
-        <li><b>Plan</b><small>architecture, roadmap</small></li>
-        <li><b>Plan review</b><small>another provider</small></li>
-        <li class="you"><b>You approve</b><p class="cond">Then, per feature:</p></li>
-        <li><b>Feature Issue</b></li>
-        <li><b>Run</b><small>build, check, review if required</small></li>
-        <li class="you"><b>Merge</b><small>by you</small></li>
-      </ol>
-    </figure>
-    <p>The Project Grill is an agent that questions you about goals, users and scope until the requirements are written down. A planning change, a new requirement or a changed roadmap, goes back through the plan review and your approval before features are built on it. Each feature, one GitHub Issue, then runs step by step, with you approving the triage, or in one unattended command, <code>run-feature.sh</code>, which runs every step without waiting for you and stops whenever it needs you.</p>
+    <Fragment slot="note">Every step, planning and feature, on the <a href={href("workflow/")}>workflow page</a>.</Fragment>
+    <p>Planning runs once: the Project Grill, an agent that questions you about goals, users and scope, writes down the requirements; the architecture and roadmap are planned, reviewed by another provider, and approved by you. A later change to the requirements or the roadmap goes back through that review and your approval. Then each feature, one GitHub Issue, runs its own line to a pull request, step by step or in one unattended command, <code>run-feature.sh</code>, that runs every step without waiting for you and stops whenever it needs you.</p>
   </Section>
 
   <Section id="risk" title="More risk, more evidence">
-    <Fragment slot="note">The levels, the profiles and what each changes: <a href={href("features/#risk")}>Risk-proportionate workflow</a>, the checking scaled to what a change risks.</Fragment>
-    <p>Each change gets a risk level, low, medium or high, computed from the files it touches. An agent cannot lower it; you can raise it. The level picks the model that writes the change and what the review rounds require, and high risk always keeps every control. As shipped there is no low level, so every change is reviewed.</p>
-    <p>A project can choose less ceremony with one line, <code>profile: light</code>: documentation and process files are then low risk and skip the review, as a low class of its own does with <code>low: review: none</code>. The commit says so, and the pull request records that its merge needs your approval; your repository settings on GitHub decide whether GitHub enforces it. Under every setting each commit needs the full checks, and no script merges.</p>
+    <Fragment slot="note">The levels, the profiles and what each changes: <a href={href("features/#risk")}>Risk-proportionate workflow</a>.</Fragment>
+    <p>Each change gets a risk level, low, medium or high, computed from the files it touches; an agent cannot lower it, and high risk gets the stronger model and keeps every control. As shipped there is no low level, so every change is reviewed. With <code>profile: light</code> or <code>low: review: none</code> a low-risk change skips the review, the commit says so, and its merge needs your approval.</p>
   </Section>
 
   <Section id="review" title="The agent that writes the code does not judge it">
-    <Fragment slot="note">Enforced by <a href={repoFile("scripts/review-feature.sh")}><code>review-feature.sh</code></a>.</Fragment>
-    <p>When a change is reviewed, the reviewer is always an agent of another provider than the implementer, Codex for Claude's work as shipped: the script refuses a reviewer of the same provider. The reviewer can only read.</p>
-    <div class="handoff">
-      <div><h3>Implementer</h3><ul><li>Reads the Issue, your comments, the requirements and the architecture</li><li>Asks before it builds when a decision is unclear</li><li>Writes the code and the tests</li><li>Runs the checks and records evidence for each criterion</li></ul></div>
-      <p class="handoff-mid" aria-hidden="true"><span>the content it checked</span></p>
-      <div><h3>Reviewer</h3><ul><li>Reads the same Issue, the requirements and the diff</li><li>Reviews exactly the content the checks passed for</li><li>Reports findings by severity and the impact on the architecture</li><li>Cannot change a file</li></ul></div>
-    </div>
+    <Fragment slot="note">The implementer, the reviewer and the triage: <a href={href("features/#review")}>Independent review</a>.</Fragment>
+    <p>When a change is reviewed, the reviewer is an agent of another provider than the implementer, Codex for Claude's work as shipped; <code>review-feature.sh</code> refuses one of the same provider. The reviewer can only read, and it reviews exactly the content the checks passed for.</p>
   </Section>
 
   <Section id="control" title="Automation stops where ownership begins">
-    <Fragment slot="note">Every gate on the <a href={href("workflow/")}>workflow page</a>.</Fragment>
-    <p>You are not asked everywhere. You decide at fixed points, and the run stops for you when it cannot go on safely.</p>
-    <ol class="gates">
-      <li class="you"><b>Approve the requirements</b><span>Project Grill drafts them from your description; nothing is planned before you approve.</span></li>
-      <li class="you"><b>Approve the plan</b><span>Architecture and roadmap, after a review by another provider; you merge the planning pull request.</span></li>
-      <li class="ask"><b>Answer when asked</b><span>An implementer that finds a decision unclear stops with its questions instead of guessing.</span></li>
-      <li class="you"><b>Decide on the findings</b><span>When a change is reviewed: step by step you approve the triage; unattended, the triage is recorded for you to read.</span></li>
-      <li class="you"><b>Merge</b><span>Every pull request; a protected change, a change that skipped the review, or a review that sees major impact on the architecture asks for your approval by name. The workflow records the request; only your repository settings make GitHub enforce it.</span></li>
-    </ol>
+    <Fragment slot="note">Every decision that stays yours: <a href={href("features/#authority")}>Human authority</a>.</Fragment>
+    <p>You decide at fixed points: you approve the requirements and the plan, answer when an agent asks, decide on the review findings, and merge every pull request. A protected change, a change that skipped the review, or a review that sees major impact on the architecture asks for your approval by name. The workflow records the request; only your repository settings make GitHub enforce it.</p>
   </Section>
 
   <Section id="trace" title="Every claim has a record">
-    <Fragment slot="note">Followed in detail: <a href={href("examples/#memory")}>#217, end to end</a>. How the agent's evidence for each acceptance criterion is checked: <a href={href("features/#evidence")}>Evidence per acceptance criterion</a>.</Fragment>
-    <p>Each step of a feature leaves a record anyone can open: the Issue with its acceptance criteria, the implementer's completion record, which says criterion by criterion what is met and what shows it, the published review findings and decisions when the change was reviewed, the verification of exactly the committed content, and the pull request that carries all of it. These are the records of one real feature.</p>
+    <Fragment slot="note">Followed in detail: <a href={href("examples/#memory")}>#217, end to end</a>.</Fragment>
+    <p>Each step of a feature leaves a record anyone can open, from the Issue with its acceptance criteria to the pull request that carries all of it. These are the records of one real feature.</p>
     <ol class="trail" aria-label="The records of feature 217">
       <li><b>Finding</b><a href={href("examples/#analysis")}>28 October</a><span>The analysis of 41 runs: a fixed finding came back as unresolved in five runs.</span></li>
       <li><b>Issue</b><a href={issue(217)}>#217</a><span>Six acceptance criteria.</span></li>
@@ -216,30 +168,13 @@ const compare = [
   </Section>
 
   <Section id="runs" title="Codeyard builds Codeyard">
-    <Fragment slot="note">Recent changes to this repository, made with its own workflow. <a href={href("examples/")}>Followed in detail</a>.</Fragment>
-    <Table>
-      <caption>From the run records and the reviews published on each Issue. Verification is one full run of <code>verify.sh</code> on the maintainer's server.</caption>
-      <thead><tr><th scope="col">issue</th><th scope="col">change</th><th scope="col">risk</th><th scope="col">implementer</th><th scope="col">review rounds</th><th scope="col" class="num">verify</th><th scope="col">result</th></tr></thead>
-      <tbody>
-        {runs.map((run) => (
-          <tr>
-            <th scope="row"><a href={issue(run.issue)}>#{run.issue}</a></th>
-            <td data-col="change">{run.change}</td>
-            <td data-col="risk"><span class="lvl high">high</span></td>
-            <td data-col="implementer" class="k">{run.implementer}</td>
-            <td data-col="review rounds">{run.rounds}</td>
-            {run.verify ? <td data-col="verify" class="num">{run.verify} s</td> : <td data-col="verify" class="num off">–</td>}
-            {run.pull ? <td data-col="result"><a href={pull(run.pull)}>PR #{run.pull}</a></td> : <td data-col="result" class="off">parked</td>}
-          </tr>
-        ))}
-      </tbody>
-    </Table>
+    <Fragment slot="note">Each run, its rounds and its timings: <a href={href("examples/")}>Examples</a>.</Fragment>
+    <p>This repository is built with its own workflow. Its recent features #217, #193, #189 and #16 changed the workflow itself, so each was high risk; they took one to five review rounds and were merged. Not every run ends in a merge: <a href={issue(157)}>#157</a> was parked after 13 rounds over two attempts, with a finding open at the end of each.</p>
   </Section>
 
   <Section id="learn" title="Learn from your runs">
-    <Fragment slot="note">How it works: <a href={href("features/#learn")}>Learning from your runs</a>. What it found here: <a href={href("examples/#analysis")}>the analysis of 28 October 2026</a>.</Fragment>
-    <p>Every run records its review rounds and findings, if it was reviewed, what was decided, the checks that failed, why it stopped, and the time and tokens of each step. After a number of features you ask a read-only analyst, an agent that changes nothing, what keeps costing rounds, and it proposes what to change. Nothing changes until you decide.</p>
-    <p>Codeyard ran it on its own 41 runs of 19 features. Five of its proposals became Issues, and all five were merged.</p>
+    <Fragment slot="note">How it works: <a href={href("features/#learn")}>Learning from your runs</a>.</Fragment>
+    <p>Every run records its review rounds and findings, the decisions, the checks that failed, why it stopped, and the time and tokens of each step. A read-only analyst, an agent that changes nothing, reads those records and proposes what to change; nothing changes until you decide. On Codeyard's own 41 runs of 19 features, five proposals became Issues, and all five were merged.</p>
   </Section>
 
   <Section id="start" title="Start a project">
