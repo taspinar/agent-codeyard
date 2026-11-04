@@ -33,6 +33,15 @@ const costs = [
   { issue: 217, anchor: "memory", rounds: "5", found: "2 majors fixed, 1 minor accepted", time: "46 min", run: "1 h 30 min", tokens: "about 1.1 million" },
 ];
 
+// The proposals of the run analysis of 28 October 2026 that became Issues.
+const proposals = [
+  { issue: 216, change: "Record the step and the reason of every stop", pull: 223 },
+  { issue: 217, change: "Give every later review round the earlier decisions", pull: 222 },
+  { issue: 218, change: "Stop a false partial completion in the handoff note", pull: 221 },
+  { issue: 219, change: "Time every check and budget the self-test suite", pull: 224 },
+  { issue: 220, change: "Warn about calls of models that agents.conf does not declare", pull: 225 },
+];
+
 // The review rounds of #217: the run record and the comments on the Issue.
 const rounds = [
   { round: 1, kind: "complete feature", verdict: "CHANGES REQUIRED", finding: "M1, major: earlier approved decisions can disappear when a newer triage is invalid", decision: "FIX_NOW", link: comment(217, "6482184594") },
@@ -65,6 +74,7 @@ const changed: Record<number, string[]> = {
       <li><a href="#tradeoff">More rounds find more, and cost more</a></li>
       <li><a href="#memory">When the reviewer did not know what was decided: #217</a></li>
       <li><a href="#features">More runs, by the problem they solved</a></li>
+      <li><a href="#analysis">Codeyard's analysis of its own runs</a></li>
       <li><a href="#levels">The examples by risk</a></li>
       <li><a href="#absent">What is not shown</a></li>
       <li><a href="#sources">Where the figures come from</a></li>
@@ -301,6 +311,25 @@ Merge approval:
     <p><a href={issue(16)}>#16</a>: an agent could start building while a decision that only the owner can make was still open. The clarification gate makes it stop and ask first. It took 26 minutes: the implementer received the owner's two comments with the Issue, which settled the design, and the single review passed.</p>
     <p>Source files changed by #204 in <a href={pull(205)}>PR #205</a>: {changed[205].map((path, i) => (<>{i > 0 && ", "}<a href={repoFile(path)}><code>{path}</code></a></>))}.</p>
     <p>Source files changed by #16 in <a href={pull(213)}>PR #213</a>: {changed[213].map((path, i) => (<>{i > 0 && ", "}<a href={repoFile(path)}><code>{path}</code></a></>))}.</p>
+  </Section>
+
+  <Section id="analysis" title="Codeyard's analysis of its own runs">
+    <Fragment slot="note">With <code>analyze-runs.sh</code>, 28 October 2026. <a href={href("features/#learn")}>Learning from your runs</a>.</Fragment>
+    <p class="lede">Codeyard ran its read-only analyst on its own run records: 41 runs of 19 features. The proposals that held up became Issues of this repository.</p>
+    <p>Among the findings: in five runs the reviewer raised a fixed finding again as unresolved; six of seven failed runs recorded no reason for the stop; the self-test suite had grown from 463 s to 915 s in two days. Five proposals became Issues, all merged:</p>
+    <Table>
+      <thead><tr><th scope="col">issue</th><th scope="col">change</th><th scope="col">result</th></tr></thead>
+      <tbody>
+        {proposals.map((proposal) => (
+          <tr>
+            <th scope="row"><a href={issue(proposal.issue)}>#{proposal.issue}</a></th>
+            <td data-col="change">{proposal.change}</td>
+            <td data-col="result"><a href={pull(proposal.pull)}>PR #{proposal.pull}</a></td>
+          </tr>
+        ))}
+      </tbody>
+    </Table>
+    <p>#217 is the feature <a href="#memory">followed end to end</a> on this page.</p>
   </Section>
 
   <Section id="levels" title="The examples by risk">

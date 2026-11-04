@@ -518,4 +518,47 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
       <dt>built in</dt><dd><a href={pull(100)}>PR #100</a> (the gate), <a href={pull(200)}>#200</a> (approval requests and the content tree)</dd>
     </dl>
   </Section>
+
+  <Section id="learn" title="Learning from your runs">
+    <Fragment slot="note">With <code>report-runs.sh</code>, <code>show-experience.sh</code> and <code>analyze-runs.sh</code>. <a href={`${repoFile("docs/development.md")}#run-records`}>The records in detail</a>.</Fragment>
+    <p class="lede">The same problem can cost review rounds in feature after feature without anyone noticing. Every run leaves a record, and a read-only analyst reads the records of many features and proposes what to change.</p>
+    <p>A record holds the review rounds and their findings, what the triage decided, the checks that failed, why a run stopped, and the time and tokens of each step. After a number of features you start the analysis; it changes nothing, and each proposal goes where you decide.</p>
+    <figure class="plain">
+      <svg class="lines learn" viewBox="0 0 1240 236" role="img" aria-labelledby="learn-t" aria-describedby="learn-words">
+        <title id="learn-t">The run records of several features run into one analysis. Its proposals pass your decision, and each goes to its own place with the review that applies there.</title>
+        <text class="note" x="110" y="14" text-anchor="middle">the last n features</text>
+        <path class="l2" d="M40 30 H200 L280 110"/>
+        <path class="l2" d="M40 70 H200 L240 110"/>
+        <path class="l2" d="M40 110 H500"/>
+        <path class="l2" d="M40 150 H200 L240 110"/>
+        <path class="l2" d="M40 190 H200 L280 110"/>
+        <circle class="dot" cx="200" cy="30" r="8"/><circle class="dot" cx="200" cy="70" r="8"/><circle class="dot" cx="200" cy="110" r="8"/><circle class="dot" cx="200" cy="150" r="8"/><circle class="dot" cx="200" cy="190" r="8"/>
+        <text class="sub" x="200" y="226" text-anchor="middle">run records</text>
+        <path class="l1" d="M500 110 H620 L680 50 H900 M620 110 H900 M620 110 L680 170 H900"/>
+        <circle class="dot" cx="400" cy="110" r="10"/><text class="st" x="400" y="86" text-anchor="middle">Analysis</text><text class="sub k" x="400" y="142" text-anchor="middle">analyze-runs.sh</text><text class="sub" x="400" y="162" text-anchor="middle">read-only</text>
+        <rect class="gate" x="510" y="100" width="20" height="20" transform="rotate(45 520 110)"/><text class="st" x="520" y="86" text-anchor="middle">You decide</text>
+        <circle class="dot" cx="900" cy="50" r="8"/><text class="sub" x="918" y="55">ADR, instruction, skill, docs</text>
+        <circle class="dot" cx="900" cy="110" r="8"/><text class="sub" x="918" y="115">a check in a script</text>
+        <circle class="dot" cx="900" cy="170" r="8"/><text class="sub" x="918" y="175">an Issue, here or in the template</text>
+        <text class="note" x="760" y="226" text-anchor="middle">each with the review that applies there</text>
+      </svg>
+      <ol class="words lines-words" id="learn-words">
+        <li><b>Run records</b><small>of the last n features: rounds, findings, triage, stops, time and tokens</small></li>
+        <li><b>Analysis</b><small class="k">analyze-runs.sh --last 10</small><p class="cond">A read-only agent; it changes nothing.</p></li>
+        <li class="you"><b>You decide</b></li>
+        <li><b>Each proposal in its place</b><small>an ADR, an agent instruction, a skill, the documentation, a check in a script, or an Issue, here or in the template</small><p class="cond">with the review that applies there</p></li>
+      </ol>
+    </figure>
+    <ul class="rules">
+      <li><b>A finding needs two runs.</b> One observation stays a hypothesis, and “not enough evidence” is a valid outcome.</li>
+      <li><b>Every conclusion cites its records,</b> and says which differences in task size, model and workflow version it considered.</li>
+      <li><b>Nothing changes by itself.</b> Each proposal names its place, and you take it through the review and approval there.</li>
+      <li><b>Repeatable, and nothing counted twice.</b> Each analysis keeps its input and sources; evidence an earlier analysis used is marked as such.</li>
+    </ul>
+    <p class="needs">You start an analysis by hand; running it periodically is an open Issue (<a href={issue(131)}>#131</a>).</p>
+    <dl class="facts">
+      <dt>scripts</dt><dd><a href={repoFile("scripts/analyze-runs.sh")}><code>analyze-runs.sh</code></a>, <a href={repoFile("scripts/report-runs.sh")}><code>report-runs.sh</code></a>, <a href={repoFile("scripts/show-experience.sh")}><code>show-experience.sh</code></a></dd>
+      <dt>example</dt><dd><a href={href("examples/#analysis")}>The analysis of 28 October 2026</a>: 41 runs, five Issues</dd>
+    </dl>
+  </Section>
 </Base>
