@@ -92,6 +92,7 @@ the website describes the current template.
 | `scripts/cleanup-worktree.sh` | Removes a merged worktree and its branch and updates `main` |
 | `scripts/sync-template.sh` | Takes over the template's changes since the version the project has; never commits |
 | `scripts/assess-repository.sh` | Assesses an existing repository for an adoption, read-only: the facts, a report of a read-only agent, and a proposal; runs none of its code and changes nothing in it |
+| `scripts/adopt-repository.sh` | Applies the proposal of an assessment to the existing repository, additively, as one commit on its branch `adopt/agent-codeyard`; never overwrites a file, stops on uncommitted work and unresolved collisions, safe to repeat; `--publish` opens a pull request |
 | `scripts/worktree-setup.sh` | Optional, written by the project: prepares a new feature worktree before the agent starts, for example by copying a dependency cache |
 
 ## Script libraries

@@ -32,9 +32,9 @@ import { href, issue, repoFile } from "../lib/links";
   </Section>
 
   <Section id="existing" title="Can I use it with my existing repository?">
-    <Fragment slot="note">The adoption itself is planned in <a href={issue(170)}>#170</a>.</Fragment>
-    <p class="lede">Not yet. A project starts as a new repository from the template; an existing one can be assessed first.</p>
-    <p>There is no installer: you create the repository with <code>gh repo create --template</code>, as <a href={href("docs/getting-started/")}>Getting started</a> shows. For an existing repository, <code>assess-repository.sh</code>, run from a clone of the template, reports what an adoption would add, which files collide and which of the project's commands could verify it, and changes nothing in the repository. Bringing the repository into the workflow is <a href={issue(170)}>planned in #170</a> and not built. A project that started from the template can take over later template changes: <a href={href("docs/updating/")}>Updating a Codeyard-based project</a>.</p>
+    <Fragment slot="note">The last step, the project's own baseline, is planned in <a href={issue(170)}>#170</a>.</Fragment>
+    <p class="lede">Mostly. An existing repository is assessed first, then the workflow is added on a branch you review.</p>
+    <p>There is no installer: you create the repository with <code>gh repo create --template</code>, as <a href={href("docs/getting-started/")}>Getting started</a> shows. For an existing repository, <code>assess-repository.sh</code>, run from a clone of the template, reports what an adoption would add, which files collide and which of the project's commands could verify it, and changes nothing in the repository. <code>adopt-repository.sh</code> then applies that proposal as one commit on the branch <code>adopt/agent-codeyard</code>: it only adds files, never overwrites one, leaves your CI and deployment as they are, and records which files belong to the template so that a later sync updates only those. Setting up the project's own verification commands and baseline is <a href={issue(170)}>planned in #170</a> and not built. A project that started from the template can take over later template changes: <a href={href("docs/updating/")}>Updating a Codeyard-based project</a>.</p>
   </Section>
 
   <Section id="cost" title="How much does it cost?">

@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "feeb0f8d1b7f81484cf9ce2b3f80bd27d40a4047",
+  "commit": {
+    "branch": "feature/289-adoption-2-3-apply",
+    "parent": "66ce39e56089dca84bfe57ca344b49a2e6c34b2a",
+    "base": "66ce39e56089dca84bfe57ca344b49a2e6c34b2a"
+  },
+  "review": {
+    "round": 5,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the independent review classified the impact on the architecture as major: The feature adds a repository adoption command that creates a branch and commit, establishes template ownership metadata, and changes how later syncs apply template updates. That is a workflow capability other features and adopted repositories depend on, so its architectural impact is major. The architecture document is a placeholder and no accepted ADRs were present to compare against. "
+  ],
+  "explanation": "Issue #289: Adoption 2/3: apply an approved proposal additively on a branch (adopt-repository.sh). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

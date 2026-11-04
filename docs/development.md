@@ -3004,7 +3004,7 @@ only takes over files.
 Run it from a clone of the template, with the path of a repository that does
 not use the workflow yet. It is the first of three steps of adopting one
 (#170): the assessment changes nothing, and the proposal it writes is the
-input of the adoption, which is not built yet.
+input of the adoption (`adopt-repository.sh`, below).
 
 **It only reads.** The script runs none of the repository's code, tests, or
 installers. Git runs in the repository without optional locks, so the index
@@ -3067,6 +3067,72 @@ version (the commit of the template checkout), the ownership for a later
 `:(exclude)` for every template file the project keeps), and what a later
 baseline would have to run, with its side effects. Every run makes a new
 directory; an earlier assessment is never changed.
+
+## Adopting an existing repository
+
+```bash
+./scripts/adopt-repository.sh ~/my-project                     # the latest proposal of its assessment
+./scripts/adopt-repository.sh ~/my-project --proposal <file>   # a proposal you chose or edited
+./scripts/adopt-repository.sh ~/my-project --publish           # and push the branch, with a pull request
+```
+
+The second of the three steps of an adoption (#170). Run it from the clone of
+the template that assessed the repository. It applies the proposal as one
+commit on the branch `adopt/agent-codeyard` of the repository, which you
+review like any change; running it on a proposal is your decision to apply
+that proposal. The proposal's reconstructions stay *observed, not approved*.
+
+**It only adds.** The workflow scripts, `.agents/`, `AGENTS.md`, and the
+docs skeleton come from the template commit the proposal names, and
+`.agents/template.conf` records that template, its version, and its files.
+An existing file is never overwritten, and the template's product files stay
+behind as in the assessment. A collision is applied as the proposal resolves
+it:
+
+- `keep-project`: the project's file stays its own, and the template's
+  ownership of that path is excluded (`:(exclude)<path>` under `paths:`).
+  `AGENTS.md` and `.gitignore` get a marked section appended once: the
+  template's instructions for agents, and the lines that keep the workflow's
+  working files out of Git.
+- `merge` or `take-template`: the template's file is placed beside the
+  project's as `<name>.agent-codeyard.<ext>`, to combine by hand. The path
+  stays the template's, so a later sync reports a conflict until they are
+  combined.
+- `ask-owner`, or no resolution: the run stops. Set the resolution in the
+  proposal and pass it with `--proposal`, or change the repository and assess
+  it again.
+- A file identical to the template's needs no resolution.
+
+Nothing is written under `.github/workflows/`: the project's CI stays as it
+is, and the template's CI workflows are left out. `paths:` excludes the
+directory (`:(exclude).github/workflows`), so a later sync adds or changes no
+CI workflow either. The project's history, application code, dependency
+management, and deployment files are not touched; the commit runs none of the project's hooks.
+
+**It stops before any change**, with a report that names each file, when the
+repository has uncommitted work (also untracked files), a collision is
+unresolved, a path the adoption writes is a symbolic link or lies under one,
+or the repository is not in the assessed state: another HEAD, or a file that
+appeared or changed since the assessment. Assess it again then. A proposal
+whose path is not a plain path in the repository (absolute, or with a `.` or
+`..` component) or not a file of its template commit is refused as edited or
+damaged, before anything is written.
+
+**It is safe to repeat.** On an adopted repository, on its branch or after
+the branch is merged, it changes nothing and says so. On a partial adoption,
+for example a run that stopped before its commit, it adds what is missing and
+commits it. A file the project changed or removed after the adoption is left
+as it is and reported; a section is never appended twice.
+
+**Publishing** with `--publish` pushes only the branch `adopt/agent-codeyard`
+to `origin` and opens a pull request against the default branch, or reports
+the one that is open. Nothing is pushed to the default branch, merged, or
+deployed.
+
+After the merge, `./scripts/sync-template.sh` in the repository takes over
+later template changes of the files the template owns, and reports a
+conflict where the project has its own content. The project's verification
+commands, its profile, and its baseline are the third step of the adoption.
 
 ## Lifecycle
 
