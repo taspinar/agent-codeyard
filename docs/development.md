@@ -1566,6 +1566,31 @@ The helper does not commit, push, merge, deploy, or create/close Issues. Inspect
 the resulting diff and run another independent review and triage when fixes
 require confirmation.
 
+A fix session does not only repair the place a finding names
+(`.agents/prompts/triage-implementer.md`). For each `FIX_NOW` finding it names
+the class of the defect in one sentence and looks for the same pattern in the
+files the feature changes and their tests, fixing it there and only reporting
+it elsewhere. When the finding claims that something goes wrong and a small
+test or command can show it, it runs that first, and records one line per
+finding in the handoff note under `## Triage <triage file name>`:
+`- <finding-id>: <value> — <evidence>`, where the value is `fixed`,
+`refuted` (a reproduction shows the claim does not hold), `not_reproduced`
+(the reproduction ran and shows nothing, which proves nothing), or
+`not_executable` (it cannot run here; fixed only when reading settles it).
+For the last three the code of the finding stays unchanged. `apply-triage.sh`
+names at its end the findings returned that way, or without a single check,
+and they stay `FIX_NOW`: no script resolves or refutes a finding, and only a
+fix recorded as `fixed` with its evidence, or a new triage decision, closes
+it. The next review gets the lines under "Decisions of the earlier rounds" and
+the triage agent in a section of its own, both as the implementer's statement
+and not as evidence, so the existing triage, with its approval, decides again:
+a `refuted` minor finding can become `ACCEPT` with its rationale. The lines
+are not remaining work for the completion gate, and the triage schema has no
+new category. `scripts/lib/completion.sh` reads them (`handoff_finding_checks`).
+Whether this makes fix rounds cheaper is a follow-up evaluation over later
+features; its baseline and measures are in `docs/evaluation.md` ("Measuring
+the fix rounds").
+
 ### Review and triage data
 
 Results that an agent writes and a script consumes are JSON. Each review and

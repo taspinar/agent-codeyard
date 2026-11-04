@@ -10,6 +10,7 @@ source "$script_dir/lib/agent.sh"
 source "$script_dir/lib/review-data.sh"
 source "$script_dir/lib/fingerprint.sh"
 source "$script_dir/lib/skills.sh"
+source "$script_dir/lib/completion.sh"
 
 usage() {
   echo "Usage: $0 <triage-json> [--agent <agent>] [--model <model>] [--unattended] [--continue] [--checks <group>[,<group>...]]"
@@ -259,7 +260,11 @@ Resolve exactly these approved FIX_NOW findings:
 ${fix_scope}
 
 Do not implement any DEFER or ACCEPT finding.
-Do not commit, push, merge, deploy, or create/close Issues."
+Do not commit, push, merge, deploy, or create/close Issues.
+
+Record the check of each finding in the handoff note of the Issue under
+the heading '## Triage ${triage_relative##*/}', one line per finding, as your
+contract says under 'Each finding: its class, and a check before the change'."
 start_prompt+="$(skills_prompt "$SKILLS_FILES")"
 if [[ -n "$source_issue" && -f "$root/.agents/handoffs/$source_issue.md" ]]; then
   start_prompt+="
@@ -427,6 +432,38 @@ if [[ "$verification_status" -ne 0 ]]; then
   exit 4
 fi
 
+# The implementer's check of each finding (lib/completion.sh). A finding it
+# returned, or recorded no check for, stays FIX_NOW: no script resolves or
+# refutes it; a later fix recorded as fixed, or a new triage, decides.
+report_checks() {
+  local outcomes
+  local returned
+  local unrecorded
+
+  outcomes="$(triage_check_outcomes "$root/.agents/handoffs/$source_issue.md" "$triage_path")"
+  echo
+  echo "The implementer's check of each FIX_NOW finding (.agents/handoffs/$source_issue.md, '## Triage ${triage_relative##*/}'):"
+  printf '%s\n' "$outcomes" | awk -F '\t' '$2 == "fixed" { printf "  - %s: fixed — %s\n", $1, $3 }'
+  returned="$(printf '%s\n' "$outcomes" | awk -F '\t' '$2 ~ /^(refuted|not_reproduced|not_executable)$/ { printf "  - %s: %s — %s\n", $1, $2, $3 }')"
+  unrecorded="$(printf '%s\n' "$outcomes" | awk -F '\t' '$2 == "missing" { print "  - " $1 ": no check recorded" } $2 == "conflicting" { print "  - " $1 ": conflicting checks (" $3 ")" }')"
+  if [[ -n "$returned" ]]; then
+    echo "Returned to the triage, with the code of the finding unchanged (a not_executable finding settled by reading excepted):"
+    printf '%s\n' "$returned"
+  fi
+  if [[ -n "$unrecorded" ]]; then
+    echo "Without a single recorded check:"
+    printf '%s\n' "$unrecorded"
+  fi
+  if [[ -n "$returned$unrecorded" ]]; then
+    echo "These findings stay FIX_NOW: only a fix recorded as fixed, with its evidence, or a new"
+    echo "triage decision closes them. The next review receives the lines under 'Decisions of the"
+    echo "earlier rounds', and the existing triage step decides again (./scripts/triage-review.sh"
+    echo "<review-json>, with the owner's approval): a refuted finding can become ACCEPT with its"
+    echo "rationale; a not_reproduced or not_executable one stays FIX_NOW or goes to the next review."
+  fi
+}
+
+report_checks
 echo
 rm -f "$started_mark"
 if [[ -n "$checks" ]]; then

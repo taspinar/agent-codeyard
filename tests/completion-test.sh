@@ -186,6 +186,50 @@ expect_remaining "an empty note" '' ""
 rm "$note"
 [[ -z "$(handoff_remaining "$note")" ]] || fail "a missing note lists remaining work"
 
+# The triage implementer's check of each finding (#292): one line per finding
+# under the heading of its triage. The lines do not change what the note lists
+# as remaining work.
+checks_note='**Done:** C1 fixed.\n**Remaining:** step 3\n\n## Triage feature-7-x-review-01-triage.json\n\n- C1: fixed — tests/a-test.sh: the CRLF case passes\n  Class: input split on LF only; checked scripts/b.sh (does not have it).\n- `M2`: `refuted` -- printf x | ./a.sh exits 0\n- M3: not_reproduced – the command ran and printed nothing wrong\n- S4: not_executable — needs a browser; settled by reading, unverified\n'
+expect_remaining "the check lines under a triage heading" "$checks_note" "step 3|"
+expect_remaining "the check lines after a list of labels" \
+  '- **Remaining:** none\n\n## Triage feature-7-x-review-01-triage.json\n- C1: not_reproduced — ran it\n' ""
+# A check line that is put under Remaining is still remaining work: the gate
+# never reads a check as completion.
+expect_remaining "a check line under Remaining" '**Remaining:**\n- C1: fixed — tests/a-test.sh\n' "C1: fixed — tests/a-test.sh|"
+
+printf '%b' "$checks_note" >"$note"
+[[ "$(handoff_finding_checks "$note" | cut -f 2,3 | tr '\t\n' ':|')" == "C1:fixed|M2:refuted|M3:not_reproduced|S4:not_executable|" ]] ||
+  fail "the checks were not read: $(handoff_finding_checks "$note")"
+[[ "$(handoff_finding_checks "$note" | sed -n 1p)" == "$(printf 'feature-7-x-review-01-triage.json\tC1\tfixed\ttests/a-test.sh: the CRLF case passes')" ]] ||
+  fail "a check does not give its triage and its evidence: $(handoff_finding_checks "$note" | sed -n 1p)"
+# Not a check: a line outside a triage heading, another value, no evidence,
+# a none-word or only delimiters and punctuation for evidence, free text under the heading, or a label that is
+# not a finding id.
+printf '%b' '- C1: fixed — before any heading\n## Triage feature-7-x-review-01-triage.json\n- C1: resolved — it is fine\n- C2: fixed —\n- C3: fixed — none\n- C8: fixed — — —\n- C9: fixed -- .\n- C4: refuted\nC5: fixed — not a list line\n- Class: fixed — a label\n## Notes\n- C6: fixed — under another heading\n## Triage\n- C7: fixed — a heading without a name\n' >"$note"
+[[ -z "$(handoff_finding_checks "$note")" ]] ||
+  fail "a line that is not a check was read as one: $(handoff_finding_checks "$note")"
+
+# The outcome per FIX_NOW finding of one triage: only its own section counts,
+# and only fixed is resolved.
+triage_file="$tmp/feature-7-x-review-02-triage.json"
+jq -n '{decisions: [
+  {finding_id: "C1", decision: "FIX_NOW"}, {finding_id: "M2", decision: "FIX_NOW"},
+  {finding_id: "M3", decision: "FIX_NOW"}, {finding_id: "S4", decision: "FIX_NOW"},
+  {finding_id: "M5", decision: "FIX_NOW"}, {finding_id: "M6", decision: "FIX_NOW"},
+  {finding_id: "S7", decision: "ACCEPT"}]}' >"$triage_file"
+printf '%b' '## Triage feature-7-x-review-01-triage.json\n- C1: fixed — an earlier round\n- M5: fixed — an earlier round\n## Triage `feature-7-x-review-02-triage.json`\n- C1: not_reproduced — ran tests/a-test.sh, it passes\n- M2: refuted — printf x | ./a.sh exits 0\n- M3: not_executable — needs GitHub\n- S4: fixed — tests/s-test.sh\n- M6: fixed — tests/m-test.sh\n- M6: refuted — the claim does not hold\n- S7: fixed — tests/s7-test.sh\n' >"$note"
+[[ "$(triage_check_outcomes "$note" "$triage_file" | cut -f 1,2 | tr '\t\n' ':|')" == "C1:not_reproduced|M2:refuted|M3:not_executable|S4:fixed|M5:missing|M6:conflicting|" ]] ||
+  fail "the outcomes of the checks are not as recorded: $(triage_check_outcomes "$note" "$triage_file")"
+# Duplicate lines: identical ones count once, and the same value with other
+# evidence conflicts. A line with delimiter-only evidence is no check, so it
+# neither conflicts nor resolves.
+printf '%b' '## Triage feature-7-x-review-02-triage.json\n- C1: fixed — tests/a-test.sh\n- C1: fixed — tests/a-test.sh\n- M2: fixed — tests/a-test.sh\n- M2: fixed — tests/b-test.sh\n- M3: fixed — tests/c-test.sh\n- M3: fixed — — —\n' >"$note"
+[[ "$(triage_check_outcomes "$note" "$triage_file" | sed -n 1,3p | tr '\t\n' ':|')" == "C1:fixed:tests/a-test.sh|M2:conflicting:fixed, with differing evidence|M3:fixed:tests/c-test.sh|" ]] ||
+  fail "duplicate checks are not read as identical or conflicting: $(triage_check_outcomes "$note" "$triage_file")"
+rm "$note"
+[[ "$(triage_check_outcomes "$note" "$triage_file" | cut -f 2 | sort -u)" == "missing" ]] ||
+  fail "without a note, a finding is not missing its check"
+
 # The gate: the outcome on the first line, the reasons after it.
 # expect_gate <description> <outcome> [reason-fragment...]
 expect_gate() {

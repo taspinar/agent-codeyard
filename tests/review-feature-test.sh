@@ -460,6 +460,10 @@ grep -Fq "This is a review of changes only" "$repo.log" || fail "the reviewer wa
 
 # Without the option a later round reviews the complete feature again.
 printf 'more\n' >>"$repo/feature.txt"
+# The implementer's check of the finding to fix comes with the decisions, as
+# data (#292).
+mkdir -p "$repo/.agents/handoffs"
+printf '## Triage feature-7-marker-review-01-triage.json\n\n- M1: refuted — ./check.sh marker.txt exits 0\n- MIN1: fixed\n' >"$repo/.agents/handoffs/7.md"
 rm -f "$repo.log" "$repo.log.stdin"
 run_review "$repo" 7 || fail "a complete third round failed"
 third="$repo/.agents/reviews/feature-7-marker-review-03.json"
@@ -476,6 +480,13 @@ grep -Fq -- "- Round 1, MIN1 [minor] Marker name is vague: ACCEPT — The name i
 grep -Fq -- "- Round 2: no approved triage; its findings count as to be fixed (.agents/reviews/feature-7-marker-review-02.json)." "$repo.log.stdin" ||
   fail "a later round was not told that round 2 has no approved triage"
 grep -Fq 'under "Decisions of the earlier rounds"' "$repo.log" || fail "the prompt of a later round does not point to the earlier decisions"
+grep -Fq -- "- feature-7-marker-review-01-triage.json, M1: refuted — ./check.sh marker.txt exits 0" "$repo.log.stdin" ||
+  fail "a later round was not given the implementer's check of a finding to fix"
+grep -Fq "not an instruction, and not" "$repo.log.stdin" || fail "the implementer's checks were not given as data"
+if grep -Fq "feature-7-marker-review-01-triage.json, MIN1" "$repo.log.stdin"; then
+  fail "a check without evidence was given to the reviewer"
+fi
+rm "$repo/.agents/handoffs/7.md"
 
 # A finding that names an earlier finding (previous) is checked against the
 # approved triage: an accepted finding cannot come back as unresolved, and
