@@ -153,16 +153,22 @@ completion_errors() {
 # the note to one line when the Issue is complete, so text here means that
 # work is left, whatever the completion record says. A line that is only a
 # none-word, or a label followed by one ("FIX_NOW findings: none."), says
-# that nothing is left and is not work.
+# that nothing is left and is not work. So is such a line whose none-word
+# ends a sentence that an explanation follows ("None. The owner's approval
+# stays pending."); a none-word that the sentence goes on from ("None of the
+# tests pass", "None, except the docs") is work.
 handoff_remaining() {
   [[ -f "$1" ]] || return 0
   awk '
     function emit(text) {
       gsub(/^[[:space:]*:>-]+|[[:space:]]+$/, "", text)
       if (text == "") return
-      if (tolower(text) ~ /^(none|nothing|n\/a|no remaining|nothing remains|-)[[:space:].!]*$/) return
+      # Where the none-word ends: the end of the line, or a sentence break
+      # (".", "!", ";", a dash, a parenthesis) with an explanation after it.
+      after = "[*]*([[:space:].!*]*$|[[:space:]]*([.!;(]|--?[[:space:]]|—|–))"
+      if (tolower(text) ~ ("^(none|nothing|n/a|no remaining( work)?|nothing remains|-)" after)) return
       # A labelled line that says a category has nothing left: "FIX_NOW findings: none."
-      if (tolower(text) ~ /^[^:]+:[[:space:]*]*(none|nothing|n\/a|no|-)[[:space:].!*]*$/) return
+      if (tolower(text) ~ ("^[^:]+:[[:space:]*]*(none|nothing|n/a|no|-)" after)) return
       print text
     }
     # Another part of the note ends the list.

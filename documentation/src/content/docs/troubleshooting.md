@@ -95,7 +95,7 @@ The implementer asks before it invents an answer to a decision that the Issue, t
 
 **First fix:** resume the feature: `./scripts/start-feature.sh <issue> --resume`, or `run-feature.sh <issue>` again.
 
-The commit needs a completion record that says complete or awaiting evidence, and a handoff note without remaining work. A session that ended is not a finished feature. To commit unfinished work on purpose, `finish-feature.sh` takes `--partial`. See <a href="../verification-and-completion/">Verification and completion</a>.
+The commit needs a completion record that says complete or awaiting evidence, and a handoff note without remaining work. Under "Remaining", `None.` may carry an explanation after it (`None. The owner approves on GitHub.`); `None of the tests pass` is work, and the message names the line. A session that ended is not a finished feature. To commit unfinished work on purpose, `finish-feature.sh` takes `--partial`. See <a href="../verification-and-completion/">Verification and completion</a>.
 
 ### "could not read the comments of Issue #…"
 
@@ -113,4 +113,4 @@ The implementer does not start without your comments on the Issue, since it woul
 
 **First fix:** merge the base branch into the feature branch and publish again: `git merge origin/main`, then `./scripts/publish-feature.sh <issue>`.
 
-The pull request is still described by the commit of the finished feature and still closes the Issue. Any other commit after the finish needs a new finish first. Once the base was merged in, a later review has to cover the complete feature, not only the recent changes.
+The pull request is still described by the commit of the finished feature and still closes the Issue. So does a commit after the merge that fixes only what the merge brought in, without touching the files of the feature, a protected path, or a feature that needs the owner's approval. Any other commit after the finish needs a new finish first; the pull request names that commit and what to do. Once the base was merged in, a later review has to cover the complete feature, not only the recent changes.
