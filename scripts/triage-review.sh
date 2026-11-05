@@ -8,6 +8,7 @@ records_arguments=("$@")
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/agent.sh"
 source "$script_dir/lib/review-data.sh"
+source "$script_dir/lib/base.sh"
 source "$script_dir/lib/fingerprint.sh"
 source "$script_dir/lib/issue-comments.sh"
 source "$script_dir/lib/completion.sh"
@@ -267,9 +268,9 @@ finding_count="$(jq '.findings | length' "$review_path")"
 triage_mode="full"
 triage_mode_reason="the risk level could not be determined; the full triage applies"
 risk_level=""
-risk_base="$(git -C "$root" config --get "branch.$(git -C "$root" branch --show-current).workflow-base" || true)"
+risk_base="$(branch_base "$root")" || exit 1
 risk_status=0
-risk_output="$( (cd "$root" && ./scripts/check-risk.sh "${risk_base:-main}" </dev/null) 2>/dev/null)" || risk_status=$?
+risk_output="$( (cd "$root" && ./scripts/check-risk.sh "$risk_base" </dev/null) 2>/dev/null)" || risk_status=$?
 if [[ "$risk_status" -le 2 ]]; then
   risk_level="$(printf '%s\n' "$risk_output" | sed -n '1s/^risk: //p')"
   triage_mode="$(printf '%s\n' "$risk_output" | sed -n 's/^triage: //p' | sed -n 1p)"
@@ -287,7 +288,7 @@ if [[ -n "$owner_decisions" ]]; then
   agent="owner"
   model="owner-directed"
 else
-  agent_computed="$(agent_computed_level "$root" "${risk_base:-main}")"
+  agent_computed="$(agent_computed_level "$root" "$risk_base")"
   agent_selected="$(agent_feature_level "$(records_branch_issue)" "${agent_computed%%$'\t'*}" "${agent_computed#*$'\t'}")"
   agent_level="${agent_selected%%$'\t'*}"
   agent_level_why="${agent_selected#*$'\t'}"

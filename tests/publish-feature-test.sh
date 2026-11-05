@@ -29,6 +29,7 @@ fail() {
 #                      (default 0); 'unreadable' makes the question fail
 #   MOCK_DRAFT         'true' when the open pull request is a draft
 #   MOCK_UNDO_EXIT     exit status of 'pr ready --undo'
+#   MOCK_PR_BASE       base branch of the open pull request (default main)
 mkdir -p "$tmp/bin"
 ln -sf "$(command -v jq)" "$tmp/bin/jq"
 cat >"$tmp/bin/gh" <<'GH'
@@ -50,7 +51,7 @@ case "${1:-} ${2:-}" in
   "pr view")
     case "$*" in
       *isDraft*) echo "${MOCK_DRAFT:-false}" ;;
-      *) echo "main" ;;
+      *) echo "${MOCK_PR_BASE:-main}" ;;
     esac
     ;;
   "api repos/{owner}/{repo}/issues/12/comments")
@@ -126,7 +127,7 @@ $COMMITTED_EXTRA}"
   cp "$source_root/scripts/publish-feature.sh" "$source_root/scripts/report-runs.sh" "$repo/scripts/"
   cp "$source_root/scripts/lib/report.jq" "$repo/scripts/lib/"
   cp "$source_root/scripts/lib/github.sh" "$source_root/scripts/lib/completion.sh" "$source_root/scripts/lib/records.sh" \
-    "$source_root/scripts/lib/attribution.sh" "$source_root/scripts/lib/fingerprint.sh" \
+    "$source_root/scripts/lib/attribution.sh" "$source_root/scripts/lib/fingerprint.sh" "$source_root/scripts/lib/base.sh" \
     "$source_root/scripts/lib/guardrails.sh" "$source_root/scripts/lib/risk.sh" "$repo/scripts/lib/"
   printf '.agents/manual-steps/\n.agents/completion/\n.agents/handoffs/\n' >"$repo/.gitignore"
   git -C "$repo" config user.name "Publish Test"
@@ -173,7 +174,7 @@ run_publish "$repo" 12 --wait || {
   fail "publishing a committed feature failed"
 }
 pushed "$repo" || fail "the branch was not pushed"
-grep -Fq "pr create --head feature/12-marker --title Add the marker" "$repo.gh" ||
+grep -Fq "pr create --base main --head feature/12-marker --title Add the marker" "$repo.gh" ||
   fail "the pull request was not opened with the commit summary as its title"
 for line in "Issue: #12" "Review: round 1, PASS, by claude (model-r)" "## Manual steps" \
   "- Enable GitHub Pages under Settings, Pages." "Closes #12"; do
@@ -481,6 +482,39 @@ grep -Fqx -- "- Add the secret API_KEY." "$repo.gh.body" || fail "the updated de
 grep -Fqx "Closes #12" "$repo.gh.body" || fail "the updated description no longer closes the Issue"
 if grep -Fq "pr checks" "$repo.gh"; then fail "--no-wait waited for the checks"; fi
 
+# An open pull request into another branch than the base of the feature is
+# not published to: the script says so and stops before the push.
+repo="$(setup_repo other-base)"
+MOCK_OPEN_PR="https://github.com/example/project/pull/3" MOCK_PR_BASE=develop run_publish "$repo" 12 &&
+  fail "an open pull request into another branch than the base was published to"
+if pushed "$repo"; then fail "the branch was pushed although the open pull request has another base"; fi
+if grep -Eq "pr (create|edit)" "$repo.gh"; then fail "a pull request was changed although its base is not the feature's"; fi
+grep -Fq "merges into 'develop', but the base of the feature is 'main'" "$repo.out" ||
+  fail "the mismatched base was not explained"
+
+# A feature started from another base than main opens its pull request into
+# that base, and an open pull request into it is reused.
+repo="$(setup_repo develop-base)"
+git -C "$repo" push -q origin main:develop
+git -C "$repo" fetch -q origin
+git -C "$repo" config branch.feature/12-marker.workflow-base develop
+run_publish "$repo" 12 || {
+  cat "$repo.out" >&2
+  fail "publishing a feature of the base develop failed"
+}
+grep -Fq "pr create --base develop --head feature/12-marker" "$repo.gh" ||
+  fail "the pull request does not merge into the recorded base"
+repo="$(setup_repo develop-reuse)"
+git -C "$repo" push -q origin main:develop
+git -C "$repo" fetch -q origin
+git -C "$repo" config branch.feature/12-marker.workflow-base develop
+MOCK_OPEN_PR="https://github.com/example/project/pull/3" MOCK_PR_BASE=develop run_publish "$repo" 12 || {
+  cat "$repo.out" >&2
+  fail "publishing to an open pull request into the recorded base failed"
+}
+grep -Fq "pr edit https://github.com/example/project/pull/3 --body-file" "$repo.gh" ||
+  fail "the open pull request into the recorded base was not updated"
+
 # Without --wait the script ends once the pull request is open, whatever the
 # checks do, and names the pull request and the next step.
 repo="$(setup_repo no-wait-default)"
@@ -701,7 +735,7 @@ grep -Fqx "Closes #12" "$repo.gh.body" || fail "a feature that merged its base a
 # the merge: the base merged nothing of the feature.
 grep -Fq "Finish commit: $(git -C "$repo" rev-parse HEAD^)" "$repo.out" || fail "the finish commit before the merge was not printed"
 grep -Fq "Content tree of that commit: $(content_tree_of "$repo" HEAD^) (" "$repo.out" || fail "the content tree after a merge of the base is not that of the finish commit"
-grep -Fq "pr create --head feature/12-marker --title Add the marker" "$repo.gh" || fail "the title is not that of the finish commit"
+grep -Fq "pr create --base main --head feature/12-marker --title Add the marker" "$repo.gh" || fail "the title is not that of the finish commit"
 if grep -Fq -- "--draft" "$repo.gh"; then fail "a feature that merged its base was opened as a draft"; fi
 # Two merges of the base in a row are passed over too.
 repo="$(setup_repo base-merged-twice)"
@@ -793,7 +827,7 @@ run_publish "$repo" 12 || { cat "$repo.out" >&2; fail "publishing a fix after a 
 grep -Fqx "Closes #12" "$repo.gh.body" || { cat "$repo.gh.body" >&2; fail "a fix of a merge of the base hid the finish commit"; }
 grep -Fq "Finish commit: $(git -C "$repo" rev-parse HEAD~2)" "$repo.out" || fail "the finish commit before the merge and the fix was not printed"
 grep -Fq "  $(git -C "$repo" rev-parse --short HEAD) Fix the link that the merge broke" "$repo.out" || fail "the fix that was passed over was not named"
-grep -Fq "pr create --head feature/12-marker --title Add the marker" "$repo.gh" || fail "the title after a fix is not that of the finish commit"
+grep -Fq "pr create --base main --head feature/12-marker --title Add the marker" "$repo.gh" || fail "the title after a fix is not that of the finish commit"
 if grep -Fq -- "--draft" "$repo.gh"; then fail "a feature with a fix of a merge was opened as a draft"; fi
 # Two fixes after two merges are passed over as well.
 printf 'more\n' >>"$repo/page.txt"

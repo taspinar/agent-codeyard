@@ -417,12 +417,18 @@ workflow_files_changed() {
   local specs=()
   local ref
   local base=""
+  local branch="main"
   local changed
 
   read -r -a specs <<<"$workflow_paths"
   command -v git >/dev/null 2>&1 || return 2
   git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 2
-  for ref in origin/main main; do
+  # The base of the feature (lib/base.sh); 'main' without the library.
+  if [[ -f "$root/scripts/lib/base.sh" ]]; then
+    source "$root/scripts/lib/base.sh"
+    branch="$(branch_base "$root")" || return 2
+  fi
+  for ref in "origin/$branch" "$branch"; do
     if base="$(git -C "$root" merge-base "$ref" HEAD 2>/dev/null)" && [[ -n "$base" ]]; then
       workflow_base="$ref"
       break

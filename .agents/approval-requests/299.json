@@ -1,0 +1,24 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "60d9ab1fb924d64c9e0278c9b6690a9287a97051",
+  "commit": {
+    "branch": "feature/299-use-the-feature-s",
+    "parent": "1e1c33c4a7ae8680d5505b36fe159856ea1f9e4b",
+    "base": "1e1c33c4a7ae8680d5505b36fe159856ea1f9e4b"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/check-guardrails.sh: the file defines or carries out the workflow and its gate",
+    "scripts/check-risk.sh: the file defines or carries out the workflow and its gate",
+    "scripts/finish-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/publish-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/review-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The change adds a project configuration option and shared base-resolution behavior used throughout the feature workflow, including review, verification, risk, guardrails, and publication. This extends shared workflow infrastructure and a user-facing script interface. "
+  ],
+  "explanation": "Issue #299: Use the feature's recorded base branch in every step, and allow a project default base. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

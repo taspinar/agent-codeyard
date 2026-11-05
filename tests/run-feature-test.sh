@@ -327,6 +327,50 @@ if grep -Fq "MERGE APPROVAL REQUIRED" "$repo.out"; then fail "ordinary work was 
 grep -Fqx -- "- not required" <<<"$(git -C "$repo-2-thing" log -1 --format=%B | grep -A1 -Fx "Merge approval:")" ||
   fail "the commit does not record that no approval is needed"
 
+grep -Fq "pr create --base main --head feature/2-thing" "$repo.control/gh.log" ||
+  fail "the pull request does not target main, the default base without a project default"
+
+# A project whose features branch from and merge into 'develop' says so once,
+# in .agents/template.conf, and every step uses that base: the worktree is
+# created from it and records it, the review, the guardrails, and the risk
+# compare with it, and the pull request merges into it. 'develop' holds an
+# ADR that 'main' lacks, so a step that compared with 'main' would see a
+# protected change that is not the feature's.
+repo_develop="$(setup_repo develop-base)"
+git -C "$repo_develop" checkout -q -b develop
+printf 'base: develop\n' >"$repo_develop/.agents/template.conf"
+mkdir -p "$repo_develop/docs/decisions"
+printf '# ADR 0001\n' >"$repo_develop/docs/decisions/0001-develop.md"
+git -C "$repo_develop" add .agents/template.conf docs/decisions
+git -C "$repo_develop" commit -qm "Develop"
+git -C "$repo_develop" push -q origin develop
+run_feature "$repo_develop" 2 thing
+expect_published "$repo_develop"
+[[ "$(git -C "$repo_develop-2-thing" config --get branch.feature/2-thing.workflow-base)" == "develop" ]] ||
+  fail "the project default base was not recorded for the feature"
+git -C "$repo_develop-2-thing" merge-base --is-ancestor origin/develop HEAD ||
+  fail "the feature was not created from the project default base"
+grep -Fq "pr create --base develop --head feature/2-thing" "$repo_develop.control/gh.log" ||
+  fail "the pull request does not merge into the base of the feature"
+grep -Eq "Complete diff against (origin/)?develop," "$repo_develop.control/reviewer-1.context" ||
+  fail "the review did not compare with the base of the feature"
+if grep -Fq "0001-develop.md" "$repo_develop.control/reviewer-1.context"; then
+  fail "the review counted a change of the base as the feature's"
+fi
+if grep -Fq "MERGE APPROVAL REQUIRED" "$repo_develop.out"; then
+  fail "a change of the base was counted as a protected change of the feature"
+fi
+# Run by hand in the worktree, without a base, the checks take the recorded
+# base, not main.
+(cd "$repo_develop-2-thing" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/check-guardrails.sh) >"$repo_develop.guardrails" 2>&1 ||
+  fail "check-guardrails.sh failed on the recorded base: $(cat "$repo_develop.guardrails")"
+grep -Fqx "level: none" <<<"$(sed -n 1p "$repo_develop.guardrails")" ||
+  fail "check-guardrails.sh did not compare with the recorded base: $(cat "$repo_develop.guardrails")"
+(cd "$repo_develop-2-thing" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/check-risk.sh) >"$repo_develop.risk" 2>&1 || true
+if grep -Fq "decisions" "$repo_develop.risk"; then
+  fail "check-risk.sh did not compare with the recorded base: $(cat "$repo_develop.risk")"
+fi
+
 # The risk level is printed when the feature starts and before the review,
 # the reviewer is told, the commit records it, and the run record notes it.
 grep -Fq "run-feature.sh: risk level at the start: medium" "$repo.out" || fail "the risk level was not printed when the feature started"

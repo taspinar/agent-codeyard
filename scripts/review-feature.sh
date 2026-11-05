@@ -8,6 +8,7 @@ records_arguments=("$@")
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/agent.sh"
 source "$script_dir/lib/review-data.sh"
+source "$script_dir/lib/base.sh"
 source "$script_dir/lib/fingerprint.sh"
 source "$script_dir/lib/verification.sh"
 source "$script_dir/lib/review-run.sh"
@@ -83,7 +84,7 @@ fi
 
 issue="${AGENT_POSITIONAL[0]}"
 records_wrap feature "$issue" "$0" ${records_arguments[@]+"${records_arguments[@]}"}
-base="${AGENT_POSITIONAL[1]:-main}"
+base="${AGENT_POSITIONAL[1]:-}"
 
 [[ "$issue" =~ ^[0-9]+$ ]] || fail "issue number must be numeric: $issue"
 [[ -z "$checks" || -z "$unverified_reason" ]] ||
@@ -91,6 +92,9 @@ base="${AGENT_POSITIONAL[1]:-main}"
 
 root="$(git rev-parse --show-toplevel)"
 branch="$(git branch --show-current)"
+# Without a base on the command line, the recorded base of the feature, or
+# the default of the project (lib/base.sh).
+[[ -n "$base" ]] || base="$(branch_base "$root" "$branch")" || exit 1
 slug="${branch//\//-}"
 
 reviews_dir="$root/.agents/reviews"
