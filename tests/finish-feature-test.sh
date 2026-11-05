@@ -54,7 +54,9 @@ setup_repo() {
 
   mkdir -p "$repo/.agents/reviews" "$repo/.agents/triage"
   copy_workflow "$repo"
-  cp "$source_root/.gitignore" "$repo/.gitignore"
+  workflow_gitignore "$repo/.gitignore"
+  # The log of the checks that count their runs.
+  printf '*.log\n' >>"$repo/.gitignore"
   printf 'marker: test -f AGENTS.md\n' >"$repo/scripts/verify.conf"
   printf '# Agents\n' >"$repo/AGENTS.md"
   git -C "$repo" init -q -b main

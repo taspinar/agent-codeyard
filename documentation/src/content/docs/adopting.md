@@ -12,7 +12,7 @@ A repository that did not start from the template can adopt the workflow in thre
 ./scripts/assess-repository.sh ~/my-project
 ```
 
-The assessment only reads. It runs none of your code, tests or installers, never opens a file that may hold a secret such as `.env` or a key, and changes nothing in your repository. A read-only agent writes a report into `.agents/assessments/` of the template clone that keeps what the files show apart from what it infers, the questions only you can answer and the risks it sees, with a proposal: the files to add, the files that collide with yours and how to resolve each, your own commands that could verify the project, and what a baseline would have to run.
+The assessment only reads. It runs none of your code, tests or installers, never opens a file that may hold a secret such as `.env` or a key, and changes nothing in your repository. A read-only agent writes a report into `.agents/assessments/` of the template clone that keeps what the files show apart from what it infers, the questions only you can answer and the risks it sees, with a proposal: the files to add, the files that collide with yours and how to resolve each, the workflow's files that your ignore rules would hide (a `*.json` rule hides its schemas and approval requests), your own commands that could verify the project, and what a baseline would have to run.
 
 ## 2. Adopt
 
@@ -20,7 +20,7 @@ The assessment only reads. It runs none of your code, tests or installers, never
 ./scripts/adopt-repository.sh ~/my-project
 ```
 
-The adoption applies the proposal as one commit on the branch `adopt/agent-codeyard` of your repository. It only adds: where you already have a file, it keeps yours, appends a marked section to your `AGENTS.md` and `.gitignore`, or places the template's version beside yours to combine by hand. It stops before any change when you have uncommitted work or a collision is unresolved. Review the branch like any change; `--publish` pushes it and opens a pull request.
+The adoption applies the proposal as one commit on the branch `adopt/agent-codeyard` of your repository. It only adds: where you already have a file, it keeps yours, appends a marked section to your `AGENTS.md` and `.gitignore`, or places the template's version beside yours to combine by hand. The section of `.gitignore` also un-ignores the workflow's files that a rule of yours hides, and nothing else; a rule it cannot undo from there, in a `.gitignore` further down or on an ignored directory, it names for you to change. It stops before any change when you have uncommitted work or a collision is unresolved. Review the branch like any change; `--publish` pushes it and opens a pull request.
 
 It also writes, where you have no such file or yours is not sufficient:
 

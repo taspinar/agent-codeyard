@@ -30,14 +30,20 @@ commit_all() {
   own_git -C "$1" -c user.name=Test -c user.email=test@example.com commit -qm "$2"
 }
 
-# The template checkout the assessment runs from.
+# The template checkout the assessment runs from, from the files the
+# template carries into an adopted project too; its product files and CI,
+# which an adoption leaves behind, are written here.
 template="$tmp/template"
 mkdir -p "$template/docs" "$template/.github/workflows" "$template/src"
 copy_workflow "$template"
-cp "$source_root/.gitignore" "$source_root/AGENTS.md" "$source_root/README.md" "$source_root/LICENSE" "$template/"
-cp "$source_root/.agents/agents.conf" "$source_root/.agents/template.conf" "$template/.agents/"
+workflow_gitignore "$template/.gitignore"
+cp "$source_root/AGENTS.md" "$template/"
+printf '# The template\n' >"$template/README.md"
+printf 'The licence of the template.\n' >"$template/LICENSE"
+cp "$source_root/.agents/agents.conf" "$template/.agents/"
+template_conf "$template/.agents/template.conf"
 cp "$source_root/docs/architecture.md" "$source_root/docs/development.md" "$template/docs/"
-cp "$source_root/.github/workflows/ci.yml" "$template/.github/workflows/"
+printf 'name: ci of the template\non: [push]\njobs: {}\n' >"$template/.github/workflows/ci.yml"
 : >"$template/src/.gitkeep"
 git -C "$template" init -q -b main
 commit_all "$template" "Template"
@@ -188,6 +194,7 @@ jq -e '.adoption | .collisions == [] and (.additions | any(.path == "AGENTS.md" 
   fail "the additions are wrong: $(jq -c .adoption "$facts")"
 jq -e --arg commit "$(git -C "$template" rev-parse HEAD)" '.template.commit == $commit and .template.uncommitted_changes == false' "$facts" >/dev/null ||
   fail "the template version is wrong: $(jq -c .template "$facts")"
+[[ "$(jq -c .adoption.ignored "$facts")" == "[]" ]] || fail "a path is hidden in a repository without ignore rules: $(jq -c .adoption.ignored "$facts")"
 
 # The assessor: read-only, in an empty directory, without the path of the
 # repository.
@@ -320,6 +327,37 @@ MOCK_OUTPUT="$(result "$facts")" assess "$repo" || { cat "$repo.out" >&2; fail "
 unchanged "$repo" "the dirty assessment"
 [[ "$(own_git -C "$repo" status --porcelain)" == "$status_before" && "$(own_git -C "$repo" branch --show-current)" == "feature/local" ]] ||
   fail "the uncommitted work or the branch changed"
+
+# ------------------------------------ ignore rules that hide the workflow's files
+# The project ignores *.json, with an exception of its own, and a directory
+# of the workflow; a local rule hides a document. Every path the workflow
+# commits, now or later, that a rule hides is named with the rule.
+repo="$(make_target ignoring)"
+printf 'node_modules/\n*.json\n!package.json\n.agents/plans/\n' >"$repo/.gitignore"
+commit_all "$repo" "Ignore rules"
+printf 'docs/development.md\n' >>"$repo/.git/info/exclude"
+snapshot "$repo"
+assess "$repo" --facts-only || { cat "$repo.out" >&2; fail "the facts of an ignoring repository failed"; }
+facts="$(latest "$repo")facts.json"
+unchanged "$repo" "the facts of an ignoring repository"
+jq -e '.adoption.ignored as $i
+  | ($i | map({key: .path, value: .}) | from_entries) as $by
+  | $by[".agents/approval-requests/x.json"] == {id: "ignored:.agents/approval-requests/x.json", path: ".agents/approval-requests/x.json",
+      rule: {source: ".gitignore", line: 2, pattern: "*.json"}, ignored_directory: null}
+  and $by[".agents/schemas/review.schema.json"].rule.pattern == "*.json"
+  and $by[".agents/plans/x.md"].ignored_directory == ".agents/plans"
+  and $by["docs/development.md"].rule.source == ".git/info/exclude"
+  and ($i | map(.path) | all(startswith(".agents/schemas/") or startswith(".agents/plans/") or . == ".agents/approval-requests/x.json" or . == "docs/development.md"))
+  and (.evidence_ids | index(["ignored:.agents/approval-requests/x.json"]))' "$facts" >/dev/null ||
+  fail "the hidden paths are wrong: $(jq -c '.adoption.ignored | map([.path, .rule.pattern, .ignored_directory])' "$facts")"
+grep -Fq "Hidden by an ignore rule of the repository: $(jq '.adoption.ignored | length' "$facts") paths" "$repo.out" || fail "the hidden paths are not counted: $(cat "$repo.out")"
+MOCK_OUTPUT="$(result "$facts")" assess "$repo" || { cat "$repo.out" >&2; fail "the assessment of an ignoring repository failed"; }
+jq -e '.ignored | any(.path == ".agents/approval-requests/x.json" and .rule.pattern == "*.json") and all(has("id") | not)' "$(latest "$repo")proposal.json" >/dev/null ||
+  fail "the proposal lacks the hidden paths: $(jq -c .ignored "$(latest "$repo")proposal.json")"
+grep -Fq -- '- `.agents/approval-requests/x.json`: `*.json` in `.gitignore`' "$(latest "$repo")report.md" &&
+  grep -Fq -- '- `.agents/plans/x.md`: `.agents/plans/` in `.gitignore`, through the ignored directory `.agents/plans`' "$(latest "$repo")report.md" ||
+  fail "the report does not name the hidden paths: $(cat "$(latest "$repo")report.md")"
+unchanged "$repo" "the assessment of an ignoring repository"
 
 # ------------------------------------------------------------------ refusals
 plain="$tmp/plain"

@@ -384,6 +384,34 @@ template_repository="$(sed -n 's/^repository:[[:space:]]*//p' "$root/.agents/tem
 template_commit="$(git -C "$root" rev-parse HEAD)"
 if [[ -n "$(git -C "$root" status --porcelain 2>/dev/null)" ]]; then template_dirty=true; else template_dirty=false; fi
 
+# The paths the workflow commits that an ignore rule of the repository hides:
+# the files the adoption brings, and those the workflow writes and commits
+# later. The adoption adds its files with force, but a later commit of the
+# workflow (git add -A) leaves out a new file such a rule hides, and a script
+# that checks the rule refuses. Each with the rule that hides it, and the
+# directory above it that is ignored, when that is the reason.
+later_paths=(.agents/approval-requests/x.json .agents/plans/x.md .agents/verification-baseline docs/decisions/x.md docs/PLANNING_APPROVAL.md)
+: >"$work/ignored.jsonl"
+if [[ "$is_git" -eq 1 ]]; then
+  while IFS= read -r -d '' source && IFS= read -r -d '' line && IFS= read -r -d '' pattern && IFS= read -r -d '' path; do
+    [[ -n "$source" && "$pattern" != '!'* ]] || continue
+    directory=""
+    prefix=""
+    while IFS= read -r -d / component; do
+      prefix="$prefix$component/"
+      if tgit check-ignore -q --no-index -- "$prefix" 2>/dev/null; then
+        directory="${prefix%/}"
+        break
+      fi
+    done <<<"$path"
+    jq -cn --arg path "$path" --arg source "$source" --arg line "$line" --arg pattern "$pattern" --arg directory "$directory" \
+      '{id: "ignored:\($path)", path: $path, rule: {source: $source, line: ($line | tonumber? // null), pattern: $pattern},
+        ignored_directory: (if $directory == "" then null else $directory end)}' >>"$work/ignored.jsonl"
+  done < <({ cat "$work/template-files"; printf '%s\n' "${later_paths[@]}"; } | LC_ALL=C sort -u | tr '\n' '\0' |
+    tgit check-ignore -z -v -n --no-index --stdin 2>/dev/null || true)
+fi
+jq -s . "$work/ignored.jsonl" >"$work/ignored.json"
+
 : >"$work/adoption.jsonl"
 while IFS= read -r path; do
   ownership=project
@@ -433,7 +461,7 @@ jq -n --arg name "$name" --arg path "$target" --arg time "$time" \
   --slurpfile list "$work/files.json" --slurpfile git "$work/git.json" --slurpfile stack "$work/stack.json" \
   --slurpfile commands "$work/commands.json" --slurpfile ci "$work/ci.json" --slurpfile deployment "$work/deployment.json" \
   --slurpfile documents "$work/documents.json" --slurpfile secrets "$work/secrets.json" --slurpfile entries "$work/entries.json" \
-  --slurpfile adoption "$work/adoption.json" '
+  --slurpfile adoption "$work/adoption.json" --slurpfile ignored "$work/ignored.json" '
   {schema: "assessment-facts/v1", assessed_at: $time,
    repository: {name: $name, path: $path},
    template: {repository: (if $template_repository == "" then null else $template_repository end), commit: $template_commit,
@@ -444,11 +472,11 @@ jq -n --arg name "$name" --arg path "$target" --arg time "$time" \
               | map({name: (.[0] | split("/")[0]), type: (if (.[0] | contains("/")) then "directory" else "file" end), files: length}))},
    manifests: $stack[0].manifests, lockfiles: $stack[0].lockfiles, entry_points: $entries[0],
    commands: $commands[0], ci: $ci[0], deployment: $deployment[0], documents: $documents[0], secret_files: $secrets[0],
-   adoption: ($adoption[0] + {template_paths: $template_paths,
+   adoption: ($adoption[0] + {ignored: $ignored[0], template_paths: $template_paths,
      not_carried: ["documentation/", ".github/workflows/pages.yml", "README.md", "LICENSE", "CONTRIBUTING.md", "SECURITY.md",
                    ".agents/approval-requests/", "src/.gitkeep", "infra/.gitkeep"]})}
   | .evidence_ids = (["git", "layout"] + [(.manifests, .lockfiles, .entry_points, .commands, .ci, .deployment, .documents,
-      .secret_files, .adoption.collisions, .adoption.shared_directories)[] | .id] | unique)' >"$work/facts.json"
+      .secret_files, .adoption.collisions, .adoption.ignored, .adoption.shared_directories)[] | .id] | unique)' >"$work/facts.json"
 
 # ------------------------------------------------------------ the output
 mkdir -p "$primary/.agents/assessments"
@@ -464,7 +492,8 @@ cp "$work/facts.json" "$dir/facts.json"
 echo "Assessment facts: ${dir#"$primary"/}/facts.json"
 jq -r '"  Repository: \(.repository.path)\(if .git.repository then ", branch \(.git.branch // "(detached)"), \(.git.uncommitted_changes | length) uncommitted changes" else ", not a Git repository" end)",
   "  Files: \(.layout.files); manifests: \(.manifests | length); commands: \(.commands | length); CI files: \(.ci | length); deployment files: \(.deployment | length)",
-  "  Template: \(.adoption.additions | length) files to add, \(.adoption.collisions | length) collisions, \(.adoption.shared_directories | length) shared directories"' "$dir/facts.json"
+  "  Template: \(.adoption.additions | length) files to add, \(.adoption.collisions | length) collisions, \(.adoption.shared_directories | length) shared directories",
+  (.adoption.ignored | if length > 0 then "  Hidden by an ignore rule of the repository: \(length) paths the workflow commits (adoption.ignored)" else empty end)' "$dir/facts.json"
 
 check_unchanged() {
   [[ "$(target_state)" == "$state_before" ]] ||
@@ -561,6 +590,7 @@ jq --slurpfile facts "$dir/facts.json" --arg assessment "$(basename "$dir")" '
      additions: $f.adoption.additions,
      collisions: ($f.adoption.collisions | map(del(.id) + {resolution: $resolution[.path].resolution, rationale: $resolution[.path].rationale})),
      shared_directories: ($f.adoption.shared_directories | map(del(.id))),
+     ignored: ($f.adoption.ignored // [] | map(del(.id))),
      profile: $r.profile,
      verification: ($r.verification | map($commands[.source] as $c
        | {name, command: $c.command, directory: $c.directory, origin: $c.origin, source: $c.source, command_id: .source, rationale})),
@@ -594,6 +624,10 @@ jq -r --slurpfile facts "$dir/facts.json" --slurpfile proposal "$dir/proposal.js
   + (if ($p.collisions | length) == 0 then "None.\n" else
       "| Path | Owner in the template | Kind | Uncommitted | Resolution | Rationale |\n|---|---|---|---|---|---|\n"
       + ($p.collisions | map("| \(.path | code) | \(.ownership) | \(.kind)\(if .blocking_path then " (\(.blocking_path | code))" else "" end) | \(if .uncommitted then "yes" else "no" end) | \(.resolution) | \(.rationale | gsub("\\|"; "\\|") | gsub("\n"; " ")) |\n") | join("")) end)
+  + "\n### Paths an ignore rule of the repository hides\n\n"
+  + (if ($p.ignored | length) == 0 then "None.\n" else
+      "The workflow commits these paths, now or later, and the repository'"'"'s ignore rules hide them. The adoption appends a `!` line for each to its section of `.gitignore` where the rule is one of that file; the others stay for the owner.\n\n"
+      + ($p.ignored | map("- \(.path | code): `\(.rule.pattern)` in \(.rule.source | code)\(if .ignored_directory then ", through the ignored directory \(.ignored_directory | code)" else "" end)\n") | join("")) end)
   + "\n### Shared directories\n\n" + ($p.shared_directories | list("- \(.path | code)/: \(.files) files of the project\n"))
   + "\n### Workflow profile\n\n`\($p.profile.name)`: \($p.profile.rationale)\n"
   + "\n### Verification commands\n\n" + ($p.verification | list("- \(.name): \(.command | code)\(if .directory then " in \(.directory | code)" else "" end), \(.origin) in \(.source | code). \(.rationale)\n"))

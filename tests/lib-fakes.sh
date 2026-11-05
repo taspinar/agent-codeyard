@@ -140,6 +140,27 @@ copy_workflow() {
   cp "$source_root"/.agents/schemas/*.json "$repo/.agents/schemas/"
 }
 
+# workflow_gitignore <file>
+# Writes the ignore rules of the workflow, the lines for .agents/, without
+# the rules of the project around them: in an adopted project, its own
+# .gitignore may hide what a test expects Git to see.
+workflow_gitignore() {
+  local source_root
+
+  source_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+  grep -E '^!?\.agents/' "$source_root/.gitignore" >"$1"
+}
+
+# template_conf <file>
+# Writes the template's .agents/template.conf as the template has it: an
+# adopted project's has its own exclusions under paths: and a commit:.
+template_conf() {
+  local source_root
+
+  source_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+  sed -E -e '/^paths:/ s/ :\(exclude\)[^ ]+//g' -e '/^commit:/d' "$source_root/.agents/template.conf" >"$1"
+}
+
 # record_reviewed_tree <repo> <review-json> [triage-json]
 # Stores the current fingerprint of what a fixture review covers (its
 # reviewed_paths, or the whole repository) as its reviewed tree, and copies it
