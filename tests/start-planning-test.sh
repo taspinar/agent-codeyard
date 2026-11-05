@@ -146,6 +146,11 @@ REQUIREMENTS
       { print }
     ' docs/PROJECT_REQUIREMENTS.md >docs/PROJECT_REQUIREMENTS.tmp
     mv docs/PROJECT_REQUIREMENTS.tmp docs/PROJECT_REQUIREMENTS.md
+  elif [[ "${MOCK_GRILL_MODE:-success}" == "observed" ]]; then
+    # Requirements an adoption reconstructed keep their mark through the
+    # Grill session.
+    sed -i.bak 's/^Approved at: Not approved$/&\n\n> **Observed, not approved.** Reconstructed by adopt-repository.sh./' docs/PROJECT_REQUIREMENTS.md
+    rm -f docs/PROJECT_REQUIREMENTS.md.bak
   elif [[ "${MOCK_GRILL_MODE:-success}" == "duplicate-section" ]]; then
     printf '\n## Project goal\n\nDuplicate goal.\n' >>docs/PROJECT_REQUIREMENTS.md
   elif [[ "${MOCK_GRILL_MODE:-success}" == "commit-extra" ]]; then
@@ -403,6 +408,23 @@ if (
 fi
 [[ "$(grep -c '^PHASE=' "$grill_scope_log")" -eq 1 ]] ||
   fail "planner ran after an out-of-scope Grill change"
+
+# The owner's approval of requirements that an adoption reconstructed removes
+# their mark 'Observed, not approved'.
+observed_repo="$(setup_repo observed)"
+(
+  cd "$observed_repo"
+  printf 'y\n' |
+    PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$tmp/observed.log" MOCK_GRILL_MODE=observed \
+    ./scripts/start-planning.sh --agent codex --model astra >"$tmp/observed.out" 2>&1
+) || { cat "$tmp/observed.out" >&2; fail "the planning of reconstructed requirements failed"; }
+grep -Fq "> **Observed, not approved.**" "$tmp/observed.out" || fail "the requirements shown for approval do not carry the mark"
+observed_requirements="$tmp/observed-repo-planning-project-bootstrap/docs/PROJECT_REQUIREMENTS.md"
+grep -Fqx "Status: Approved" "$observed_requirements" ||
+  fail "the reconstructed requirements were not approved"
+if grep -Fq "Observed, not approved" "$observed_requirements"; then
+  fail "the approved requirements still carry the mark: $(cat "$observed_requirements")"
+fi
 
 grill_ignored_repo="$(setup_repo grill-ignored)"
 grill_ignored_log="$tmp/grill-ignored.log"

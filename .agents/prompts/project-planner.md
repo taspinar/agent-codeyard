@@ -63,6 +63,26 @@ ceremonial ADRs. `docs/decisions/README.md` may be updated only to index or
 explain the ADRs; do not create nested, non-Markdown, symlinked, or binary
 content in that directory.
 
+## An adopted project
+
+A repository that adopted the workflow around an existing product may hold
+planning documents that its adoption reconstructed (`adopt-repository.sh`).
+They start with a line `> **Observed, not approved.** ...`: what the files of
+the project showed and what was inferred from them, not a decision of the
+owner. Then:
+
+- The product exists. Describe the architecture it has, from the
+  reconstruction, the project's own documents it names, and the repository,
+  and plan from there; do not plan it as a new product.
+- Check each observation against the repository and the approved
+  requirements. Keep what holds, correct what does not, and state what stays
+  unknown.
+- Remove the mark from each document you confirmed or rewrote. The planning
+  cannot be approved while a document carries it.
+- Do not write ADRs for decisions of the past: an earlier decision that
+  nobody recorded is described in the architecture as the state it left, not
+  as a decision.
+
 ## Change cycle
 
 When the calling script says that this is a change cycle, a planning was

@@ -25,6 +25,13 @@ your project. It also copies `LICENSE`, the MIT licence of the template:
 keep it, replace it with the licence of your project, or remove it.
 `sync-template.sh` never overwrites it.
 
+**An existing repository that adopted the workflow** (`assess-repository.sh`
+and `adopt-repository.sh`, "Adopting an existing repository" in
+[`docs/development.md`](development.md)) gets none of the template's site,
+licence, or CI workflows: its own CI stays, and the adoption only adds the
+workflow's files. The settings below apply to it as well, with one
+difference in section 4: its CI is the project's own.
+
 ------------------------------------------------------------------------
 
 ## 1. General repository settings
@@ -143,6 +150,15 @@ Without a required check a pull request can be merged while CI fails.
 branch without one, but only the ruleset refuses the merge.
 
 A project that splits its CI into more jobs adds those checks as well.
+
+An adopted repository keeps its own CI, and the adoption adds no CI
+workflow: its required checks stay what they were. The project's commands
+that CI runs are also the checks of `scripts/verify.conf`, so a feature runs
+them before its commit. To make `verify.sh` the gate on GitHub as well, add
+a step `./scripts/verify.sh --all` to the project's CI, in a reviewed change,
+and require that job. A known failure of the baseline fails that step too,
+until it is fixed or accepted ("The baseline of an adopted project" in
+[`docs/development.md`](development.md)).
 
 Typical required checks:
 

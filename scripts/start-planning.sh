@@ -457,6 +457,8 @@ validate_requirements() {
         post_creation_fail "requirements approval status was not recorded."
       grep -Eq '^Approved at: [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' "$requirements" ||
         post_creation_fail "requirements approval timestamp is missing or malformed."
+      ! grep -q '^> \*\*Observed, not approved\.\*\*' "$requirements" ||
+        post_creation_fail "the approved requirements still carry the mark 'Observed, not approved'."
       ;;
   esac
 }
@@ -469,7 +471,18 @@ approve_requirements() {
   original_mode="$(file_mode "$requirements")"
   approval_tmp="$(mktemp "${requirements}.tmp.XXXXXX")"
 
+  # Requirements that an adoption reconstructed lose their mark
+  # (lib/planning.sh) with the owner's approval, and the empty line after it.
   awk -v approved_at="$approved_at" '
+    /^> \*\*Observed, not approved\.\*\*/ {
+      marked = 1
+      next
+    }
+    marked && /^[[:space:]]*$/ {
+      marked = 0
+      next
+    }
+    { marked = 0 }
     /^Status: Draft$/ {
       print "Status: Approved"
       next

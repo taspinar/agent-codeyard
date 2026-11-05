@@ -16,6 +16,27 @@ PLANNING_APPROVAL_FILE="docs/PLANNING_APPROVAL.md"
 # Definition of Done asks for and a feature review covers.
 PLANNING_PRODUCT_SCOPE=(docs/PROJECT_DESCRIPTION.md docs/changes docs/PROJECT_REQUIREMENTS.md docs/roadmap.md)
 
+# The mark of a planning document that adopt-repository.sh reconstructed from
+# an existing project: what its files show and what was inferred from them,
+# not what the owner approved. It is the start of one line. Approving the
+# requirements removes it from them (start-planning.sh), and the planning is
+# approved only when no planning document carries it (finish-planning.sh).
+PLANNING_OBSERVED_MARK="> **Observed, not approved.**"
+
+# planning_observed_documents <root>
+# Prints the planning documents that carry the mark at the start of a line,
+# one per line.
+planning_observed_documents() {
+  local path
+
+  for path in "${PLANNING_SCOPE[@]}"; do
+    [[ -e "$1/$path" ]] || continue
+    { grep -rl -- '^> \*\*Observed, not approved\.\*\*' "$1/$path" 2>/dev/null || true; } | while IFS= read -r file; do
+      printf '%s\n' "${file#"$1"/}"
+    done
+  done | LC_ALL=C sort -u
+}
+
 # planning_tree_at <root> <scratch> <commit> <path...>
 # Prints the fingerprint of the given paths as they are in a commit; it is
 # comparable with fingerprint_files of the same content in a working tree.

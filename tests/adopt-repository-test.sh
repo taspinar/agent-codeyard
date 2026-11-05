@@ -73,11 +73,14 @@ make_target() {
 result() {
   jq -c '{summary: "A small Node service.",
     facts: [{statement: "The repository is a Git repository.", evidence: ["git"]}],
-    assumptions: [], questions: [],
+    assumptions: [{statement: "The service runs as one Node process.", basis: "src/app.js is its only source file."}],
+    questions: [{question: "Is the Dockerfile deployed?", why: "Whether a change can reach production."}],
+    risks: [{risk: "A push may deploy the container.", basis: "The repository has a Dockerfile."}],
     collisions: [.adoption.collisions[] | {path, resolution: (if .path == ".github/PULL_REQUEST_TEMPLATE.md" then "merge" else "keep-project" end),
       rationale: "The project'"'"'s own file."}],
     profile: {name: "standard", rationale: "It has deployment configuration."},
-    verification: [], execution_needed: []}
+    verification: [.commands[] | select(.command == "npm run test") | {name: "tests", source: .id, rationale: "package.json declares it."}],
+    execution_needed: [{what: "npm ci", why: "The tests need the dependencies.", side_effects: "Writes node_modules/."}]}
     | '"${2:-.}" "$1"
 }
 
@@ -152,6 +155,26 @@ done
 [[ " $paths " != *":(exclude).github/PULL_REQUEST_TEMPLATE.md"* ]] || fail "a merged file was excluded from the template's ownership"
 grep -q "Adopt the agent-codeyard workflow" <(git -C "$repo" log -1 --format=%B) || fail "the commit message is wrong"
 
+# The project's own commands become the checks of the verification, in a
+# file of the project's that a sync leaves alone; the CI stays as it is.
+grep -Fxq "tests: npm run test" "$repo/scripts/verify.conf" || fail "the project's command is not a check: $(cat "$repo/scripts/verify.conf")"
+[[ " $paths " == *" :(exclude)scripts/verify.conf "* ]] || fail "the checks of the project are owned by the template: $paths"
+grep -Fq "./scripts/verify.sh --baseline" "$repo.out" || fail "the adoption does not say how to record the baseline: $(cat "$repo.out")"
+# The planning documents the project lacks are a minimal baseline, marked as
+# observed and not approved; the project's own architecture is reused as it
+# is; and no ADR is written.
+for document in docs/PROJECT_REQUIREMENTS.md docs/roadmap.md; do
+  grep -q '^> \*\*Observed, not approved\.\*\* .*planning approval of this repository' "$repo/$document" ||
+    fail "$document does not carry the mark: $(cat "$repo/$document")"
+done
+grep -Fxq "Status: Draft" "$repo/docs/PROJECT_REQUIREMENTS.md" && grep -Fxq "Approved at: Not approved" "$repo/docs/PROJECT_REQUIREMENTS.md" ||
+  fail "the reconstructed requirements are presented as approved"
+grep -Fq "Is the Dockerfile deployed?" "$repo/docs/PROJECT_REQUIREMENTS.md" && grep -Fq "It needs: npm ci" "$repo/docs/roadmap.md" ||
+  fail "the baseline does not carry the questions and the execution the assessment found"
+[[ "$(cat "$repo/docs/architecture.md")" == "# Our architecture" ]] || fail "the project's architecture was not reused as it is"
+[[ -z "$(git -C "$repo" diff --name-only main adopt/agent-codeyard -- docs/decisions | grep -v '^docs/decisions/README.md$' || true)" ]] ||
+  fail "the adoption wrote an ADR"
+
 # Run again: nothing changes, also from another branch, which stays checked out.
 state_before="$(state "$repo")"
 adopt "$repo" || { cat "$repo.out" >&2; fail "a repeated adoption failed"; }
@@ -184,6 +207,62 @@ state_before="$(state "$repo")"
 adopt "$repo" || { cat "$repo.out" >&2; fail "the adoption of a merged adoption failed"; }
 grep -Fq "is adopted already" "$repo.out" && [[ "$(state "$repo")" == "$state_before" ]] ||
   fail "a merged adoption was changed: $(cat "$repo.out")"
+
+# A project without an architecture document and without a command to verify
+# it with: the architecture is reconstructed, marked, from the assessment, and
+# the verification fails until the project has a check.
+repo="$(make_target bare)"
+git -C "$repo" rm -q docs/architecture.md
+commit_all "$repo" "No architecture"
+assess "$repo" '.verification = []'
+adopt "$repo" || { cat "$repo.out" >&2; fail "the adoption of a project without checks failed"; }
+architecture="$repo/docs/architecture.md"
+grep -q '^> \*\*Observed, not approved\.\*\*' "$architecture" && grep -Fq -- "- A push may deploy the container." "$architecture" &&
+  grep -Fq -- "- The service runs as one Node process." "$architecture" && grep -Fq "the adoption reconstructs no ADR" "$architecture" ||
+  fail "the reconstructed architecture is incomplete: $(cat "$architecture")"
+grep -q '^no-project-check: ' "$repo/scripts/verify.conf" || fail "a project without a command got no failing check: $(cat "$repo/scripts/verify.conf")"
+if (cd "$repo" && PATH="/usr/bin:/bin" ./scripts/verify.sh) >"$repo.verify" 2>&1; then fail "a project without a check passed the verification"; fi
+grep -Fq "nothing of the project is verified" "$repo.verify" || fail "the verification does not say that nothing is verified: $(cat "$repo.verify")"
+
+# A project whose architecture and requirements the assessment judged not
+# sufficient: the marked baseline is written at their paths, above the
+# project's text, which stays unchanged; the change only adds lines.
+repo="$(make_target stub)"
+printf '# Requirements\n\nTBD\n' >"$repo/docs/PROJECT_REQUIREMENTS.md"
+commit_all "$repo" "Requirements stub"
+assess "$repo" '.collisions |= map(if .path == "docs/architecture.md" or .path == "docs/PROJECT_REQUIREMENTS.md"
+  then .resolution = "reconstruct" | .rationale = "Only a heading, no content." else . end)'
+proposal="$(ls -td "$template"/.agents/assessments/stub-*/ | head -n 1)proposal.json"
+# A planning document the owner is to judge, or merged as a template file,
+# stops the run before any change.
+state_before="$(state "$repo")"
+for resolution in ask-owner merge; do
+  jq --arg resolution "$resolution" '.collisions |= map(if .path == "docs/architecture.md" then .resolution = $resolution else . end)' \
+    "$proposal" >"$tmp/stub-$resolution.json"
+  if adopt "$repo" --proposal "$tmp/stub-$resolution.json"; then fail "a planning document resolved as $resolution was applied"; fi
+  grep -q '^  - docs/architecture.md: .*keep-project.*reconstruct' "$repo.out" ||
+    fail "a planning document resolved as $resolution is not reported: $(cat "$repo.out")"
+  [[ "$(state "$repo")" == "$state_before" ]] || fail "a refused adoption of a planning document changed the repository"
+done
+adopt "$repo" || { cat "$repo.out" >&2; fail "the adoption of insufficient planning documents failed"; }
+for document in docs/architecture.md docs/PROJECT_REQUIREMENTS.md; do
+  original="$(git -C "$repo" show "main:$document")"
+  grep -q '^> \*\*Observed, not approved\.\*\* .*planning approval of this repository' "$repo/$document" &&
+    grep -Fxq "## The project's document, as it was" "$repo/$document" && grep -Fq "Only a heading, no content." "$repo/$document" ||
+    fail "$document is not the marked baseline: $(cat "$repo/$document")"
+  [[ "$(tail -n "$(printf '%s\n' "$original" | wc -l)" "$repo/$document")" == "$original" ]] ||
+    fail "the project's text of $document was not kept: $(cat "$repo/$document")"
+  [[ "$(git -C "$repo" diff --numstat main adopt/agent-codeyard -- "$document" | cut -f2)" == 0 ]] ||
+    fail "the reconstruction of $document removed lines of the project"
+done
+grep -Fxq "Status: Draft" "$repo/docs/PROJECT_REQUIREMENTS.md" || fail "the reconstructed requirements are presented as approved"
+grep -Fq -- "- The service runs as one Node process." "$repo/docs/architecture.md" || fail "the reconstructed architecture lacks the assessment"
+! grep -Fq '`docs/architecture.md` (architecture)' "$repo/docs/architecture.md" ||
+  fail "the reconstructed architecture names itself as a document to reuse"
+state_before="$(state "$repo")"
+adopt "$repo" || { cat "$repo.out" >&2; fail "a repeated adoption of reconstructed documents failed"; }
+grep -Fq "is adopted already" "$repo.out" && [[ "$(state "$repo")" == "$state_before" ]] ||
+  fail "a repeated adoption changed the reconstructed documents: $(cat "$repo.out")"
 
 # ------------------------------------------------------- a partial adoption
 # A run that stopped before its commit left some of the files, one of them

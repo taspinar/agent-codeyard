@@ -147,6 +147,7 @@ result() {
             {statement: "package.json declares the scripts.", evidence: ["manifest:package.json"]}],
     assumptions: [{statement: "The service is a single Node process.", basis: "src/index.js is the main entry of package.json."}],
     questions: [{question: "Is make test or npm test the suite?", why: "Which command becomes the test check."}],
+    risks: [{risk: "A push to main may deploy the container.", basis: "The repository has a Dockerfile and a CI workflow."}],
     collisions: [.adoption.collisions[] | {path, resolution: "keep-project", rationale: "The project'"'"'s own file."}],
     profile: {name: "standard", rationale: "It has deployment configuration."},
     verification: [.commands[] | select(.origin == "ci" and .command == "npm test") | {name: "tests", source: .id, rationale: "The CI runs it."}],
@@ -214,7 +215,7 @@ if grep -Fq "$repo" "$repo.agent.stdin"; then fail "the assessor was given the p
 for file in facts.json report.md proposal.json; do [[ -f "$dir$file" ]] || fail "the assessment lacks $file"; done
 report="$dir/report.md"
 headings="$(grep -E '^## ' "$report" | tr '\n' '|')"
-[[ "$headings" == "## Observed facts|## Assumptions (observed, not approved)|## Questions for the owner|## Proposal|" ]] ||
+[[ "$headings" == "## Observed facts|## Assumptions (observed, not approved)|## Questions for the owner|## Risks (observed, not approved)|## Proposal|" ]] ||
   fail "the report does not keep facts, assumptions, and questions apart: $headings"
 grep -Fq "Everything else in this report, the assumptions, the reconstructed architecture, and the proposal, is an inference: it is no owner-approved requirement and no historical decision." "$report" ||
   fail "the report does not say that its inferences are not approved"
@@ -227,7 +228,10 @@ jq -e --arg commit "$(git -C "$template" rev-parse HEAD)" '
   and (.verification == [{name: "tests", command: "npm test", directory: null, origin: "ci", source: ".github/workflows/build.yml",
         command_id: .verification[0].command_id, rationale: "The CI runs it."}])
   and (.ownership.template_paths | index(["scripts"])) and (.ownership.template_owned | index(["AGENTS.md"]))
-  and (.ownership.project_owned | index(["docs/architecture.md"])) and (.execution_needed | length) == 1' "$proposal" >/dev/null ||
+  and (.ownership.project_owned | index(["docs/architecture.md"])) and (.execution_needed | length) == 1
+  and (.baseline | (.facts | length) == 2 and (.assumptions | length) == 1 and (.questions | length) == 1
+       and .risks == [{risk: "A push to main may deploy the container.", basis: "The repository has a Dockerfile and a CI workflow."}]
+       and (.documents | type) == "array")' "$proposal" >/dev/null ||
   fail "the proposal lacks a part: $(jq -c 'del(.additions, .ownership.template_owned)' "$proposal")"
 [[ -z "$(git -C "$template" status --porcelain)" ]] || fail "the assessment is not ignored by Git: $(git -C "$template" status --porcelain)"
 
@@ -264,6 +268,9 @@ facts="$(latest "$repo")facts.json"
   fail "the collisions are wrong: $(jq -c '.adoption.collisions' "$facts")"
 [[ "$(jq -c '.adoption.shared_directories | map(.path)' "$facts")" == '[".github","docs","scripts"]' ]] ||
   fail "the shared directories are wrong: $(jq -c '.adoption.shared_directories' "$facts")"
+# The assessor judges a planning document by its length and its headings.
+[[ "$(jq -c '.documents[] | select(.path == "docs/architecture.md") | [.lines, .headings]' "$facts")" == '[1,["# Our architecture"]]' ]] ||
+  fail "the planning document lacks its length or headings: $(jq -c .documents "$facts")"
 
 # invalid <label> <jq> <message>: a result that is rejected twice.
 invalid() {
@@ -278,14 +285,19 @@ invalid "a command the project does not declare" '.verification = [{name: "tests
   "names command:999, which is no command of the facts"
 invalid "a fact without its evidence" '.facts[0].evidence = ["docs/made-up.md"]' "cites docs/made-up.md, which is not in the facts"
 invalid "an assumption without a basis" '.assumptions[0].basis = " "' "names no basis"
+invalid "a risk without a basis" '.risks[0].basis = ""' "the risk \"A push to main may deploy the container.\" names no basis"
+invalid "merging a planning document of the baseline" '.collisions |= map(if .path == "docs/architecture.md" then .resolution = "merge" else . end)' \
+  "the collision docs/architecture.md is a planning document of the baseline"
+invalid "reconstructing another file" '.collisions |= map(if .path == "AGENTS.md" then .resolution = "reconstruct" else . end)' \
+  "the collision AGENTS.md cannot be resolved with reconstruct"
 unchanged "$repo" "the rejected assessments"
 
-MOCK_OUTPUT="$(result "$facts" '.collisions |= map(if .path == "docs/architecture.md" then .resolution = "merge" else . end)')" assess "$repo" ||
+MOCK_OUTPUT="$(result "$facts" '.collisions |= map(if .path == "docs/architecture.md" then .resolution = "reconstruct" else . end)')" assess "$repo" ||
   { cat "$repo.out" >&2; fail "the assessment of a colliding repository failed"; }
 proposal="$(latest "$repo")proposal.json"
 [[ "$(jq -c '.ownership.project_exclusions' "$proposal")" == '[":(exclude).github/workflows/ci.yml",":(exclude).gitignore",":(exclude)AGENTS.md"]' ]] ||
   fail "the project's files are not excluded from the template's ownership: $(jq -c .ownership.project_exclusions "$proposal")"
-jq -e '.collisions | any(.path == "docs/architecture.md" and .resolution == "merge" and .ownership == "project")' "$proposal" >/dev/null ||
+jq -e '.collisions | any(.path == "docs/architecture.md" and .resolution == "reconstruct" and .ownership == "project")' "$proposal" >/dev/null ||
   fail "the resolution is not in the proposal: $(jq -c .collisions "$proposal")"
 grep -Fq '| `AGENTS.md` | template | file | no | keep-project |' "$(latest "$repo")report.md" || fail "the report lacks the collision table"
 unchanged "$repo" "the colliding assessment"

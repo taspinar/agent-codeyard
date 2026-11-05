@@ -290,17 +290,23 @@ jq '[.[] | . as $p | (split("/") | last) as $name
   | {id: "deploy:\($p)", path: $p, kind: $kind, contents_read: false}]' "$work/files.json" >"$work/deployment.json"
 
 # Documents: requirements, architecture, decisions, instructions for agents,
-# and the rest, with their first heading.
+# and the rest, with their first heading, their length, and their headings,
+# from which the assessor judges whether a planning document is sufficient.
 : >"$work/documents.jsonl"
 while IFS= read -r path; do
   is_secret "$path" && continue
   title=""
+  lines=null
+  headings=""
   if readable "$path"; then
     title="$(head -n 20 "$target/$path" | sed -n 's/^#[[:space:]]\{1,\}//p' | head -n 1 | cut -c1-120)"
+    lines="$(wc -l <"$target/$path" | tr -d ' ')"
+    headings="$(grep -E '^#{1,4}[[:space:]]' "$target/$path" | head -n 30 | cut -c1-120 || true)"
   fi
-  jq -cn --arg path "$path" --arg title "$title" "$redact_jq"'
+  jq -cn --arg path "$path" --arg title "$title" --argjson lines "$lines" --arg headings "$headings" "$redact_jq"'
     ($path | ascii_downcase) as $p
     | {id: "document:\($path)", path: $path, title: (if $title == "" then null else ($title | redact_text) end),
+       lines: $lines, headings: ($headings | split("\n") | map(select(. != "") | redact_text)),
        kind: (if $p | test("(^|/)(adrs?|decisions?)/") or ($p | test("(^|/)adr-[^/]*$")) then "decision"
               elif $p | test("(^|/)(agents|claude)\\.md$|^\\.cursor/|^\\.github/copilot-instructions\\.md$") then "agent-instructions"
               elif $p | test("requirement|spec|prd") then "requirements"
@@ -361,7 +367,14 @@ fi
 not_carried='^(documentation/|\.github/workflows/pages\.yml$|README\.md$|LICENSE$|CONTRIBUTING\.md$|SECURITY\.md$|\.agents/approval-requests/|src/\.gitkeep$|infra/\.gitkeep$)'
 template_paths=()
 read -r -a template_paths <<<"$(sed -n 's/^paths:[[:space:]]*//p' "$root/.agents/template.conf" 2>/dev/null | head -n 1)" || true
-git -C "$root" ls-files | grep -Ev "$not_carried" | sort >"$work/template-files" || true
+# The planning documents of the baseline are destinations of the adoption
+# also where the template has none: the adoption writes them from the
+# assessment, and a document the project has there is a collision, which the
+# assessor judges.
+{
+  git -C "$root" ls-files | grep -Ev "$not_carried" || true
+  printf '%s\n' docs/architecture.md docs/PROJECT_REQUIREMENTS.md docs/roadmap.md
+} | sort -u >"$work/template-files"
 if [[ ${#template_paths[@]} -gt 0 ]]; then
   git -C "$root" ls-files -- "${template_paths[@]}" | sort >"$work/template-owned" || true
 else
@@ -473,6 +486,7 @@ assessment_errors() {
             (.evidence[] | select($known[.] | not) | "the fact \"\($fact.statement)\" cites \(.), which is not in the facts")),
         (.assumptions[]? | select(.basis | test("\\S") | not) | "the assumption \"\(.statement)\" names no basis"),
         (.questions[]? | select(.why | test("\\S") | not) | "the question \"\(.question)\" does not say what it settles"),
+        (.risks[]? | select(.basis | test("\\S") | not) | "the risk \"\(.risk)\" names no basis"),
         ((.collisions // []) | map(.path) as $resolved
           | ($collisions - $resolved | .[] | "the collision \(.) has no resolution"),
             ($resolved - $collisions | .[] | "a resolution names \(.), which is no collision"),
@@ -483,6 +497,15 @@ assessment_errors() {
         (.collisions[]? | select(.resolution == "take-template") | .path as $p
           | select(($p | test("^(AGENTS\\.md$|scripts/|\\.github/workflows/)")) or ($f.adoption.collisions | any(.path == $p and .uncommitted)))
           | "the collision \($p) cannot be resolved with take-template: it is the project'"'"'s content until the owner resolves it"),
+        # A planning document of the baseline is the project'"'"'s: reused when
+        # it is sufficient, reconstructed when it is not; the template'"'"'s own
+        # planning documents describe the template.
+        (.collisions[]? | select(.path | IN("docs/architecture.md", "docs/PROJECT_REQUIREMENTS.md", "docs/roadmap.md"))
+          | select(.resolution | IN("keep-project", "reconstruct", "ask-owner") | not)
+          | "the collision \(.path) is a planning document of the baseline: resolve it as keep-project (sufficient, reused), reconstruct (not sufficient), or ask-owner"),
+        (.collisions[]? | select(.resolution == "reconstruct")
+          | select(.path | IN("docs/architecture.md", "docs/PROJECT_REQUIREMENTS.md", "docs/roadmap.md") | not)
+          | "the collision \(.path) cannot be resolved with reconstruct: only a planning document of the baseline is reconstructed"),
         (.verification[]? | . as $v
           | (if $commands[$v.source] then empty else "the verification \($v.name) names \($v.source), which is no command of the facts" end),
             (if $v.name | test("^[a-z0-9-]+$") then empty else "the verification name \($v.name) is not lowercase letters, digits, and -" end)),
@@ -546,7 +569,10 @@ jq --slurpfile facts "$dir/facts.json" --arg assessment "$(basename "$dir")" '
        template_owned: ([$f.adoption.additions[], $f.adoption.collisions[]] | map(select(.ownership == "template") | .path) | sort),
        project_owned: ([$f.adoption.additions[], $f.adoption.collisions[]] | map(select(.ownership == "project") | .path) | sort)},
      not_carried: $f.adoption.not_carried,
-     execution_needed: $r.execution_needed}' "$work/result.redacted.json" >"$dir/proposal.json"
+     execution_needed: $r.execution_needed,
+     baseline: {summary: $r.summary, facts: $r.facts, assumptions: $r.assumptions, questions: $r.questions, risks: ($r.risks // []),
+       documents: [$f.documents[] | select(.kind == "requirements" or .kind == "architecture" or .kind == "decision" or .kind == "readme")
+         | {path, kind, title}]}}' "$work/result.redacted.json" >"$dir/proposal.json"
 
 jq -r --slurpfile facts "$dir/facts.json" --slurpfile proposal "$dir/proposal.json" '
   def list(f): if length == 0 then "None.\n" else map(f) | join("") end;
@@ -560,6 +586,7 @@ jq -r --slurpfile facts "$dir/facts.json" --slurpfile proposal "$dir/proposal.js
   + "## Observed facts\n\n" + (.facts | list("- \(.statement) (\(.evidence | map(code) | join(", ")))\n"))
   + "\n## Assumptions (observed, not approved)\n\n" + (.assumptions | list("- \(.statement)\n  - basis: \(.basis)\n"))
   + "\n## Questions for the owner\n\n" + (.questions | list("- \(.question)\n  - settles: \(.why)\n"))
+  + "\n## Risks (observed, not approved)\n\n" + ((.risks // []) | list("- \(.risk)\n  - basis: \(.basis)\n"))
   + "\n## Proposal\n\nThe proposal is in `proposal.json`, the input of the adoption. Status: \($p.status).\n\n"
   + "### Files to add\n\n\($p.additions | length) files: \($p.additions | map(select(.ownership == "template")) | length) owned by the template, \($p.additions | map(select(.ownership == "project")) | length) that become the project'"'"'s own.\n\n"
   + ($p.additions | list("- \(.path | code) (\(.ownership))\n"))

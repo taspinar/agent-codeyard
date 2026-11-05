@@ -31,7 +31,7 @@ How strict the route is depends on the risk of the change: a change to the workf
 
 Codeyard fits when:
 
-- you start a **new** project from the template. There is no installer: a project starts with `gh repo create --template`, and <a href="../getting-started/">Getting started</a> takes you through it. Adopting Codeyard in an existing repository is not supported yet ([Issue 170](https://github.com/taspinar/agent-codeyard/issues/170));
+- you start a **new** project from the template. There is no installer: a project starts with `gh repo create --template`, and <a href="../getting-started/">Getting started</a> takes you through it. An existing repository can adopt the workflow instead, as <a href="../adopting/">Adopting Codeyard in an existing repository</a> describes;
 - you want agents to do most of the work, and you want to decide what is merged;
 - you can run two coding agents of different providers, because the review needs the second one.
 

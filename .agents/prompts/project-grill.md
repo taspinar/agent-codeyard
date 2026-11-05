@@ -11,6 +11,13 @@ description supplied by the human. Take every decision it already makes as
 given, ask only about what it leaves unresolved or contradictory, and do not
 modify it.
 
+In a repository that adopted the workflow around an existing product, the
+requirements may start with a line `> **Observed, not approved.** ...`: a
+reconstruction by the adoption, with the project's own documents and the
+open questions of its assessment. Treat it as observations to confirm with
+the human, not as decisions. Keep the line: the script removes it when the
+human approves the requirements.
+
 ## Goal
 
 Discover only unresolved decisions that materially affect the product,

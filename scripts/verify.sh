@@ -53,10 +53,23 @@ records_arguments=("$@")
 # 75: the machine is busy, which says nothing about the code. A run without a
 # heavy check, such as --only of the light groups, takes no slot. Without a
 # 'heavy:' line nothing is locked.
+#
+# A project that adopted the workflow records how its checks ended before any
+# change: './scripts/verify.sh --baseline', started by the owner once, runs
+# the checks of scripts/verify.conf and writes the result of each to
+# .agents/verification-baseline (passed, failed, or unavailable). It is
+# never a verification: it records no pass, and it exits non-zero when a
+# check failed. Afterwards a check that failed in the baseline and still fails
+# is shown as KNOWN, a pre-existing failure, apart from a regression (FAIL of
+# a check that passed in the baseline); either fails the verification. Only
+# the owner's 'accepted-failure: <check> <reason>' in scripts/verify.conf
+# turns the failure of a check into ACCEPTED, which does not fail it.
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 config="$root/scripts/verify.conf"
 workflow_config="$root/scripts/verify-workflow.conf"
+baseline_relative=".agents/verification-baseline"
+baseline_file="$root/$baseline_relative"
 
 comment_pattern='^[[:space:]]*(#.*)?$'
 check_pattern='^([a-z0-9][a-z0-9-]*)([[:space:]]*\[([a-z0-9][a-z0-9-]*)\])?([[:space:]]+partition[[:space:]]+([^[:space:]:]+))?([[:space:]]+budget)?:[[:space:]]*(.*[^[:space:]])[[:space:]]*$'
@@ -65,6 +78,7 @@ default_group="default"
 usage() {
   echo "Usage: $0 [--all] [--reuse]"
   echo "       $0 [--all] --only <group>[,<group>...]"
+  echo "       $0 --baseline"
   echo "       $0 --groups"
   echo "       $0 --partitions"
   echo
@@ -100,6 +114,16 @@ usage() {
   echo "verification (\$VERIFY_LOCK_DIR, by default /tmp/agentic-verify-<uid>). When"
   echo "another run holds it, the summary shows BUSY with that run, no check runs,"
   echo "nothing is recorded, and the exit status is 75. Without the line nothing locks."
+  echo
+  echo "--baseline runs the checks of scripts/verify.conf once, before any change of an"
+  echo "adopted project, and records how each ended in $baseline_relative:"
+  echo "passed, failed, or unavailable. It is not a verification and records no pass;"
+  echo "it exits 1 when a check failed. Later runs show a check that failed in the"
+  echo "baseline and still fails as KNOWN, a pre-existing failure that still fails the"
+  echo "verification, and one that passed in the baseline and fails now as a"
+  echo "regression. A line 'accepted-failure: <check> <reason>' in scripts/verify.conf,"
+  echo "the owner's exception, shows a failure of that check as ACCEPTED instead, and"
+  echo "the verification does not fail for it."
   exit 1
 }
 
@@ -115,9 +139,11 @@ list_groups=0
 list_partitions=0
 only=""
 partial=0
+baseline_mode=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --all) run_all=1 ;;
+    --baseline) baseline_mode=1 ;;
     --reuse) reuse=1 ;;
     --groups) list_groups=1 ;;
     --partitions)
@@ -141,15 +167,20 @@ fi
 if [[ "$list_groups" -eq 1 && ( "$partial" -eq 1 || "$reuse" -eq 1 || "$run_all" -eq 1 ) ]]; then
   usage
 fi
+if [[ "$baseline_mode" -eq 1 && ( "$partial" -eq 1 || "$reuse" -eq 1 || "$run_all" -eq 1 || "$list_groups" -eq 1 ) ]]; then
+  echo "Error: --baseline runs every check of scripts/verify.conf on its own; it takes no other option." >&2
+  exit 1
+fi
 
 # The verification is recorded (lib/records.sh): its duration, its status,
-# and whether a recorded pass was reused. A partial run (--only) is not a
-# verification and is not recorded, also not into a run it was started in. Inside
+# and whether a recorded pass was reused. A partial run (--only) and a
+# baseline (--baseline) are not verifications and are not recorded, also not
+# into a run they were started in. Inside
 # a run of the workflow it belongs to that run; run on its own in a feature or
 # a planning worktree it is a run of that feature or planning. It runs as a
 # child, so that every exit below is seen. Recording is best-effort: when it
 # cannot be prepared, the verification runs without it.
-if [[ -z "${RECORDS_VERIFICATION:-}" && -z "${RECORDS_DISABLED:-}" && "$list_groups" -eq 0 && "$partial" -eq 0 ]] &&
+if [[ -z "${RECORDS_VERIFICATION:-}" && -z "${RECORDS_DISABLED:-}" && "$list_groups" -eq 0 && "$partial" -eq 0 && "$baseline_mode" -eq 0 ]] &&
   [[ -f "$root/scripts/lib/records.sh" ]] && command -v jq >/dev/null 2>&1; then
   source "$root/scripts/lib/records.sh"
   if [[ -z "${RECORDS_RUN_ID:-}" ]]; then
@@ -263,6 +294,9 @@ budget_seconds=""
 project_budget_seconds=""
 workflow_budget_seconds=""
 heavy=()
+accepted_names=()
+accepted_reasons=()
+accepted_lines=()
 
 # load_checks <file> <paths-entry>
 # Appends the checks of <file> to names, commands, groups, partitions (the
@@ -270,7 +304,9 @@ heavy=()
 # sets workflow_paths instead of declaring a check. The reserved entry
 # 'budget-seconds:' sets budget_seconds, the target for the duration of the
 # checks of <file>. The reserved entry 'heavy:' sets heavy to 'yes' for the
-# checks of <file> that it names.
+# checks of <file> that it names. In scripts/verify.conf (<paths-entry> 'no'),
+# the reserved entry 'accepted-failure: <check> <reason>' adds the owner's
+# exception for the failure of a check to accepted_names and accepted_reasons.
 load_checks() {
   local file="$1"
   local paths_entry="$2"
@@ -318,6 +354,20 @@ load_checks() {
       [[ -z "$budget_seconds" ]] ||
         config_fail "'budget-seconds' is declared more than once in $label."
       budget_seconds="$value"
+      continue
+    fi
+    if [[ "$paths_entry" == "no" && "$name" == "accepted-failure" ]]; then
+      [[ -z "$group" && -z "$budget" && -z "$partition" ]] ||
+        config_fail "'accepted-failure' is an exception, not a check: it takes no group or partition and is no budget check, on line $line_number of $label."
+      [[ "$value" =~ ^([a-z0-9][a-z0-9-]*)[[:space:]]+([^[:space:]].*)$ ]] ||
+        config_fail "'accepted-failure' needs the name of a check and the reason the owner accepts its failure, on line $line_number of $label: $value"
+      for existing in ${accepted_names[@]+"${accepted_names[@]}"}; do
+        [[ "$existing" != "${BASH_REMATCH[1]}" ]] ||
+          config_fail "'accepted-failure' names the check ${BASH_REMATCH[1]} more than once in $label."
+      done
+      accepted_names+=("${BASH_REMATCH[1]}")
+      accepted_reasons+=("${BASH_REMATCH[2]}")
+      accepted_lines+=("$line_number")
       continue
     fi
     if [[ "$name" == "heavy" ]]; then
@@ -394,6 +444,53 @@ workflow_files_changed() {
 load_checks "$config" no
 project_budget_seconds="$budget_seconds"
 [[ "${#names[@]}" -gt 0 ]] || config_fail "scripts/verify.conf declares no checks."
+for index in "${!accepted_names[@]}"; do
+  for name in "${names[@]}"; do
+    [[ "$name" != "${accepted_names[$index]}" ]] || continue 2
+  done
+  config_fail "'accepted-failure' on line ${accepted_lines[$index]} of scripts/verify.conf names '${accepted_names[$index]}', which is not a check of scripts/verify.conf."
+done
+
+# accepted_reason <check>: the reason of the owner's exception for the
+# failure of <check>; fails when there is none. A baseline run knows no
+# exception: it records how each check ends.
+accepted_reason() {
+  local index
+
+  [[ "$baseline_mode" -eq 0 ]] || return 1
+  for index in "${!accepted_names[@]}"; do
+    if [[ "${accepted_names[$index]}" == "$1" ]]; then
+      printf '%s\n' "${accepted_reasons[$index]}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# The baseline of an adopted project: 'pass: <check>', 'fail: <check>
+# <detail>', and 'unavailable: <check> <detail>' lines, written by
+# --baseline below.
+baseline_entries=""
+baseline_recorded_at=""
+if [[ -f "$baseline_file" ]]; then
+  baseline_entries="$(sed -n -E 's/^(pass|fail|unavailable):[[:space:]]+([a-z0-9][a-z0-9-]*).*$/\1 \2/p' "$baseline_file")"
+  baseline_recorded_at="$(sed -n 's/^recorded-at:[[:space:]]*//p' "$baseline_file" | head -n 1)"
+fi
+
+# baseline_state <check>: 'pass', 'fail', or 'unavailable' as the baseline
+# recorded the check, or nothing.
+baseline_state() {
+  [[ "$baseline_mode" -eq 0 && -n "$baseline_entries" ]] || return 0
+  printf '%s\n' "$baseline_entries" | awk -v name="$1" '$2 == name { print $1; exit }'
+}
+
+if [[ "$baseline_mode" -eq 1 ]]; then
+  if [[ -e "$baseline_file" ]]; then
+    echo "Error: the baseline is recorded already in $baseline_relative${baseline_recorded_at:+ (recorded at $baseline_recorded_at)}. It is recorded once, before any change; to record it again, the owner removes that file in a reviewed change." >&2
+    exit 1
+  fi
+  echo "Baseline: every check of scripts/verify.conf runs once, and how it ends is recorded in $baseline_relative. This runs the project's own commands. It is not a verification and records no pass."
+fi
 
 # Decide whether the workflow self-tests run. Their checks follow the project
 # checks; a project without scripts/verify-workflow.conf has none.
@@ -409,7 +506,9 @@ if [[ -f "$workflow_config" ]]; then
   [[ -n "$workflow_paths" ]] ||
     config_fail "scripts/verify-workflow.conf must declare the workflow files as 'paths: <pathspec>...'."
 
-  if [[ "$run_all" -eq 1 ]]; then
+  if [[ "$baseline_mode" -eq 1 ]]; then
+    workflow_skipped="SKIP  workflow self-tests ($workflow_count checks): a baseline covers the checks of the project only"
+  elif [[ "$run_all" -eq 1 ]]; then
     workflow_note="requested with --all"
   else
     changed_status=0
@@ -578,8 +677,52 @@ run_check() {
   )
 }
 
+# failure_result <index> <what>: the summary line of a check that failed or
+# could not run, <what> saying how ('exit 1', 'missing tool: x'). Without a
+# baseline and an exception it is FAIL; ACCEPTED, the owner's exception, is
+# the only result of a failure that does not fail the verification.
+failure_result() {
+  local name="${names[$1]}"
+  local reason
+  local state
+
+  if reason="$(accepted_reason "$name")"; then
+    results+=("ACCEPTED  $name ($2): an accepted exception of scripts/verify.conf: $reason")
+    accepted_count=$((accepted_count + 1))
+    return 0
+  fi
+  failed=1
+  state="$(baseline_state "$name")"
+  case "$state" in
+    fail | unavailable)
+      results+=("KNOWN  $name ($2): failed before any change, as the baseline${baseline_recorded_at:+ of $baseline_recorded_at} recorded; not a regression, and still a failure")
+      known=$((known + 1))
+      ;;
+    pass) results+=("FAIL  $name ($2): a regression, it passed in the baseline") ;;
+    *) results+=("FAIL  $name ($2)") ;;
+  esac
+}
+
+# pass_result <index>: the summary line of a check that passed.
+pass_result() {
+  local name="${names[$1]}"
+  local state
+
+  state="$(baseline_state "$name")"
+  if accepted_reason "$name" >/dev/null; then
+    results+=("PASS  $name (it passes: its accepted exception in scripts/verify.conf is no longer needed)")
+  elif [[ "$state" == fail || "$state" == unavailable ]]; then
+    results+=("PASS  $name (it failed in the baseline and passes now)")
+  else
+    results+=("PASS  $name")
+  fi
+}
+
 results=()
 failed=0
+known=0
+accepted_count=0
+outcomes=()
 exceeded=0
 duration_exceeded=0
 durations=()
@@ -606,8 +749,8 @@ for index in "${!names[@]}"; do
 
   if ! (cd "$root" && command -v "$tool" >/dev/null 2>&1); then
     echo "Error: required check '$name' cannot run; '$tool' is missing or not executable." >&2
-    results+=("FAIL  $name (missing tool: $tool)")
-    failed=1
+    failure_result "$index" "missing tool: $tool"
+    outcomes[$index]="unavailable: $name missing tool: $tool"
     record_duration "$index" 0 fail
     continue
   fi
@@ -654,8 +797,9 @@ for index in "${!names[@]}"; do
       results+=("PASS  $name (budget within its target)")
       budget_result "$name" within "$status" "$output"
     else
-      results+=("PASS  $name")
+      pass_result "$index"
     fi
+    outcomes[$index]="pass: $name"
     record_duration "$index" "$elapsed" pass
   elif [[ "$budget" == "yes" && ("$status" -le 123 || "$status" -eq 128) ]]; then
     # Over the target: a measurement, not a failure. The exit statuses 1..123
@@ -676,6 +820,7 @@ for index in "${!names[@]}"; do
     fi
     budget_result "$name" exceeded "$status" "$output"
     exceeded=$((exceeded + 1))
+    outcomes[$index]="pass: $name"
     record_duration "$index" "$elapsed" budget
   else
     if [[ "$budget" == "yes" && "$status" -ge 125 && "$status" -le 127 ]]; then
@@ -686,9 +831,17 @@ for index in "${!names[@]}"; do
       results+=("FAIL  $name (exit $status, the budget check did not finish)")
     else
       echo "Error: required check '$name' failed with status $status." >&2
-      results+=("FAIL  $name (exit $status)")
     fi
-    failed=1
+    if [[ "$budget" == "yes" ]]; then
+      failed=1
+    elif [[ "$status" -eq 127 ]]; then
+      # The shell found no command to run: the check is unavailable here.
+      failure_result "$index" "exit 127, a command was not found"
+      outcomes[$index]="unavailable: $name exit 127, a command was not found"
+    else
+      failure_result "$index" "exit $status"
+      outcomes[$index]="fail: $name exit $status"
+    fi
     record_duration "$index" "$elapsed" fail
   fi
 done
@@ -711,6 +864,40 @@ fi
 if [[ "$exceeded" -gt 0 ]]; then
   echo "$exceeded budget check(s) exceeded their target (BUDGET): a measurement, not a failure. The owner decides whether to change the budget or the code; nothing repairs it automatically."
 fi
+if [[ "$known" -gt 0 ]]; then
+  echo "$known check(s) failed before any change, as the baseline in $baseline_relative recorded (KNOWN): pre-existing failures, not regressions. The verification does not pass while they fail. Fix them, or the owner accepts each as an exception with a line 'accepted-failure: <check> <reason>' in scripts/verify.conf."
+fi
+if [[ "$accepted_count" -gt 0 ]]; then
+  echo "$accepted_count check(s) failed and are exceptions the owner accepted in scripts/verify.conf (ACCEPTED): they do not fail the verification, and they are not repaired."
+fi
+
+# A baseline records how each check ended, and is never a verification.
+if [[ "$baseline_mode" -eq 1 ]]; then
+  mkdir -p "$(dirname "$baseline_file")"
+  {
+    echo "# The baseline of the verification: how each check of scripts/verify.conf"
+    echo "# ended in its first run, before any change, recorded by"
+    echo "# ./scripts/verify.sh --baseline. A check that failed here and still fails"
+    echo "# is shown as KNOWN: a pre-existing failure, not a regression, which still"
+    echo "# fails the verification until it is fixed or the owner accepts it with"
+    echo "# 'accepted-failure: <check> <reason>' in scripts/verify.conf. Not edited by"
+    echo "# hand; a change of this file needs the owner's approval."
+    echo "recorded-at: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    echo "commit: $(git -C "$root" rev-parse -q --verify HEAD 2>/dev/null || echo none)"
+    for ((index = 0; index < project_count; index++)); do
+      [[ -z "${outcomes[$index]:-}" ]] || printf '%s\n' "${outcomes[$index]}"
+    done
+  } >"$baseline_file"
+  [[ "$recordable" -eq 0 ]] || verification_forget "$root"
+  echo
+  echo "Baseline recorded in $baseline_relative. Commit it with the adoption; it is not a verification, and no pass was recorded."
+  if [[ "$failed" -ne 0 ]]; then
+    echo "The baseline has failures: ./scripts/verify.sh shows them as KNOWN and does not pass until each is fixed or accepted by the owner." >&2
+    exit 1
+  fi
+  exit 0
+fi
+
 if [[ "$partial" -eq 0 ]]; then
   hand_budgets_to_run
   hand_durations_to_run

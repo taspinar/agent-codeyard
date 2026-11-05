@@ -34,10 +34,13 @@ GUARDRAILS_BUILTIN_PROTECTED=(
   scripts/finish-feature.sh
   scripts/publish-feature.sh
   scripts/run-feature.sh
+  .agents/verification-baseline
 )
 
 # The verification configuration: adding a check is sensitive, changing or
-# removing a line is protected.
+# removing a line is protected, and so is adding an accepted exception for a
+# failing check ('accepted-failure:'), which lets the verification pass while
+# that check fails.
 GUARDRAILS_CHECK_LISTS=(scripts/verify.conf scripts/verify-workflow.conf)
 
 # guardrails_rules_refs <root> <base-branch>
@@ -106,6 +109,7 @@ guardrails_classify() {
     [[ -n "$path" ]] || continue
     case "$path" in
       docs/decisions/*) printf 'protected\t%s\t%s\n' "$path" "an ADR is added, changed, or removed" ;;
+      .agents/verification-baseline) printf 'protected\t%s\t%s\n' "$path" "the baseline of the verification, the record of the failures before any change, is added, changed, or removed" ;;
       *) printf 'protected\t%s\t%s\n' "$path" "the file defines or carries out the workflow and its gate" ;;
     esac
   done < <(guardrails_changed "$root" "$from" "$to" "${GUARDRAILS_BUILTIN_PROTECTED[@]}" | sort -u)
@@ -119,6 +123,8 @@ guardrails_classify() {
     fi
     if printf '%s\n' "$removed" | grep -Eq '^-[^-]' || { [[ -z "$to" ]] && [[ ! -e "$root/$list" ]]; }; then
       printf 'protected\t%s\t%s\n' "$list" "an existing check or line is changed or removed"
+    elif printf '%s\n' "$removed" | grep -Eq '^\+[[:space:]]*accepted-failure[[:space:]]*:'; then
+      printf 'protected\t%s\t%s\n' "$list" "the failure of a check is accepted as an exception"
     else
       printf 'sensitive\t%s\t%s\n' "$list" "a check is added"
     fi

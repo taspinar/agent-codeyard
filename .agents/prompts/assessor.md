@@ -43,6 +43,14 @@ facts only.
   exists, never as a verified or historical decision.
 - `questions`: what only the owner can answer, each with `why`: the decision
   it settles.
+- `risks`: what could go wrong in ordinary work on the project as the facts
+  show it, such as no tests you can name, a deployment from CI, or a file
+  that may hold a secret, each with its `basis`. A risk is an inference too.
+
+The adoption writes the facts, the assumptions, the risks, and the questions
+into the project's planning documents where it has none or where you judge
+its own not sufficient (see the collisions below), marked *observed, not
+approved*: write them so that the owner can check each one.
 
 ## The proposal
 
@@ -57,6 +65,23 @@ facts only.
   An existing `AGENTS.md`, script, or CI workflow is the project's content
   until the owner resolves it: never `take-template` for it. A collision with
   uncommitted changes is never `take-template`.
+
+  The planning documents of the baseline, `docs/architecture.md`,
+  `docs/PROJECT_REQUIREMENTS.md`, and `docs/roadmap.md`, are a collision
+  wherever the project has one, also where the template has none. Judge from
+  its entry in `documents` (its title, `lines`, and `headings`) whether it is
+  sufficient as that baseline: an architecture that describes the parts of
+  the system, requirements that state what the project must do, a roadmap
+  with the work ahead. Resolve it as:
+  - `keep-project`: it is sufficient; the adoption reuses it as it is;
+  - `reconstruct`: it is not sufficient, for example a heading without
+    content or a stub; the adoption writes the marked baseline at its path
+    and keeps the project's text unchanged below it, for the owner to fold
+    into the planning;
+  - `ask-owner`: the facts do not settle it.
+  Say in `rationale` what the judgement rests on. `merge` and
+  `take-template` are not used for them, and `reconstruct` for no other
+  path.
 - `profile`: the initial workflow profile, `light` or `standard` (the presets
   of `.agents/policies/risk.conf`), with its `rationale`. Prefer `standard`
   when the repository has deployment configuration or no tests you can name.
