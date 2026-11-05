@@ -8,6 +8,7 @@ records_arguments=("$@")
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/agent.sh"
 source "$script_dir/lib/completion.sh"
+source "$script_dir/lib/base.sh"
 source "$script_dir/lib/fingerprint.sh"
 source "$script_dir/lib/issue-comments.sh"
 source "$script_dir/lib/risk.sh"
@@ -90,7 +91,7 @@ if [[ "$resume" -eq 1 && "${RECORDS_COMMAND:-}" == "start-feature.sh" ]]; then
   records_intervention "resumed the implementation by hand"
 fi
 slug="${AGENT_POSITIONAL[1]:-}"
-base="${AGENT_POSITIONAL[2]:-main}"
+base="${AGENT_POSITIONAL[2]:-}"
 
 [[ "$issue" =~ ^[0-9]+$ ]] || agent_fail "issue number must be numeric: $issue"
 
@@ -249,10 +250,9 @@ if [[ "$resume" -eq 1 ]]; then
     agent_fail "more than one worktree is on a branch feature/${issue}-*: $(printf '%s' "$found" | tr '\n' ' ')"
   worktree="$found"
   branch="$(git -C "$worktree" branch --show-current)"
-  # The base the feature was created from; 'main' for a feature that was
-  # created before the base was recorded.
-  resume_base="$(git -C "$worktree" config --get "branch.$branch.workflow-base" || true)"
-  resume_base="${resume_base:-main}"
+  # The base the feature was created from; the default of the project for a
+  # feature that was created before the base was recorded.
+  resume_base="$(branch_base "$worktree" "$branch")" || exit 1
 
   # The labels of the Issue, read again at every session: the level of the
   # highest risk label seen is kept in the configuration of the branch, which
@@ -395,6 +395,9 @@ fi
 branch="feature/${issue}-${slug}"
 
 repo_root="$(git rev-parse --show-toplevel)"
+# Without a base on the command line, the default of the project
+# (lib/base.sh).
+[[ -n "$base" ]] || base="$(project_base "$repo_root")" || exit 1
 repo_name="$(basename "$repo_root")"
 worktree="$(dirname "$repo_root")/${repo_name}-${issue}-${slug}"
 

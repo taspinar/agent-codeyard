@@ -9,7 +9,9 @@ usage() {
   echo "Usage: $0 <issue-number> [--wait] [--summary]"
   echo
   echo "Run in the feature worktree after finish-feature.sh. Pushes the branch and"
-  echo "opens the pull request. The description is the message of the commit that"
+  echo "opens the pull request into the base of the feature, as start-feature.sh"
+  echo "recorded it; an open pull request into another branch stops it before the"
+  echo "push. The description is the message of the commit that"
   echo "finish-feature.sh made, also after the base branch was merged into the"
   echo "feature to bring it up to date and commits fixed what the merge broke"
   echo "without changing what the review covered, and the manual steps; an open pull request"
@@ -66,6 +68,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/github.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/completion.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/records.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/attribution.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/base.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/fingerprint.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/guardrails.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/risk.sh"
@@ -88,8 +91,7 @@ if [[ -f "$manual_file" ]] && grep -q '[^[:space:]]' "$manual_file"; then
 fi
 
 # The base branch of the feature, as start-feature.sh recorded it.
-feature_base="$(git -C "$root" config --get "branch.$branch.workflow-base" || true)"
-feature_base="${feature_base:-main}"
+feature_base="$(branch_base "$root" "$branch")" || exit 1
 base_ref=""
 for candidate in "origin/$feature_base" "$feature_base"; do
   if git -C "$root" rev-parse --verify --quiet "$candidate^{commit}" >/dev/null; then
@@ -330,12 +332,24 @@ if [[ "$attribution" == "disabled" ]]; then
   fi
 fi
 
+url="$(gh pr list --head "$branch" --state open --json url --jq '.[0].url // empty')" ||
+  fail "could not ask GitHub for the pull request of $branch."
+# An open pull request into another branch than the base of the feature
+# would merge the feature where it was not compared and reviewed.
+if [[ -n "$url" ]]; then
+  pr_base="$(gh pr view "$url" --json baseRefName --jq '.baseRefName')" ||
+    fail "could not ask GitHub for the base branch of $url."
+  if [[ "$pr_base" != "$feature_base" ]]; then
+    echo "Error: the open pull request $url merges into '$pr_base', but the base of the feature is '$feature_base'." >&2
+    echo "Nothing was pushed. Change the base of the pull request on GitHub (gh pr edit $url --base $feature_base), or close it, and publish again." >&2
+    records_stop "${0##*/}" "the open pull request $url merges into '$pr_base', not into the base of the feature, '$feature_base'"
+    exit 1
+  fi
+fi
+
 echo "Pushing $branch..."
 git -C "$root" push -u origin "$branch" || fail "could not push $branch."
 echo
-
-url="$(gh pr list --head "$branch" --state open --json url --jq '.[0].url // empty')" ||
-  fail "could not ask GitHub for the pull request of $branch."
 
 if [[ -n "$url" ]]; then
   echo "Pull request already open: $url"
@@ -361,7 +375,7 @@ if [[ -n "$url" ]]; then
 else
   create_options=()
   [[ "$ready" -eq 1 ]] || create_options=(--draft)
-  url="$(gh pr create --head "$branch" --title "$(git -C "$root" log -1 --format=%s "$finish_commit")" --body-file "$body" ${create_options[@]+"${create_options[@]}"})" ||
+  url="$(gh pr create --base "$feature_base" --head "$branch" --title "$(git -C "$root" log -1 --format=%s "$finish_commit")" --body-file "$body" ${create_options[@]+"${create_options[@]}"})" ||
     fail "could not open the pull request. The branch is pushed; open it by hand, with 'Closes #$issue' in its description only when the feature is complete."
   url="$(printf '%s\n' "$url" | tail -n 1)"
   if [[ "$ready" -eq 1 ]]; then

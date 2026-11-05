@@ -8,6 +8,7 @@ records_arguments=("$@")
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/agent.sh"
 source "$script_dir/lib/review-data.sh"
+source "$script_dir/lib/base.sh"
 source "$script_dir/lib/fingerprint.sh"
 source "$script_dir/lib/skills.sh"
 source "$script_dir/lib/completion.sh"
@@ -98,8 +99,8 @@ review_data_require_jq
 # The agent of the triage implementer by the risk level of the feature as it
 # is now, never below the level an earlier session of the feature ran at
 # (lib/agent.sh).
-apply_base="$(git -C "$root" config --get "branch.$(git -C "$root" branch --show-current).workflow-base" || true)"
-agent_computed="$(agent_computed_level "$root" "${apply_base:-main}")"
+apply_base="$(branch_base "$root")" || exit 1
+agent_computed="$(agent_computed_level "$root" "$apply_base")"
 agent_selected="$(agent_feature_level "$(records_branch_issue)" "${agent_computed%%$'\t'*}" "${agent_computed#*$'\t'}")"
 agent_level="${agent_selected%%$'\t'*}"
 agent_level_why="${agent_selected#*$'\t'}"

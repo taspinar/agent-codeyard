@@ -117,6 +117,6 @@ The implementer does not start without your comments on the Issue, since it woul
 
 ### The base branch moved after the feature was finished
 
-**First fix:** merge the base branch into the feature branch and publish again: `git merge origin/main`, then `./scripts/publish-feature.sh <issue>`.
+**First fix:** merge the base branch into the feature branch and publish again: `git merge origin/main` (or `origin/<base>` for a feature of another base), then `./scripts/publish-feature.sh <issue>`.
 
 The pull request is still described by the commit of the finished feature and still closes the Issue. So does a commit after the merge that fixes only what the merge brought in, without touching the files of the feature, a protected path, or a feature that needs the owner's approval. Any other commit after the finish needs a new finish first; the pull request names that commit and what to do. Once the base was merged in, a later review has to cover the complete feature, not only the recent changes.

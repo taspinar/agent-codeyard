@@ -488,7 +488,8 @@ a feature can break them only by changing a workflow file. That file names
 those files in its `paths:` entry, as Git pathspecs.
 
 `./scripts/verify.sh` runs the self-tests only when one of those files differs
-from the base branch (`origin/main`, or `main`), counting uncommitted and
+from the base branch of the feature (`origin/<base>`, or `<base>`; see "The
+base branch of a feature"), counting uncommitted and
 untracked files, or when it cannot tell, for example outside a Git repository.
 Otherwise the summary reports them as `SKIP`. `./scripts/verify.sh --all`
 always runs them, and CI uses it, so every pull request runs the self-tests.
@@ -1126,12 +1127,41 @@ refused connection, a host that cannot be resolved, a server error); any other
 failure, such as an Issue that does not exist or a refusal, stops at once with
 its reason. A connection that keeps failing ends with
 status 75, which `run-feature.sh` tries again like any temporary failure. The
-script fetches the selected remote base,
+script fetches the selected remote base (see "The base branch of a feature"),
 creates `feature/<issue>-<slug>` in a sibling worktree, and starts the agent
 of role `implementer` inside that worktree. Untracked files in the checkout do
 not matter; modified tracked files do, because they would not be part of the
 new worktree. After the session it prints the worktree path and the next
 commands.
+
+### The base branch of a feature
+
+A feature branches from its base, is compared with it, and merges into it.
+`start-feature.sh` takes the base as its third argument and records it for
+the branch (`git config branch.<branch>.workflow-base`); every later step
+reads it there: `run-feature.sh`, `review-feature.sh`, `triage-review.sh`,
+`apply-triage.sh`, `finish-feature.sh`, `check-risk.sh`,
+`check-guardrails.sh`, the self-test selection of `verify.sh`, and
+`publish-feature.sh`, which opens the pull request into that base
+(`gh pr create --base <base>`). An open pull request of the branch into
+another branch stops `publish-feature.sh` before the push; change its base
+on GitHub or close it, and publish again. A base given on the command line of
+`review-feature.sh` or `check-risk.sh` overrides the recorded one for that
+command.
+
+Without a base on the command line, `start-feature.sh` uses the default of
+the project: one line in `.agents/template.conf`,
+
+```text
+base: develop
+```
+
+and `main` without that line. The same default applies to a branch without a
+recorded base. `sync-template.sh` changes only the `repository:` and
+`commit:` lines of that file and merges the rest, so the line stays.
+`create-feature-issue.sh` takes no base: the `start-feature.sh` it suggests
+uses the default. A value that is not a valid branch name stops the script
+that reads it.
 
 The implementer verifies its result itself: it finishes every edit to a
 tracked file and then runs `./scripts/verify.sh`. That pass is recorded and
@@ -1439,7 +1469,9 @@ implementer's provider for the feature's risk level (see "Configuring
 agents"). The review is
 non-interactive: the reviewer cannot modify files and has no network access, so
 the script supplies the GitHub Issue and the complete diff against the base
-branch, including uncommitted and untracked changes. The reviewer returns its
+branch, including uncommitted and untracked changes. Without `[base-branch]`
+the base is the one the feature recorded, or the project default (see "The
+base branch of a feature"). The reviewer returns its
 result as JSON and the script validates and stores it. An invalid result is
 retried once and then rejected, and a reviewer that changed the working tree or
 created a commit is reported as an error; in both cases no review is stored.
@@ -1903,7 +1935,7 @@ branch moved on after `finish-feature.sh`, for example because a conflict has
 to be resolved, merge the base into the feature branch and publish again:
 
 ```bash
-git merge origin/main
+git merge origin/main    # or origin/<base>, the base of the feature
 ./scripts/publish-feature.sh 12
 ```
 

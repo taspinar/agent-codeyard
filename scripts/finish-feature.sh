@@ -7,6 +7,7 @@ records_arguments=("$@")
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/review-data.sh"
+source "$script_dir/lib/base.sh"
 source "$script_dir/lib/fingerprint.sh"
 source "$script_dir/lib/planning.sh"
 source "$script_dir/lib/guardrails.sh"
@@ -137,10 +138,10 @@ completion_lines="$(completion_commit_lines "$root" "$issue")"
 feature_merge_base=""
 feature_base_ref=""
 latest=""
-feature_base_branch="$(git -C "$root" config --get "branch.$branch.workflow-base" || true)"
-if feature_base_lines="$(feature_base "$root" "${feature_base_branch:-main}")"; then
+feature_base_branch="$(branch_base "$root" "$branch")" || exit 1
+if feature_base_lines="$(feature_base "$root" "$feature_base_branch")"; then
   feature_merge_base="$(printf '%s\n' "$feature_base_lines" | sed -n 2p)"
-  feature_base_ref="$(guardrails_rules_refs "$root" "${feature_base_branch:-main}")"
+  feature_base_ref="$(guardrails_rules_refs "$root" "$feature_base_branch")"
   if [[ -f "$root/$PLANNING_APPROVAL_FILE" ]] ||
     git -C "$root" cat-file -e "$feature_merge_base:$PLANNING_APPROVAL_FILE" 2>/dev/null; then
     planning_changes="$(

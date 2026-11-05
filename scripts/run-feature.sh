@@ -7,6 +7,7 @@ records_arguments=("$@")
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/review-data.sh"
+source "$script_dir/lib/base.sh"
 source "$script_dir/lib/fingerprint.sh"
 source "$script_dir/lib/completion.sh"
 source "$script_dir/lib/verification.sh"
@@ -617,8 +618,7 @@ else
 fi
 
 branch="$(git -C "$worktree" branch --show-current)"
-base="$(git -C "$worktree" config --get "branch.$branch.workflow-base" || true)"
-base="${base:-main}"
+base="$(branch_base "$worktree" "$branch")" || exit 1
 state_file="$worktree/.agents/run/$issue-state"
 
 git -C "$worktree" check-ignore -q ".agents/run/$issue-state" ||

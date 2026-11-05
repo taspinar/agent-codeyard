@@ -3,6 +3,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+source "$script_dir/lib/base.sh"
 source "$script_dir/lib/fingerprint.sh"
 source "$script_dir/lib/guardrails.sh"
 
@@ -16,7 +17,8 @@ usage() {
   echo "branch as it is now, not from the feature."
   echo
   echo "Without --commits it checks the current worktree against the point where it"
-  echo "left its base branch (default: main), with uncommitted and untracked files."
+  echo "left its base branch (default: the recorded base of the feature, or the"
+  echo "project's default base), with uncommitted and untracked files."
   echo "With --commits it compares two commits, as CI does for a pull request."
   echo
   echo "An approval request that the diff adds or changes (.agents/approval-requests/"
@@ -63,10 +65,12 @@ if [[ "${1:-}" == "--commits" ]]; then
 else
   [[ $# -le 1 ]] || usage
   [[ "${1:-}" != --* ]] || usage
-  lines="$(feature_base "$root" "${1:-main}")" || fail "could not determine the base of this worktree: ${1:-main}"
+  base="${1:-}"
+  [[ -n "$base" ]] || base="$(branch_base "$root")" || exit 2
+  lines="$(feature_base "$root" "$base")" || fail "could not determine the base of this worktree: $base"
   from="$(printf '%s\n' "$lines" | sed -n 2p)"
   to=""
-  rules="$(guardrails_rules_refs "$root" "${1:-main}")"
+  rules="$(guardrails_rules_refs "$root" "$base")"
   excludes_ref="$(printf '%s\n' "$lines" | sed -n 1p)"
   checked_commit=""
 fi

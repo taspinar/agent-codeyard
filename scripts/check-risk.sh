@@ -3,6 +3,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+source "$script_dir/lib/base.sh"
 source "$script_dir/lib/fingerprint.sh"
 source "$script_dir/lib/guardrails.sh"
 source "$script_dir/lib/risk.sh"
@@ -18,7 +19,8 @@ usage() {
   echo "the impact on the architecture), and the owner's hints: the label 'risk: high'"
   echo "or 'risk: medium' of the Issue, which start-feature.sh kept for the branch,"
   echo "and --risk of the run (WORKFLOW_RISK_HINT). The rules are read from the base"
-  echo "branch as it is now (default: main), the diff from where the feature left it,"
+  echo "branch as it is now (default: the recorded base of the feature, or the"
+  echo "project's default base), the diff from where the feature left it,"
   echo "with uncommitted and untracked files. An agent or a hint can raise the level,"
   echo "never lower it; a base that cannot be determined gives high."
   echo
@@ -41,9 +43,10 @@ usage() {
 
 [[ $# -le 1 ]] || usage
 [[ "${1:-}" != --* ]] || usage
-base="${1:-main}"
+base="${1:-}"
 
 root="$(git rev-parse --show-toplevel)" || usage
+[[ -n "$base" ]] || base="$(branch_base "$root")" || exit 3
 command -v jq >/dev/null 2>&1 || { echo "Error: jq is required." >&2; exit 3; }
 branch="$(git -C "$root" branch --show-current)"
 

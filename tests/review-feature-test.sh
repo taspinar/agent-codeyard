@@ -641,6 +641,26 @@ run_review "$repo" 7 || fail "a review with a local base ahead of origin failed"
   fail "the local base branch was not used although it is the more recent"
 if grep -Fq "local work" "$repo.log.stdin"; then fail "work on the base was supplied as the feature's change"; fi
 
+# Run by hand without a base, the review compares with the base the feature
+# recorded, not with main.
+repo="$(setup_repo recorded-base)"
+git -C "$repo" stash -q --include-untracked
+git -C "$repo" switch -q -c develop main
+printf 'work on develop\n' >"$repo/develop.txt"
+git -C "$repo" add develop.txt
+git -C "$repo" commit -qm "Work on develop"
+git -C "$repo" switch -q feature/7-marker
+git -C "$repo" rebase -q develop
+git -C "$repo" stash pop -q >/dev/null
+git -C "$repo" config branch.feature/7-marker.workflow-base develop
+run_review "$repo" 7 || {
+  cat "$repo.out" >&2
+  fail "a review of a feature of the base develop failed"
+}
+[[ "$(jq -r '.base' "$repo/.agents/reviews/feature-7-marker-review-01.json")" == "develop" ]] ||
+  fail "the review without a base did not use the recorded base"
+if grep -Fq "work on develop" "$repo.log.stdin"; then fail "work on the recorded base was supplied as the feature's change"; fi
+
 # The review records the reviewer's classification of the impact on the
 # architecture and what the gate found in the diff, and the reviewer is told
 # which paths are protected or sensitive.

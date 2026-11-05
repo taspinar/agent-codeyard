@@ -133,6 +133,10 @@ One command runs the whole feature stage up to the pull request: the implementat
 
 `run-feature.sh` is the short route: you start it and read the pull request. Running the steps one at a time, from `start-feature.sh`, lets you watch each step, approve every triage yourself, and stop between them. Both routes go through the same checks, reviews and gates, and you can switch: an interrupted run continues from its handoff note either way.
 
+### A base branch other than main
+
+A feature branches from its base and merges back into it. Name the base as the third argument of `start-feature.sh` or `run-feature.sh`, or set it once for the project with a line `base: develop` in `.agents/template.conf`; without either it is `main`. The base is recorded with the feature, and every later step uses it: the review and the risk compare with it, and the pull request merges into it. A pull request of the branch that is already open into another branch stops the publication before the push. Details in [the base branch of a feature](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#the-base-branch-of-a-feature) of the development guide.
+
 <a id="owner-directed-triage"></a>
 
 ### When you disagree with the triage
