@@ -18,6 +18,18 @@ usage() {
   echo "  ask-owner, or no resolution, stops the run before any change."
   echo "Nothing is written under .github/workflows/: the project's CI stays as it is."
   echo
+  echo "Written from the proposal, where the project has no such file:"
+  echo "  scripts/verify.conf   the project's own commands as the checks of verify.sh;"
+  echo "                        the project's file, which a sync does not change."
+  echo "  docs/architecture.md, docs/PROJECT_REQUIREMENTS.md, docs/roadmap.md"
+  echo "                        a minimal baseline from the assessment, marked"
+  echo "                        'Observed, not approved' until the planning approval."
+  echo "  A planning document the project has is resolved by the assessment's judgement:"
+  echo "  keep-project   it is sufficient, and reused as it is;"
+  echo "  reconstruct    it is not: the marked baseline is written at its path, with"
+  echo "                 the project's text kept unchanged below it."
+  echo "No ADR is written: the adoption reconstructs no decision of the past."
+  echo
   echo "The run also stops before any change when the repository has uncommitted"
   echo "work or differs from the assessed state, and when the proposal names a path"
   echo "that is no file of its template commit inside the repository. Run again, it"
@@ -40,6 +52,7 @@ branch_name="adopt/agent-codeyard"
 suffix="agent-codeyard"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/records.sh"
+source "$script_dir/lib/planning.sh"
 command -v jq >/dev/null 2>&1 || fail "jq is required."
 
 target=""
@@ -106,10 +119,11 @@ template_commit="$(jq -r '.template.commit' "$proposal")"
 git -C "$root" cat-file -e "$template_commit^{commit}" 2>/dev/null ||
   fail "the template checkout $root has no commit $template_commit, the version the proposal adds. Fetch it, or assess the repository again."
 # Every path of the proposal is a destination in the repository: a plain
-# relative path that names a file of the template commit. A path that leaves
-# the repository (absolute, or with a '.' or '..' component) or that the
-# template does not have is an edited or damaged proposal, refused before any
-# change.
+# relative path that names a file of the template commit, or a planning
+# document of the baseline, which this script writes. A path that leaves the
+# repository (absolute, or with a '.' or '..' component) or that the template
+# does not have is an edited or damaged proposal, refused before any change.
+baseline_documents=(docs/architecture.md docs/PROJECT_REQUIREMENTS.md docs/roadmap.md)
 plain_relative='def plain_relative: type == "string" and . != "" and (startswith("/") | not)
   and (explode | any(. < 32 or . == 127) | not) and (split("/") | any(. == "" or . == "." or . == "..") | not);'
 invalid_paths=()
@@ -117,6 +131,7 @@ while IFS= read -r line; do
   invalid_paths+=("$line")
 done < <(jq -r "$plain_relative"' (.additions[], .collisions[]) | .path | select(plain_relative | not) | tojson' "$proposal")
 while IFS= read -r path; do
+  [[ " ${baseline_documents[*]} " != *" $path "* ]] || continue
   [[ "$(git -C "$root" cat-file -t "$template_commit:$path" 2>/dev/null)" == blob ]] ||
     invalid_paths+=("\"$path\" (not a file of the template commit ${template_commit:0:7})")
 done < <(jq -r "$plain_relative"' (.additions[], .collisions[]) | .path | select(plain_relative)' "$proposal")
@@ -182,16 +197,26 @@ kind_of() {
 #   add      the template's file, at the same path
 #   beside   the template's file, under another name
 #   config   .agents/template.conf, written by this script
+#   verify   scripts/verify.conf, the project's commands, written by this script
+#   document a planning document of the baseline, written by this script
+#   reconstruct  a planning document of the baseline written by this script
+#            at the path of the project's insufficient one, whose text it
+#            keeps unchanged below
 #   section  a marked section appended to the project's AGENTS.md or .gitignore
 #   keep     the project's file, unchanged
 #   present  the project's file, identical to the template's
 #   ci       a CI workflow, left out
 problems=()
 exclusions=()
+verify_path="scripts/verify.conf"
 : >"$work/plan"
 while IFS=$'\t' read -r path ownership; do
   if [[ "$path" == ".agents/template.conf" ]]; then
     printf 'config\t%s\t%s\n' "$path" "$path" >>"$work/plan"
+  elif [[ "$path" == "$verify_path" ]]; then
+    printf 'verify\t%s\t%s\n' "$path" "$path" >>"$work/plan"
+  elif [[ " ${baseline_documents[*]} " == *" $path "* ]]; then
+    printf 'document\t%s\t%s\n' "$path" "$path" >>"$work/plan"
   elif [[ "$path" == .github/workflows/* ]]; then
     printf 'ci\t%s\t%s\n' "$path" "$path" >>"$work/plan"
   else
@@ -202,6 +227,28 @@ done < <(jq -r '.additions[] | [.path, .ownership] | @tsv' "$proposal")
 while IFS=$'\t' read -r path ownership kind resolution rationale; do
   if [[ "$path" == ".agents/template.conf" ]]; then
     problems+=("$path: the repository has its own template configuration. When it was made from this template, take over its changes with ./scripts/sync-template.sh in the repository instead.")
+    continue
+  fi
+  # A planning document of the baseline is the project's: reused when the
+  # assessment judged it sufficient, reconstructed when not.
+  if [[ " ${baseline_documents[*]} " == *" $path "* ]]; then
+    [[ "$ownership" != template || ("$resolution" != keep-project && "$resolution" != reconstruct) ]] || exclusions+=(":(exclude)$path")
+    case "$resolution" in
+      keep-project) printf 'keep\t%s\t%s\n' "$path" "$path" >>"$work/plan" ;;
+      reconstruct)
+        if [[ "$kind" == file ]]; then
+          printf 'reconstruct\t%s\t%s\n' "$path" "$path" >>"$work/plan"
+        else
+          problems+=("$path: resolved as reconstruct, but the project has a $kind there, not a document. Move it, or resolve it as keep-project.")
+        fi
+        ;;
+      ask-owner)
+        problems+=("$path: the proposal leaves it to the owner (ask-owner): ${rationale:-no rationale}. Decide whether the project's document is sufficient: keep-project reuses it, reconstruct writes the marked baseline above its text. Set the resolution in the proposal and pass it with --proposal.")
+        ;;
+      *)
+        problems+=("$path: a planning document of the baseline, resolved as '${resolution:-nothing}'. Resolve it as keep-project (sufficient, reused) or reconstruct (not sufficient: the marked baseline above the project's text) in the proposal and pass it with --proposal.")
+        ;;
+    esac
     continue
   fi
   # A file that is already the template's needs no resolution.
@@ -237,9 +284,28 @@ while IFS=$'\t' read -r path ownership kind resolution rationale; do
   esac
 done < <(jq -r '.collisions[] | [.path, .ownership, .kind, (.resolution // ""), ((.rationale // "") | gsub("[\t\n]"; " "))] | @tsv' "$proposal")
 
+# The checks and the planning documents are written also where the template
+# has no such file, unless the project has its own: a collision of the
+# proposal, or a file of the assessed commit. Its own checks are reused as
+# they are; a planning document the proposal does not judge stops the run,
+# as a proposal of an older assessment would leave it.
+for path in "$verify_path" "${baseline_documents[@]}"; do
+  jq -e --arg path "$path" '[.additions[], .collisions[]] | any(.path == $path)' "$proposal" >/dev/null && continue
+  if tgit cat-file -e "$assessed_head:$path" 2>/dev/null; then
+    [[ "$path" == "$verify_path" ]] ||
+      problems+=("$path: the project has this planning document, and the proposal does not judge whether it is sufficient. Assess the repository again.")
+    continue
+  fi
+  if [[ "$path" == "$verify_path" ]]; then
+    printf 'verify\t%s\t%s\n' "$path" "$path" >>"$work/plan"
+  else
+    printf 'document\t%s\t%s\n' "$path" "$path" >>"$work/plan"
+  fi
+done
+
 # The paths the adoption writes; a partial adoption may have left them
 # uncommitted on its branch.
-awk -F'\t' '$1 == "add" || $1 == "beside" || $1 == "config" || $1 == "section" { print $2 }' "$work/plan" | LC_ALL=C sort >"$work/planned"
+awk -F'\t' '$1 == "add" || $1 == "beside" || $1 == "config" || $1 == "verify" || $1 == "document" || $1 == "reconstruct" || $1 == "section" { print $2 }' "$work/plan" | LC_ALL=C sort >"$work/planned"
 
 # --------------------------------------------- the state of the repository
 current="$(tgit symbolic-ref -q --short HEAD 2>/dev/null || true)"
@@ -293,8 +359,9 @@ fi
 # ------------------------------------------------------ the files to write
 # .agents/template.conf, from the template's: the template, its version, and
 # its files, without those the project keeps as its own. The CI workflows are
-# the project's, so a later sync adds none of the template's either.
-paths_value="$(jq -r '.ownership.template_paths | join(" ")' "$proposal") :(exclude).github/workflows"
+# the project's, so a later sync adds none of the template's either, and so
+# are the checks of scripts/verify.conf, the project's own commands.
+paths_value="$(jq -r '.ownership.template_paths | join(" ")' "$proposal") :(exclude).github/workflows :(exclude)$verify_path"
 for exclusion in ${exclusions[@]+"${exclusions[@]}"}; do
   paths_value="$paths_value $exclusion"
 done
@@ -335,6 +402,130 @@ section_file() {
   fi
 }
 
+# verify_file <file>: scripts/verify.conf with the verification commands of
+# the proposal, the project's own, in the directory each belongs to. Without
+# one, a check that fails says so: nothing of the project is verified yet,
+# and the verification does not claim it is.
+verify_file() {
+  local name command directory origin source
+
+  {
+    echo "# Required verification checks for ./scripts/verify.sh: the project's own"
+    echo "# commands, taken over by adopt-repository.sh from the proposal of the"
+    echo "# assessment ${assessment:-(unnamed)}. The project's CI runs as before; these"
+    echo "# checks run the same commands for the workflow. This file is the project's"
+    echo "# own, which a sync of the template does not change. Its format, groups,"
+    echo "# budgets, and exceptions: docs/development.md, \"Configuring verification\"."
+    echo "#"
+    echo "# Record the baseline once, before any change: ./scripts/verify.sh --baseline"
+    echo "# A check that fails then is a pre-existing failure: it stays visible as"
+    echo "# KNOWN and fails the verification until it is fixed, or until the owner"
+    echo "# accepts it here with 'accepted-failure: <check> <reason>'."
+    echo
+  } >"$1"
+  if [[ "$(jq '.verification // [] | length' "$proposal")" -eq 0 ]]; then
+    {
+      echo "# The assessment found no command of the project to verify it with."
+      echo "no-project-check: echo 'scripts/verify.conf has no check of the project yet: add its test, lint, and build commands. Until then nothing of the project is verified.' >&2; exit 1"
+    } >>"$1"
+    return 0
+  fi
+  # The fields are separated by the unit separator: a tab, as white space,
+  # would let 'read' drop an empty directory.
+  while IFS=$'\x1f' read -r name command directory origin source; do
+    printf '# %s, %s in %s.\n' "$name" "$origin" "$source" >>"$1"
+    case "$name" in
+      paths | budget-seconds | heavy | accepted-failure)
+        printf '# Not taken over: %s is a reserved word of this file. Add the check under another name.\n' "$name" >>"$1"
+        continue
+        ;;
+    esac
+    if [[ -n "$directory" && "$directory" != "." ]]; then
+      printf '%s: cd %q && %s\n' "$name" "$directory" "$command" >>"$1"
+    else
+      printf '%s: %s\n' "$name" "$command" >>"$1"
+    fi
+  done < <(jq -r '.verification[] | select((.command | type) == "string" and (.command | test("[\n\r]") | not))
+    | [.name, .command, (.directory // ""), (.origin // "declared"), (.source // "the project")] | map(tostring | gsub("\u001f"; " ")) | join("\u001f")' "$proposal")
+  jq -r '.verification[] | select((.command | type) != "string" or (.command | test("[\n\r]"))) | "# Not taken over: \(.name), a command of more than one line. Add it as a script."' "$proposal" >>"$1"
+}
+
+# document_file <path> <file>: the planning document <path> of the baseline,
+# from the assessment: what the files show, the assumptions, the risks, and
+# the questions, marked as observed and not approved. The project's own
+# documents are named first, to be reused.
+document_file() {
+  local mark
+
+  mark="$PLANNING_OBSERVED_MARK Reconstructed by adopt-repository.sh from the assessment ${assessment:-(unnamed)} of the existing project: what its files show and what the assessment inferred from them, not a decision of the owner. The owner approves it through the planning approval of this repository (./scripts/start-planning.sh, then ./scripts/finish-planning.sh); an approved document no longer carries this mark."
+  jq -r --arg path "$1" --arg mark "$mark" --arg branch "$branch_name" '
+    def list(f): if length == 0 then "None recorded by the assessment.\n" else map(f) | join("") end;
+    def code: "`\(.)`";
+    (.baseline // {}) as $b
+    | ($b.documents // [] | map(select(.path != $path))) as $documents
+    | if $path == "docs/architecture.md" then
+        "# Architecture\n\n\($mark)\n\n"
+        + (if ($b.summary // "") != "" then "\($b.summary)\n\n" else "" end)
+        + "## Existing documents\n\nThe project'"'"'s own documents come first: where they describe the architecture, they are reused, and this file only links them into the planning.\n\n"
+        + ($documents | list("- \(.path | code) (\(.kind))\(if .title then ": \(.title)" else "" end)\n"))
+        + "\n## Observed architecture\n\nWhat the files of the project show, with the facts of the assessment it rests on.\n\n"
+        + (($b.facts // []) | list("- \(.statement) (\(.evidence | map(code) | join(", ")))\n"))
+        + "\n## Assumptions\n\n" + (($b.assumptions // []) | list("- \(.statement)\n  - basis: \(.basis)\n"))
+        + "\n## Risks\n\n" + (($b.risks // []) | list("- \(.risk)\n  - basis: \(.basis)\n"))
+        + "\n## Unknowns\n\n" + (($b.questions // []) | list("- \(.question)\n  - settles: \(.why)\n"))
+        + "\n## Decisions\n\nNo decision of the past is recorded: the adoption reconstructs no ADR. Decisions made from now on are recorded in `docs/decisions/`.\n"
+      elif $path == "docs/PROJECT_REQUIREMENTS.md" then
+        "\($mark)\n\n"
+        + "Project Grill completes these requirements with the owner in the first planning (`./scripts/start-planning.sh`), starting from what the project already is.\n\n"
+        + "## Known requirements\n\nThe project'"'"'s own documents that state requirements, to be reused:\n\n"
+        + ($documents | map(select(.kind == "requirements" or .kind == "readme")) | list("- \(.path | code) (\(.kind))\(if .title then ": \(.title)" else "" end)\n"))
+        + (if ($b.summary // "") != "" then "\nWhat the assessment observed: \($b.summary)\n" else "" end)
+        + "\n## Open questions of the assessment\n\n" + (($b.questions // []) | list("- \(.question)\n  - settles: \(.why)\n"))
+      else
+        "# Roadmap\n\n\($mark)\n\n## Near-term work\n\nThe work that makes the baseline of the adopted project honest and complete, before new features:\n\n"
+        + "- Review and merge the adoption (the branch `\($branch)`).\n"
+        + "- Record the baseline of the verification once, before any change: `./scripts/verify.sh --baseline`. It runs the project'"'"'s own commands of `scripts/verify.conf`.\n"
+        + ((.execution_needed // []) | map("  - It needs: \(.what) (\(.why)); side effects: \(.side_effects)\n") | join(""))
+        + "- Fix each pre-existing failure the baseline records, or accept it as an exception in `scripts/verify.conf`.\n"
+        + (if (($b.questions // []) | length) == 0 then "" else "- Answer the open questions of the assessment:\n" + ($b.questions | map("  - \(.question)\n") | join("")) end)
+        + "- Approve the planning: `./scripts/start-planning.sh`, then `./scripts/finish-planning.sh`.\n"
+        + "\n## Later phases\n\n- Add features once the planning is approved.\n"
+      end' "$proposal" >"$2"
+  [[ "$1" == docs/PROJECT_REQUIREMENTS.md ]] || return 0
+  # The requirements keep the sections of the template's, which Project Grill
+  # completes, below the observed part; without them, a draft of their own.
+  mv "$2" "$2.observed"
+  if template_file "$1" "$2.template" 2>/dev/null && grep -Fqx "Approved at: Not approved" "$2.template"; then
+    awk -v observed="$2.observed" '
+      { print }
+      /^Approved at: Not approved$/ && !done {
+        print ""
+        while ((getline line < observed) > 0) print line
+        done = 1
+      }' "$2.template" >"$2"
+  else
+    { printf '# Project Requirements\n\nStatus: Draft\nApproved at: Not approved\n\n'; cat "$2.observed"; } >"$2"
+  fi
+  rm -f "$2.observed" "$2.template"
+}
+
+# reconstruct_file <path> <file>: the planning document <path> of the
+# baseline, written where the assessment judged the project's own not
+# sufficient: the marked baseline, then the project's text as the assessed
+# commit has it, unchanged, for the owner to fold into the planning.
+reconstruct_file() {
+  local rationale
+
+  rationale="$(jq -r --arg path "$1" '[.collisions[] | select(.path == $path) | .rationale // ""][0] // "" | gsub("[\n\r]+"; " ")' "$proposal")"
+  document_file "$1" "$2"
+  {
+    printf '\n## The project'"'"'s document, as it was\n\n'
+    printf 'The assessment judged `%s` not sufficient as the baseline: %s\n' "$1" "${rationale:-no rationale given}"
+    printf 'Its text follows unchanged, for the owner to fold into the planning or to keep where it holds.\n\n'
+    tgit show "$assessed_head:$1"
+  } >>"$2"
+}
+
 # plain_path <path>: neither <path> nor a directory above it is a symbolic
 # link or a file in the way; writing through one would change something that
 # is not the repository's.
@@ -361,7 +552,7 @@ state() {
   local file="$target/$2"
 
   case "$1" in
-    add | beside | config)
+    add | beside | config | verify | document)
       if ! plain_path "$2" || [[ -e "$file" && ! -f "$file" ]]; then
         echo blocked
       elif [[ ! -e "$file" ]]; then
@@ -369,10 +560,31 @@ state() {
       else
         if [[ "$1" == config ]]; then
           cp "$work/template.conf" "$work/expected"
+        elif [[ "$1" == verify ]]; then
+          verify_file "$work/expected"
+        elif [[ "$1" == document ]]; then
+          document_file "$2" "$work/expected"
         else
           template_file "$3" "$work/expected"
         fi
         if cmp -s "$file" "$work/expected"; then echo done; else echo kept; fi
+      fi
+      ;;
+    reconstruct)
+      if ! plain_path "$2" || [[ -e "$file" && ! -f "$file" ]]; then
+        echo blocked
+      elif [[ ! -e "$file" ]]; then
+        echo kept
+      else
+        reconstruct_file "$2" "$work/expected"
+        tgit show "$assessed_head:$2" >"$work/original" 2>/dev/null || : >"$work/original"
+        if cmp -s "$file" "$work/expected"; then
+          echo done
+        elif cmp -s "$file" "$work/original"; then
+          echo write
+        else
+          echo kept
+        fi
       fi
       ;;
     section)
@@ -445,6 +657,7 @@ fi
 added=()
 beside=()
 sections=()
+written=()
 while IFS=$'\t' read -r status action path source; do
   [[ "$status" == write ]] || continue
   file="$target/$path"
@@ -460,6 +673,21 @@ while IFS=$'\t' read -r status action path source; do
       mkdir -p "$(dirname "$file")"
       cp "$work/template.conf" "$file"
       added+=("$path (template $template_repository at ${template_commit:0:7})")
+      ;;
+    verify)
+      mkdir -p "$(dirname "$file")"
+      verify_file "$file"
+      written+=("$path ($(jq '.verification // [] | length' "$proposal") checks of the project from the proposal)")
+      ;;
+    document)
+      mkdir -p "$(dirname "$file")"
+      document_file "$path" "$file"
+      written+=("$path (observed, not approved)")
+      ;;
+    reconstruct)
+      reconstruct_file "$path" "$file.$suffix.$$"
+      mv "$file.$suffix.$$" "$file"
+      written+=("$path (observed, not approved, above the project's text, which the assessment judged not sufficient)")
       ;;
     section)
       section_file "$path" "$work/section"
@@ -485,6 +713,8 @@ if ! tgit diff --cached --quiet; then
     echo "Applied by adopt-repository.sh from the assessment ${assessment:-(unnamed)}."
     echo "It only adds files of the workflow; the project's files stay its own:"
     echo "- added: ${#added[@]} files"
+    echo "- written from the assessment: ${#written[@]} (the project's checks, and the planning"
+    echo "  documents of the baseline, observed, not approved)"
     echo "- placed beside a project file, to combine by hand: ${#beside[@]}"
     echo "- sections appended: ${sections[*]:-none}"
     echo
@@ -506,6 +736,7 @@ print_list() {
 
 echo
 print_list "Added:" ${added[@]+"${added[@]}"}
+print_list "Written from the assessment:" ${written[@]+"${written[@]}"}
 print_list "Placed beside the project's file, to combine by hand:" ${beside[@]+"${beside[@]}"}
 print_list "Section of the workflow appended:" ${sections[@]+"${sections[@]}"}
 mapfile -t kept < <(awk -F'\t' '$1 == "kept" { print $3 }' "$work/states")
@@ -541,7 +772,9 @@ if [[ "$publish" -eq 1 ]]; then
       echo "- Files the project already had stay its own; where the proposal said to merge, the template's version is placed beside them as \`*.$suffix.*\`, to combine by hand."
       echo "- \`.agents/template.conf\` records the template version and the files it owns, for a later \`sync-template.sh\`."
       echo
-      echo "The assessment's reconstructions are observed, not approved: the owner approves requirements and architecture through the planning approval of this repository. The project's own verification commands are not set up by this change."
+      echo "- \`scripts/verify.conf\` runs the project's own commands from the assessment; the project's CI is not replaced."
+      echo
+      echo "The planning documents this change writes are reconstructions, marked *observed, not approved*: the owner approves them through the planning approval of this repository. No ADR is written. Before the merge, record the baseline of the verification with \`./scripts/verify.sh --baseline\` on this branch: it runs the project's commands, and a check that fails then stays visible as a known failure."
     } >"$work/body"
     url="$(cd "$target" && gh pr create --base "$default_branch" --head "$branch_name" \
       --title "Adopt the agent-codeyard workflow" --body-file "$work/body")" || fail "could not open the pull request."
@@ -554,4 +787,9 @@ echo "Next:"
 echo "  Review the branch $branch_name in $target: git -C $target diff $assessed_head..$branch_name"
 [[ "${#beside[@]}" -eq 0 ]] || echo "  Combine each file placed beside the project's, then delete it."
 [[ "$publish" -eq 1 ]] || echo "  Push it and open a pull request, or run again with --publish."
-echo "  The project's verification commands and its baseline are the next step of the adoption."
+echo "  Record the baseline on $branch_name, before any change: cd $target && ./scripts/verify.sh --baseline"
+echo "    It runs the project's own commands of scripts/verify.conf; commit .agents/verification-baseline."
+echo "    A check that fails then stays visible as KNOWN and fails the verification until it is"
+echo "    fixed or the owner accepts it with 'accepted-failure: <check> <reason>' in scripts/verify.conf."
+echo "  The planning documents are observed, not approved: approve them with ./scripts/start-planning.sh"
+echo "    and ./scripts/finish-planning.sh in $target."

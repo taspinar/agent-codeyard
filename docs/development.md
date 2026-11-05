@@ -353,6 +353,48 @@ Two limits:
 A record made without the workflow self-tests does not stand in for a run that
 needs them, such as `--reuse --all`.
 
+### The baseline of an adopted project
+
+A project that adopted the workflow around an existing product
+(`adopt-repository.sh`, "Adopting an existing repository") may have checks
+that fail before any change. The baseline keeps those apart from what a
+change breaks, without ever presenting them as passed.
+
+```bash
+./scripts/verify.sh --baseline   # once, started by the owner, before any change
+```
+
+It runs every check of `scripts/verify.conf`, the project's own commands, and
+records how each ended in `.agents/verification-baseline`, a file you
+commit: `pass: <check>`, `fail: <check> exit <n>`, or `unavailable: <check>
+<reason>` for a tool that is missing or a command that was not found (exit
+127). It is not a verification: it records no pass, the workflow self-tests
+do not run, it exits 1 when a check failed, and it refuses to run when a
+baseline exists. To record it again, remove the file in a reviewed change.
+
+Afterwards every run of `./scripts/verify.sh` compares with it:
+
+| Result | When | Fails the verification |
+|---|---|---|
+| `KNOWN` | The check failed in the baseline and fails now: a pre-existing failure, with its check name | Yes |
+| `FAIL ... a regression` | The check passed in the baseline and fails now | Yes |
+| `PASS (it failed in the baseline and passes now)` | A pre-existing failure was fixed | No |
+| `ACCEPTED` | The check fails, and `scripts/verify.conf` holds your exception for it | No |
+
+A known failure never produces a passing verification. It stays visible until
+it is fixed, or until you accept it explicitly with one line in
+`scripts/verify.conf`:
+
+```text
+accepted-failure: lint The style errors predate the adoption; F03 fixes them.
+```
+
+The line names a check of the file and gives the reason; the summary shows
+the failure as `ACCEPTED` with it, and says when a check with an exception
+passes again, so that the line can go. Adding an exception is protected by
+the merge approval gate, and so is any change of the baseline file: neither
+passes without you.
+
 ### Heavy checks and the machine-wide slot
 
 Feature worktrees share the machine: two sessions that run a browser suite or
@@ -874,6 +916,15 @@ an earlier round is not resolved by a newer review alone: you confirm that it
 was resolved, and the approval records that. The approval covers exactly the
 reviewed planning; a document that changes while the script waits for your
 answer is refused.
+
+In a project that adopted the workflow, the adoption may have written the
+planning documents as a reconstruction, each starting with the line
+`> **Observed, not approved.** ...` ("Adopting an existing repository").
+Approving the requirements in `start-planning.sh` removes the mark from them;
+the planner removes it from the architecture and the roadmap it confirmed or
+rewrote. `finish-planning.sh` refuses the approval while a planning document
+still carries the mark, and names it: nothing reconstructed is approved
+without passing through the planning.
 
 The approval is recorded in `docs/PLANNING_APPROVAL.md`, which is committed with
 the planning: the time, the planning branch, the final review round, the
@@ -2116,7 +2167,11 @@ finished with `--no-review`.
   carry out the gate;
 - in `scripts/verify.conf` and `scripts/verify-workflow.conf`: a changed or
   removed line, which includes a check made a budget, a budget made a check,
-  and a changed target (see "Budgets"). An added check is sensitive.
+  and a changed target (see "Budgets"), and an added `accepted-failure:`
+  line, which lets the verification pass while a check fails (see "The
+  baseline of an adopted project"). An added check is sensitive;
+- `.agents/verification-baseline`, the baseline of an adopted project,
+  when it is added, changed, or removed.
 
 What is fundamental in your project you list in
 `.agents/policies/guardrails.conf`, as Git pathspecs:
@@ -3154,10 +3209,13 @@ project declares (package.json scripts, Makefile targets), the run steps of
 its CI, and those its tools run by convention (`go test ./...`, `pytest`),
 each marked by origin; the CI files with the secrets they refer to by name;
 the deployment files; the requirement, architecture, and decision documents
-and instructions for agents; the files that may hold a secret; the branch,
+and instructions for agents, each with its first heading, its length, and its
+headings; the files that may hold a secret; the branch,
 the commit, and the uncommitted changes; and, against the template, the files
 an adoption would add, the paths where the repository already has a file
-(collisions, with whether they have uncommitted changes), and the directories
+(collisions, with whether they have uncommitted changes; a planning document
+of the baseline, `docs/architecture.md`, `docs/PROJECT_REQUIREMENTS.md`, or
+`docs/roadmap.md`, is one also where the template has none), and the directories
 both have (`.agents`, `.github`, `docs`, `scripts`, `tests`). The template's
 own product files stay behind: its site, `README.md`, `LICENSE`,
 `CONTRIBUTING.md`, `SECURITY.md`, its approval requests, and the placeholders
@@ -3177,6 +3235,11 @@ is allowed):
   refused for `AGENTS.md`, a script, a CI workflow, and a path with
   uncommitted changes, which stay the project's until the owner resolves
   them;
+- a collision on a planning document of the baseline is the assessor's
+  judgement whether the project's document is sufficient: `keep-project`
+  (sufficient, reused), `reconstruct` (not sufficient), or `ask-owner`;
+  `merge` and `take-template` are refused for it, and `reconstruct` for any
+  other path;
 - every verification command names a command of the facts, whose text the
   script takes over, so that no command is invented;
 - the workflow profile, `light` or `standard`, has a rationale.
@@ -3184,15 +3247,18 @@ is allowed):
 **The output** is kept in `.agents/assessments/<repo>-<time>/` of the primary
 checkout of the template, ignored by Git, and nothing is written in the
 assessed repository: `facts.json`; `report.md`, whose observed facts,
-assumptions, and questions are separate sections and which says that every
+assumptions, questions, and risks are separate sections and which says that every
 inference in it is *observed, not approved*, never an owner-approved
 requirement or a historical decision; and `proposal.json` (`adoption-proposal/v1`,
 status `proposed, not approved`) with the files to add, the collisions and
 their resolutions, the profile, the verification commands, the template
 version (the commit of the template checkout), the ownership for a later
 `sync-template.sh` (the `paths:` of `.agents/template.conf`, and an
-`:(exclude)` for every template file the project keeps), and what a later
-baseline would have to run, with its side effects. Every run makes a new
+`:(exclude)` for every template file the project keeps), what a later
+baseline would have to run, with its side effects, and the material of the
+baseline documents the adoption writes (the summary, the facts, the
+assumptions, the risks, the questions, and the project's own requirement,
+architecture, and decision documents). Every run makes a new
 directory; an earlier assessment is never changed.
 
 ## Adopting an existing repository
@@ -3236,6 +3302,36 @@ directory (`:(exclude).github/workflows`), so a later sync adds or changes no
 CI workflow either. The project's history, application code, dependency
 management, and deployment files are not touched; the commit runs none of the project's hooks.
 
+**Written from the proposal**, where the project has no such file of its own:
+
+- `scripts/verify.conf`: the verification commands of the proposal, the
+  project's own test, lint, and build commands, one check each, run in their
+  directory. The project's CI runs as before: the same commands become the
+  checks of `verify.sh`, which integrates them without replacing the CI. The
+  file is the project's (`:(exclude)scripts/verify.conf` under `paths:`), so a
+  sync never changes it. Without a command in the proposal, one check fails
+  and says that nothing of the project is verified yet.
+- `docs/architecture.md`, `docs/PROJECT_REQUIREMENTS.md`, and
+  `docs/roadmap.md`: a minimal baseline from the assessment. The architecture
+  names the project's own documents first, to be reused, then the observed
+  facts, the assumptions, the risks, and the unknowns; the requirements, still
+  `Status: Draft` with the template's sections for Project Grill, name the
+  project's documents that state requirements and the open questions; the
+  roadmap lists the near-term work of the adoption. Each starts with the line
+  `> **Observed, not approved.** ...`, which says how you approve it: through
+  the planning approval of the repository (see "Planning approval"), after
+  which it no longer carries the mark. A document the project already has at
+  that path is applied as the assessment judged it: `keep-project`, it is
+  sufficient and reused as it is, unmarked; `reconstruct`, it is not, and the
+  marked baseline is written at its path, followed by a section "The
+  project's document, as it was" with the assessment's rationale and the
+  project's text unchanged, so the commit only adds lines and the owner folds
+  the text into the planning; `ask-owner` stops the run. A proposal that
+  does not judge a planning document the project has stops the run too:
+  assess the repository again.
+
+No ADR is written: the adoption reconstructs no decision of the past.
+
 **It stops before any change**, with a report that names each file, when the
 repository has uncommitted work (also untracked files), a collision is
 unresolved, a path the adoption writes is a symbolic link or lies under one,
@@ -3258,8 +3354,51 @@ deployed.
 
 After the merge, `./scripts/sync-template.sh` in the repository takes over
 later template changes of the files the template owns, and reports a
-conflict where the project has its own content. The project's verification
-commands, its profile, and its baseline are the third step of the adoption.
+conflict where the project has its own content.
+
+## The baseline of an adopted repository
+
+The third step of an adoption makes the baseline honest: the adopted project
+runs ordinary features from the first day, and nothing claims more than is
+known.
+
+1. **Record the baseline of the verification** on the branch
+   `adopt/agent-codeyard`, before any change, when you decide to run the
+   project's commands (the proposal lists what they need, and their side
+   effects): `./scripts/verify.sh --baseline` in the repository, then commit
+   `.agents/verification-baseline` on the branch. A check that fails then
+   is a pre-existing failure: every later verification shows it as `KNOWN`
+   and fails until it is fixed or you accept it with `accepted-failure:` in
+   `scripts/verify.conf` ("The baseline of an adopted project").
+2. **Review and merge** the adoption. The planning documents stay *observed,
+   not approved*.
+3. **Work as usual.** `./scripts/run-feature.sh <issue> <name>` runs an
+   ordinary feature in the adopted repository, with its review, its
+   verification against the baseline, and the merge approval gate. Creating
+   features from the roadmap (`create-feature-issue.sh`) waits for the
+   approved planning.
+4. **Approve the planning** when you are ready: `./scripts/start-planning.sh`
+   and `./scripts/finish-planning.sh` in the repository take the reconstructed
+   documents through Project Grill, the planner, and the planning review, and
+   the approved documents lose the mark.
+5. **Take over template changes** with `./scripts/sync-template.sh`, as in
+   any project from the template.
+
+The workflow profile of the proposal is not applied: it is one line,
+`profile: light` or `profile: standard`, in `.agents/policies/risk.conf`,
+which you add when you want it ("Workflow profiles").
+
+`tests/adoption-test.sh` runs these steps on a synthetic fixture: the
+assessment, the adoption, a baseline with a failing linter that fails the
+verification as `KNOWN` until it is accepted, one feature with
+`run-feature.sh`, and a later `sync-template.sh` that changes a file of the
+workflow and leaves the project's checks, its baseline, and its CI alone.
+
+**Limits.** The assessment reads files; it understands no code, and its
+reconstruction is a starting point for the planning, not a description you
+can rely on. The baseline records how the checks ended on one machine; a
+check that fails for a missing tool is `unavailable`, and still fails. The
+adoption sets up no deployment, changes no CI, and fixes no existing defect.
 
 ## Lifecycle
 

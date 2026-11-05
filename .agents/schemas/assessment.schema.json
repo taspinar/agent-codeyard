@@ -1,7 +1,7 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["summary", "facts", "assumptions", "questions", "collisions", "profile", "verification", "execution_needed"],
+  "required": ["summary", "facts", "assumptions", "questions", "risks", "collisions", "profile", "verification", "execution_needed"],
   "properties": {
     "summary": { "type": "string" },
     "facts": {
@@ -40,6 +40,18 @@
         }
       }
     },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["risk", "basis"],
+        "properties": {
+          "risk": { "type": "string" },
+          "basis": { "type": "string" }
+        }
+      }
+    },
     "collisions": {
       "type": "array",
       "items": {
@@ -48,7 +60,7 @@
         "required": ["path", "resolution", "rationale"],
         "properties": {
           "path": { "type": "string" },
-          "resolution": { "type": "string", "enum": ["keep-project", "merge", "take-template", "ask-owner"] },
+          "resolution": { "type": "string", "enum": ["keep-project", "merge", "take-template", "reconstruct", "ask-owner"] },
           "rationale": { "type": "string" }
         }
       }

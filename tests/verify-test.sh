@@ -834,6 +834,63 @@ expect_failure "$project" "a file with a target and no check must be refused"
   [[ "$(verification_durations_json "$tmp/none")" == "[]" ]] || { echo "a missing durations file is not an empty list" >&2; exit 1; }
 ) || fail "the duration functions of lib/verification.sh"
 
+# The baseline of an adopted project: the first run records how each check
+# ended, and is no verification. A pre-existing failure stays visible as
+# KNOWN and never produces a passing verification; only the owner's
+# accepted exception lets the verification pass while the check fails.
+project="$(setup_recorded_project baseline)"
+printf 'lint: ruff check .\ntests: pytest\ntypes: tsc --noEmit\n' >"$project/scripts/verify.conf"
+git -C "$project" commit -qam "Three checks"
+baseline="$project/.agents/verification-baseline"
+if MOCK_RUFF_EXIT=1 run_verify "$project" --baseline; then fail "a baseline with a failing check passed"; fi
+grep -Fxq "fail: lint exit 1" "$baseline" && grep -Fxq "pass: tests" "$baseline" &&
+  grep -Fxq "unavailable: types missing tool: tsc" "$baseline" && grep -Eq '^recorded-at: [0-9T:Z-]+$' "$baseline" ||
+  fail "the baseline does not record each check: $(cat "$baseline" 2>/dev/null)"
+[[ ! -e "$project$record" ]] || fail "a baseline recorded a pass"
+for option in --reuse --all "--only default"; do
+  # shellcheck disable=SC2086
+  if PATH="$tmp/bin:/usr/bin:/bin" "$project/scripts/verify.sh" --baseline $option >"$project/out.log" 2>&1; then
+    fail "--baseline was combined with $option"
+  fi
+done
+before="$(cat "$baseline")"
+if run_verify "$project" --baseline; then fail "a second baseline was recorded"; fi
+grep -Fq "the baseline is recorded already" "$project/out.log" && [[ "$(cat "$baseline")" == "$before" ]] ||
+  fail "a recorded baseline was not kept: $(cat "$project/out.log")"
+git -C "$project" add -A
+git -C "$project" commit -qm "Baseline"
+
+# The pre-existing failures fail the verification, named as known, apart from
+# a regression; nothing is recorded.
+if MOCK_RUFF_EXIT=1 run_verify "$project"; then fail "a verification with pre-existing failures passed"; fi
+grep -Eq "^KNOWN +lint \(exit 1\): failed before any change" "$project/out.log" &&
+  grep -Eq "^KNOWN +types \(missing tool: tsc\)" "$project/out.log" && grep -Eq "^PASS +tests$" "$project/out.log" &&
+  grep -Fq "2 check(s) failed before any change" "$project/out.log" || fail "the pre-existing failures are not shown as known: $(cat "$project/out.log")"
+grep -q "Verification failed" "$project/out.log" && [[ ! -e "$project$record" ]] || fail "a verification with known failures recorded a pass"
+if MOCK_RUFF_EXIT=1 MOCK_PYTEST_EXIT=2 run_verify "$project"; then fail "a regression passed"; fi
+grep -Eq "^FAIL +tests \(exit 2\): a regression, it passed in the baseline" "$project/out.log" ||
+  fail "a regression is not told apart from the known failures: $(cat "$project/out.log")"
+
+# A fixed check passes again and says so; the unavailable one still fails.
+if run_verify "$project"; then fail "a verification with an unavailable check passed"; fi
+grep -Eq "^PASS +lint \(it failed in the baseline and passes now\)" "$project/out.log" || fail "a fixed check is not reported"
+
+# The owner's exception: the failure is shown as accepted and does not fail
+# the verification; an exception names a check, and gives a reason.
+printf 'accepted-failure: types The type checker is not installed on this machine.\n' >>"$project/scripts/verify.conf"
+run_verify "$project" || { cat "$project/out.log" >&2; fail "an accepted exception still failed the verification"; }
+grep -Eq "^ACCEPTED +types \(missing tool: tsc\): an accepted exception of scripts/verify.conf: The type checker" "$project/out.log" &&
+  grep -Fq "1 check(s) failed and are exceptions the owner accepted" "$project/out.log" ||
+  fail "the accepted exception is not shown: $(cat "$project/out.log")"
+[[ -f "$project$record" ]] || fail "a verification whose only failure is accepted recorded no pass"
+if MOCK_RUFF_EXIT=1 run_verify "$project"; then fail "the known failure of a check without an exception passed"; fi
+[[ ! -e "$project$record" ]] || fail "a failed verification kept the record of the earlier pass"
+for line in "accepted-failure: types" "accepted-failure: nothing because" "accepted-failure [default]: types reason"; do
+  project="$(setup_project "exception-$RANDOM" "types: tsc" "$line")"
+  expect_failure "$project" "a malformed exception must be refused: $line"
+  grep -Fq "accepted-failure" "$project/out.log" || fail "the refusal of '$line' does not say why"
+done
+
 # Every self-test passes through tests/lib-fakes.sh before it starts anything.
 for test in "$source_root"/tests/*-test.sh; do
   grep -Eq '^source "\$(source_)?root/tests/lib-fakes\.sh"$' "$test" ||

@@ -351,7 +351,7 @@ Merge approval:
     <Fragment slot="note"><a href={repoFile(".agents/policies/risk.conf")}><code>risk.conf</code></a> of this repository; <a href={issue(170)}>Issue #170</a>.</Fragment>
     <ul class="rules">
       <li><b>A low-risk run.</b> A low level exists only under <code>profile: light</code>, or with a <code>low:</code> class in <code>risk.conf</code>. This repository has neither, so none of its features was low, and this page does not invent one. Under the light profile a low feature may be committed without a review; the commit and the pull request say so, and the merge then needs your approval.</li>
-      <li><b>Onboarding an existing repository.</b> Codeyard starts new projects from the template with <code>gh repo create --template</code>. Bringing an existing repository into the workflow is <a href={issue(170)}>planned in #170</a> and not built, so there is no run of it to show.</li>
+      <li><b>Onboarding an existing repository.</b> An existing repository can adopt the workflow (<a href={href("docs/adopting/")}>Adopting</a>), but it is tested only on synthetic fixtures so far; a pilot on a real repository follows, so there is no run of it to show.</li>
     </ul>
   </Section>
 

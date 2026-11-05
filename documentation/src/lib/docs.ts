@@ -10,7 +10,7 @@ export const groups: { label?: string; pages: Page[] }[] = [
   { label: "Concepts", pages: [{ id: "risk-policy" }, { id: "verification-and-completion" }, { id: "agent-roles" }] },
   { label: "Workflow", pages: [{ id: "detailed-workflow" }, { id: "reference/workflow", title: "Workflow reference" }] },
   { label: "Reference", pages: [{ id: "configuration-and-security" }, { id: "technical-reference" }] },
-  { label: "Setup and maintenance", pages: [{ id: "github-setup" }, { id: "updating" }, { id: "troubleshooting" }] },
+  { label: "Setup and maintenance", pages: [{ id: "github-setup" }, { id: "adopting" }, { id: "updating" }, { id: "troubleshooting" }] },
 ];
 
 /** The path of a page under the site, without the base. */

@@ -69,6 +69,7 @@ the template itself.
 | See every step, artifact, and approval | [docs/workflow.md](docs/workflow.md) |
 | Follow a complete example | [docs/example.md](docs/example.md) |
 | Find what a file is for | [docs/project-map.md](docs/project-map.md) |
+| Adopt the workflow in an existing repository | "Adopting an existing repository" in [docs/development.md](docs/development.md) |
 | Keep an existing project up to date | "Taking over template changes" in [docs/development.md](docs/development.md) |
 
 The rules for agents are in `AGENTS.md`; their boundaries are in

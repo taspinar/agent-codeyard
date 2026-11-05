@@ -225,6 +225,11 @@ for required in docs/PROJECT_REQUIREMENTS.md docs/architecture.md docs/roadmap.m
 done
 grep -Fqx "Status: Approved" "$root/docs/PROJECT_REQUIREMENTS.md" ||
   fail "the project requirements are not approved."
+# A document that an adoption reconstructed is approved only as the planner
+# confirmed or rewrote it, without the mark (lib/planning.sh).
+observed="$(planning_observed_documents "$root")"
+[[ -z "$observed" ]] ||
+  fail "these planning documents still carry the mark 'Observed, not approved' of a reconstruction: ${observed//$'\n'/, }. Confirm or rewrite them in the planning, remove the mark, and review again."
 
 # An amendment replaces the review of steps 2 to 4 by its own checks.
 if [[ -n "$amend_reason" ]]; then

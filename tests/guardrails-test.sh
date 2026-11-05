@@ -142,6 +142,22 @@ repo="$(setup_repo budget-added)"
 printf 'perf budget: true\n' >>"$repo/scripts/verify.conf"
 expect_level "$repo" sensitive "a feature adds a budget check"
 
+# The owner's exception for a failing check lets the verification pass while
+# it fails: adding one is protected. The baseline of an adopted project, the
+# record of its failures before any change, is protected as a whole.
+repo="$(setup_repo exception-added)"
+printf 'accepted-failure: unit It fails on this machine.\n' >>"$repo/scripts/verify.conf"
+expect_level "$repo" protected "a feature accepts the failure of a check"
+grep -Fq "protected: scripts/verify.conf (the failure of a check is accepted as an exception)" "$repo.out" ||
+  fail "the accepted exception was not named: $(cat "$repo.out")"
+
+repo="$(setup_repo baseline-added)"
+mkdir -p "$repo/.agents"
+printf 'pass: lint\npass: unit\n' >"$repo/.agents/verification-baseline"
+expect_level "$repo" protected "a feature adds the baseline of the verification"
+grep -Fq ".agents/verification-baseline (the baseline of the verification" "$repo.out" ||
+  fail "the baseline was not named: $(cat "$repo.out")"
+
 repo="$(setup_repo checks-deleted)"
 rm "$repo/scripts/verify.conf"
 expect_level "$repo" protected "a feature deletes the verification configuration"

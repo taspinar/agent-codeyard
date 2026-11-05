@@ -19,6 +19,9 @@ Read `AGENTS.md`, `.agents/prompts/project-planner.md`, and the rest of the repo
 - Each roadmap feature has a stable ID, a clear outcome, in-scope and out-of-scope behavior, dependencies on existing feature IDs only, testable acceptance criteria, and a risk.
 - Features are independently deliverable vertical slices where that fits, in an order that respects their dependencies.
 - ADRs exist for decisions that need a durable record, and none are ceremonial.
+- In a project that adopted the workflow, no ADR presents a decision of the
+  past as recorded then, and the reconstructed observations the planning keeps
+  hold against the repository.
 - Risks, unresolved questions, and assumptions are visible rather than hidden.
 
 ## Change cycle

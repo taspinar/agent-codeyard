@@ -4,7 +4,7 @@ description: "Take over template changes in a project that started from the temp
 order: 8
 ---
 
-This page is for a project that was created from the Codeyard template. Adopting Codeyard in an existing repository that did not start from the template is not supported yet: [Issue 170](https://github.com/taspinar/agent-codeyard/issues/170) plans it, and `sync-template.sh` does not do it.
+This page is for a project that was created from the Codeyard template, or that adopted it. `sync-template.sh` is not the way to adopt it: an existing repository that did not start from the template adopts the workflow first, as <a href="../adopting/">Adopting Codeyard in an existing repository</a> describes, and syncs afterwards.
 
 <a id="update-an-existing-project"></a>
 

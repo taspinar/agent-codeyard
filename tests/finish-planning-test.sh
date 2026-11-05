@@ -107,6 +107,19 @@ check_status() {
   echo "$status"
 }
 
+# A planning document that an adoption reconstructed carries the mark
+# 'Observed, not approved' until the planning approves it: a reviewed
+# planning that still carries it is not approved.
+repo="$(setup_repo observed)"
+printf '# Architecture\n\n> **Observed, not approved.** Reconstructed by adopt-repository.sh.\n\nLocal storage.\n' >"$repo/docs/architecture.md"
+add_review "$repo" 1 PASS "[]"
+expect_refused "$repo" "a planning document still carries the mark of a reconstruction"
+grep -Fq "docs/architecture.md" "$repo.out" && grep -Fq "Observed, not approved" "$repo.out" ||
+  fail "the refusal does not name the marked document: $(cat "$repo.out")"
+printf '# Architecture\n\nLocal storage, as the planner confirmed it.\n' >"$repo/docs/architecture.md"
+add_review "$repo" 2 PASS "[]"
+run_finish "$repo" y || { cat "$repo.out" >&2; fail "a planning without the mark was not approved"; }
+
 # A planning whose latest round passed is approved after confirmation; the
 # approval lists the rounds and the findings that were not adopted.
 repo="$(setup_repo approve)"

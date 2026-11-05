@@ -126,7 +126,7 @@ const improvements = [
         <li>Record every run on your machine and let a read-only agent analyse the records</li>
       </ul></div>
       <div><h3>It cannot, today</h3><ul>
-        <li>Adopt an existing repository: a project starts from the template (<a href={issue(170)}>#170</a>), and there is no installer</li>
+        <li>Understand an existing repository's code when it adopts the workflow: the assessment reads its files, and what it reconstructs stays observed, not approved, until you approve the planning (<a href={href("docs/adopting/")}>Adopting</a>)</li>
         <li>Stop an agent from merging on its own: no script merges, but an agent has the GitHub rights of the account that started it until it gets an identity of its own (<a href={issue(99)}>#99</a>). Only the repository settings of <a href={href("docs/github-setup/")}>GitHub setup</a> make GitHub refuse a merge</li>
         <li>Isolate the agents: they run on your machine, as you, with the sandbox and permission settings of their own tools, and a worktree separates working files only. It is not a security boundary on its own</li>
         <li>Run other coding agents: the scripts start Claude Code and Codex</li>
