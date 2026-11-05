@@ -296,6 +296,26 @@ printf '{}\n' >"$repo/.agents/approval-requests/12.json"
   fail "a later approval request is not seen by Git: $(git -C "$repo" status --porcelain --untracked-files=all)"
 rm -r "$repo/.agents/approval-requests"
 
+# A repeated run started from the project's branch reads the ignore rules of
+# the adoption's branch: no warning about the paths its section un-ignores,
+# and still one when that branch no longer un-ignores them.
+git -C "$repo" switch -q main
+adopt "$repo" || { cat "$repo.out" >&2; fail "a repeated adoption from main failed"; }
+grep -Fq "is adopted already" "$repo.out" && [[ "$(git -C "$repo" symbolic-ref HEAD)" == refs/heads/main ]] ||
+  fail "a repeated adoption from main did not leave main checked out: $(cat "$repo.out")"
+! grep -Eq '^  \.agents/(schemas|approval-requests)/' "$repo.out" ||
+  fail "a repeated adoption from main warns about paths its branch un-ignores: $(cat "$repo.out")"
+grep -Fxq "  docs/example.md (example.md in docs/.gitignore:1)" "$repo.out" ||
+  fail "a repeated adoption from main does not name the path that stays hidden: $(cat "$repo.out")"
+git -C "$repo" switch -q adopt/agent-codeyard
+sed -i '/^!\/\.agents\//d' "$repo/.gitignore"
+commit_all "$repo" "Drop the exceptions"
+git -C "$repo" switch -q main
+adopt "$repo" || { cat "$repo.out" >&2; fail "a repeated adoption from main without the exceptions failed"; }
+grep -Eq '^  \.agents/schemas/.* \(\*\.json in \.gitignore:2\)$' "$repo.out" &&
+  grep -Eq '^  \.agents/approval-requests/.* \(\*\.json in \.gitignore:2\)$' "$repo.out" ||
+  fail "a repeated adoption from main does not warn about the paths its branch hides: $(cat "$repo.out")"
+
 # ------------------------------------------------------- a partial adoption
 # A run that stopped before its commit left some of the files, one of them
 # changed since.

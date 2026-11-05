@@ -698,10 +698,13 @@ pending="$(awk -F'\t' '$1 == "write"' "$work/states" | wc -l | tr -d ' ')"
 uncommitted="$(tgit status --porcelain=v1 --untracked-files=all | wc -l | tr -d ' ')"
 
 if [[ "$pending" -eq 0 && "$uncommitted" -eq 0 && ("$mode" == adopted || "$publish" -eq 0) ]]; then
+  # The ignore rules are those of the adoption's branch, read before the
+  # switch back to the branch the run started from.
+  hidden="$(print_hidden)"
   switch_back
   echo "$target is adopted already: every file of the proposal is in place. Nothing changed."
   awk -F'\t' '$1 == "kept" { print "  Left as the project has it: " $3 }' "$work/states"
-  print_hidden
+  [[ -z "$hidden" ]] || printf '%s\n' "$hidden"
   exit 0
 fi
 
