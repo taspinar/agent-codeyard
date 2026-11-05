@@ -12,7 +12,9 @@ usage() {
   echo "The adoption only adds: an existing file is never overwritten. A collision"
   echo "is applied as the proposal resolves it:"
   echo "  keep-project   the project's file stays its own; for AGENTS.md and"
-  echo "                 .gitignore a marked section of the workflow is appended."
+  echo "                 .gitignore a marked section of the workflow is appended;"
+  echo "                 that of .gitignore also un-ignores the workflow's files"
+  echo "                 that a rule of the project's .gitignore hides."
   echo "  merge,         the template's file is placed beside it, as"
   echo "  take-template  <name>.agent-codeyard.<ext>, to combine by hand."
   echo "  ask-owner, or no resolution, stops the run before any change."
@@ -135,6 +137,17 @@ while IFS= read -r path; do
   [[ "$(git -C "$root" cat-file -t "$template_commit:$path" 2>/dev/null)" == blob ]] ||
     invalid_paths+=("\"$path\" (not a file of the template commit ${template_commit:0:7})")
 done < <(jq -r "$plain_relative"' (.additions[], .collisions[]) | .path | select(plain_relative)' "$proposal")
+# A path an ignore rule hides is one of the template commit too, or one the
+# workflow writes later, which the assessment names by an example.
+later_paths=(.agents/approval-requests/x.json .agents/plans/x.md .agents/verification-baseline docs/decisions/x.md docs/PLANNING_APPROVAL.md)
+while IFS= read -r line; do
+  invalid_paths+=("$line")
+done < <(jq -r "$plain_relative"' (.ignored // [])[] | .path | select(plain_relative | not) | tojson' "$proposal")
+while IFS= read -r path; do
+  [[ " ${later_paths[*]} " != *" $path "* ]] || continue
+  [[ "$(git -C "$root" cat-file -t "$template_commit:$path" 2>/dev/null)" == blob ]] ||
+    invalid_paths+=("\"$path\" (hidden by an ignore rule, but not a path of the workflow)")
+done < <(jq -r "$plain_relative"' (.ignored // [])[] | .path | select(plain_relative)' "$proposal")
 if [[ "${#invalid_paths[@]}" -gt 0 ]]; then
   echo "Error: $proposal names paths that are no files of the template in the repository; the adoption stops before any change:" >&2
   printf '  - %s\n' "${invalid_paths[@]}" >&2
@@ -307,6 +320,26 @@ done
 # uncommitted on its branch.
 awk -F'\t' '$1 == "add" || $1 == "beside" || $1 == "config" || $1 == "verify" || $1 == "document" || $1 == "reconstruct" || $1 == "section" { print $2 }' "$work/plan" | LC_ALL=C sort >"$work/planned"
 
+# The paths of the workflow that a rule of the project's .gitignore hides are
+# un-ignored in its section: a file of .agents/, and a path the workflow
+# writes later, by its directory and extension, since the workflow adds more
+# of them; any other path by itself. A rule of another file (a .gitignore
+# further down, .git/info/exclude) or of an ignored directory above the path
+# cannot be undone from there: such a path is named after the commit.
+: >"$work/unignore"
+if grep -Fxq $'section\t.gitignore\t.gitignore' "$work/plan"; then
+  while IFS= read -r path; do
+    [[ "$path" =~ ^[A-Za-z0-9._/-]+$ ]] || continue
+    name="${path##*/}"
+    if [[ "$path" == */* && "$name" == ?*.* && ("$path" == .agents/* || " ${later_paths[*]} " == *" $path "*) ]]; then
+      printf '!/%s/*.%s\n' "${path%/*}" "${name##*.}"
+    else
+      printf '!/%s\n' "$path"
+    fi
+  done < <(jq -r '(.ignored // [])[] | select(.rule.source == ".gitignore" and .ignored_directory == null) | .path' "$proposal") |
+    awk '!seen[$0]++' >"$work/unignore"
+fi
+
 # --------------------------------------------- the state of the repository
 current="$(tgit symbolic-ref -q --short HEAD 2>/dev/null || true)"
 head="$(tgit rev-parse -q --verify HEAD 2>/dev/null || true)"
@@ -398,6 +431,10 @@ section_file() {
     {
       printf '\n%s\n' "$gitignore_marker"
       template_file .gitignore /dev/stdout | grep -E '^!?\.agents/' || true
+      if [[ -s "$work/unignore" ]]; then
+        printf '# The files of the workflow that a rule above would hide; the workflow\n# commits them.\n'
+        cat "$work/unignore"
+      fi
     } >"$2"
   fi
 }
@@ -636,13 +673,38 @@ if [[ -n "$blocked" ]]; then
   exit 1
 fi
 
+# still_hidden: the paths of the workflow that an ignore rule of the
+# repository still hides, with the rule; the owner changes that rule.
+still_hidden() {
+  local rule path
+
+  jq -r '(.ignored // [])[] | .path' "$proposal" | tr '\n' '\0' |
+    tgit check-ignore -z -v -n --no-index --stdin 2>/dev/null |
+    while IFS= read -r -d '' source && IFS= read -r -d '' line && IFS= read -r -d '' rule && IFS= read -r -d '' path; do
+      [[ -n "$source" && "$rule" != '!'* ]] || continue
+      printf '%s (%s in %s:%s)\n' "$path" "$rule" "$source" "$line"
+    done || true
+}
+print_hidden() {
+  local hidden
+
+  hidden="$(still_hidden)"
+  [[ -n "$hidden" ]] || return 0
+  echo "Still hidden by an ignore rule the adoption cannot change; the workflow commits these paths, so change the rule:"
+  printf '%s\n' "$hidden" | sed 's/^/  /'
+}
+
 pending="$(awk -F'\t' '$1 == "write"' "$work/states" | wc -l | tr -d ' ')"
 uncommitted="$(tgit status --porcelain=v1 --untracked-files=all | wc -l | tr -d ' ')"
 
 if [[ "$pending" -eq 0 && "$uncommitted" -eq 0 && ("$mode" == adopted || "$publish" -eq 0) ]]; then
+  # The ignore rules are those of the adoption's branch, read before the
+  # switch back to the branch the run started from.
+  hidden="$(print_hidden)"
   switch_back
   echo "$target is adopted already: every file of the proposal is in place. Nothing changed."
   awk -F'\t' '$1 == "kept" { print "  Left as the project has it: " $3 }' "$work/states"
+  [[ -z "$hidden" ]] || printf '%s\n' "$hidden"
   exit 0
 fi
 
@@ -745,6 +807,10 @@ mapfile -t own < <(awk -F'\t' '$2 == "keep" || $2 == "section" { print $3 }' "$w
 print_list "The project's own (excluded from the template's files where the template has one):" ${own[@]+"${own[@]}"}
 mapfile -t ci < <(awk -F'\t' '$2 == "ci" { print $3 }' "$work/states")
 print_list "Not added, the project's CI stays as it is:" ${ci[@]+"${ci[@]}"}
+unignored=()
+[[ " ${sections[*]-} " != *" .gitignore "* ]] || mapfile -t unignored <"$work/unignore"
+print_list "Un-ignored in the section of .gitignore, as the workflow commits them:" ${unignored[@]+"${unignored[@]}"}
+print_hidden
 echo
 if [[ "$committed" -eq 1 ]]; then
   echo "Committed on $branch_name: $(tgit log -1 --format='%h %s')"

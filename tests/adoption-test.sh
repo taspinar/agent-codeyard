@@ -27,12 +27,19 @@ commit_all() {
   git -C "$1" -c user.name=Test -c user.email=test@example.com commit -qm "$2"
 }
 
-# The template: the files of this checkout as they are, without the site.
+# The template: the files of this checkout as they are, without the site,
+# and without what an adopted project has of its own there: its decisions,
+# its ignore rules, and its exclusions from the template's files.
 template="$tmp/template"
 mkdir -p "$template"
 (cd "$source_root" && git ls-files -co --exclude-standard -z -- . ':(exclude)documentation' |
-  while IFS= read -r -d '' path; do [[ -f "$path" ]] && printf '%s\0' "$path"; done |
+  while IFS= read -r -d '' path; do
+    [[ "$path" != docs/decisions/* || "$path" == docs/decisions/README.md ]] || continue
+    [[ -f "$path" ]] && printf '%s\0' "$path"
+  done |
   tar --null -T - -cf -) | tar -C "$template" -xf -
+workflow_gitignore "$template/.gitignore"
+template_conf "$template/.agents/template.conf"
 git -C "$template" init -q -b main
 commit_all "$template" "Template"
 
@@ -84,7 +91,8 @@ grep -Fxq "tests: ./tests.sh" "$repo/scripts/verify.conf" && grep -Fxq "lint: ./
 for document in docs/architecture.md docs/PROJECT_REQUIREMENTS.md docs/roadmap.md; do
   grep -q '^> \*\*Observed, not approved\.\*\*' "$repo/$document" || fail "$document is not marked as observed, not approved"
 done
-[[ -z "$(cd "$repo" && find docs/decisions -type f ! -name README.md 2>/dev/null)" ]] || fail "the adoption wrote an ADR"
+[[ -z "$(git -C "$repo" diff --name-only main adopt/agent-codeyard -- docs/decisions | grep -v '^docs/decisions/README.md$' || true)" ]] ||
+  fail "the adoption wrote an ADR"
 
 # -------------------------------------------------------------- 3. baseline
 # The owner starts the baseline on the adoption's branch. The linter fails

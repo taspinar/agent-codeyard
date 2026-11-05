@@ -3248,8 +3248,16 @@ an adoption would add, the paths where the repository already has a file
 (collisions, with whether they have uncommitted changes; a planning document
 of the baseline, `docs/architecture.md`, `docs/PROJECT_REQUIREMENTS.md`, or
 `docs/roadmap.md`, is one also where the template has none), and the directories
-both have (`.agents`, `.github`, `docs`, `scripts`, `tests`). The template's
-own product files stay behind: its site, `README.md`, `LICENSE`,
+both have (`.agents`, `.github`, `docs`, `scripts`, `tests`). It also names
+every path the workflow commits that an ignore rule of the repository would
+hide (`adoption.ignored`, with the rule, its file, and an ignored directory
+above the path when that is the reason): the files an adoption brings, and
+those the workflow writes and commits later, such as
+`.agents/approval-requests/<issue>.json`, `.agents/plans/`, `docs/decisions/`,
+and `.agents/verification-baseline`. A rule such as `*.json` would otherwise
+leave a new schema or an approval request out of a later commit, and
+`finish-feature.sh` refuses an approval request that Git ignores. The
+template's own product files stay behind: its site, `README.md`, `LICENSE`,
 `CONTRIBUTING.md`, `SECURITY.md`, its approval requests, and the placeholders
 `src/.gitkeep` and `infra/.gitkeep`.
 
@@ -3318,7 +3326,15 @@ it:
   ownership of that path is excluded (`:(exclude)<path>` under `paths:`).
   `AGENTS.md` and `.gitignore` get a marked section appended once: the
   template's instructions for agents, and the lines that keep the workflow's
-  working files out of Git.
+  working files out of Git. Below them, the section un-ignores the paths of
+  the proposal that a rule of the project's `.gitignore` hides, with one `!`
+  line each: a file of `.agents/` and a path the workflow writes later by its
+  directory and extension (`!/.agents/schemas/*.json`), since more such files
+  follow; any other path by itself. Nothing else of the project is
+  un-ignored. A rule of another file (a `.gitignore` further down,
+  `.git/info/exclude`) or of an ignored directory above the path cannot be
+  undone from there: the adoption names each such path with its rule, for
+  you to change.
 - `merge` or `take-template`: the template's file is placed beside the
   project's as `<name>.agent-codeyard.<ext>`, to combine by hand. The path
   stays the template's, so a later sync reports a conflict until they are

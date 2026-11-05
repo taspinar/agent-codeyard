@@ -28,14 +28,20 @@ commit_all() {
   git -C "$1" -c user.name=Test -c user.email=test@example.com commit -qm "$2"
 }
 
-# The template checkout the assessment and the adoption run from.
+# The template checkout the assessment and the adoption run from, from the
+# files the template carries into an adopted project too; its product files
+# and CI, which an adoption leaves behind, are written here.
 template="$tmp/template"
 mkdir -p "$template/docs" "$template/.github/workflows" "$template/src"
 copy_workflow "$template"
-cp "$source_root/.gitignore" "$source_root/AGENTS.md" "$source_root/README.md" "$template/"
-cp "$source_root/.agents/agents.conf" "$source_root/.agents/template.conf" "$source_root/.agents/attribution.conf" "$template/.agents/"
+workflow_gitignore "$template/.gitignore"
+cp "$source_root/AGENTS.md" "$template/"
+printf '# The template\n' >"$template/README.md"
+cp "$source_root/.agents/agents.conf" "$source_root/.agents/attribution.conf" "$template/.agents/"
+template_conf "$template/.agents/template.conf"
 cp "$source_root/docs/architecture.md" "$source_root/docs/workflow.md" "$source_root/docs/evaluation.md" "$source_root/docs/example.md" "$template/docs/"
-cp "$source_root/.github/workflows/ci.yml" "$source_root/.github/workflows/guardrails.yml" "$template/.github/workflows/"
+printf 'name: ci of the template\non: [push]\njobs: {}\n' >"$template/.github/workflows/ci.yml"
+printf 'name: guardrails\non: [pull_request]\njobs: {}\n' >"$template/.github/workflows/guardrails.yml"
 cp "$source_root/.github/PULL_REQUEST_TEMPLATE.md" "$template/.github/"
 : >"$template/src/.gitkeep"
 git -C "$template" init -q -b main
@@ -263,6 +269,52 @@ state_before="$(state "$repo")"
 adopt "$repo" || { cat "$repo.out" >&2; fail "a repeated adoption of reconstructed documents failed"; }
 grep -Fq "is adopted already" "$repo.out" && [[ "$(state "$repo")" == "$state_before" ]] ||
   fail "a repeated adoption changed the reconstructed documents: $(cat "$repo.out")"
+
+# ------------------------------------ ignore rules that hide the workflow's files
+# The project ignores *.json with an exception of its own, and a .gitignore
+# further down hides a document. The section un-ignores the paths of the
+# workflow that the project's .gitignore hides, and only those; the rule
+# further down cannot be undone from there, and the adoption names it.
+repo="$(make_target ignoring)"
+printf 'node_modules/\n*.json\n!package.json\n' >"$repo/.gitignore"
+printf 'example.md\n' >"$repo/docs/.gitignore"
+commit_all "$repo" "Ignore rules"
+assess "$repo"
+adopt "$repo" || { cat "$repo.out" >&2; fail "the adoption of an ignoring project failed"; }
+[[ -z "$(git -C "$repo" status --porcelain --untracked-files=all)" ]] || fail "the adoption left uncommitted files: $(git -C "$repo" status --porcelain)"
+[[ "$(sed -n '/^# The files of the workflow that a rule above would hide/,$p' "$repo/.gitignore" | grep -v '^#')" == \
+  $'!/.agents/approval-requests/*.json\n!/.agents/schemas/*.json' ]] || fail "the section does not un-ignore the hidden paths: $(cat "$repo/.gitignore")"
+for path in .agents/approval-requests/12.json .agents/schemas/review.schema.json .agents/schemas/new.schema.json package.json; do
+  if git -C "$repo" check-ignore -q --no-index "$path"; then fail "$path is still ignored: $(cat "$repo/.gitignore")"; fi
+done
+git -C "$repo" check-ignore -q --no-index other.json && git -C "$repo" check-ignore -q --no-index docs/example.md ||
+  fail "the adoption un-ignored a path of the project, or one it cannot change"
+grep -Fxq "  docs/example.md (example.md in docs/.gitignore:1)" "$repo.out" || fail "the path that stays hidden is not named: $(cat "$repo.out")"
+mkdir -p "$repo/.agents/approval-requests"
+printf '{}\n' >"$repo/.agents/approval-requests/12.json"
+[[ "$(git -C "$repo" status --porcelain --untracked-files=all)" == "?? .agents/approval-requests/12.json" ]] ||
+  fail "a later approval request is not seen by Git: $(git -C "$repo" status --porcelain --untracked-files=all)"
+rm -r "$repo/.agents/approval-requests"
+
+# A repeated run started from the project's branch reads the ignore rules of
+# the adoption's branch: no warning about the paths its section un-ignores,
+# and still one when that branch no longer un-ignores them.
+git -C "$repo" switch -q main
+adopt "$repo" || { cat "$repo.out" >&2; fail "a repeated adoption from main failed"; }
+grep -Fq "is adopted already" "$repo.out" && [[ "$(git -C "$repo" symbolic-ref HEAD)" == refs/heads/main ]] ||
+  fail "a repeated adoption from main did not leave main checked out: $(cat "$repo.out")"
+! grep -Eq '^  \.agents/(schemas|approval-requests)/' "$repo.out" ||
+  fail "a repeated adoption from main warns about paths its branch un-ignores: $(cat "$repo.out")"
+grep -Fxq "  docs/example.md (example.md in docs/.gitignore:1)" "$repo.out" ||
+  fail "a repeated adoption from main does not name the path that stays hidden: $(cat "$repo.out")"
+git -C "$repo" switch -q adopt/agent-codeyard
+sed -i '/^!\/\.agents\//d' "$repo/.gitignore"
+commit_all "$repo" "Drop the exceptions"
+git -C "$repo" switch -q main
+adopt "$repo" || { cat "$repo.out" >&2; fail "a repeated adoption from main without the exceptions failed"; }
+grep -Eq '^  \.agents/schemas/.* \(\*\.json in \.gitignore:2\)$' "$repo.out" &&
+  grep -Eq '^  \.agents/approval-requests/.* \(\*\.json in \.gitignore:2\)$' "$repo.out" ||
+  fail "a repeated adoption from main does not warn about the paths its branch hides: $(cat "$repo.out")"
 
 # ------------------------------------------------------- a partial adoption
 # A run that stopped before its commit left some of the files, one of them

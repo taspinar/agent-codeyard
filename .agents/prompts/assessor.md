@@ -26,7 +26,9 @@ no file that may hold a secret:
   were not read.
 - `adoption`: what the template would add (`additions`), the paths where the
   repository already has a file (`collisions`), the directories both have
-  (`shared_directories`), and the template's ownership (`template_paths`).
+  (`shared_directories`), the paths the workflow commits that an ignore rule
+  of the repository hides (`ignored`), and the template's ownership
+  (`template_paths`).
 - `evidence_ids`: every id you may cite.
 
 You have no access to the repository. Do not look for it: work from the
