@@ -891,6 +891,150 @@ for line in "accepted-failure: types" "accepted-failure: nothing because" "accep
   grep -Fq "accepted-failure" "$project/out.log" || fail "the refusal of '$line' does not say why"
 done
 
+# A scoped exception: a check that already fails must not hide a new failure.
+# The formatter 'fmt' lists the files that contain BAD (its arguments, or every
+# file in src/) and fails when it lists one.
+cat >"$tmp/bin/fmt" <<'FMT'
+#!/usr/bin/env bash
+echo "fmt $*" >>"$MOCK_TOOL_LOG"
+[[ $# -gt 0 ]] || set -- src/*
+status=0
+for file in "$@"; do
+  if grep -q BAD "$file"; then echo "$file"; status=1; fi
+done
+exit "$status"
+FMT
+chmod +x "$tmp/bin/fmt"
+
+# setup_scoped_project <label> <exception-line>: a project with the check
+# 'format: fmt', the exception, and the library of the base, whose base
+# branch 'develop' already holds two unformatted files, on a feature branch
+# with the base 'develop' recorded.
+setup_scoped_project() {
+  local project
+
+  project="$(setup_recorded_project "$1")"
+  cp "$source_root/scripts/lib/base.sh" "$project/scripts/lib/"
+  printf 'format: fmt\n%s\n' "$2" >"$project/scripts/verify.conf"
+  printf 'BAD\n' >"$project/src/old.txt"
+  printf 'fine\n' >"$project/src/ok.txt"
+  git -C "$project" add -A
+  git -C "$project" commit -qm "The formatter backlog"
+  git -C "$project" switch -q -c develop
+  printf 'BAD\n' >"$project/src/dev.txt"
+  git -C "$project" add -A
+  git -C "$project" commit -qm "More backlog on develop"
+  git -C "$project" switch -q -c feature/9-scope
+  git -C "$project" config branch.feature/9-scope.workflow-base develop
+  printf '%s\n' "$project"
+}
+
+# expect_scoped_failure <project> <description> <pattern>: the verification
+# fails, and its output matches <pattern>.
+expect_scoped_failure() {
+  if run_verify "$1"; then cat "$1/out.log" >&2; fail "$2 passed"; fi
+  grep -Eq "$3" "$1/out.log" || fail "$2 is not reported: $(cat "$1/out.log")"
+}
+
+# changed-files: the unchanged files of the backlog may fail, every file the
+# feature adds or changes must pass, measured from the recorded base: dev.txt
+# is unchanged since 'develop', though not since 'main'.
+project="$(setup_scoped_project scoped-changed "accepted-failure: format changed-files fmt")"
+run_verify "$project" || { cat "$project/out.log" >&2; fail "an unchanged backlog failed the scoped check"; }
+grep -Eq "^SCOPED +format \(exit 1\): accepted for the files that did not change since develop; no file changed" "$project/out.log" &&
+  ! grep -q "^ACCEPTED" "$project/out.log" || fail "the scoped exception is not shown as SCOPED: $(cat "$project/out.log")"
+printf 'BAD\n' >"$project/src/new.txt"
+expect_scoped_failure "$project" "an untracked file that fails the scoped check" \
+  "^FAIL +format \(exit 1\): beyond the scope of its exception"
+grep -Eq "a file changed since develop fails it \(exit 1\): fmt" "$project/out.log" || fail "the changed file's failure is not named"
+grep -Fq "fmt src/new.txt" "$project/tools.log" || fail "the scoped command did not get the new file: $(cat "$project/tools.log" 2>/dev/null)"
+rm "$project/src/new.txt"
+printf 'BAD\n' >"$project/src/ok.txt"
+expect_scoped_failure "$project" "an unstaged change that fails the scoped check" "^FAIL +format"
+git -C "$project" add src/ok.txt
+expect_scoped_failure "$project" "a staged change that fails the scoped check" "^FAIL +format"
+git -C "$project" commit -qm "Break a file"
+expect_scoped_failure "$project" "a committed change that fails the scoped check" "^FAIL +format"
+printf 'fine\n' >"$project/src/ok.txt"
+printf 'still BAD\n' >"$project/src/old.txt"
+expect_scoped_failure "$project" "a changed file of the backlog that still fails" "^FAIL +format"
+printf 'fixed\n' >"$project/src/old.txt"
+git -C "$project" commit -qam "Fix a file of the backlog"
+run_verify "$project" || { cat "$project/out.log" >&2; fail "a feature whose changed files pass failed"; }
+grep -Eq "^SCOPED +format \(exit 1\): .*the 1 changed file\(s\) pass" "$project/out.log" &&
+  grep -Fq "1 check(s) failed only within the scope" "$project/out.log" || fail "the passing changed files are not reported: $(cat "$project/out.log")"
+# The default base of the project when none is recorded, and no base at all.
+git -C "$project" config --unset branch.feature/9-scope.workflow-base
+mkdir -p "$project/.agents"
+printf 'base: develop\n' >"$project/.agents/template.conf"
+git -C "$project" add -A
+git -C "$project" commit -qm "Default base"
+run_verify "$project" || { cat "$project/out.log" >&2; fail "the default base of .agents/template.conf was not used"; }
+grep -Eq "^SCOPED +format .*since develop" "$project/out.log" || fail "the default base is not named: $(cat "$project/out.log")"
+git -C "$project" config branch.feature/9-scope.workflow-base gone
+expect_scoped_failure "$project" "a scope without a base" "the files changed since the base cannot be determined"
+
+# recorded: the failures are compared with a list that may only shrink.
+project="$(setup_scoped_project scoped-recorded "accepted-failure: format recorded")"
+expect_scoped_failure "$project" "a recorded exception without its list" "accepted-failures/format, which does not exist"
+mkdir -p "$project/.agents/accepted-failures"
+printf '# The formatter backlog.\nsrc/dev.txt\nsrc/old.txt\nsrc/gone.txt\n' >"$project/.agents/accepted-failures/format"
+git -C "$project" add -A
+git -C "$project" commit -qm "Record the backlog"
+git -C "$project" branch -f develop HEAD
+run_verify "$project" || { cat "$project/out.log" >&2; fail "the recorded failures failed the verification"; }
+grep -Eq "^SCOPED +format \(exit 1\): 2 failure\(s\), each recorded in .agents/accepted-failures/format" "$project/out.log" ||
+  fail "the recorded failures are not shown as SCOPED: $(cat "$project/out.log")"
+grep -Eq "^FIXED +format: src/gone.txt, recorded in .agents/accepted-failures/format, no longer fails" "$project/out.log" &&
+  grep -Fq "1 recorded failure(s) no longer occur (FIXED): remove them" "$project/out.log" ||
+  fail "a fixed recorded failure is not reported: $(cat "$project/out.log")"
+# The list may only shrink: an entry it did not hold at the base fails, even
+# of a failure of an unchanged file; a removed entry does not.
+printf 'BAD\n' >"$project/src/late.txt"
+git -C "$project" add -A
+git -C "$project" commit -qm "A failure on the base that is not recorded"
+git -C "$project" branch -f develop HEAD
+printf 'src/late.txt\n' >>"$project/.agents/accepted-failures/format"
+expect_scoped_failure "$project" "a recorded list that grew" "^FAIL +format \(exit 1\): beyond the scope"
+grep -Eq "^ +1 failure\(s\) added to .agents/accepted-failures/format since develop, where it may only shrink:" "$project/out.log" &&
+  grep -Eq "^ +src/late.txt$" "$project/out.log" || fail "the added entry is not named: $(cat "$project/out.log")"
+git -C "$project" checkout -q -- .agents/accepted-failures/format
+git -C "$project" rm -q src/late.txt
+git -C "$project" commit -qm "Fix the failure on the base"
+git -C "$project" branch -f develop HEAD
+grep -v '^src/gone.txt$' "$project/.agents/accepted-failures/format" >"$project/shrunk"
+mv "$project/shrunk" "$project/.agents/accepted-failures/format"
+run_verify "$project" || { cat "$project/out.log" >&2; fail "a recorded list that shrank failed the verification"; }
+! grep -q "^FIXED" "$project/out.log" || fail "a removed entry is still reported as FIXED: $(cat "$project/out.log")"
+git -C "$project" checkout -q -- .agents/accepted-failures/format
+printf 'BAD\n' >"$project/src/new.txt"
+expect_scoped_failure "$project" "a failure that is not recorded" "^FAIL +format \(exit 1\): beyond the scope"
+grep -Eq "^ +1 new failure\(s\): not recorded" "$project/out.log" && grep -Eq "^ +src/new.txt$" "$project/out.log" ||
+  fail "the new failure is not listed: $(cat "$project/out.log")"
+rm "$project/src/new.txt"
+printf 'BAD again\n' >"$project/src/old.txt"
+expect_scoped_failure "$project" "a changed recorded file that still fails" "^ +src/old.txt$"
+printf 'fixed\n' >"$project/src/old.txt"
+run_verify "$project" || { cat "$project/out.log" >&2; fail "a fixed recorded file failed the verification"; }
+grep -Eq "^FIXED +format: src/old.txt" "$project/out.log" || fail "the fixed recorded file is not reported: $(cat "$project/out.log")"
+printf 'fixed\n' >"$project/src/dev.txt"
+run_verify "$project" || { cat "$project/out.log" >&2; fail "a check without failures failed"; }
+grep -Eq "^PASS +format \(it passes: its scoped exception in scripts/verify.conf is no longer needed\)" "$project/out.log" &&
+  [[ "$(grep -c "^FIXED" "$project/out.log")" -eq 3 ]] || fail "a passing check with a recorded list is not reported: $(cat "$project/out.log")"
+printf 'src/ok.txt\n' >>"$project/.agents/accepted-failures/format"
+expect_scoped_failure "$project" "a recorded list that grew while the check passes" \
+  "^FAIL +format \(it passes, but 1 failure\(s\) were added to .agents/accepted-failures/format since develop, where it may only shrink\)"
+git -C "$project" checkout -q -- .agents/accepted-failures/format
+# A failure that lists nothing is not within the scope.
+printf 'format: fmt; exit 3\naccepted-failure: format recorded\n' >"$project/scripts/verify.conf"
+expect_scoped_failure "$project" "a failure without a listed failure" "it listed no failure to compare with"
+
+for line in "accepted-failure: format changed-files" "accepted-failure: format recorded src/list" "accepted-failure: size changed-files fmt"; do
+  project="$(setup_project "scoped-$RANDOM" "format: fmt" "size budget: fmt" "$line")"
+  expect_failure "$project" "a malformed scoped exception must be refused: $line"
+  grep -Fq "accepted-failure" "$project/out.log" || fail "the refusal of '$line' does not say why"
+done
+
 # Every self-test passes through tests/lib-fakes.sh before it starts anything.
 for test in "$source_root"/tests/*-test.sh; do
   grep -Eq '^source "\$(source_)?root/tests/lib-fakes\.sh"$' "$test" ||

@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "9fd69cb872a37e24e56f5de95e8e5075c28c0138",
+  "commit": {
+    "branch": "feature/307-scope-an-accepted-failure",
+    "parent": "dc5a7419a21f308d68d84a503de8ee8a1925ab95",
+    "base": "dc5a7419a21f308d68d84a503de8ee8a1925ab95"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/lib/guardrails.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The feature adds shared verification behavior and a protected record format in scripts/verify.sh and scripts/lib/guardrails.sh, which other checks and projects can rely on. "
+  ],
+  "explanation": "Issue #307: Scope an accepted failure to the recorded failures or to the changed files. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

@@ -158,6 +158,19 @@ expect_level "$repo" protected "a feature adds the baseline of the verification"
 grep -Fq ".agents/verification-baseline (the baseline of the verification" "$repo.out" ||
   fail "the baseline was not named: $(cat "$repo.out")"
 
+# A recorded list of accepted failures ('accepted-failure: <check> recorded'
+# in scripts/verify.conf) is protected like the baseline: shrinking it too.
+repo="$(setup_repo accepted-list)"
+mkdir -p "$repo/.agents/accepted-failures"
+printf 'src/a.py\nsrc/b.py\n' >"$repo/.agents/accepted-failures/lint"
+git -C "$repo" add -A
+git -C "$repo" commit -qm "Record the failures"
+git -C "$repo" branch -f main HEAD
+printf 'src/a.py\n' >"$repo/.agents/accepted-failures/lint"
+expect_level "$repo" protected "a feature changes a recorded list of accepted failures"
+grep -Fq ".agents/accepted-failures/lint (a recorded list of accepted failures" "$repo.out" ||
+  fail "the recorded list was not named: $(cat "$repo.out")"
+
 repo="$(setup_repo checks-deleted)"
 rm "$repo/scripts/verify.conf"
 expect_level "$repo" protected "a feature deletes the verification configuration"

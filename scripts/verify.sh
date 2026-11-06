@@ -64,12 +64,28 @@ records_arguments=("$@")
 # a check that passed in the baseline); either fails the verification. Only
 # the owner's 'accepted-failure: <check> <reason>' in scripts/verify.conf
 # turns the failure of a check into ACCEPTED, which does not fail it.
+#
+# An exception can be scoped instead, for a check that runs per file or per
+# test, so that a check which already fails does not hide a new failure:
+# - 'accepted-failure: <check> changed-files <command>': when the check
+#   fails, <command> runs on the files changed since the feature's base
+#   (lib/base.sh: committed, staged, unstaged, and untracked), and those must
+#   pass.
+# - 'accepted-failure: <check> recorded': the check prints its failures on
+#   standard output, one per line, and they are compared with the list
+#   .agents/accepted-failures/<check>. A failure that is not in the list, or
+#   that names a file changed since the base, fails; a listed failure that
+#   no longer occurs is reported, so that the list shrinks. The list may only
+#   shrink: an entry that its version at the base does not hold fails.
+# Either shows the failure as SCOPED, which does not fail the verification.
+# The list is protected by the merge approval gate like the baseline.
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 config="$root/scripts/verify.conf"
 workflow_config="$root/scripts/verify-workflow.conf"
 baseline_relative=".agents/verification-baseline"
 baseline_file="$root/$baseline_relative"
+accepted_lists_relative=".agents/accepted-failures"
 
 comment_pattern='^[[:space:]]*(#.*)?$'
 check_pattern='^([a-z0-9][a-z0-9-]*)([[:space:]]*\[([a-z0-9][a-z0-9-]*)\])?([[:space:]]+partition[[:space:]]+([^[:space:]:]+))?([[:space:]]+budget)?:[[:space:]]*(.*[^[:space:]])[[:space:]]*$'
@@ -124,6 +140,15 @@ usage() {
   echo "regression. A line 'accepted-failure: <check> <reason>' in scripts/verify.conf,"
   echo "the owner's exception, shows a failure of that check as ACCEPTED instead, and"
   echo "the verification does not fail for it."
+  echo
+  echo "A scoped exception accepts only the failures that predate the change:"
+  echo "'accepted-failure: <check> changed-files <command>' runs <command> on the files"
+  echo "changed since the feature's base when the check fails, and those must pass;"
+  echo "'accepted-failure: <check> recorded' compares the failures the check prints,"
+  echo "one per line, with the list $accepted_lists_relative/<check>: a new one, or one"
+  echo "of a changed file, fails. Within its scope the failure is shown as SCOPED, and"
+  echo "a recorded failure that no longer occurs is reported as FIXED. The list may only"
+  echo "shrink: an entry it did not hold at the feature's base fails."
   exit 1
 }
 
@@ -297,6 +322,7 @@ heavy=()
 accepted_names=()
 accepted_reasons=()
 accepted_lines=()
+accepted_scopes=()
 
 # load_checks <file> <paths-entry>
 # Appends the checks of <file> to names, commands, groups, partitions (the
@@ -306,7 +332,10 @@ accepted_lines=()
 # checks of <file>. The reserved entry 'heavy:' sets heavy to 'yes' for the
 # checks of <file> that it names. In scripts/verify.conf (<paths-entry> 'no'),
 # the reserved entry 'accepted-failure: <check> <reason>' adds the owner's
-# exception for the failure of a check to accepted_names and accepted_reasons.
+# exception for the failure of a check to accepted_names and accepted_reasons;
+# a scoped exception sets accepted_scopes to 'changed-files' (its reason is
+# then the command for the changed files) or 'recorded', and is empty
+# otherwise.
 load_checks() {
   local file="$1"
   local paths_entry="$2"
@@ -366,8 +395,22 @@ load_checks() {
           config_fail "'accepted-failure' names the check ${BASH_REMATCH[1]} more than once in $label."
       done
       accepted_names+=("${BASH_REMATCH[1]}")
-      accepted_reasons+=("${BASH_REMATCH[2]}")
       accepted_lines+=("$line_number")
+      value="${BASH_REMATCH[2]}"
+      if [[ "$value" =~ ^changed-files([[:space:]]+(.*))?$ ]]; then
+        [[ -n "${BASH_REMATCH[2]}" ]] ||
+          config_fail "'accepted-failure: <check> changed-files' needs the command that checks the changed files, on line $line_number of $label."
+        accepted_scopes+=(changed-files)
+        accepted_reasons+=("${BASH_REMATCH[2]}")
+      elif [[ "$value" =~ ^recorded([[:space:]]|$) ]]; then
+        [[ "$value" == "recorded" ]] ||
+          config_fail "'accepted-failure: <check> recorded' takes nothing more: the failures are recorded in $accepted_lists_relative/<check>, on line $line_number of $label: $value"
+        accepted_scopes+=(recorded)
+        accepted_reasons+=("")
+      else
+        accepted_scopes+=("")
+        accepted_reasons+=("$value")
+      fi
       continue
     fi
     if [[ "$name" == "heavy" ]]; then
@@ -409,39 +452,64 @@ in_list() {
   [[ ",$2," == *",$1,"* ]]
 }
 
+# feature_base
+# Sets base_commit to the point where the feature left its base branch, and
+# base_ref to the ref of the base it was found on: origin/<base>, else
+# <base>. The base is the feature's (lib/base.sh); 'main' without the
+# library. Fails when it cannot be determined, as in a shallow clone.
+base_commit=""
+base_ref=""
+feature_base() {
+  local ref
+  local base
+  local branch="main"
+
+  [[ -z "$base_commit" ]] || return 0
+  command -v git >/dev/null 2>&1 || return 1
+  git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+  if [[ -f "$root/scripts/lib/base.sh" ]]; then
+    source "$root/scripts/lib/base.sh"
+    branch="$(branch_base "$root")" || return 1
+  fi
+  for ref in "origin/$branch" "$branch"; do
+    if base="$(git -C "$root" merge-base "$ref" HEAD 2>/dev/null)" && [[ -n "$base" ]]; then
+      base_commit="$base"
+      base_ref="$ref"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # workflow_files_changed
 # Exits 0 when a file under workflow_paths differs from the base branch,
 # counting uncommitted and untracked files, 1 when none does, and 2 when that
 # cannot be determined. Sets workflow_base to the base branch used.
 workflow_files_changed() {
   local specs=()
-  local ref
-  local base=""
-  local branch="main"
   local changed
 
   read -r -a specs <<<"$workflow_paths"
-  command -v git >/dev/null 2>&1 || return 2
-  git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 2
-  # The base of the feature (lib/base.sh); 'main' without the library.
-  if [[ -f "$root/scripts/lib/base.sh" ]]; then
-    source "$root/scripts/lib/base.sh"
-    branch="$(branch_base "$root")" || return 2
-  fi
-  for ref in "origin/$branch" "$branch"; do
-    if base="$(git -C "$root" merge-base "$ref" HEAD 2>/dev/null)" && [[ -n "$base" ]]; then
-      workflow_base="$ref"
-      break
-    fi
-    base=""
-  done
-  [[ -n "$base" ]] || return 2
+  feature_base || return 2
+  workflow_base="$base_ref"
 
   changed="$(
-    git -C "$root" diff --name-only "$base" -- "${specs[@]}" &&
+    git -C "$root" diff --name-only "$base_commit" -- "${specs[@]}" &&
       git -C "$root" ls-files --others --exclude-standard -- "${specs[@]}"
   )" || return 2
   [[ -n "$changed" ]]
+}
+
+# changed_files <file>
+# Writes the files that the feature adds or changes since its base to <file>,
+# separated by NUL: committed, staged, unstaged, and untracked; a deleted
+# file is left out. Fails when the base cannot be determined.
+changed_files() {
+  feature_base || return 1
+  {
+    git -C "$root" diff -z --name-only --no-renames --diff-filter=d "$base_commit" -- &&
+      git -C "$root" ls-files -z --others --exclude-standard --
+  } >"$1"
 }
 
 [[ "$list_groups" -eq 1 ]] || echo "== Agentic project verification =="
@@ -456,21 +524,41 @@ for index in "${!accepted_names[@]}"; do
   done
   config_fail "'accepted-failure' on line ${accepted_lines[$index]} of scripts/verify.conf names '${accepted_names[$index]}', which is not a check of scripts/verify.conf."
 done
+for index in "${!accepted_names[@]}"; do
+  [[ -n "${accepted_scopes[$index]}" ]] || continue
+  for ((check = 0; check < ${#names[@]}; check++)); do
+    [[ "${names[$check]}" != "${accepted_names[$index]}" ]] || break
+  done
+  [[ "${budgets[$check]}" == "no" ]] ||
+    config_fail "'accepted-failure' on line ${accepted_lines[$index]} of scripts/verify.conf scopes the budget check '${accepted_names[$index]}': a budget fails nothing, so there is nothing to scope."
+  [[ "${accepted_scopes[$index]}" != "recorded" || -f "$root/$accepted_lists_relative/${accepted_names[$index]}" ]] ||
+    config_fail "'accepted-failure' on line ${accepted_lines[$index]} of scripts/verify.conf compares the failures of '${accepted_names[$index]}' with $accepted_lists_relative/${accepted_names[$index]}, which does not exist."
+done
 
-# accepted_reason <check>: the reason of the owner's exception for the
-# failure of <check>; fails when there is none. A baseline run knows no
-# exception: it records how each check ends.
-accepted_reason() {
+# accepted_index <check>: the index of the owner's exception for the failure
+# of <check>; fails when there is none. A baseline run knows no exception: it
+# records how each check ends.
+accepted_index() {
   local index
 
   [[ "$baseline_mode" -eq 0 ]] || return 1
   for index in "${!accepted_names[@]}"; do
     if [[ "${accepted_names[$index]}" == "$1" ]]; then
-      printf '%s\n' "${accepted_reasons[$index]}"
+      printf '%s\n' "$index"
       return 0
     fi
   done
   return 1
+}
+
+# accepted_scope <check>: the scope of the owner's exception for <check>
+# ('changed-files' or 'recorded'); nothing for an exception of the whole
+# check or none.
+accepted_scope() {
+  local index
+
+  index="$(accepted_index "$1")" || return 0
+  printf '%s\n' "${accepted_scopes[$index]}"
 }
 
 # The baseline of an adopted project: 'pass: <check>', 'fail: <check>
@@ -664,10 +752,19 @@ duration_budget() {
   duration_exceeded=$((duration_exceeded + 1))
 }
 
-# run_check <command> <output>
+# run_check <command> <output> [stdout]
 # Runs a check in the worktree and returns its exit status. With an <output>
-# file (a budget check) its output is kept there too.
+# file (a budget check) its output is kept there too; with 'stdout' (a check
+# whose failures are recorded) only its standard output.
 run_check() {
+  if [[ "${3:-}" == "stdout" ]]; then
+    (
+      unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
+      unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
+      cd "$root" && bash -eo pipefail -c "$1"
+    ) | tee "$2"
+    return "${PIPESTATUS[0]}"
+  fi
   if [[ -n "$2" ]]; then
     (
       unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
@@ -685,17 +782,26 @@ run_check() {
 
 # failure_result <index> <what>: the summary line of a check that failed or
 # could not run, <what> saying how ('exit 1', 'missing tool: x'). Without a
-# baseline and an exception it is FAIL; ACCEPTED, the owner's exception, is
-# the only result of a failure that does not fail the verification.
+# baseline and an exception it is FAIL; ACCEPTED, the owner's exception, and
+# SCOPED, a failure within the scope of a scoped exception, are the only
+# results of a failure that do not fail the verification.
 failure_result() {
   local name="${names[$1]}"
-  local reason
+  local accepted
   local state
+  local detail=""
 
-  if reason="$(accepted_reason "$name")"; then
-    results+=("ACCEPTED  $name ($2): an accepted exception of scripts/verify.conf: $reason")
-    accepted_count=$((accepted_count + 1))
-    return 0
+  if accepted="$(accepted_index "$name")"; then
+    case "${accepted_scopes[$accepted]}" in
+      "")
+        results+=("ACCEPTED  $name ($2): an accepted exception of scripts/verify.conf: ${accepted_reasons[$accepted]}")
+        accepted_count=$((accepted_count + 1))
+        return 0
+        ;;
+      changed-files) ! scoped_changed_files "$1" "$2" "${accepted_reasons[$accepted]}" || return 0 ;;
+      recorded) ! scoped_recorded "$1" "$2" || { flush_fixed; return 0; } ;;
+    esac
+    detail=": beyond the scope of its exception in scripts/verify.conf"
   fi
   failed=1
   state="$(baseline_state "$name")"
@@ -705,8 +811,184 @@ failure_result() {
       known=$((known + 1))
       ;;
     pass) results+=("FAIL  $name ($2): a regression, it passed in the baseline") ;;
-    *) results+=("FAIL  $name ($2)") ;;
+    *) results+=("FAIL  $name ($2)$detail") ;;
   esac
+  [[ "${#scope_lines[@]}" -eq 0 ]] || results+=("${scope_lines[@]}")
+  scope_lines=()
+  flush_fixed
+}
+
+# flush_fixed: adds the FIXED lines of the check that ended to the summary.
+flush_fixed() {
+  [[ "${#fixed_lines[@]}" -eq 0 ]] || results+=("${fixed_lines[@]}")
+  fixed_lines=()
+}
+
+# scoped_changed_files <index> <what> <command>
+# The scope 'changed-files' of the failure of a check: <command> runs on the
+# files changed since the feature's base. Returns 0, with the SCOPED line,
+# when they pass; otherwise 1, with the reason in scope_lines.
+scoped_changed_files() {
+  local name="${names[$1]}"
+  local command="$3"
+  local list="$scratch/changed-$name"
+  local files=()
+  local file
+  local tool
+  local status
+
+  if ! changed_files "$list"; then
+    echo "Error: the files changed since the feature's base cannot be determined (no base branch, or a shallow clone), so the scope of the exception of '$name' cannot be checked." >&2
+    scope_lines=("        the files changed since the base cannot be determined, so the scope cannot be checked")
+    return 1
+  fi
+  while IFS= read -r -d '' file; do
+    [[ ! -e "$root/$file" ]] || files+=("$file")
+  done <"$list"
+  if [[ "${#files[@]}" -eq 0 ]]; then
+    results+=("SCOPED  $name ($2): accepted for the files that did not change since $base_ref; no file changed")
+    scoped_count=$((scoped_count + 1))
+    return 0
+  fi
+  read -r tool _ <<<"$command"
+  echo "-- $name (the ${#files[@]} file(s) changed since $base_ref): $command"
+  if ! (cd "$root" && command -v "$tool" >/dev/null 2>&1); then
+    echo "Error: the changed files of '$name' cannot be checked; '$tool' is missing or not executable." >&2
+    scope_lines=("        the changed files cannot be checked: missing tool: $tool")
+    return 1
+  fi
+  set +e
+  (
+    unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
+    unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
+    cd "$root" && bash -eo pipefail -c "$command \"\$@\"" verify-scope "${files[@]}"
+  )
+  status=$?
+  set -e
+  if [[ "$status" -ne 0 ]]; then
+    echo "Error: a file changed since $base_ref fails check '$name' (status $status)." >&2
+    scope_lines=("        a file changed since $base_ref fails it (exit $status): $command")
+    return 1
+  fi
+  results+=("SCOPED  $name ($2): accepted for the files that did not change since $base_ref; the ${#files[@]} changed file(s) pass")
+  scoped_count=$((scoped_count + 1))
+  return 0
+}
+
+# scoped_list <file>: the entries of a list of failures, one per line,
+# without blank lines, comments, and white space at the ends, sorted.
+scoped_list() {
+  sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' -e '/^#/d' "$1" | LC_ALL=C sort -u
+}
+
+# scoped_fixed <index>: keeps the recorded failures of a check that no longer
+# occur in fixed_lines, for the summary, so that the record shrinks.
+scoped_fixed() {
+  local name="${names[$1]}"
+  local entry
+
+  while IFS= read -r entry; do
+    [[ -n "$entry" ]] || continue
+    fixed_lines+=("FIXED  $name: $entry, recorded in $accepted_lists_relative/$name, no longer fails")
+    fixed_count=$((fixed_count + 1))
+  done < <(LC_ALL=C comm -23 "$scratch/recorded-$name.list" "$scratch/recorded-$name.now")
+}
+
+# scoped_added <index>: writes the entries of the list of a check that its
+# version at the feature's base does not hold to
+# $scratch/recorded-<check>.added, after scoped_list wrote the list to
+# $scratch/recorded-<check>.list: the list may only shrink. A list that the
+# base does not have is the first record, which adds nothing. Fails when the
+# base cannot be determined.
+scoped_added() {
+  local name="${names[$1]}"
+  local list="$accepted_lists_relative/$name"
+  local added="$scratch/recorded-$name.added"
+
+  feature_base || return 1
+  if ! git -C "$root" cat-file -e "$base_commit:./$list" 2>/dev/null; then
+    : >"$added"
+    return 0
+  fi
+  git -C "$root" show "$base_commit:./$list" >"$scratch/recorded-$name.base" || return 1
+  scoped_list "$scratch/recorded-$name.base" | LC_ALL=C comm -13 - "$scratch/recorded-$name.list" >"$added"
+}
+
+# scope_entries <file>: adds the lines of <file> to scope_lines, at most 20.
+scope_entries() {
+  local entry
+  local count
+  local shown=0
+
+  count="$(wc -l <"$1" | tr -d ' ')"
+  while IFS= read -r entry; do
+    if [[ "$shown" -eq 20 ]]; then
+      scope_lines+=("          ... and $((count - shown)) more")
+      break
+    fi
+    scope_lines+=("          $entry")
+    shown=$((shown + 1))
+  done <"$1"
+}
+
+# scoped_recorded <index> <what>
+# The scope 'recorded' of the failure of a check: the failures it printed are
+# compared with its list. Returns 0, with the SCOPED line, when each is
+# recorded and names no file changed since the feature's base, and the list
+# holds no entry that it did not hold at the base; otherwise 1, with the
+# reason in scope_lines. Reports the recorded failures that no longer occur
+# either way.
+scoped_recorded() {
+  local name="${names[$1]}"
+  local list="$accepted_lists_relative/$name"
+  local output="$scratch/recorded-$name.out"
+  local now="$scratch/recorded-$name.now"
+  local new="$scratch/recorded-$name.new"
+  local changed="$scratch/changed-$name"
+  local added="$scratch/recorded-$name.added"
+  local count
+
+  [[ -f "$output" ]] || : >"$output"
+  scoped_list "$root/$list" >"$scratch/recorded-$name.list"
+  scoped_list "$output" >"$now"
+  if [[ ! -s "$now" ]]; then
+    scope_lines=("        it listed no failure to compare with $list")
+    return 1
+  fi
+  if ! changed_files "$changed"; then
+    echo "Error: the files changed since the feature's base cannot be determined (no base branch, or a shallow clone), so the scope of the exception of '$name' cannot be checked." >&2
+    scope_lines=("        the files changed since the base cannot be determined, so the scope cannot be checked")
+    return 1
+  fi
+  if ! scoped_added "$1"; then
+    echo "Error: the list $list at the feature's base cannot be read, so the scope of the exception of '$name' cannot be checked." >&2
+    scope_lines=("        the list at the base cannot be read, so the scope cannot be checked")
+    return 1
+  fi
+  if [[ -s "$added" ]]; then
+    count="$(wc -l <"$added" | tr -d ' ')"
+    echo "Error: $list records $count failure(s) that it did not record at $base_ref; the list may only shrink." >&2
+    scope_lines=("        $count failure(s) added to $list since $base_ref, where it may only shrink:")
+    scope_entries "$added"
+    scoped_fixed "$1"
+    return 1
+  fi
+  # New: a failure that is not recorded, or that names a changed file.
+  {
+    LC_ALL=C comm -23 "$now" "$scratch/recorded-$name.list"
+    tr '\0' '\n' <"$changed" | LC_ALL=C sort -u | LC_ALL=C comm -12 - "$now"
+  } | LC_ALL=C sort -u >"$new"
+  scoped_fixed "$1"
+  if [[ -s "$new" ]]; then
+    count="$(wc -l <"$new" | tr -d ' ')"
+    echo "Error: check '$name' has $count failure(s) that $list does not record, or of a file changed since $base_ref." >&2
+    scope_lines=("        $count new failure(s): not recorded in $list, or of a file changed since $base_ref:")
+    scope_entries "$new"
+    return 1
+  fi
+  results+=("SCOPED  $name ($2): $(wc -l <"$now" | tr -d ' ') failure(s), each recorded in $list, none of a file changed since $base_ref")
+  scoped_count=$((scoped_count + 1))
+  return 0
 }
 
 # pass_result <index>: the summary line of a check that passed.
@@ -715,7 +997,24 @@ pass_result() {
   local state
 
   state="$(baseline_state "$name")"
-  if accepted_reason "$name" >/dev/null; then
+  if [[ "$(accepted_scope "$name")" == "recorded" ]]; then
+    : >"$scratch/recorded-$name.now"
+    scoped_list "$root/$accepted_lists_relative/$name" >"$scratch/recorded-$name.list"
+    if ! scoped_added "$1"; then
+      failed=1
+      results+=("FAIL  $name (it passes, but $accepted_lists_relative/$name cannot be compared with its version at the feature's base, so its scope cannot be checked)")
+    elif [[ -s "$scratch/recorded-$name.added" ]]; then
+      failed=1
+      results+=("FAIL  $name (it passes, but $(wc -l <"$scratch/recorded-$name.added" | tr -d ' ') failure(s) were added to $accepted_lists_relative/$name since $base_ref, where it may only shrink)")
+      scope_entries "$scratch/recorded-$name.added"
+      results+=("${scope_lines[@]}")
+      scope_lines=()
+    else
+      results+=("PASS  $name (it passes: its scoped exception in scripts/verify.conf is no longer needed)")
+    fi
+    scoped_fixed "$1"
+    flush_fixed
+  elif accepted_index "$name" >/dev/null; then
     results+=("PASS  $name (it passes: its accepted exception in scripts/verify.conf is no longer needed)")
   elif [[ "$state" == fail || "$state" == unavailable ]]; then
     results+=("PASS  $name (it failed in the baseline and passes now)")
@@ -725,9 +1024,13 @@ pass_result() {
 }
 
 results=()
+scope_lines=()
+fixed_lines=()
 failed=0
 known=0
 accepted_count=0
+scoped_count=0
+fixed_count=0
 outcomes=()
 exceeded=0
 duration_exceeded=0
@@ -768,7 +1071,12 @@ for index in "${!names[@]}"; do
   # must not use the agent or attribution configuration that was chosen for
   # that run. The output of a budget check is kept: it is the measurement.
   output=""
+  capture=""
   [[ "$budget" != "yes" ]] || output="$scratch/budget-$name.out"
+  if [[ "$(accepted_scope "$name")" == "recorded" ]]; then
+    output="$scratch/recorded-$name.out"
+    capture=stdout
+  fi
   if [[ -n "${verify_lock_acquired:-}" ]]; then
     # The run holds the slot: the check runs in a process group of its own
     # (job control), which the lock records before the check starts, so that
@@ -778,7 +1086,7 @@ for index in "${!names[@]}"; do
     set -m
     (
       verify_lock_await_group "$$" || exit 1
-      run_check "$command" "$output"
+      run_check "$command" "$output" "$capture"
     ) </dev/null &
     check_pid=$!
     set +m
@@ -791,7 +1099,7 @@ for index in "${!names[@]}"; do
     status=$?
     verify_lock_record_group ""
   else
-    run_check "$command" "$output"
+    run_check "$command" "$output" "$capture"
     status=$?
   fi
   set -e
@@ -875,6 +1183,12 @@ if [[ "$known" -gt 0 ]]; then
 fi
 if [[ "$accepted_count" -gt 0 ]]; then
   echo "$accepted_count check(s) failed and are exceptions the owner accepted in scripts/verify.conf (ACCEPTED): they do not fail the verification, and they are not repaired."
+fi
+if [[ "$scoped_count" -gt 0 ]]; then
+  echo "$scoped_count check(s) failed only within the scope of an exception the owner accepted in scripts/verify.conf (SCOPED): the failures predate the change, and the files it adds or changes pass. They do not fail the verification."
+fi
+if [[ "$fixed_count" -gt 0 ]]; then
+  echo "$fixed_count recorded failure(s) no longer occur (FIXED): remove them from their list in $accepted_lists_relative/, so that the record shrinks. A change of the list needs the owner's approval at the merge."
 fi
 
 # A baseline records how each check ended, and is never a verification.

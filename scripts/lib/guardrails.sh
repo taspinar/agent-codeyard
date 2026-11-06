@@ -35,6 +35,7 @@ GUARDRAILS_BUILTIN_PROTECTED=(
   scripts/publish-feature.sh
   scripts/run-feature.sh
   .agents/verification-baseline
+  .agents/accepted-failures
 )
 
 # The verification configuration: adding a check is sensitive, changing or
@@ -109,6 +110,7 @@ guardrails_classify() {
     [[ -n "$path" ]] || continue
     case "$path" in
       docs/decisions/*) printf 'protected\t%s\t%s\n' "$path" "an ADR is added, changed, or removed" ;;
+      .agents/accepted-failures/*) printf 'protected\t%s\t%s\n' "$path" "a recorded list of accepted failures, which lets the verification pass while they fail, is added, changed, or removed" ;;
       .agents/verification-baseline) printf 'protected\t%s\t%s\n' "$path" "the baseline of the verification, the record of the failures before any change, is added, changed, or removed" ;;
       *) printf 'protected\t%s\t%s\n' "$path" "the file defines or carries out the workflow and its gate" ;;
     esac
