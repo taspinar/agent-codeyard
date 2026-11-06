@@ -182,7 +182,7 @@ export const feature: Step[] = [
     facts: [
       ["who", "Script"],
       ["script", "`./scripts/finish-feature.sh <issue> \"<summary>\"`"],
-      ["refused if", "The completion record is missing or does not say complete or awaiting evidence, the verification does not pass, or the latest review is stale, does not cover the complete feature, or has a critical or major finding"],
+      ["refused if", "The completion record is missing or does not say complete or awaiting evidence, the verification does not pass, or the latest review is stale, does not cover the complete feature, or has a critical or major finding without your exception: `./scripts/record-exception.sh`, only by you at a terminal, one finding at a time, for the latest review of exactly this content; the commit lists it and the merge then needs your approval"],
       ["without review", "Low risk with `low: review: none` is committed as not reviewed; the owner can also skip the review with `--no-review \"<reason>\"`, which is recorded"],
       ["partial", "`--partial` commits unfinished work as your explicit choice; its pull request is a draft that leaves the Issue open"],
       ["important", "This step does not push or merge"],

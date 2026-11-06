@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Owner exception to a blocking review finding",
+  "description": "The owner's decision on one critical or major finding of the latest review of a feature: the finding is not applicable, or its risk is accepted. Written by scripts/record-exception.sh to .agents/exceptions/<review-basename>-<finding-id>.json after the owner confirmed exactly this content at a terminal; Git ignores it. It is valid only while the review artifact has review_sha256, is the latest round, and is current for the content (its reviewed_tree), and while every field agrees with that review; it never carries forward to a changed tree or a later round. It lets finish-feature.sh commit the feature with that finding open, never changes the review or its verdict, satisfies no acceptance criterion, and always makes the merge need the owner's approval. The account is the GitHub login that ran the script; until the template's Issue #99 gives the agent an identity of its own, it is not checked against the owner's identity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "type", "reason", "evidence", "account", "directed_at", "review", "review_sha256", "round", "finding_id", "finding_title", "finding_severity", "reviewed_tree", "merge_base"],
+  "properties": {
+    "schema": { "type": "string", "enum": ["exception/v1"] },
+    "type": {
+      "type": "string",
+      "enum": ["not-applicable", "risk-accepted"],
+      "description": "not-applicable: the finding is wrong or does not apply, and evidence shows why. risk-accepted: the finding is valid and the owner accepts its risk, named in the reason."
+    },
+    "reason": { "type": "string", "minLength": 1, "pattern": "\\S", "description": "Why the owner decided so." },
+    "evidence": { "type": ["string", "null"], "description": "What shows that the finding is wrong: required for not-applicable, optional (null) for risk-accepted." },
+    "account": { "type": "string", "minLength": 1, "description": "The GitHub login that ran record-exception.sh (gh api user)." },
+    "directed_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", "description": "When the owner confirmed it, UTC." },
+    "review": { "type": "string", "pattern": "^\\.agents/reviews/[^/]+-review-[0-9][0-9]\\.json$", "description": "The review artifact, relative to the repository root." },
+    "review_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "The SHA-256 of the review artifact when the exception was recorded." },
+    "round": { "type": "integer", "minimum": 1 },
+    "finding_id": { "type": "string", "minLength": 1 },
+    "finding_title": { "type": "string", "minLength": 1 },
+    "finding_severity": { "type": "string", "enum": ["critical", "major"] },
+    "reviewed_tree": { "type": "string", "pattern": "^[0-9a-f]{40}$|^[0-9a-f]{64}$", "description": "Copied from the review: the content the exception is bound to." },
+    "merge_base": { "type": ["string", "null"], "description": "Copied from the review." }
+  }
+}

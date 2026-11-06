@@ -143,6 +143,12 @@ A feature branches from its base and merges back into it. Name the base as the t
 
 If the triage agent's proposal is out of proportion, you can give your own decisions instead, an owner-directed triage. No agent runs; the script shows your decisions for confirmation and records your account and your reason on the Issue. It does not bypass any rule: critical and major findings still have to be fixed, a deferral still needs a follow-up Issue, and an acceptance a reason. The options are in the <a href="../reference/workflow/#decide-on-the-findings">reference</a>, and the file format in [owner-directed triage](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#owner-directed-triage) of the development guide.
 
+<a id="owner-exception"></a>
+
+### When you disagree with a blocking finding
+
+A critical or major finding stops the commit until it is fixed. If you judge that it is wrong, or right but a risk you accept, you can record an exception for that one finding with `./scripts/record-exception.sh`. Only you, at a terminal: the script shows the finding and the exact record, asks once, and publishes it on the Issue; it refuses to run unattended. The exception holds only for the latest review of exactly this content, and any change, new round or edit voids it. The review keeps its verdict, every other check still applies, and the merge then always needs your approval; the pull request shows the finding next to your exception. Until the agent has an identity of its own, this rests on the workflow keeping the rule, not on GitHub. Details in [owner exceptions to a blocking finding](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#owner-exceptions-to-a-blocking-finding) of the development guide.
+
 <a id="skipping-a-review-explicitly"></a>
 
 ### Skipping a review

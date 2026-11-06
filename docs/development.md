@@ -1769,6 +1769,80 @@ Whether this makes fix rounds cheaper is a follow-up evaluation over later
 features; its baseline and measures are in `docs/evaluation.md` ("Measuring
 the fix rounds").
 
+### Owner exceptions to a blocking finding
+
+A critical or major finding of the latest review stops `finish-feature.sh`,
+and the triage keeps it `FIX_NOW`, owner-directed or not. When you, the
+owner, judge that such a finding is wrong, or that it is right and you accept
+its risk, record that decision for that one finding instead of fixing it or
+committing around the workflow:
+
+```bash
+./scripts/record-exception.sh <review-json> --finding <id> \
+  --type not-applicable|risk-accepted --reason "<why>" [--evidence "<text or path>"]
+```
+
+- `not-applicable`: the finding is wrong or does not apply; `--evidence` says
+  what shows it and is required.
+- `risk-accepted`: the finding is valid and you accept its risk, which the
+  reason names; `--evidence` is optional.
+
+Only a critical or major finding of the latest, current review of the feature
+can be excepted, one finding per call and one exception per finding: an
+unknown ID, a minor finding or a suggestion, an older round, a stale review,
+an empty reason, `--unattended`, and a run whose standard input or output is
+not a terminal are refused. There is no wildcard and no `--force`. The script
+copies the review before it shows anything, shows the finding, the account
+(`gh api user`), and the complete record, and asks once; it stores the record
+exactly as shown in `.agents/exceptions/<review>-<id>.json` (schema
+`.agents/schemas/exception.schema.json`; Git ignores the directory) and
+publishes it as a comment on the Issue with its SHA-256. Declining stores and
+publishes nothing.
+
+The record holds the type, the reason, the evidence, the account, the time
+(`directed_at`), the review with its SHA-256 and round, the finding's ID,
+title, and severity, and the review's reviewed tree and merge base. It counts
+only while all of it holds: the review artifact still has that SHA-256, it is
+the latest round, it is current for the content (`check-review.sh`), every
+field agrees with the review, and the record is the one published on the
+Issue. A change of the content, a new round, an edited review, or an edited,
+renamed, or incomplete record makes it invalid; nothing carries it forward or
+refreshes it, and a new round needs a new decision.
+
+With a valid exception for every blocking finding, `finish-feature.sh`
+commits; it names each finding that still lacks one otherwise. Every other
+gate applies exactly as without it: the verification, the completion gate and
+its criteria, the triage of each round, the summary. The review and its
+verdict are never edited, and an exception does not turn it into a pass: a
+finding that says an acceptance criterion is unmet does not change the
+completion record, which must still prove the criterion. The commit message
+keeps the verdict in its review line and lists each exception under "Owner
+exceptions to blocking review findings", with the finding, the type, the
+account, the time, the reason, and the record with its SHA-256; the merge
+approval gate then always requires the owner, and the approval request names
+each record with its SHA-256. An exception can only require your approval,
+never grant it. A commit whose message, after the editor, no longer lists a
+record with its SHA-256, or whose record changed meanwhile, is undone.
+`publish-feature.sh` recomputes the SHA-256 of each record the finish commit
+lists and checks it against the latest review again; a missing, changed, or
+invalid record is reported and nothing is pushed, so it is never shown as
+your decision. Otherwise the pull request description starts with each
+original finding and your exception. The run record notes the exception as
+an intervention.
+
+`run-feature.sh` never records, proposes, or confirms an exception. It reads
+them: a round whose only `FIX_NOW` findings have your valid exception goes on
+to the commit. When it stops because the rounds are used up, it names
+`record-exception.sh` as your option.
+
+The limit of this trust: the confirmation at a terminal follows the model of
+the owner-directed triage. Until the template's Issue #99 gives the agent an
+identity of its own, the account is the login of whoever ran the script, and
+the rule that only you record an exception is an agreement that the scripts
+and agents keep, not a guarantee against an agent that drives a terminal with
+your credentials. The merge, which needs your approval on GitHub, is where
+you decide; #99 is where the account of an exception becomes verifiable.
+
 ### Review and triage data
 
 Results that an agent writes and a script consumes are JSON. Each review and

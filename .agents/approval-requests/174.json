@@ -1,0 +1,22 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "a6a0b39c880ade5651edf00abc320bc29a760f22",
+  "commit": {
+    "branch": "feature/174-record-narrowly-scoped-owner",
+    "parent": "7dc329cd6451130fad43d9ce82ea3b3840443438",
+    "base": "7dc329cd6451130fad43d9ce82ea3b3840443438"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".agents/schemas/exception.schema.json: the file defines or carries out the workflow and its gate",
+    "scripts/finish-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/publish-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The feature adds a new owner-exception artifact and recording command, then changes the shared finish, run, and publish workflow gates to consume and enforce it. This extends workflow infrastructure used by other features. The change does not replace or contradict an accepted architectural decision; docs/architecture.md is a placeholder without substantive constraints. "
+  ],
+  "explanation": "Issue #174: Record narrowly scoped owner exceptions to blocking review findings. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

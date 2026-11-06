@@ -12,6 +12,8 @@ source "$script_dir/lib/fingerprint.sh"
 source "$script_dir/lib/completion.sh"
 source "$script_dir/lib/verification.sh"
 source "$script_dir/lib/records.sh"
+source "$script_dir/lib/guardrails.sh"
+source "$script_dir/lib/exceptions.sh"
 
 MAX_ROUNDS=5
 # A session of the implementer that ends without an error has not completed
@@ -734,6 +736,22 @@ latest_review() {
   printf '%s' "$best"
 }
 
+# unexcepted_fix_now <review> <triage>
+# Prints how many FIX_NOW decisions of the triage have no valid exception of
+# the owner (lib/exceptions.sh, record-exception.sh). A blocking finding the
+# owner excepted stays FIX_NOW in its triage, but is not fixed now. The run
+# only reads exceptions: it never records, proposes, or confirms one.
+unexcepted_fix_now() {
+  local scratch
+  local excepted='[]'
+
+  if [[ -d "$worktree/$EXCEPTIONS_DIR" ]] && scratch="$(mktemp -d "${TMPDIR:-/tmp}/run-feature-exceptions.XXXXXX" 2>/dev/null)"; then
+    excepted="$(exception_status "$worktree" "$scratch" "$1" | awk -F '\t' '$1 == "valid" { print $2 }' | jq -R . | jq -s .)" || excepted='[]'
+    rm -rf "$scratch"
+  fi
+  jq --argjson excepted "$excepted" '[.decisions[] | select(.decision == "FIX_NOW" and (.finding_id | IN($excepted[]) | not))] | length' "$2"
+}
+
 # changes_reviewable <review>
 # Succeeds when a review of only the changes can build on <review>: the
 # branch has the same base as then, and the content it reviewed is known.
@@ -949,7 +967,7 @@ if uncommitted; then
       continue
     fi
 
-    if [[ "$(jq '[.decisions[] | select(.decision == "FIX_NOW")] | length' "$triage")" -eq 0 ]]; then
+    if [[ "$(unexcepted_fix_now "$review" "$triage")" -eq 0 ]]; then
       # Nothing to fix: the round ends without a fix session. A light triage
       # (the mode the policy set when the round was triaged) says so in the
       # log; every finding is then a suggestion or minor, deferred or
@@ -968,9 +986,10 @@ if uncommitted; then
     fi
 
     if [[ "$round" -ge "$MAX_ROUNDS" ]]; then
-      stop 1 "$MAX_ROUNDS review rounds are used and round $round still has findings that must be fixed; see $review_relative." \
+      stop 1 "$MAX_ROUNDS review rounds are used and round $round still has findings that must be fixed; see $review_relative. Where the owner disagrees with a critical or major finding, the owner may record an exception to it at a terminal (docs/development.md, 'Owner exceptions to a blocking finding')." \
         "cd \"$worktree\"" \
-        "./scripts/apply-triage.sh $triage_relative    # and continue by hand: review-feature.sh, finish-feature.sh, publish-feature.sh"
+        "./scripts/apply-triage.sh $triage_relative    # and continue by hand: review-feature.sh, finish-feature.sh, publish-feature.sh" \
+        "./scripts/record-exception.sh $review_relative --finding <id> --type not-applicable|risk-accepted --reason \"<why>\"    # the owner's option, for one blocking finding"
     fi
     # An interrupted fix session is continued with its scope, not started
     # again: apply-triage.sh refuses a review whose content changed. The

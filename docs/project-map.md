@@ -79,6 +79,7 @@ the website describes the current template.
 | `scripts/review-feature.sh` | Independent, read-only review of the complete feature diff, or with `--changes` of what changed since the previous round |
 | `scripts/triage-review.sh` | Classifies review findings, creates follow-up Issues, and publishes the reports on the Issue |
 | `scripts/apply-triage.sh` | Lets an implementer resolve only the `FIX_NOW` findings |
+| `scripts/record-exception.sh` | Records the owner's exception to one critical or major finding of the latest review (not applicable, or risk accepted), confirmed at a terminal, stored exactly as shown, and published on the Issue |
 | `scripts/finish-feature.sh` | Checks the feature, including the completion gate and a review of the complete feature, and creates the commit; prints the content tree next to the commit SHA, and writes the approval request when only the owner may merge; `--partial` commits unfinished work as your choice |
 | `scripts/run-feature.sh` | Runs a feature from `start-feature.sh` to `publish-feature.sh` without questions: resumes the implementer until the completion gate passes, then at most five review rounds, the last of the complete feature; never merges and never removes a worktree |
 | `scripts/record-post-merge.sh` | After the merge, records the evidence of a pending `post_merge` criterion as an Issue comment and closes the Issue when none is left |
@@ -115,6 +116,7 @@ the website describes the current template.
 | `scripts/lib/experience.sh` | The experience record of a feature run: what a script derives from the run, and the agent's optional notes once they are valid |
 | `scripts/lib/report.jq` | The report of `report-runs.sh`: totals, comparisons, and the summary for GitHub, from numeric fields only |
 | `scripts/lib/completion.sh` | The completion gate: validation of the implementer's completion record, the remaining work a handoff note lists, and the decision the scripts act on |
+| `scripts/lib/exceptions.sh` | The owner's exceptions to blocking findings: where a record is stored, its SHA-256, its validation against its schema and its binding to the latest, current review, the lines of the commit message, and the records published on the Issue |
 | `scripts/lib/guardrails.sh` | The merge approval gate: the protected and sensitive paths on the diff, by the rules of the base, the decision with the reviewer's classification, the approval requests (writing, validation against their schema, display), and the finish commit of a branch that merged its base afterwards |
 | `scripts/lib/risk.sh` | The risk level of a feature: the path classes of `.agents/policies/risk.conf` on the diff, the fixed escalations, and what the agents recorded, of which the highest counts; and what a level requires of the review rounds, by the same policy; the presets of the workflow profiles `light` and `standard` |
 | `scripts/lib/skills.sh` | The project skills: their metadata, the digest of their files, the selection in a plan, and the paragraph of the prompt that `start-feature.sh`, `review-feature.sh`, and `apply-triage.sh` give every role of the feature |
@@ -143,6 +145,7 @@ the website describes the current template.
 | `.agents/schemas/assessment.schema.json` | The assessor's report and proposal for an assessment of a repository |
 | `.agents/schemas/approval-request.schema.json` | An approval request: references and an explanation only; `check-guardrails.sh` refuses a request with any other field |
 | `.agents/schemas/revision.schema.json` | Planning revision decisions |
+| `.agents/schemas/exception.schema.json` | The owner's exception to one blocking review finding, bound to the review by its SHA-256 and reviewed tree |
 
 ## Working directories
 
@@ -150,6 +153,7 @@ the website describes the current template.
 |---|---|---|
 | `.agents/reviews/` | Review and revision results (JSON and generated reports) | No |
 | `.agents/triage/` | Approved triage results (JSON and generated reports) | No |
+| `.agents/exceptions/` | The owner's exceptions to blocking review findings, one per finding (`record-exception.sh`); valid only for the latest, current review, listed with their SHA-256 in the commit message and published on the Issue | No |
 | `.agents/verification/` | The record of the last passed verification, the durations of its checks, and the results of its budget checks, written by `verify.sh` | No |
 | `.agents/manual-steps/` | Per Issue, the steps a feature needs from you, written by the implementer; copied into the commit message and the pull request | No |
 | `.agents/summaries/` | Per Issue, the implementer's summary of the changes; becomes the list of changes in the commit message | No |
