@@ -45,6 +45,18 @@ template_conf "$template/.agents/template.conf"
 cp "$source_root/docs/architecture.md" "$source_root/docs/development.md" "$template/docs/"
 printf 'name: ci of the template\non: [push]\njobs: {}\n' >"$template/.github/workflows/ci.yml"
 : >"$template/src/.gitkeep"
+# The starter files of a new project, a decision record of the template's
+# own, and a directory its template.conf excludes: an adoption carries none
+# of the last two.
+mkdir -p "$template/tests/unit" "$template/tests/e2e" "$template/tests/integration" "$template/docs/decisions" "$template/docs/internal"
+: >"$template/tests/unit/.gitkeep"
+: >"$template/tests/e2e/.gitkeep"
+: >"$template/tests/integration/.gitkeep"
+printf 'APP_URL=http://localhost:3000\n' >"$template/.env.example"
+printf '# Decisions\n' >"$template/docs/decisions/README.md"
+printf '# 0001. A decision of the template\n' >"$template/docs/decisions/0001-template-choice.md"
+printf '{}\n' >"$template/docs/internal/notes.json"
+sed -i 's|^paths: .*|& :(exclude)docs/internal|' "$template/.agents/template.conf"
 git -C "$template" init -q -b main
 commit_all "$template" "Template"
 
@@ -180,7 +192,8 @@ done
 jq -e '.commands | any(.origin == "ci" and (.command | contains("API_TOKEN=[value omitted]")) and (.command | contains("Authorization: [value omitted]")))' "$facts" >/dev/null ||
   fail "the inline credentials of the CI were not replaced: $(jq -c '.commands | map(.command)' "$facts")"
 jq -e '.ci == [{id: "ci:.github/workflows/build.yml", path: ".github/workflows/build.yml", system: "github-actions", parsed: true,
-  secret_references: ["CHECKOUT_TOKEN", "DEPLOY_TOKEN"], actions: ["actions/checkout@v4"]}]' "$facts" >/dev/null || fail "the CI is wrong: $(jq -c .ci "$facts")"
+  secret_references: ["CHECKOUT_TOKEN", "DEPLOY_TOKEN"], actions: ["actions/checkout@v4"], triggers: [{event: "push", branch: "*"}],
+  deploys: ["runs API_TOKEN=[value omitted] ./deploy.sh"]}]' "$facts" >/dev/null || fail "the CI is wrong: $(jq -c .ci "$facts")"
 ! grep -rFq -- "$env_marker" "$(latest "$repo")" || fail "the content of an env: block of the CI was read: $(grep -rFl -- "$env_marker" "$(latest "$repo")" | head -n 1)"
 jq -e '.secret_files == [{id: "secret-file:.env", path: ".env", tracked_or_unignored: false, contents_read: false},
   {id: "secret-file:credentials.json", path: "credentials.json", tracked_or_unignored: true, contents_read: false}]' "$facts" >/dev/null ||
@@ -190,8 +203,18 @@ jq -e '(.deployment | map(.path)) == ["Dockerfile"] and (.entry_points | any(.ta
   fail "the deployment, entry points, or documents are wrong: $(jq -c '{deployment, entry_points, documents}' "$facts")"
 jq -e '.adoption | .collisions == [] and (.additions | any(.path == "AGENTS.md" and .ownership == "template"))
   and (.additions | any(.path == "docs/architecture.md" and .ownership == "project"))
-  and (.additions | any(.path == "README.md" or .path == "LICENSE" or .path == "src/.gitkeep") | not)' "$facts" >/dev/null ||
+  and (.additions | any(.path == "README.md" or .path == "LICENSE" or .path == "src/.gitkeep") | not)
+  and (.additions | any(.path == "docs/decisions/README.md"))
+  and (.additions | any(.path == "docs/decisions/0001-template-choice.md" or (.path | startswith("docs/internal/"))) | not)
+  and (.not_carried | index([":(exclude)docs/internal"]))' "$facts" >/dev/null ||
   fail "the additions are wrong: $(jq -c .adoption "$facts")"
+# The application is at the top: the starter files of its tests and its
+# environment are proposed.
+jq -e '.adoption | .left_out == [] and ([.additions[].path] | index(["tests/unit/.gitkeep"]) and index([".env.example"]))' "$facts" >/dev/null ||
+  fail "the starter files of an application at the top are not proposed: $(jq -c .adoption.left_out "$facts")"
+# The measured branch is the integration branch, and the proposed base.
+jq -e '.branches | .measured == "main" and .integration.name == "main" and (.differs | not)' "$facts" >/dev/null ||
+  fail "the branches of a single-branch repository are wrong: $(jq -c .branches "$facts")"
 jq -e --arg commit "$(git -C "$template" rev-parse HEAD)" '.template.commit == $commit and .template.uncommitted_changes == false' "$facts" >/dev/null ||
   fail "the template version is wrong: $(jq -c .template "$facts")"
 [[ "$(jq -c .adoption.ignored "$facts")" == "[]" ]] || fail "a path is hidden in a repository without ignore rules: $(jq -c .adoption.ignored "$facts")"
@@ -233,7 +256,7 @@ jq -e --arg commit "$(git -C "$template" rev-parse HEAD)" '
   .status == "proposed, not approved" and .template.commit == $commit and .profile.name == "standard"
   and (.additions | length) > 0 and .collisions == []
   and (.verification == [{name: "tests", command: "npm test", directory: null, origin: "ci", source: ".github/workflows/build.yml",
-        command_id: .verification[0].command_id, rationale: "The CI runs it."}])
+        command_id: .verification[0].command_id, rationale: "The CI runs it.", isolated: true, external_actions: []}])
   and (.ownership.template_paths | index(["scripts"])) and (.ownership.template_owned | index(["AGENTS.md"]))
   and (.ownership.project_owned | index(["docs/architecture.md"])) and (.execution_needed | length) == 1
   and (.baseline | (.facts | length) == 2 and (.assumptions | length) == 1 and (.questions | length) == 1
@@ -333,7 +356,7 @@ unchanged "$repo" "the dirty assessment"
 # of the workflow; a local rule hides a document. Every path the workflow
 # commits, now or later, that a rule hides is named with the rule.
 repo="$(make_target ignoring)"
-printf 'node_modules/\n*.json\n!package.json\n.agents/plans/\n' >"$repo/.gitignore"
+printf 'node_modules/\n*.json\n!package.json\n.agents/plans/\n/docs/decisions/0*\n' >"$repo/.gitignore"
 commit_all "$repo" "Ignore rules"
 printf 'docs/development.md\n' >>"$repo/.git/info/exclude"
 snapshot "$repo"
@@ -350,6 +373,11 @@ jq -e '.adoption.ignored as $i
   and ($i | map(.path) | all(startswith(".agents/schemas/") or startswith(".agents/plans/") or . == ".agents/approval-requests/x.json" or . == "docs/development.md"))
   and (.evidence_ids | index(["ignored:.agents/approval-requests/x.json"]))' "$facts" >/dev/null ||
   fail "the hidden paths are wrong: $(jq -c '.adoption.ignored | map([.path, .rule.pattern, .ignored_directory])' "$facts")"
+# The rules hide the template's decision record and a file of a directory its
+# template.conf excludes too; the adoption carries neither, so neither is a
+# path of the workflow (#303).
+jq -e '.adoption.ignored | any(.path == "docs/decisions/0001-template-choice.md" or (.path | startswith("docs/internal/"))) | not' "$facts" >/dev/null ||
+  fail "a path the adoption does not carry is reported as hidden: $(jq -c '.adoption.ignored | map(.path)' "$facts")"
 grep -Fq "Hidden by an ignore rule of the repository: $(jq '.adoption.ignored | length' "$facts") paths" "$repo.out" || fail "the hidden paths are not counted: $(cat "$repo.out")"
 MOCK_OUTPUT="$(result "$facts")" assess "$repo" || { cat "$repo.out" >&2; fail "the assessment of an ignoring repository failed"; }
 jq -e '.ignored | any(.path == ".agents/approval-requests/x.json" and .rule.pattern == "*.json") and all(has("id") | not)' "$(latest "$repo")proposal.json" >/dev/null ||
@@ -358,6 +386,148 @@ grep -Fq -- '- `.agents/approval-requests/x.json`: `*.json` in `.gitignore`' "$(
   grep -Fq -- '- `.agents/plans/x.md`: `.agents/plans/` in `.gitignore`, through the ignored directory `.agents/plans`' "$(latest "$repo")report.md" ||
   fail "the report does not name the hidden paths: $(cat "$(latest "$repo")report.md")"
 unchanged "$repo" "the assessment of an ignoring repository"
+
+# ------------------------------------------------- the branch features merge into
+# The work happens on develop, ahead of main with merged pull requests; main
+# is checked out. The assessment names the branch it measures, detects
+# develop, asks, and proposes it as the base.
+repo="$(make_target branches)"
+own_git -C "$repo" checkout -q -b develop
+for number in 1 2; do
+  own_git -C "$repo" checkout -q -b "feature/$number" develop
+  printf 'feature %s\n' "$number" >"$repo/feature-$number.txt"
+  commit_all "$repo" "Feature $number"
+  own_git -C "$repo" checkout -q develop
+  own_git -C "$repo" -c user.name=Test -c user.email=test@example.com merge -q --no-ff -m "Merge pull request #$number from owner/feature-$number" "feature/$number"
+done
+own_git -C "$repo" checkout -q main
+snapshot "$repo"
+assess "$repo" --facts-only || { cat "$repo.out" >&2; fail "the facts of a repository with develop failed"; }
+facts="$(latest "$repo")facts.json"
+jq -e '.branches | .measured == "main" and .integration.name == "develop" and .integration.ahead == 4 and .integration.pull_request_merges == 2
+  and .differs and (.candidates | map(.name) | index(["feature/1"]) | not)' "$facts" >/dev/null ||
+  fail "the integration branch is not detected: $(jq -c .branches "$facts")"
+grep -Fq "Measured branch: main; integration branch: develop" "$repo.out" && grep -Fq "The assessment measures main, not the integration branch develop" "$repo.out" ||
+  fail "the measured and the integration branch are not named: $(cat "$repo.out")"
+MOCK_OUTPUT="$(result "$facts")" assess "$repo" || { cat "$repo.out" >&2; fail "the assessment of a repository with develop failed"; }
+jq -e '.base == {measured: "main", integration: "develop", reason: .base.reason, differs: true, proposed: "develop"}
+  and (.baseline.questions[0].question | test("measured main, but features appear to merge into develop"))' "$(latest "$repo")proposal.json" >/dev/null ||
+  fail "the proposal does not propose develop as the base, or does not ask: $(jq -c '{base, questions: .baseline.questions}' "$(latest "$repo")proposal.json")"
+grep -Fq 'The assessment measured the branch `main`' "$(latest "$repo")report.md" &&
+  grep -Fq '**The checked-out branch is not the one features merge into.**' "$(latest "$repo")report.md" &&
+  grep -Fq 'Proposed for `.agents/template.conf`: `base: develop`.' "$(latest "$repo")report.md" ||
+  fail "the report does not name the branches and the base: $(cat "$(latest "$repo")report.md")"
+unchanged "$repo" "the assessment of a repository with develop"
+
+# ------------------------------------------- a name that differs only in case
+repo="$(make_target cased)"
+printf '# Architecture\n\nThe parts of the service.\n' >"$repo/docs/ARCHITECTURE.md"
+commit_all "$repo" "Architecture"
+assess "$repo" --facts-only || { cat "$repo.out" >&2; fail "the facts of a repository with docs/ARCHITECTURE.md failed"; }
+facts="$(latest "$repo")facts.json"
+jq -e '(.adoption.collisions | map(select(.path == "docs/architecture.md"))) == [{id: "collision:docs/architecture.md", path: "docs/architecture.md",
+    ownership: "project", kind: "case-only", blocking_path: null, project_path: "docs/ARCHITECTURE.md", uncommitted: false}]
+  and (.adoption.additions | any(.path == "docs/architecture.md") | not)' "$facts" >/dev/null ||
+  fail "the name that differs only in case is no collision: $(jq -c .adoption.collisions "$facts")"
+MOCK_OUTPUT="$(result "$facts")" assess "$repo" || { cat "$repo.out" >&2; fail "the assessment of a repository with docs/ARCHITECTURE.md failed"; }
+grep -Fq '| `docs/architecture.md` | project | case-only (`docs/ARCHITECTURE.md`, renamed to the expected name with `git mv`, keeping its history) |' \
+  "$(latest "$repo")report.md" || fail "the report does not propose the rename: $(grep -F 'docs/architecture.md' "$(latest "$repo")report.md")"
+
+# ------------------------------------------ an application in a subdirectory
+# A Next.js application in nextjs/, with its tests and its env example there,
+# a CI that runs in that directory, a build that migrates the database, and a
+# deployment on every push to main.
+repo="$tmp/subdirectory"
+mkdir -p "$repo/nextjs/tests" "$repo/.github/workflows"
+cat >"$repo/nextjs/package.json" <<'JSON'
+{"name": "web", "scripts": {"build": "prisma migrate deploy && next build", "test": "vitest run"},
+ "dependencies": {"next": "15.0.0", "@prisma/client": "6.0.0", "nodemailer": "6.9.0", "stripe": "17.0.0"},
+ "devDependencies": {"prisma": "6.0.0", "vitest": "2.0.0"}}
+JSON
+printf 'test("page", () => {});\n' >"$repo/nextjs/tests/page.test.js"
+printf 'DATABASE_URL=\n' >"$repo/nextjs/.env.example"
+cat >"$repo/.github/workflows/ci.yml" <<'YAML'
+name: ci
+on:
+  pull_request:
+    branches: [main]
+defaults:
+  run:
+    working-directory: nextjs
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm run build
+      - name: Tests
+        working-directory: ./nextjs/
+        run: npm test
+      - name: Smoke
+        run: curl -fsS https://example.com/health
+YAML
+cat >"$repo/.github/workflows/production.yml" <<'YAML'
+name: production
+on:
+  push:
+    branches:
+      - main
+jobs:
+  ship:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - run: npx vercel deploy --prod
+YAML
+git -C "$repo" init -q -b main
+commit_all "$repo" "Next.js in a subdirectory"
+snapshot "$repo"
+assess "$repo" --facts-only || { cat "$repo.out" >&2; fail "the facts of an application in a subdirectory failed"; }
+facts="$(latest "$repo")facts.json"
+unchanged "$repo" "the facts of an application in a subdirectory"
+jq -e '(.adoption.left_out | map(.path)) == [".env.example", "tests/e2e/.gitkeep", "tests/integration/.gitkeep", "tests/unit/.gitkeep"]
+  and (.adoption.left_out[0].reason | test("nextjs/"))
+  and (.adoption.additions | any(.path | test("^tests/(unit|e2e|integration)/|^\\.env\\.example$")) | not)' "$facts" >/dev/null ||
+  fail "starter files are proposed beside an application in a subdirectory: $(jq -c '{left_out: .adoption.left_out, additions: [.adoption.additions[].path | select(startswith("tests/") or startswith(".env"))]}' "$facts")"
+jq -e '[.commands[] | select(.origin == "ci") | [.command, .directory]] == [["npm run build", "nextjs"], ["npm test", "nextjs"],
+  ["curl -fsS https://example.com/health", "nextjs"], ["npx vercel deploy --prod", null]]' "$facts" >/dev/null ||
+  fail "the CI commands do not carry their working directory: $(jq -c '[.commands[] | select(.origin == "ci") | [.command, .directory]]' "$facts")"
+jq -e '.external_actions | map([.kind, .dependency]) as $a
+  | ($a | index([["database", "@prisma/client"]])) and ($a | index([["email", "nodemailer"]])) and ($a | index([["external-api", "stripe"]]))
+  and ($a | index([["telemetry", "next"]])) and any(.[]; .kind == "database" and (.what | test("prisma migrate deploy")))' "$facts" >/dev/null ||
+  fail "the external actions are not named: $(jq -c .external_actions "$facts")"
+build_id="$(jq -r '.commands[] | select(.origin == "ci" and .command == "npm run build") | .id' "$facts")"
+smoke_id="$(jq -r '.commands[] | select(.origin == "ci" and (.command | startswith("curl "))) | .id' "$facts")"
+# The external actions of a check that only its command text shows: the
+# migration in the definition of the declared build, and the request of the
+# smoke check.
+migration_id="$(jq -r '.external_actions[] | select(.kind == "database" and .dependency == null and (.what | test("prisma migrate deploy"))) | .id' "$facts")"
+request_id="$(jq -r --arg smoke "$smoke_id" '.external_actions[] | select(.kind == "external-api" and .source == $smoke) | .id' "$facts")"
+[[ -n "$migration_id" && -n "$request_id" ]] || fail "the external actions of the command text are not found: $(jq -c .external_actions "$facts")"
+MOCK_OUTPUT="$(result "$facts" '.facts[1].evidence = ["manifest:nextjs/package.json"] | .verification = [{name: "build", source: "'"$build_id"'", rationale: "The CI runs it."},
+  {name: "smoke", source: "'"$smoke_id"'", rationale: "The CI runs it."}]')" assess "$repo" ||
+  { cat "$repo.out" >&2; fail "the assessment of an application in a subdirectory failed"; }
+proposal="$(latest "$repo")proposal.json"
+report="$(latest "$repo")report.md"
+jq -e '(.verification[0] | .directory == "nextjs" and .isolated
+    and (.external_actions | map(.kind) | index(["database"]) and index(["telemetry"]) and index(["email"])))
+  and (.verification[0].external_actions | map(.id) | index([$migration]))
+  and (.verification[1].external_actions | map(.id) | index([$request]))
+  and (.isolation.env | map(.name) == ["DATABASE_URL", "DO_NOT_TRACK", "NEXT_TELEMETRY_DISABLED"])
+  and (.isolation.env[0].value | test("127\\.0\\.0\\.1:1/"))
+  and .deployment_on_merge == [{workflow: ".github/workflows/production.yml", branch: "main", triggers: ["main"],
+       reasons: ["environment of the job ship", "runs npx vercel deploy --prod"]}]' --arg migration "$migration_id" --arg request "$request_id" "$proposal" >/dev/null ||
+  fail "the proposal lacks the directory, the isolation, the external actions, or the deployment: $(jq -c '{verification, isolation, deployment_on_merge}' "$proposal")"
+grep -Fq -- '- `.env.example`: the application is in nextjs/' "$report" &&
+  grep -Fq -- '- build: `npm run build` in `nextjs`' "$report" &&
+  grep -Fq -- '  - external actions it may take: ' "$report" && grep -Fq 'database, a database migration or client; it reaches the database it is configured for (`prisma migrate deploy`)' "$report" &&
+  grep -A 1 -F -- '- smoke: `curl -fsS https://example.com/health` in `nextjs`' "$report" | grep -F -- '  - external actions it may take: ' |
+    grep -Fq 'external-api, a download or a request to a server (`curl`)' &&
+  grep -Fq -- '- `NEXT_TELEMETRY_DISABLED=1`: Next.js sends telemetry during a build' "$report" &&
+  grep -Fq '## External actions the checks may take' <(sed 's/^###/##/' "$report") &&
+  grep -Fq '**A merge into `main` triggers a deployment**, also the merge of the adoption:' "$report" ||
+  fail "the report does not name the left-out starters, the isolation, the external actions, or the deployment: $(cat "$report")"
+unchanged "$repo" "the assessment of an application in a subdirectory"
 
 # ------------------------------------------------------------------ refusals
 plain="$tmp/plain"
