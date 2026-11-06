@@ -27,19 +27,20 @@ commit_all() {
   git -C "$1" -c user.name=Test -c user.email=test@example.com commit -qm "$2"
 }
 
-# The template: the files of this checkout as they are, without the site,
-# and without what an adopted project has of its own there: its decisions,
-# its ignore rules, and its exclusions from the template's files.
+# The template: the files it carries into a project, from this checkout as
+# they are, and nothing of what an adopted project has of its own there: its
+# decisions, its baseline, its ignore rules, and its exclusions from the
+# template's files.
 template="$tmp/template"
-mkdir -p "$template"
-(cd "$source_root" && git ls-files -co --exclude-standard -z -- . ':(exclude)documentation' |
+mkdir -p "$template/.agents"
+template_conf "$template/.agents/template.conf"
+read -r -a template_paths <<<"$(sed -n 's/^paths: *//p' "$template/.agents/template.conf")"
+(cd "$source_root" && git ls-files -co --exclude-standard -z -- "${template_paths[@]}" ':(exclude).gitignore' ':(exclude).agents/template.conf' |
   while IFS= read -r -d '' path; do
-    [[ "$path" != docs/decisions/* || "$path" == docs/decisions/README.md ]] || continue
     [[ -f "$path" ]] && printf '%s\0' "$path"
   done |
   tar --null -T - -cf -) | tar -C "$template" -xf -
 workflow_gitignore "$template/.gitignore"
-template_conf "$template/.agents/template.conf"
 git -C "$template" init -q -b main
 commit_all "$template" "Template"
 

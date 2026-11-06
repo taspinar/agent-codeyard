@@ -181,7 +181,7 @@ setup_repo() {
 
   mkdir -p "$seed" "$repo.control"
   copy_workflow "$seed"
-  cp "$source_root/.gitignore" "$seed/.gitignore"
+  workflow_gitignore "$seed/.gitignore"
   printf 'implementer: codex model-i\nreviewer: claude model-r\ntriage: codex model-t\ntriage-implementer: codex model-f\n' \
     >"$seed/.agents/agents.conf"
   printf '%s\n' "${VERIFY_CONF:-sound: test ! -e broken.txt}" >"$seed/scripts/verify.conf"

@@ -152,7 +152,7 @@ cmp -s "$repo/.github/PULL_REQUEST_TEMPLATE.agent-codeyard.md" "$template/.githu
 [[ ! -e "$repo/.github/workflows/guardrails.yml" && ! -e "$repo/.github/workflows/ci.agent-codeyard.yml" ]] || fail "a CI workflow was added"
 [[ ! -e "$repo/README.md" && ! -e "$repo/src/.gitkeep" ]] || fail "a product file of the template was carried over"
 conf="$repo/.agents/template.conf"
-grep -Fxq "commit: $template_commit" "$conf" && grep -q '^repository: https://github.com/taspinar/agent-codeyard$' "$conf" ||
+grep -Fxq "commit: $template_commit" "$conf" && grep -Fxq "$(grep '^repository:' "$template/.agents/template.conf")" "$conf" ||
   fail "the template version is not recorded: $(grep -v '^#' "$conf")"
 paths="$(sed -n 's/^paths: //p' "$conf")"
 for spec in scripts ':(exclude)AGENTS.md' ':(exclude).gitignore' ':(exclude).github/workflows/ci.yml'; do

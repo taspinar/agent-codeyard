@@ -32,7 +32,7 @@ setup_repo() {
   local repo="$tmp/$1"
 
   mkdir -p "$repo/scripts/lib" "$repo/.agents/reviews" "$repo/.agents/triage" "$repo/docs/decisions"
-  cp "$source_root/.gitignore" "$repo/.gitignore"
+  workflow_gitignore "$repo/.gitignore"
   cp "$source_root/scripts/show-experience.sh" "$repo/scripts/"
   cp "$source_root/scripts/lib/records.sh" "$source_root/scripts/lib/experience.sh" "$source_root/scripts/lib/fingerprint.sh" "$repo/scripts/lib/"
   printf '# ADR 001\n' >"$repo/docs/decisions/001-example.md"

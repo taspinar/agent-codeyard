@@ -55,7 +55,7 @@ setup_repo() {
   mkdir -p "$seed/scripts/lib"
   cp "$source_root/scripts/cleanup-worktree.sh" "$seed/scripts/"
   cp "$source_root/scripts/lib/records.sh" "$seed/scripts/lib/"
-  cp "$source_root/.gitignore" "$seed/.gitignore"
+  workflow_gitignore "$seed/.gitignore"
   printf '# Project\n' >"$seed/README.md"
   git -C "$seed" init -q -b main
   git -C "$seed" config user.name "Cleanup Test"

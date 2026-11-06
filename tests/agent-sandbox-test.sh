@@ -82,7 +82,7 @@ trap cleanup EXIT
 repo="$base/repo"
 mkdir -p "$repo" "$base/sibling"
 copy_workflow "$repo"
-cp "$source_root/.gitignore" "$repo/.gitignore"
+workflow_gitignore "$repo/.gitignore"
 mkdir -p "$repo/.agents/policies" "$repo/.agents/prompts" "$repo/.agents/handoffs" "$repo/.codex"
 cp "$source_root"/.agents/policies/* "$repo/.agents/policies/"
 cp "$source_root"/.agents/prompts/*.md "$repo/.agents/prompts/"

@@ -29,7 +29,7 @@ setup_repo() {
 
   mkdir -p "$repo"
   copy_workflow "$repo"
-  cp "$source_root/.gitignore" "$repo/.gitignore"
+  workflow_gitignore "$repo/.gitignore"
   printf 'commit: 0123456789abcdef0123456789abcdef01234567\n' >"$repo/.agents/template.conf"
   printf 'implementer: claude model-i\n' >"$repo/.agents/agents.conf"
   git -C "$repo" init -q -b main
