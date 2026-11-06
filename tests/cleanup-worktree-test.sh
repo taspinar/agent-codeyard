@@ -82,7 +82,9 @@ add_worktree() {
 # merge <repo> <branch> <directory>: squash-merges the branch on the remote
 # and records its head as the merged pull request head.
 merge() {
-  local other="$tmp/merge-$RANDOM"
+  local other
+
+  other="$(mktemp -d "$tmp/merge.XXXXXX")"
   git clone -q "$(git -C "$1" remote get-url origin)" "$other"
   git -C "$other" config user.name "Cleanup Test"
   git -C "$other" config user.email "cleanup-test@example.com"
@@ -305,9 +307,10 @@ jq -e -s 'any(.type == "step" and .name == "review, round 1 of at most 5")' "$re
 # branch in another clone, pushes the result only to refs/pull/<number>/head,
 # and records it as the head of the merged pull request.
 update_on_github() {
-  local other="$tmp/update-$RANDOM"
+  local other
   local updated
 
+  other="$(mktemp -d "$tmp/update.XXXXXX")"
   git clone -q "$(git -C "$1" remote get-url origin)" "$other"
   git -C "$other" config user.name "Cleanup Test"
   git -C "$other" config user.email "cleanup-test@example.com"

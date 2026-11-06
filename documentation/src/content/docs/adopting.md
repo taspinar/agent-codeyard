@@ -26,7 +26,7 @@ The adoption applies the proposal as one commit on the branch `adopt/agent-codey
 
 It also writes, where you have no such file or yours is not sufficient:
 
-- `scripts/verify.conf` with your own test, lint and build commands as the checks of `./scripts/verify.sh`, each in its directory and isolated by default: no credentials from your environment, a database URL that points at a closed local port, and telemetry off. Your CI keeps running them as before.
+- `scripts/verify.conf` with your own test, lint and build commands as the checks of `./scripts/verify.sh`, each in its directory and isolated by default: no credentials from your environment, a database URL that points at a closed local port, and telemetry off. A check stops while a credential file such as `.env` is in its directory, whether Git tracks it or not, since your tools would load it; run the verification in a clean working copy, such as the worktree of a feature, and remove a tracked one from the repository. Your CI keeps running them as before.
 - `docs/architecture.md`, `docs/PROJECT_REQUIREMENTS.md` and `docs/roadmap.md` as a minimal baseline: your own documents to reuse, what the assessment observed, its assumptions, risks and open questions, and the near-term work. Each starts with the mark **Observed, not approved**. Where you have such a document already, the assessment judges whether it is sufficient: a sufficient one is reused as it is; one that is not, such as a heading without content, gets the marked baseline at its path, with your text kept unchanged below it to fold into the planning. No ADR is written: nothing is presented as a decision of the past.
 
 ## 3. Record the baseline

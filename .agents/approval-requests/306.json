@@ -1,18 +1,18 @@
 {
   "schema": "approval-request/v1",
-  "content_tree": "39220b62eabb7e46246daea20821313bd3d84800",
+  "content_tree": "1a9c0239ac6b022f30092153a81e3ac6becdbf31",
   "commit": {
     "branch": "feature/306-assessment-and-adoption-integration",
-    "parent": "dc5a7419a21f308d68d84a503de8ee8a1925ab95",
+    "parent": "02d4409dadd20a2e1431f7cf1d0db629869e0e84",
     "base": "dc5a7419a21f308d68d84a503de8ee8a1925ab95"
   },
   "review": {
-    "round": 3,
+    "round": 5,
     "verdict": "PASS",
     "reviewer": "codex (gpt-6-luna)"
   },
   "reasons": [
-    "the independent review classified the impact on the architecture as major: The feature changes shared assessment and adoption behavior used by repositories adopting the template, including branch selection, verification-command isolation, and deployment reporting. "
+    "the independent review classified the impact on the architecture as major: The feature changes shared assessment and adoption behavior used by adopting repositories, including branch selection, generated verification isolation, and deployment reporting in `scripts/assess-repository.sh` and `scripts/adopt-repository.sh`. "
   ],
   "explanation": "Issue #306: Assessment and adoption: integration branch, case-only name collisions, subdirectory apps, isolated verification commands, deploy on merge. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
 }

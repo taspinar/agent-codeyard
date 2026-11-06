@@ -3406,6 +3406,16 @@ management, and deployment files are not touched; the commit runs none of the pr
   `DATABASE_URL` to a closed local port, `DO_NOT_TRACK=1`, and the switch
   that turns off the telemetry of a tool the project uses
   (`NEXT_TELEMETRY_DISABLED=1`), as the proposal's `isolation` lists them.
+  Clearing the environment does not shield a credential file that a tool
+  loads by itself (`.env`, `.env.local`, `.env.*.local`, `.dev.vars`): a
+  check stops with a message that names such a file, never its content,
+  while one is in its directory, whether Git tracks it or not, until the
+  owner has set up the shielding. A clean working copy, such as the
+  worktree of a feature, holds none that Git does not track; a tracked one
+  stops the check there too, until it is removed from the repository. An
+  example (`.env.example`, `.env.sample`, ...) does not stop it. The assessment names the credential
+  files it sees in the directories of the checks, tracked or not, names
+  only, in the proposal's `isolation.credential_files` and in the report.
   A comment above each check names the external actions it may take. A check
   that needs a real service is changed in a reviewed change. The project's CI runs as before: the same commands become the
   checks of `verify.sh`, which integrates them without replacing the CI. The

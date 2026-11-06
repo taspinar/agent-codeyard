@@ -176,8 +176,11 @@ grep -q "Adopt the agent-codeyard workflow" <(git -C "$repo" log -1 --format=%B)
 # The project's own commands become the checks of the verification, in a
 # file of the project's that a sync leaves alone; the CI stays as it is.
 # isolated: no credential of the environment, no database, no telemetry.
+# A check stops while a credential file, tracked by Git or not, is in its
+# directory: a tool loads it past the cleared environment.
 isolation="unset \$(compgen -e | grep -E 'TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY|ACCESS_KEY|PRIVATE_KEY|CREDENTIAL' || true); export DATABASE_URL=postgresql://isolated:isolated@127.0.0.1:1/isolated DO_NOT_TRACK=1; "
-grep -Fxq "tests: ${isolation}npm run test" "$repo/scripts/verify.conf" || fail "the project's command is not an isolated check: $(cat "$repo/scripts/verify.conf")"
+guard='for f in .env .env.* .dev.vars; do [[ ! -e $f && ! -L $f || " .env.example .env.sample .env.template .env.dist .env.defaults " == *" $f "* ]] || { echo "$f: a credential file in the directory of this check, which a tool may load, whether Git tracks it or not. The check stops until the owner has set up the shielding: move the file out for the run, or run the verification in a working copy without it." >&2; exit 1; }; done && '
+grep -Fxq "tests: ${isolation}${guard}npm run test" "$repo/scripts/verify.conf" || fail "the project's command is not an isolated check: $(cat "$repo/scripts/verify.conf")"
 [[ " $paths " == *" :(exclude)scripts/verify.conf "* ]] || fail "the checks of the project are owned by the template: $paths"
 grep -Fq "./scripts/verify.sh --baseline" "$repo.out" || fail "the adoption does not say how to record the baseline: $(cat "$repo.out")"
 # The planning documents the project lacks are a minimal baseline, marked as
@@ -505,13 +508,16 @@ adopt "$repo" --publish || { cat "$repo.out" >&2; fail "the repeated published a
 # push deploys; main is checked out. The adoption stops until develop is
 # assessed; then it records develop as the base, runs the project's checks in
 # nextjs/, isolated, adds no starter file beside the application, and its
-# pull request goes into develop and says that the merge deploys.
+# pull request goes into develop and says that the merge deploys. A
+# fictional key in nextjs/.env, ignored by Git or tracked, never reaches the
+# check.
 repo="$(make_target integration)"
 git -C "$repo" rm -q package.json
 mkdir -p "$repo/nextjs/tests"
 printf '{"name": "web", "scripts": {"build": "next build", "test": "vitest run"}, "dependencies": {"next": "15.0.0"}}\n' >"$repo/nextjs/package.json"
 printf 'test("page", () => {});\n' >"$repo/nextjs/tests/page.test.js"
 printf 'DATABASE_URL=\n' >"$repo/nextjs/.env.example"
+printf '.env\n' >"$repo/nextjs/.gitignore"
 printf 'name: deploy\non:\n  push:\n    branches: [develop]\njobs:\n  ship:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npx vercel deploy --prod\n' \
   >"$repo/.github/workflows/deploy.yml"
 commit_all "$repo" "Next.js in a subdirectory"
@@ -539,8 +545,41 @@ adopt "$repo" --publish || { cat "$repo.out" >&2; fail "the adoption of develop 
 [[ "$(git -C "$repo" rev-parse adopt/agent-codeyard~1)" == "$(git -C "$repo" rev-parse develop)" ]] || fail "the adoption does not start from develop"
 grep -Fxq "base: develop" "$repo/.agents/template.conf" || fail "the base is not recorded: $(grep -v '^#' "$repo/.agents/template.conf")"
 next_isolation="${isolation%; }"
-grep -Fxq "tests: ${next_isolation} NEXT_TELEMETRY_DISABLED=1; cd nextjs && npm run test" "$repo/scripts/verify.conf" ||
+grep -Fxq "tests: ${next_isolation} NEXT_TELEMETRY_DISABLED=1; cd nextjs && ${guard}npm run test" "$repo/scripts/verify.conf" ||
   fail "the check does not run isolated in the application's directory: $(cat "$repo/scripts/verify.conf")"
+# The check as verify.sh runs it, with an npm that loads nextjs/.env as
+# dotenv and Next.js do: while the file is there, the check stops and names
+# it, and the key is not available; in a clean working copy of the same
+# commit it runs, with its tracked .env.example, and finds no key.
+fictional_key="sk_test_fictional_0000_adopt"
+printf 'PAYMENTS_API_KEY=%s\n' "$fictional_key" >"$repo/nextjs/.env"
+mkdir -p "$tmp/npm-bin"
+printf '#!/bin/sh\n[ ! -f .env ] || { set -a; . ./.env; set +a; }\necho "npm ran; the key: ${PAYMENTS_API_KEY:-absent}"\n' >"$tmp/npm-bin/npm"
+chmod +x "$tmp/npm-bin/npm"
+check="$(sed -n 's/^tests: //p' "$repo/scripts/verify.conf")"
+if (cd "$repo" && PATH="$tmp/npm-bin:$PATH" PAYMENTS_API_KEY="$fictional_key" bash -eo pipefail -c "$check") >"$tmp/check.out" 2>&1; then
+  fail "the check ran with a credential file in its directory: $(cat "$tmp/check.out")"
+fi
+grep -Fq ".env: a credential file in the directory of this check, which a tool may load, whether Git tracks it or not" "$tmp/check.out" &&
+  ! grep -Fq -e "$fictional_key" -e "npm ran" "$tmp/check.out" ||
+  fail "the check does not stop with a message that names the file, or the key is available: $(cat "$tmp/check.out")"
+git -C "$repo" worktree add -q --detach "$tmp/integration-clean" adopt/agent-codeyard
+(cd "$tmp/integration-clean" && PATH="$tmp/npm-bin:$PATH" PAYMENTS_API_KEY="$fictional_key" bash -eo pipefail -c "$check") >"$tmp/check.out" 2>&1 &&
+  grep -Fxq "npm ran; the key: absent" "$tmp/check.out" ||
+  fail "the check does not run in a clean working copy, or the key is available there: $(cat "$tmp/check.out")"
+# A .env that Git tracks is loaded all the same: in a working copy where
+# it is committed, the check stops too and the key is not available.
+printf 'PAYMENTS_API_KEY=%s\n' "$fictional_key" >"$tmp/integration-clean/nextjs/.env"
+git -C "$tmp/integration-clean" add -f nextjs/.env
+git -C "$tmp/integration-clean" -c user.name=Test -c user.email=test@example.com commit -qm "A tracked .env"
+if (cd "$tmp/integration-clean" && PATH="$tmp/npm-bin:$PATH" bash -eo pipefail -c "$check") >"$tmp/check.out" 2>&1; then
+  fail "the check ran with a tracked credential file in its directory: $(cat "$tmp/check.out")"
+fi
+grep -Fq ".env: a credential file in the directory of this check" "$tmp/check.out" &&
+  ! grep -Fq -e "$fictional_key" -e "npm ran" "$tmp/check.out" ||
+  fail "the check does not stop on a tracked .env, or the key is available: $(cat "$tmp/check.out")"
+git -C "$repo" worktree remove --force "$tmp/integration-clean"
+rm "$repo/nextjs/.env"
 [[ ! -e "$repo/tests/unit" && ! -e "$repo/.env.example" ]] || fail "starter files were added beside an application in a subdirectory"
 grep -q '^pr create --base develop --head adopt/agent-codeyard' "$MOCK_GH_LOG" || fail "the pull request does not go into develop: $(cat "$MOCK_GH_LOG")"
 grep -Fq '**A merge of this pull request into `develop` triggers a deployment**' "$MOCK_GH_LOG.body" &&

@@ -111,7 +111,8 @@ approved*: write them so that the owner can check each one.
   leave the list empty when there is none. Each check runs in the directory
   of its command and isolated, by the script: no credentials of the
   environment, a database URL that points at a closed local port, and
-  telemetry off. Name in `execution_needed` what a check needs beyond that,
+  telemetry off; it stops while a credential file such as `.env`, tracked
+  or not, is in its directory. Name in `execution_needed` what a check needs beyond that,
   such as a real database.
 - `execution_needed`: what would have to run for a baseline later (an
   install, the tests, a build), with `why` and its `side_effects`. Nothing of

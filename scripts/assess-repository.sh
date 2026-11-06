@@ -128,9 +128,15 @@ readable() {
 (cd "$target" && find . -maxdepth 4 \( -name .git -o -name node_modules -o -name vendor -o -name .venv -o -name venv \) -prune -o \
   \( -type f -o -type l \) \( -name '.env' -o -name '.env.*' -o -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx' \
   -o -name 'id_rsa*' -o -name 'id_ed25519*' -o -name 'credentials*.json' -o -name 'service-account*.json' -o -name 'secrets.*' \
-  -o -name '.npmrc' -o -name '.pypirc' -o -name '.netrc' \) -print) | sed 's#^\./##' | sort >"$work/secret-files" || true
-jq -R . "$work/secret-files" | jq -s --slurpfile files "$work/files.json" \
-  'map({id: "secret-file:\(.)", path: ., tracked_or_unignored: (. as $p | any($files[0][]; . == $p)), contents_read: false})' \
+  -o -name '.npmrc' -o -name '.pypirc' -o -name '.netrc' -o -name '.dev.vars' \) -print) | sed 's#^\./##' | sort >"$work/secret-files" || true
+# Which of them Git tracks: a check stops on one in its directory either way
+# (proposal, isolation.credential_files); the report says which are tracked.
+if [[ "$is_git" -eq 1 && -s "$work/secret-files" ]]; then
+  tgit ls-files --cached | grep -Fx -f "$work/secret-files" || true
+fi | jq -R . | jq -s . >"$work/secret-files-tracked.json"
+jq -R . "$work/secret-files" | jq -s --slurpfile files "$work/files.json" --slurpfile tracked "$work/secret-files-tracked.json" \
+  'map({id: "secret-file:\(.)", path: ., tracked_or_unignored: (. as $p | any($files[0][]; . == $p)),
+        tracked: (. as $p | any($tracked[0][]; . == $p)), contents_read: false})' \
   >"$work/secrets.json"
 is_secret() {
   grep -Fxq -- "$1" "$work/secret-files"
@@ -832,6 +838,7 @@ jq --slurpfile facts "$dir/facts.json" --arg assessment "$(basename "$dir")" "$g
   | ($r.collisions | map({key: .path, value: .}) | from_entries) as $resolution
   | ($f.commands | map({key: .id, value: .}) | from_entries) as $commands
   | ($f.branches.integration.name // $f.branches.measured) as $base
+  | ($r.verification | map($commands[.source].directory // ".") | unique) as $check_directories
   | {schema: "adoption-proposal/v1", status: "proposed, not approved", assessment: $assessment,
      repository: {name: $f.repository.name, path: $f.repository.path, branch: $f.git.branch, head: $f.git.head},
      template: {repository: $f.template.repository, commit: $f.template.commit, uncommitted_changes: $f.template.uncommitted_changes},
@@ -852,6 +859,15 @@ jq --slurpfile facts "$dir/facts.json" --arg assessment "$(basename "$dir")" "$g
               {name: "DO_NOT_TRACK", value: "1", why: "tools that honour it send no telemetry"}]
              + ([($f.external_actions // [])[] | select(.env != null) | {name: .env, value: "1", why: .what}] | unique_by(.name))),
        unset_pattern: "TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY|ACCESS_KEY|PRIVATE_KEY|CREDENTIAL",
+       credential_files: {handling: "stop", names: [".env", ".env.*", ".dev.vars"],
+         except: [".env.example", ".env.sample", ".env.template", ".env.dist", ".env.defaults"],
+         present: [($f.secret_files // [])[]
+           | (.path | split("/")) as $parts | ($parts[:-1] | join("/") | if . == "" then "." else . end) as $d
+           | select(($check_directories | index([$d])) != null)
+           | select($parts[-1] | test("^(\\.env(\\..+)?|\\.dev\\.vars)$"))
+           | select($parts[-1] | IN(".env.example", ".env.sample", ".env.template", ".env.dist", ".env.defaults") | not)
+           | {path, directory: $d, tracked}],
+         why: "A tool or an application loads these files by itself (dotenv, Next.js, Vite, Wrangler): unsetting variables does not shield the credentials they hold. A check stops while such a file is in its directory, whether Git tracks it or not, until the owner has set up the shielding; a clean working copy, such as the worktree of a feature, holds none that Git does not track, and a tracked one is to be removed from the repository."},
        why: "The checks run on a developer machine, whose environment may hold real credentials and point at real services: by default they get none of them."},
      verification: ($r.verification | map($commands[.source] as $c
        | ($c.directory // ".") as $d
@@ -912,6 +928,9 @@ jq -r --slurpfile facts "$dir/facts.json" --slurpfile proposal "$dir/proposal.js
   + "\n### Isolation of the checks\n\n\($p.isolation.why) Each check of `scripts/verify.conf` runs with:\n\n"
   + ($p.isolation.env | map("- `\(.name)=\(.value)`: \(.why)\n") | join(""))
   + "- the variables of the environment whose names match `\($p.isolation.unset_pattern)` unset: no real credentials\n"
+  + ($p.isolation.credential_files | "- no credential file: \(.why) The check stops with a message while a file named \(.names | map(code) | join(", ")) (not \(.except | map(code) | join(", "))) is in its directory, tracked by Git or not.\n\n"
+      + (if (.present | length) == 0 then "The assessment sees no such file in the directory of a check.\n"
+         else "The assessment sees such files, names only, never opened: \(.present | map((.path | code) + (if .tracked then " (tracked by Git)" else "" end)) | join(", ")). The checks stop here until the owner has set up the shielding: move the files out of the directory of the check for the run, or run the verification in a working copy without them; a tracked one is in every clean working copy, until it is removed from the repository.\n" end))
   + "\n### External actions the checks may take\n\n"
   + (($facts[0].external_actions // []) | list("- \(.kind): \(.what)\(if .dependency then " (\(.dependency | code) in \(.source | code))" else " (\(.source))" end)\n"))
   + "\n### Template version\n\n\($p.template.repository // "(no repository recorded)") at \($p.template.commit | code)\(if $p.template.uncommitted_changes then ", with uncommitted changes in the template checkout" else "" end).\n"

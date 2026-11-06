@@ -195,8 +195,8 @@ jq -e '.ci == [{id: "ci:.github/workflows/build.yml", path: ".github/workflows/b
   secret_references: ["CHECKOUT_TOKEN", "DEPLOY_TOKEN"], actions: ["actions/checkout@v4"], triggers: [{event: "push", branch: "*"}],
   deploys: ["runs API_TOKEN=[value omitted] ./deploy.sh"]}]' "$facts" >/dev/null || fail "the CI is wrong: $(jq -c .ci "$facts")"
 ! grep -rFq -- "$env_marker" "$(latest "$repo")" || fail "the content of an env: block of the CI was read: $(grep -rFl -- "$env_marker" "$(latest "$repo")" | head -n 1)"
-jq -e '.secret_files == [{id: "secret-file:.env", path: ".env", tracked_or_unignored: false, contents_read: false},
-  {id: "secret-file:credentials.json", path: "credentials.json", tracked_or_unignored: true, contents_read: false}]' "$facts" >/dev/null ||
+jq -e '.secret_files == [{id: "secret-file:.env", path: ".env", tracked_or_unignored: false, tracked: false, contents_read: false},
+  {id: "secret-file:credentials.json", path: "credentials.json", tracked_or_unignored: true, tracked: true, contents_read: false}]' "$facts" >/dev/null ||
   fail "the secret files are not named as unread, with whether Git tracks them: $(jq -c .secret_files "$facts")"
 jq -e '(.deployment | map(.path)) == ["Dockerfile"] and (.entry_points | any(.target == "src/index.js"))
   and (.documents | any(.path == "docs/requirements.md" and .kind == "requirements" and .title == "Requirements of the fixture"))' "$facts" >/dev/null ||
@@ -436,7 +436,9 @@ grep -Fq '| `docs/architecture.md` | project | case-only (`docs/ARCHITECTURE.md`
 # ------------------------------------------ an application in a subdirectory
 # A Next.js application in nextjs/, with its tests and its env example there,
 # a CI that runs in that directory, a build that migrates the database, and a
-# deployment on every push to main.
+# deployment on every push to main. Local credential files are in nextjs/,
+# the directory of the checks, one of them tracked by Git, and at the top,
+# where no check runs.
 repo="$tmp/subdirectory"
 mkdir -p "$repo/nextjs/tests" "$repo/.github/workflows"
 cat >"$repo/nextjs/package.json" <<'JSON'
@@ -446,6 +448,11 @@ cat >"$repo/nextjs/package.json" <<'JSON'
 JSON
 printf 'test("page", () => {});\n' >"$repo/nextjs/tests/page.test.js"
 printf 'DATABASE_URL=\n' >"$repo/nextjs/.env.example"
+fictional_key="sk_test_fictional_0000_assess"
+printf 'PAYMENTS_API_KEY=%s\n' "$fictional_key" >"$repo/nextjs/.env"
+printf 'PAYMENTS_API_KEY=%s\n' "$fictional_key" >"$repo/nextjs/.env.local"
+printf 'PAYMENTS_API_KEY=%s\n' "$fictional_key" >"$repo/.env"
+printf '.env\n.env.local\n' >"$repo/.gitignore"
 cat >"$repo/.github/workflows/ci.yml" <<'YAML'
 name: ci
 on:
@@ -481,6 +488,8 @@ jobs:
 YAML
 git -C "$repo" init -q -b main
 commit_all "$repo" "Next.js in a subdirectory"
+own_git -C "$repo" add -f nextjs/.env
+commit_all "$repo" "A tracked .env"
 snapshot "$repo"
 assess "$repo" --facts-only || { cat "$repo.out" >&2; fail "the facts of an application in a subdirectory failed"; }
 facts="$(latest "$repo")facts.json"
@@ -516,7 +525,9 @@ jq -e '(.verification[0] | .directory == "nextjs" and .isolated
   and (.isolation.env | map(.name) == ["DATABASE_URL", "DO_NOT_TRACK", "NEXT_TELEMETRY_DISABLED"])
   and (.isolation.env[0].value | test("127\\.0\\.0\\.1:1/"))
   and .deployment_on_merge == [{workflow: ".github/workflows/production.yml", branch: "main", triggers: ["main"],
-       reasons: ["environment of the job ship", "runs npx vercel deploy --prod"]}]' --arg migration "$migration_id" --arg request "$request_id" "$proposal" >/dev/null ||
+       reasons: ["environment of the job ship", "runs npx vercel deploy --prod"]}]
+  and (.isolation.credential_files | .handling == "stop" and (.names | index([".env"])) and (.except | index([".env.example"]))
+       and .present == [{path: "nextjs/.env", directory: "nextjs", tracked: true}, {path: "nextjs/.env.local", directory: "nextjs", tracked: false}])' --arg migration "$migration_id" --arg request "$request_id" "$proposal" >/dev/null ||
   fail "the proposal lacks the directory, the isolation, the external actions, or the deployment: $(jq -c '{verification, isolation, deployment_on_merge}' "$proposal")"
 grep -Fq -- '- `.env.example`: the application is in nextjs/' "$report" &&
   grep -Fq -- '- build: `npm run build` in `nextjs`' "$report" &&
@@ -525,8 +536,10 @@ grep -Fq -- '- `.env.example`: the application is in nextjs/' "$report" &&
     grep -Fq 'external-api, a download or a request to a server (`curl`)' &&
   grep -Fq -- '- `NEXT_TELEMETRY_DISABLED=1`: Next.js sends telemetry during a build' "$report" &&
   grep -Fq '## External actions the checks may take' <(sed 's/^###/##/' "$report") &&
-  grep -Fq '**A merge into `main` triggers a deployment**, also the merge of the adoption:' "$report" ||
-  fail "the report does not name the left-out starters, the isolation, the external actions, or the deployment: $(cat "$report")"
+  grep -Fq '**A merge into `main` triggers a deployment**, also the merge of the adoption:' "$report" &&
+  grep -Fq 'The assessment sees such files, names only, never opened: `nextjs/.env` (tracked by Git), `nextjs/.env.local`. The checks stop here until the owner has set up the shielding' "$report" ||
+  fail "the report does not name the left-out starters, the isolation, the external actions, the credential files, or the deployment: $(cat "$report")"
+! grep -rFl "$fictional_key" "$(latest "$repo")" "$repo.out" >/dev/null || fail "the value of a credential file is in the assessment"
 unchanged "$repo" "the assessment of an application in a subdirectory"
 
 # ------------------------------------------------------------------ refusals

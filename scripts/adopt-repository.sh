@@ -25,8 +25,9 @@ usage() {
   echo "Written from the proposal, where the project has no such file:"
   echo "  scripts/verify.conf   the project's own commands as the checks of verify.sh,"
   echo "                        each in its directory and isolated (no credentials, a"
-  echo "                        closed database port, no telemetry); the project's"
-  echo "                        file, which a sync does not change."
+  echo "                        closed database port, no telemetry; a stop while a"
+  echo "                        credential file such as .env is there); the"
+  echo "                        project's file, which a sync does not change."
   echo "  .agents/template.conf records the proposal's base as 'base:' where it is not main."
   echo "  docs/architecture.md, docs/PROJECT_REQUIREMENTS.md, docs/roadmap.md"
   echo "                        a minimal baseline from the assessment, marked"
@@ -510,6 +511,24 @@ while IFS=$'\t' read -r name value; do
 done < <(jq -r '.isolation.env[]? | [.name, .value] | map(tostring | gsub("[\t\n\r]"; " ")) | @tsv' "$proposal")
 [[ -z "$isolation_env" ]] || isolation="${isolation}export$isolation_env; "
 
+# The credential files of the proposal, which a tool loads by itself however
+# the environment is cleared: a check stops while one, tracked by Git or not,
+# is in its directory, and names it, never its content. It runs in the
+# directory of the check, before the command. A name that is no plain file
+# name or pattern is left out.
+credential_guard=""
+credential_names=""
+credential_except=""
+while IFS= read -r name; do
+  [[ "$name" =~ ^[A-Za-z0-9._*-]+$ ]] && credential_names="$credential_names $name"
+done < <(jq -r '.isolation.credential_files.names[]? | tostring' "$proposal")
+while IFS= read -r name; do
+  [[ "$name" =~ ^[A-Za-z0-9._-]+$ ]] && credential_except="$credential_except $name"
+done < <(jq -r '.isolation.credential_files.except[]? | tostring' "$proposal")
+if [[ -n "$credential_names" ]]; then
+  credential_guard="for f in$credential_names; do [[ ! -e \$f && ! -L \$f || \"$credential_except \" == *\" \$f \"* ]] || { echo \"\$f: a credential file in the directory of this check, which a tool may load, whether Git tracks it or not. The check stops until the owner has set up the shielding: move the file out for the run, or run the verification in a working copy without it.\" >&2; exit 1; }; done && "
+fi
+
 # verify_file <file>: scripts/verify.conf with the verification commands of
 # the proposal, the project's own, in the directory each belongs to, isolated.
 # Without one, a check that fails says so: nothing of the project is verified
@@ -535,6 +554,15 @@ verify_file() {
       echo "# environment that look like credentials are unset, and the database URL"
       echo "# points at a closed local port, with telemetry off:"
       jq -r '.isolation.env[]? | "#   \(.name)=\(.value): \(.why)"' "$proposal"
+    fi
+    if [[ -n "$credential_guard" ]]; then
+      echo "#"
+      echo "# A check stops while a credential file, tracked by Git or not, is in its"
+      echo "# directory:$credential_names (not$credential_except). A tool"
+      echo "# loads such a file by itself, past the cleared environment. Move the file"
+      echo "# out for the run, or run the verification in a working copy without it."
+    fi
+    if [[ -n "$isolation$credential_guard" ]]; then
       echo "# Change a check where it needs more, in a reviewed change."
     fi
     echo
@@ -558,9 +586,9 @@ verify_file() {
         ;;
     esac
     if [[ -n "$directory" && "$directory" != "." ]]; then
-      printf '%s: %scd %q && %s\n' "$name" "$isolation" "$directory" "$command" >>"$1"
+      printf '%s: %scd %q && %s%s\n' "$name" "$isolation" "$directory" "$credential_guard" "$command" >>"$1"
     else
-      printf '%s: %s%s\n' "$name" "$isolation" "$command" >>"$1"
+      printf '%s: %s%s%s\n' "$name" "$isolation" "$credential_guard" "$command" >>"$1"
     fi
   done < <(jq -r '.verification[] | select((.command | type) == "string" and (.command | test("[\n\r]") | not))
     | [.name, .command, (.directory // ""), (.origin // "declared"), (.source // "the project"),
@@ -956,7 +984,7 @@ if [[ "$publish" -eq 1 ]]; then
       echo "- Files the project already had stay its own; where the proposal said to merge, the template's version is placed beside them as \`*.$suffix.*\`, to combine by hand."
       echo "- \`.agents/template.conf\` records the template version and the files it owns, for a later \`sync-template.sh\`."
       echo
-      echo "- \`scripts/verify.conf\` runs the project's own commands from the assessment, isolated: no real credentials, a database URL that points at a closed local port, telemetry off. The project's CI is not replaced."
+      echo "- \`scripts/verify.conf\` runs the project's own commands from the assessment, isolated: no real credentials, a database URL that points at a closed local port, telemetry off. A check stops while a credential file such as \`.env\`, tracked by Git or not, is in its directory: run the verification in a working copy without it. The project's CI is not replaced."
       [[ "${#renamed[@]}" -eq 0 ]] || echo "- Renames a file whose name differed only in case to the name the workflow expects, keeping its history: ${renamed[*]}."
       [[ -z "$base_value" ]] || echo "- \`.agents/template.conf\` records \`base: $base_value\`: features start from and merge into $base_value."
       if [[ -n "$deploys" ]]; then
