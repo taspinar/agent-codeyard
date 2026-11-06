@@ -129,7 +129,7 @@ An analysis changes nothing in your repository. Each proposal says where it belo
 | [`scripts/check-review.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/check-review.sh) | Reports whether a review still matches what it covers |
 | [`scripts/check-skills.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/check-skills.sh) | Checks the metadata of the project skills, the skills a plan selects (`--issue`, which prints their files), and prints the digest of a skill (`--digest`); reads and hashes files only. A project without skills passes |
 | [`scripts/update-issue-with-plan.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/update-issue-with-plan.sh) | Links an optional feature plan to its Issue |
-| [`scripts/cleanup-worktree.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/cleanup-worktree.sh) | Removes a merged worktree and its branch and updates `main` |
+| [`scripts/cleanup-worktree.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/cleanup-worktree.sh) | Removes a merged worktree and its branch and updates `main`; after a merge into a base other than the default branch, closes the Issue that GitHub left open |
 | [`scripts/sync-template.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/sync-template.sh) | Takes over the template's changes since the version the project has; never commits |
 
 ## Script libraries

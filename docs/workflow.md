@@ -353,7 +353,7 @@ exits with status 3.
 | `sync-template.sh` | To take over changes of the workflow template: replaces unchanged files, merges changed ones, reports conflicts, and records the template version |
 | `update-issue-with-plan.sh <issue> <plan>` | To link an optional feature plan in `.agents/plans/` to its Issue |
 | `record-post-merge.sh <issue> "<criterion>" "<evidence>"` | After the merge of a feature that awaited `post_merge` evidence: posts the evidence on the Issue and closes it when none is left |
-| `cleanup-worktree.sh <issue>`, `planning/<name>`, or `--merged` | After a merge, from the primary checkout: removes the worktree and its branch once GitHub reports the pull request as merged, and updates `main` |
+| `cleanup-worktree.sh <issue>`, `planning/<name>`, or `--merged` | After a merge, from the primary checkout: removes the worktree and its branch once GitHub reports the pull request as merged, and updates `main`; after a merge into a base that is not the default branch, which GitHub does not close the Issue for, it closes the Issue with a comment naming the pull request and the merge commit, unless `post_merge` evidence is pending |
 
 ## Principles
 

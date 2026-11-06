@@ -59,7 +59,7 @@ Before ending each session, the implementer writes `.agents/completion/<issue>.j
 
 Criterion statuses are `met`, `not_met`, `not_applicable`, or `pending`. The default gate is `implementation`: evidence must exist now. Only `pr_ci`, `owner_approval`, or `post_merge` can be pending; the evidence says when it will exist. Owner approval is never claimed as met by the implementer. A budget measurement or a partial check cannot be evidence of a met criterion.
 
-The complete-feature reviewer checks those claims against the diff and tests. Finish proceeds only on `complete` or `awaiting_evidence`, with no remaining work in the handoff. `--partial` is an explicit owner choice to commit unfinished work; publication then makes a draft and leaves the Issue open. A pending `post_merge` criterion keeps the Issue open after publication; record its evidence with `./scripts/record-post-merge.sh <issue> "<criterion>" "<evidence>"` after the merge.
+The complete-feature reviewer checks those claims against the diff and tests. Finish proceeds only on `complete` or `awaiting_evidence`, with no remaining work in the handoff. `--partial` is an explicit owner choice to commit unfinished work; publication then makes a draft and leaves the Issue open. A pending `post_merge` criterion keeps the Issue open after publication; record its evidence with `./scripts/record-post-merge.sh <issue> "<criterion>" "<evidence>"` after the merge. GitHub closes an Issue from `Closes #<n>` only on a merge into the default branch: for a feature whose base is another branch, such as `develop`, publication says so, and `./scripts/cleanup-worktree.sh <issue>` closes the Issue after the merge, with a comment that names the pull request and the merge commit.
 
 ## Partial checks and budgets
 

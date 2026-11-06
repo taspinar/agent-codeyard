@@ -1175,6 +1175,13 @@ recorded base. `sync-template.sh` changes only the `repository:` and
 uses the default. A value that is not a valid branch name stops the script
 that reads it.
 
+GitHub applies `Closes #<n>` only when a pull request merges into the default
+branch of the repository. When the base of a feature is another branch,
+`publish-feature.sh` still writes `Closes #<n>` for a complete feature, and
+says in its output and in the description that the merge does not close the
+Issue. After the merge, `cleanup-worktree.sh <issue>` closes it (see
+"Finishing a feature").
+
 The implementer verifies its result itself: it finishes every edit to a
 tracked file and then runs `./scripts/verify.sh`. That pass is recorded and
 reused by the review that follows, so you do not run the verification by hand
@@ -1983,8 +1990,8 @@ in the terminal: all checks passed, or a non-zero exit and the advice not to
 merge when one failed. After a failed check, fix the cause in the worktree,
 then review, finish, and publish again.
 
-After the merge GitHub closes the linked Issue. From the primary checkout,
-remove the merged worktree and its branch:
+After a merge into the default branch GitHub closes the linked Issue. From
+the primary checkout, remove the merged worktree and its branch:
 
 ```bash
 ./scripts/cleanup-worktree.sh 12
@@ -2007,6 +2014,17 @@ is identical to `docs/PROJECT_DESCRIPTION.md`, such as the original idea file. A
 `./scripts/cleanup-worktree.sh planning/<name>`, every merged worktree at once
 with `--merged`, and an abandoned, unmerged one with `--discard` after
 confirmation.
+
+After a merge into a base that is not the default branch, GitHub leaves the
+Issue open. Once the script has confirmed the merge as above, it closes the
+Issue itself when the pull request says `Closes #<issue>` and lists no
+pending `post_merge` criterion, after a comment that names the pull request
+and the merge commit. A pull request that does not close its Issue, an Issue
+that is closed already, and a merge into the default branch, which GitHub
+handled, change nothing; an Issue with pending `post_merge` evidence stays
+open until `record-post-merge.sh` has recorded it. When GitHub cannot say
+which branch is the default, the script closes nothing, warns, and still
+removes the worktree.
 
 ### Running feature steps without questions
 

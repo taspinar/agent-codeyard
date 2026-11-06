@@ -26,6 +26,9 @@ usage() {
   echo "the Issue unless evidence of the post_merge gate is pending, which"
   echo "record-post-merge.sh records after the merge. Otherwise the pull request is"
   echo "opened as a draft that refers to the Issue and says why it does not close it."
+  echo "GitHub applies 'Closes #<n>' only on a merge into the default branch: a pull"
+  echo "request into another base says so, and cleanup-worktree.sh closes the Issue"
+  echo "after the merge."
   echo
   echo "The script ends once the pull request is open; follow its checks on the pull"
   echo "request page and merge after they passed. It warns when the base branch does"
@@ -190,6 +193,20 @@ else
   not_closing="the commit has no completion statement of finish-feature.sh"
 fi
 
+# GitHub applies "Closes #<n>" only on a merge into the default branch. A
+# pull request into another base that may close the Issue says that the
+# merge does not, and what does: cleanup-worktree.sh after the merge.
+not_default_note=""
+if [[ "$closes" -eq 1 ]]; then
+  if default_branch="$(github_default_branch)"; then
+    if [[ "$feature_base" != "$default_branch" ]]; then
+      not_default_note="This pull request merges into '$feature_base', not into the default branch '$default_branch', so GitHub does not close Issue #$issue on the merge. After the merge, ./scripts/cleanup-worktree.sh $issue closes it."
+    fi
+  else
+    echo "Warning: could not ask GitHub for the default branch. If '$feature_base' is not the default branch, the merge does not close Issue #$issue; ./scripts/cleanup-worktree.sh $issue closes it after the merge." >&2
+  fi
+fi
+
 # GitHub also closes an Issue from the message of a commit that reaches the
 # default branch, whatever the pull request says. Work that may not close the
 # Issue is therefore not published while a commit of the branch carries a
@@ -292,6 +309,10 @@ closing_allowed() {
   fi
   if [[ "$closes" -eq 1 ]]; then
     echo "Closes #$issue"
+    if [[ -n "$not_default_note" ]]; then
+      echo
+      echo "$not_default_note"
+    fi
   else
     # Worded without a closing keyword next to the number: GitHub would
     # follow "does not close #<issue>" too.
@@ -386,6 +407,8 @@ else
 fi
 if [[ "$closes" -eq 0 ]]; then
   echo "It does not close Issue #$issue: $not_closing."
+elif [[ -n "$not_default_note" ]]; then
+  echo "$not_default_note"
 fi
 echo
 

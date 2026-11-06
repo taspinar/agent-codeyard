@@ -3,6 +3,7 @@
 set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/records.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/github.sh"
 
 usage() {
   echo "Usage:"
@@ -12,6 +13,11 @@ usage() {
   echo "  $0 --merged              Remove every worktree whose pull request is merged"
   echo
   echo "Add --discard to remove an unmerged worktree and its branch after confirmation."
+  echo
+  echo "GitHub closes an Issue from 'Closes #<n>' only on a merge into the default"
+  echo "branch. For a feature merged into another base, the script closes its Issue,"
+  echo "with a comment that names the pull request and the merge commit, when the"
+  echo "pull request says 'Closes #<n>' and lists no pending post_merge criterion."
   echo "Run from the primary checkout."
   exit 1
 }
@@ -70,12 +76,75 @@ linked_worktrees() {
   done
 }
 
-# merged_pull_request <branch>: prints the head commit and the number of the
-# merged pull request of a branch, separated by a tab, or nothing when no pull
-# request of it is merged.
+# merged_pull_request <branch> [<issue>]: prints the merged pull request of a
+# branch as one line of tab-separated fields, or nothing when no pull request
+# of it is merged: the head commit, the number, the base branch, the merge
+# commit ('-' when GitHub gives none: a tab-separated field is never empty,
+# because 'read' joins adjacent tabs), whether its description says "Closes #<issue>" on a line of its own
+# (1 or 0), and whether it lists a pending post_merge criterion (1 or 0).
 merged_pull_request() {
-  gh pr list --head "$1" --state merged --limit 1 --json headRefOid,number \
-    --jq '.[0] // empty | "\(.headRefOid)\t\(.number)"' </dev/null
+  local issue="${2:-0}"
+
+  gh pr list --head "$1" --state merged --limit 1 --json headRefOid,number,baseRefName,mergeCommit,body \
+    --jq ".[0] // empty | ((.body // \"\") | split(\"\\n\") | map(rtrimstr(\"\\r\"))) as \$lines
+      | [.headRefOid, (.number | tostring), (.baseRefName // \"-\"), (.mergeCommit.oid // \"-\"),
+         (if any(\$lines[]; . == \"Closes #$issue\") then \"1\" else \"0\" end),
+         (if any(\$lines[]; startswith(\"Post-merge criterion: \")) then \"1\" else \"0\" end)]
+      | join(\"\\t\")" </dev/null
+}
+
+# close_issue_after_merge <issue> <number> <base> <merge-commit> <closes> <post-merge>
+# GitHub closes an Issue from "Closes #<n>" only on a merge into the default
+# branch. After a merge into another base, closes the Issue of a pull request
+# that says "Closes #<issue>" (publish-feature.sh writes it only for work
+# that may close the Issue) and lists no pending post_merge criterion, which
+# record-post-merge.sh records and then closes the Issue. Comments with the
+# pull request and the merge commit first. Prints what it did; a failure only
+# warns, the merge is done.
+close_issue_after_merge() {
+  local issue="$1"
+  local number="$2"
+  local base="$3"
+  local merge_commit="$4"
+  local closes="$5"
+  local post_merge="$6"
+  local default_branch
+  local state
+  local comment
+
+  [[ "$merge_commit" != "-" ]] || merge_commit="unknown"
+  if [[ "$base" == "-" ]]; then
+    echo "Warning: GitHub did not name the base of pull request #$number; if it did not merge into the default branch, close Issue #$issue by hand." >&2
+    return 0
+  fi
+  if ! default_branch="$(github_default_branch)"; then
+    echo "Warning: could not ask GitHub for the default branch; if pull request #$number did not merge into it, close Issue #$issue by hand." >&2
+    return 0
+  fi
+  [[ "$base" != "$default_branch" ]] || return 0
+  if [[ "$post_merge" == "1" ]]; then
+    echo "Issue #$issue stays open: pull request #$number lists pending post_merge evidence. Record it with ./scripts/record-post-merge.sh $issue \"<criterion>\" \"<evidence>\"; the Issue is closed when none is left."
+    return 0
+  fi
+  if [[ "$closes" != "1" ]]; then
+    echo "Issue #$issue stays open: pull request #$number into '$base' does not close it."
+    return 0
+  fi
+  if ! state="$(gh issue view "$issue" --json state --jq '.state')"; then
+    echo "Warning: could not read Issue #$issue; close it by hand: pull request #$number is merged into '$base'." >&2
+    return 0
+  fi
+  [[ "$state" == "OPEN" ]] || return 0
+  comment="Pull request #$number is merged into \`$base\`, which is not the default branch \`$default_branch\`, so GitHub did not close this Issue. Closed by cleanup-worktree.sh after the merge.
+
+Pull request: #$number
+Merge commit: $merge_commit"
+  if ! gh issue comment "$issue" --body "$comment" >/dev/null ||
+    ! gh issue close "$issue" >/dev/null; then
+    echo "Warning: could not close Issue #$issue; close it by hand: pull request #$number is merged into '$base'." >&2
+    return 0
+  fi
+  echo "Closed Issue #$issue: pull request #$number is merged into '$base' (merge commit $merge_commit)."
 }
 
 # contains_tip <path> <merged-head> <number> <tip>
@@ -111,6 +180,11 @@ cleanup() {
   local number
   local merged
   local tip
+  local issue
+  local pr_base=""
+  local merge_commit=""
+  local pr_closes=""
+  local pr_post_merge=""
   local contained=1
   local answer=""
 
@@ -126,12 +200,12 @@ cleanup() {
     return 1
   fi
 
-  if ! merged="$(merged_pull_request "$branch")"; then
+  issue="$(printf '%s' "$branch" | sed -n 's#^feature/\([0-9][0-9]*\)-.*#\1#p')"
+  if ! merged="$(merged_pull_request "$branch" "$issue")"; then
     echo "Kept $branch: could not ask GitHub about its pull request."
     return 1
   fi
-  head="${merged%%$'\t'*}"
-  number="${merged#*$'\t'}"
+  IFS=$'\t' read -r head number pr_base merge_commit pr_closes pr_post_merge <<<"$merged" || true
   tip="$(git -C "$path" rev-parse HEAD)"
   if [[ -n "$head" ]]; then
     contained=0
@@ -159,6 +233,11 @@ cleanup() {
       echo "Kept $branch: it has commits after its merged pull request."
       return 1
     fi
+  fi
+
+  # The pull request is merged and holds the branch: its Issue may close.
+  if [[ -n "$issue" && -n "$head" && "$contained" -eq 0 ]]; then
+    close_issue_after_merge "$issue" "$number" "$pr_base" "$merge_commit" "$pr_closes" "$pr_post_merge"
   fi
 
   # The run records of the feature or the planning together in the primary

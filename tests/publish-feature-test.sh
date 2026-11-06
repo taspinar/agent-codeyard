@@ -30,6 +30,8 @@ fail() {
 #   MOCK_DRAFT         'true' when the open pull request is a draft
 #   MOCK_UNDO_EXIT     exit status of 'pr ready --undo'
 #   MOCK_PR_BASE       base branch of the open pull request (default main)
+#   MOCK_DEFAULT_BRANCH default branch of the repository (default main), or
+#                      'unreadable'
 mkdir -p "$tmp/bin"
 ln -sf "$(command -v jq)" "$tmp/bin/jq"
 cat >"$tmp/bin/gh" <<'GH'
@@ -81,6 +83,10 @@ case "${1:-} ${2:-}" in
   "api repos/{owner}/{repo}/branches/main")
     [[ "${MOCK_REQUIRED:-0}" != "unreadable" ]] || exit 1
     echo "0"
+    ;;
+  "repo view")
+    [[ "${MOCK_DEFAULT_BRANCH:-main}" != "unreadable" ]] || exit 1
+    echo "${MOCK_DEFAULT_BRANCH:-main}"
     ;;
   "pr checks")
     case "${MOCK_CHECKS:-pass}" in
@@ -182,6 +188,10 @@ for line in "Issue: #12" "Review: round 1, PASS, by claude (model-r)" "## Manual
 done
 if grep -Fq "merge approval above was decided" "$repo.gh.body"; then
   fail "a commit without a decision of the gate got a commit for one"
+fi
+# A pull request into the default branch closes the Issue on the merge.
+if grep -Fq "not into the default branch" "$repo.gh.body" "$repo.out"; then
+  fail "a feature into the default branch was told that its Issue stays open"
 fi
 grep -Fq "pr checks feature/12-marker --watch" "$repo.gh" || fail "the checks were not awaited"
 grep -Fq "All checks passed" "$repo.out" || fail "passing checks were not reported"
@@ -504,6 +514,36 @@ run_publish "$repo" 12 || {
 }
 grep -Fq "pr create --base develop --head feature/12-marker" "$repo.gh" ||
   fail "the pull request does not merge into the recorded base"
+# GitHub applies "Closes #12" only on a merge into the default branch: the
+# description and the output say that the merge into develop does not close
+# the Issue, and what does.
+note="This pull request merges into 'develop', not into the default branch 'main', so GitHub does not close Issue #12 on the merge. After the merge, ./scripts/cleanup-worktree.sh 12 closes it."
+grep -Fqx "Closes #12" "$repo.gh.body" || fail "a complete feature into develop does not say that it closes the Issue"
+grep -Fqx "$note" "$repo.gh.body" || fail "the description does not say that a merge into develop leaves the Issue open"
+grep -Fqx "$note" "$repo.out" || fail "the output does not say that a merge into develop leaves the Issue open"
+# A default branch that cannot be read is said, and nothing else changes.
+repo="$(setup_repo develop-default-unknown)"
+git -C "$repo" push -q origin main:develop
+git -C "$repo" fetch -q origin
+git -C "$repo" config branch.feature/12-marker.workflow-base develop
+MOCK_DEFAULT_BRANCH=unreadable run_publish "$repo" 12 || {
+  cat "$repo.out" >&2
+  fail "publishing failed when the default branch could not be read"
+}
+grep -Fq "could not ask GitHub for the default branch" "$repo.out" || fail "the unknown default branch was not reported"
+grep -Fqx "Closes #12" "$repo.gh.body" || fail "an unknown default branch changed the closing line"
+# The default branch need not be main: a feature into it gets no note.
+repo="$(setup_repo trunk-default)"
+git -C "$repo" push -q origin main:trunk
+git -C "$repo" fetch -q origin
+git -C "$repo" config branch.feature/12-marker.workflow-base trunk
+MOCK_DEFAULT_BRANCH=trunk run_publish "$repo" 12 || {
+  cat "$repo.out" >&2
+  fail "publishing a feature into the default branch trunk failed"
+}
+if grep -Fq "not into the default branch" "$repo.gh.body" "$repo.out"; then
+  fail "a feature into the default branch was told that its Issue stays open"
+fi
 repo="$(setup_repo develop-reuse)"
 git -C "$repo" push -q origin main:develop
 git -C "$repo" fetch -q origin
