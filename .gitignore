@@ -24,6 +24,10 @@ credentials*.json
 !.agents/reviews/.gitkeep
 .agents/triage/*
 !.agents/triage/.gitkeep
+# The owner's exceptions to blocking review findings (record-exception.sh):
+# bound to the review they name, listed with their SHA-256 in the commit
+# message, and published on the feature Issue instead of being committed.
+.agents/exceptions/
 # Continuation notes of a feature in progress, kept by the implementer for a
 # session that resumes the work.
 .agents/handoffs/*

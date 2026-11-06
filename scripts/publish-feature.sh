@@ -40,6 +40,11 @@ usage() {
   echo "time, the runs, the review and repair rounds, and the tokens per role and"
   echo "model; no log, no paths, no times of day. It is one comment, replaced when"
   echo "the feature is published again. Off by default; a failure only warns."
+  echo
+  echo "A finish commit that lists the owner's exceptions to blocking review findings"
+  echo "is published only when each record is still there with the SHA-256 the"
+  echo "commit names and still valid for the latest review; the description then"
+  echo "shows each original finding and the owner's exception first."
   exit 1
 }
 
@@ -75,6 +80,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/base.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/fingerprint.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/guardrails.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/risk.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/exceptions.sh"
 records_wrap feature "$issue" "$0" ${records_arguments[@]+"${records_arguments[@]}"}
 command -v jq >/dev/null 2>&1 || fail "jq is required."
 
@@ -143,6 +149,66 @@ if git -C "$root" show "$finish_commit:$request_relative" >"$scratch/request.jso
   guardrails_request_display "$root" "$scratch/request.json" | sed "1s|.*|Approval request $request_relative in the finish commit (for display; it grants nothing):|"
 fi
 echo
+
+# The owner's exceptions to blocking review findings that the finish commit
+# lists (lib/exceptions.sh). Each record is read again and its SHA-256
+# recomputed: a record that is missing, differs from the one the commit
+# names, or is no longer valid for the latest, current review is reported
+# and never shown as the owner's decision; nothing is pushed.
+git -C "$root" log -1 --format=%B "$finish_commit" >"$scratch/finish-message"
+exceptions_section=""
+committed_exceptions="$(exception_committed_records "$scratch/finish-message")"
+if [[ -n "$committed_exceptions" ]]; then
+  exception_problems=""
+  grep -Fqx -- "- required from the project owner, for exactly this commit" "$scratch/finish-message" ||
+    exception_problems+="the finish commit lists exceptions, but its merge approval does not require the owner"$'\n'
+  while IFS=$'\t' read -r record_relative record_sha; do
+    record="$root/$record_relative"
+    if [[ ! -f "$record" ]]; then
+      exception_problems+="$record_relative is missing"$'\n'
+      continue
+    fi
+    if [[ "$(exception_sha256 "$record")" != "$record_sha" ]]; then
+      exception_problems+="$record_relative is not the record the finish commit names: its SHA-256 is $(exception_sha256 "$record"), the commit names $record_sha"$'\n'
+      continue
+    fi
+    record_review="$(jq -r '.review // empty' "$record" 2>/dev/null)" || record_review=""
+    if [[ ! "$record_review" =~ ^\.agents/reviews/[^/]+\.json$ || ! -f "$root/$record_review" ]]; then
+      exception_problems+="$record_relative names a review that does not exist: ${record_review:-none}"$'\n'
+      continue
+    fi
+    record_errors="$(exception_errors "$root" "$record" "$root/$record_review"; exception_review_errors "$root" "$scratch" "$root/$record_review")"
+    if [[ -n "$record_errors" ]]; then
+      exception_problems+="$record_relative is not valid now: ${record_errors//$'\n'/; }"$'\n'
+      continue
+    fi
+    exceptions_section+="$(jq -r --slurpfile review "$root/$record_review" --arg path "$record_relative" --arg sha "$record_sha" '
+      . as $e
+      | ([$review[0].findings[] | select(.id == $e.finding_id)] | first) as $f
+      | "### Finding \($f.id) (\($f.severity)), review round \($review[0].round): \($f.title)",
+        "",
+        "- Evidence: \($f.evidence)",
+        "- Impact: \($f.impact)",
+        "- Recommendation: \($f.recommendation)",
+        "",
+        "**The owner'"'"'s exception:** `\(.type)`, by \(.account) at \(.directed_at)",
+        "",
+        "- Reason: \(.reason)",
+        (if .evidence != null then "- Evidence: \(.evidence)" else empty end),
+        "- Record: `\($path)`, SHA-256 `\($sha)`, recomputed at this publication",
+        ""
+    ' "$record")"$'\n'
+  done <<<"$committed_exceptions"
+  if [[ -n "$exception_problems" ]]; then
+    echo "Error: the owner's exceptions that the finish commit lists cannot be shown as the owner's decision:" >&2
+    printf '%s' "$exception_problems" | sed 's/^/  - /' >&2
+    echo "Nothing was pushed. Run ./scripts/finish-feature.sh $issue again: it commits only the valid exceptions of the latest review." >&2
+    records_stop "${0##*/}" "the owner's exceptions that the finish commit lists cannot be shown as the owner's decision."
+    exit 1
+  fi
+  echo "The finish commit lists the owner's exceptions to blocking review findings; each record matches its SHA-256 and is valid for the latest review."
+  echo
+fi
 
 # Whether this pull request may close the Issue. finish-feature.sh recorded
 # the outcome of the completion gate in the commit; the gate is asked again
@@ -291,6 +357,17 @@ closing_allowed() {
   fi
 }
 {
+  if [[ -n "$exceptions_section" ]]; then
+    {
+      echo "## Owner exceptions to blocking review findings"
+      echo
+      echo "The latest independent review has critical or major findings that stay open: the owner recorded an exception to each (\`scripts/record-exception.sh\`). The review keeps its verdict; an exception meets no acceptance criterion, and this merge needs the owner's approval."
+      echo
+      printf '%s' "$exceptions_section"
+      echo "---"
+      echo
+    } | closing_allowed
+  fi
   git -C "$root" log -1 --format=%b "$finish_commit" | risk_recomputed | closing_allowed
   echo
   echo "## Manual steps"

@@ -16,6 +16,7 @@ source "$script_dir/lib/completion.sh"
 source "$script_dir/lib/verification.sh"
 source "$script_dir/lib/records.sh"
 source "$script_dir/lib/attribution.sh"
+source "$script_dir/lib/exceptions.sh"
 
 usage() {
   echo "Usage: $0 <issue-number> \"<commit summary>\" [--no-review \"<reason>\"] [--unattended] [--partial]"
@@ -42,6 +43,11 @@ usage() {
   echo "The list of changes in the message comes from .agents/summaries/<issue>.md,"
   echo "which the implementer writes. --unattended commits that message as it is,"
   echo "without opening an editor, and refuses when that summary is missing."
+  echo
+  echo "A critical or major finding of the latest review stops the commit, unless"
+  echo "the owner recorded a valid exception to it with record-exception.sh: the"
+  echo "message then lists each exception with the SHA-256 of its record, and the"
+  echo "merge needs the owner's approval. Every other gate applies as without it."
   exit 1
 }
 
@@ -138,6 +144,11 @@ completion_lines="$(completion_commit_lines "$root" "$issue")"
 feature_merge_base=""
 feature_base_ref=""
 latest=""
+# The records of the owner's exceptions to blocking findings of the latest
+# review (lib/exceptions.sh), their findings, and their SHA-256.
+excepted_records=()
+excepted_ids=()
+excepted_sha256=()
 feature_base_branch="$(branch_base "$root" "$branch")" || exit 1
 if feature_base_lines="$(feature_base "$root" "$feature_base_branch")"; then
   feature_merge_base="$(printf '%s\n' "$feature_base_lines" | sed -n 2p)"
@@ -310,8 +321,40 @@ else
   round="$(jq -r '.round' "$latest")"
   verdict="$(jq -r '.verdict | gsub("_"; " ")' "$latest")"
   blocking="$(jq '[.findings[] | select(.severity == "critical" or .severity == "major")] | length' "$latest")"
-  [[ "$blocking" -eq 0 ]] ||
-    fail "the latest review (round $round) has $blocking critical or major finding(s). Triage, fix, and review again."
+  # A blocking finding passes only with the owner's valid exception to it
+  # (lib/exceptions.sh): bound to this review, its SHA-256 and round, and to
+  # the content it reviewed. The review and its verdict stay as they are.
+  if [[ "$blocking" -gt 0 ]]; then
+    exception_lines="$(exception_status "$root" "$tmp_work" "$latest")"
+    if grep -q '^missing' <<<"$exception_lines"; then
+      {
+        echo "Error: the latest review (round $round) has $blocking critical or major finding(s). Triage, fix, and review again."
+        echo "Without a valid owner exception:"
+        awk -F '\t' '$1 == "missing" { printf "  - %s: %s\n", $2, $3 }' <<<"$exception_lines"
+        echo "Only the owner can record an exception to one of them, at a terminal: ./scripts/record-exception.sh $latest_relative --finding <id> --type not-applicable|risk-accepted --reason \"<why>\" (docs/development.md, 'Owner exceptions to a blocking finding'). Nothing was committed."
+      } >&2
+      records_stop "${0##*/}" "the latest review (round $round) has $blocking critical or major finding(s) without a valid owner exception."
+      exit 1
+    fi
+    git -C "$root" check-ignore -q "$EXCEPTIONS_DIR/x.json" ||
+      fail "Git does not ignore $EXCEPTIONS_DIR/, so the exceptions would be committed. Add '$EXCEPTIONS_DIR/' to .gitignore. Nothing was committed."
+    while IFS=$'\t' read -r _ excepted_id excepted_record excepted_hash; do
+      excepted_ids+=("$excepted_id")
+      excepted_records+=("$root/$excepted_record")
+      excepted_sha256+=("$excepted_hash")
+    done <<<"$exception_lines"
+    # Each record is the one the owner confirmed: record-exception.sh
+    # published it on the Issue with its SHA-256.
+    published="$(exception_published "$issue")" ||
+      fail "could not read the comments of Issue #$issue, where the owner's exceptions are published. Nothing was committed."
+    for index in "${!excepted_ids[@]}"; do
+      grep -Fqx "${excepted_records[$index]#"$root"/}"$'\t'"${excepted_sha256[$index]}" <<<"$published" ||
+        fail "${excepted_records[$index]#"$root"/} is not the exception published on Issue #$issue: no published record has its SHA-256 ${excepted_sha256[$index]}. Record it again with ./scripts/record-exception.sh. Nothing was committed."
+    done
+    echo "The owner recorded an exception to each blocking finding of round $round: ${excepted_ids[*]}."
+    echo
+  fi
+  excepted_json="$(printf '%s\n' ${excepted_ids[@]+"${excepted_ids[@]}"} | jq -R 'select(length > 0)' | jq -s .)"
   # The level the commit is decided on, for the triage mode: a light triage
   # is for a low- or medium-risk feature only.
   committed_level="$(risk_decision "$risk_computed_lines" "$completion_file" "$latest" "$risk_hint_lines" | sed -n 1p)"
@@ -332,7 +375,9 @@ else
     [[ "$(jq -r '.published_at // empty' "$triage")" != "" ]] ||
       fail "the triage of round $review_round was not published on Issue #$issue. Run ./scripts/triage-review.sh --publish $triage_relative."
     if [[ "$review" == "$latest" ]]; then
-      [[ "$(jq '[.decisions[] | select(.decision == "FIX_NOW")] | length' "$triage")" -eq 0 ]] ||
+      # A finding with the owner's valid exception stays FIX_NOW in its
+      # triage, as every blocking finding does; it is not fixed now.
+      [[ "$(jq --argjson excepted "$excepted_json" '[.decisions[] | select(.decision == "FIX_NOW" and (.finding_id | IN($excepted[]) | not))] | length' "$triage")" -eq 0 ]] ||
         fail "round $review_round has FIX_NOW findings. Apply them with ./scripts/apply-triage.sh $triage_relative and review again."
       # 'triage: light' is refused for high, whatever the policy or the
       # artifact says: the level is decided here from the diff, the record,
@@ -344,6 +389,11 @@ else
     triage_note="; triage published on #$issue"
   done
   review_line="Review: round $round, $verdict, by $(jq -r '"\(.reviewer.agent) (\(.reviewer.model))"' "$latest")$triage_note"
+  if [[ "${#excepted_ids[@]}" -gt 0 ]]; then
+    review_line+="; blocking findings open with the owner's exception: ${excepted_ids[*]}"
+    review_line+=$'\n\n'"$(exception_commit_lines "$root" "${excepted_records[@]}")"
+    records_intervention "committed with the owner's exception to the blocking finding(s) ${excepted_ids[*]} of round $round"
+  fi
 fi
 
 # 3. Show the manual steps the implementer recorded for this feature.
@@ -391,6 +441,16 @@ if [[ -n "$owner_pending" ]]; then
     approval_lines="owner"
   fi
   approval_lines+=$'\n'"$(printf '%s\n' "$owner_pending" | sed 's/^/the completion record leaves a criterion of the owner_approval gate pending: /')"
+fi
+# An exception to a blocking finding asks for the owner's approval as well;
+# like the record, it can only require the approval, never grant it.
+if [[ "${#excepted_ids[@]}" -gt 0 ]]; then
+  if [[ "$(printf '%s\n' "$approval_lines" | sed -n 1p)" != "owner" ]]; then
+    approval_lines="owner"
+  fi
+  for index in "${!excepted_ids[@]}"; do
+    approval_lines+=$'\n'"the owner recorded an exception ($(jq -r '.type' "${excepted_records[$index]}")) to the blocking finding ${excepted_ids[$index]} of review round $round: ${excepted_records[$index]#"$root"/} sha256 ${excepted_sha256[$index]}"
+  done
 fi
 # The approval request (lib/guardrails.sh): when the owner must approve,
 # what they are asked to approve and why is written to
@@ -505,6 +565,31 @@ if [[ "$attribution" == "disabled" ]]; then
     printf '%s\n' "$attributed" | sed 's/^/  /' >&2
     echo "The commit was undone; the changes remain staged. Run finish-feature.sh again with a message that leaves it out." >&2
     records_stop "${0##*/}" "agent attribution is disabled ($ATTRIBUTION_CONFIG), but the commit message carries it:"
+    exit 1
+  fi
+fi
+
+# The message as it was committed still lists every exception with the
+# SHA-256 of its record, and the records are still those: an edit in the
+# editor or a record changed meanwhile would let the pull request show a
+# decision that was not the one checked. Such a commit is undone.
+if [[ "${#excepted_ids[@]}" -gt 0 ]]; then
+  git -C "$root" log -1 --format=%B >"$tmp_work/committed-message"
+  exception_mismatch=""
+  for index in "${!excepted_ids[@]}"; do
+    record_relative="${excepted_records[$index]#"$root"/}"
+    if ! grep -Fqx "  record: $record_relative sha256 ${excepted_sha256[$index]}" "$tmp_work/committed-message"; then
+      exception_mismatch+="the message does not list $record_relative with its SHA-256"$'\n'
+    elif [[ ! -f "${excepted_records[$index]}" || "$(exception_sha256 "${excepted_records[$index]}")" != "${excepted_sha256[$index]}" ]]; then
+      exception_mismatch+="$record_relative changed after it was checked"$'\n'
+    fi
+  done
+  if [[ -n "$exception_mismatch" ]]; then
+    git -C "$root" reset --soft --quiet HEAD^
+    echo "Error: the commit does not carry the owner's exceptions as they were checked:" >&2
+    printf '%s' "$exception_mismatch" | sed 's/^/  - /' >&2
+    echo "The commit was undone; the changes remain staged. Run finish-feature.sh again and keep the section 'Owner exceptions to blocking review findings' of the message as it is." >&2
+    records_stop "${0##*/}" "the commit does not carry the owner's exceptions as they were checked."
     exit 1
   fi
 fi
