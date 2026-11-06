@@ -21,3 +21,15 @@ github_required_checks() {
   fi
   [[ ! "$count" =~ ^[0-9]+$ ]] || printf '%s' "$count"
 }
+
+# github_default_branch
+# Prints the name of the default branch of the repository, the one into which
+# a merge applies "Closes #<n>". Prints nothing and fails when that cannot be
+# read.
+github_default_branch() {
+  local name
+
+  name="$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name // empty' 2>/dev/null)" || return 1
+  [[ -n "$name" ]] || return 1
+  printf '%s\n' "$name"
+}

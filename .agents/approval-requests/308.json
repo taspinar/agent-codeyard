@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "155940dcd47c0197c59364f9aeb467b04c1f7fee",
+  "commit": {
+    "branch": "feature/308-close-a-feature-s",
+    "parent": "dc5a7419a21f308d68d84a503de8ee8a1925ab95",
+    "base": "dc5a7419a21f308d68d84a503de8ee8a1925ab95"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/publish-feature.sh: the file defines or carries out the workflow and its gate"
+  ],
+  "explanation": "Issue #308: Close a feature's Issue after its pull request merges into a non-default base. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

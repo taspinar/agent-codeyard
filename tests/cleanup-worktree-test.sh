@@ -25,23 +25,61 @@ mkdir -p "$tmp/bin"
 ln -sf "$(command -v jq)" "$tmp/bin/jq"
 
 # The fake GitHub CLI reports a merged pull request for each
-# "<branch> <head> [<number>]" line in MOCK_MERGED_FILE, as the head and the
-# number separated by a tab.
+# "<branch> <head> [<number>] [<base>] [<description>]" line in
+# MOCK_MERGED_FILE, and applies the --jq filter of the script to it, as gh
+# does. The base defaults to main. The description is "closes" (default:
+# "Closes #<issue>"), "post-merge" (a pending post_merge criterion), or "open"
+# (the Issue stays open). MOCK_DEFAULT_BRANCH is the default branch of the
+# repository (main), MOCK_ISSUE_STATE the state of the Issue (OPEN); the
+# calls that change an Issue are logged to MOCK_GH_LOG, a comment's body to
+# MOCK_GH_LOG.comment.
 cat >"$tmp/bin/gh" <<'GH'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "${1:-} ${2:-}" == "pr list" ]]; then
-  [[ -z "${MOCK_GH_FAIL:-}" ]] || exit 1
-  head=""
-  while [[ $# -gt 0 ]]; do
-    [[ "$1" != "--head" ]] || head="$2"
-    shift
-  done
-  awk -v branch="$head" '$1 == branch { print $2 "\t" ($3 == "" ? 1 : $3) }' "$MOCK_MERGED_FILE" 2>/dev/null || true
-  exit 0
-fi
-echo "Unexpected gh invocation: $*" >&2
-exit 1
+case "${1:-} ${2:-}" in
+  "pr list")
+    [[ -z "${MOCK_GH_FAIL:-}" ]] || exit 1
+    head=""
+    filter="."
+    while [[ $# -gt 0 ]]; do
+      [[ "$1" != "--head" ]] || head="$2"
+      [[ "$1" != "--jq" ]] || filter="$2"
+      shift
+    done
+    issue="$(printf '%s' "$head" | sed -n 's#^feature/\([0-9][0-9]*\)-.*#\1#p')"
+    awk -v branch="$head" '$1 == branch { print $2 "\t" ($3 == "" ? 1 : $3) "\t" ($4 == "" ? "main" : $4) "\t" ($5 == "" ? "closes" : $5) }' \
+      "$MOCK_MERGED_FILE" 2>/dev/null | while IFS=$'\t' read -r oid number base kind; do
+      case "$kind" in
+        closes) body="Completion: complete\r\n\r\nCloses #$issue" ;;
+        post-merge) body="Post-merge criterion: \"The page is live\"\n\nIssue #$issue stays open after a merge of this pull request: evidence of the post_merge gate is pending." ;;
+        *) body="Issue #$issue stays open after a merge of this pull request: the feature was committed as partial." ;;
+      esac
+      jq -n --arg oid "$oid" --argjson number "$number" --arg base "$base" --arg body "$(printf '%b' "$body")" \
+        '[{headRefOid: $oid, number: $number, baseRefName: $base, mergeCommit: {oid: "abc1234merge"}, body: $body}]'
+    done | jq -r "$filter"
+    ;;
+  "repo view")
+    [[ -z "${MOCK_DEFAULT_FAIL:-}" ]] || exit 1
+    echo "${MOCK_DEFAULT_BRANCH:-main}"
+    ;;
+  "issue view")
+    echo "${MOCK_ISSUE_STATE:-OPEN}"
+    ;;
+  "issue comment")
+    printf '%s\n' "$*" >>"$MOCK_GH_LOG"
+    args=("$@")
+    for ((i = 0; i < ${#args[@]}; i++)); do
+      if [[ "${args[$i]}" == "--body" ]]; then printf '%s\n' "${args[$((i + 1))]}" >"$MOCK_GH_LOG.comment"; fi
+    done
+    ;;
+  "issue close")
+    printf '%s\n' "$*" >>"$MOCK_GH_LOG"
+    ;;
+  *)
+    echo "Unexpected gh invocation: $*" >&2
+    exit 1
+    ;;
+esac
 GH
 chmod +x "$tmp/bin/gh"
 
@@ -54,7 +92,7 @@ setup_repo() {
 
   mkdir -p "$seed/scripts/lib"
   cp "$source_root/scripts/cleanup-worktree.sh" "$seed/scripts/"
-  cp "$source_root/scripts/lib/records.sh" "$seed/scripts/lib/"
+  cp "$source_root/scripts/lib/records.sh" "$source_root/scripts/lib/github.sh" "$seed/scripts/lib/"
   workflow_gitignore "$seed/.gitignore"
   printf '# Project\n' >"$seed/README.md"
   git -C "$seed" init -q -b main
@@ -99,7 +137,7 @@ run_cleanup() {
   shift
   (
     cd "$repo"
-    PATH="$tmp/bin:/usr/bin:/bin" MOCK_MERGED_FILE="$repo.merged" ./scripts/cleanup-worktree.sh "$@"
+    PATH="$tmp/bin:/usr/bin:/bin" MOCK_MERGED_FILE="$repo.merged" MOCK_GH_LOG="$repo.gh" ./scripts/cleanup-worktree.sh "$@"
   ) >"$repo.out" 2>&1
 }
 
@@ -364,5 +402,98 @@ printf 'feature/35-unknown 0123456789abcdef0123456789abcdef01234567 10\n' >>"$re
 if run_cleanup "$repo" 35; then fail "a worktree was removed although the merged head could not be fetched"; fi
 [[ -d "$tmp/unknown-35" ]] || fail "a worktree whose merged head is unknown is gone"
 grep -Fq "could not be fetched from GitHub" "$repo.out" || fail "the unknown merged head was not given as the reason"
+
+# GitHub closes an Issue from "Closes #<n>" only on a merge into the default
+# branch. After a merge into another base, the cleanup closes the Issue, with
+# a comment that names the pull request and the merge commit.
+# merge_into <repo> <branch> <directory> <number> <base> <description>:
+# merge, recorded as a pull request into <base>.
+merge_into() {
+  merge "$1" "$2" "$3"
+  sed -i.bak '$ s/$/ '"$4 $5 $6"'/' "$1.merged"
+}
+
+repo="$(setup_repo develop-closes)"
+add_worktree "$repo" feature/80-develop develop-80
+merge_into "$repo" feature/80-develop develop-80 17 develop closes
+run_cleanup "$repo" 80 || {
+  cat "$repo.out" >&2
+  fail "cleaning a feature merged into develop failed"
+}
+[[ ! -e "$tmp/develop-80" ]] || fail "the worktree of a feature merged into develop was not removed"
+grep -Fqx "issue close 80" "$repo.gh" || fail "the Issue of a feature merged into a non-default base was not closed"
+grep -Fq "issue comment 80" "$repo.gh" || fail "the Issue was closed without a comment"
+grep -Fqx "Pull request: #17" "$repo.gh.comment" || fail "the comment does not name the pull request"
+grep -Fqx "Merge commit: abc1234merge" "$repo.gh.comment" || fail "the comment does not name the merge commit"
+[[ "$(head -n 1 "$repo.gh")" == "issue comment 80"* ]] || fail "the Issue was closed before the comment was posted"
+grep -Fq "Closed Issue #80: pull request #17 is merged into 'develop'" "$repo.out" || fail "closing the Issue was not reported"
+
+# The same with --merged.
+repo="$(setup_repo develop-merged-mode)"
+add_worktree "$repo" feature/81-develop develop-81
+merge_into "$repo" feature/81-develop develop-81 18 develop closes
+run_cleanup "$repo" --merged || {
+  cat "$repo.out" >&2
+  fail "--merged failed for a feature merged into develop"
+}
+grep -Fqx "issue close 81" "$repo.gh" || fail "--merged did not close the Issue of a feature merged into develop"
+
+# A merge into the default branch changes nothing: GitHub closed the Issue
+# from the pull request, and the cleanup touches no Issue. That holds also
+# when the default branch is not called main.
+repo="$(setup_repo default-base)"
+add_worktree "$repo" feature/82-default default-82
+merge_into "$repo" feature/82-default default-82 19 main closes
+add_worktree "$repo" feature/83-trunk default-83
+merge_into "$repo" feature/83-trunk default-83 20 trunk closes
+run_cleanup "$repo" 82 || {
+  cat "$repo.out" >&2
+  fail "cleaning a feature merged into the default branch failed"
+}
+MOCK_DEFAULT_BRANCH=trunk run_cleanup "$repo" 83 || {
+  cat "$repo.out" >&2
+  fail "cleaning a feature merged into the default branch trunk failed"
+}
+[[ ! -e "$repo.gh" ]] || fail "the cleanup of a feature merged into the default branch changed an Issue"
+[[ ! -e "$tmp/default-82" && ! -e "$tmp/default-83" ]] || fail "a feature merged into the default branch was kept"
+
+# Pending post_merge evidence keeps the Issue open, as record-post-merge.sh
+# closes it; so does a pull request that does not close its Issue, and an
+# Issue that is closed already is not closed again.
+repo="$(setup_repo develop-open)"
+add_worktree "$repo" feature/84-pending develop-84
+merge_into "$repo" feature/84-pending develop-84 21 develop post-merge
+add_worktree "$repo" feature/85-partial develop-85
+merge_into "$repo" feature/85-partial develop-85 22 develop open
+add_worktree "$repo" feature/86-closed develop-86
+merge_into "$repo" feature/86-closed develop-86 23 develop closes
+run_cleanup "$repo" 84 || {
+  cat "$repo.out" >&2
+  fail "cleaning a feature with pending post_merge evidence failed"
+}
+grep -Fq "record-post-merge.sh 84" "$repo.out" || fail "the pending post_merge evidence was not pointed to record-post-merge.sh"
+run_cleanup "$repo" 85 || {
+  cat "$repo.out" >&2
+  fail "cleaning a feature whose pull request does not close its Issue failed"
+}
+grep -Fq "Issue #85 stays open" "$repo.out" || fail "the Issue that stays open was not reported"
+MOCK_ISSUE_STATE=CLOSED run_cleanup "$repo" 86 || {
+  cat "$repo.out" >&2
+  fail "cleaning a feature whose Issue is closed already failed"
+}
+[[ ! -e "$repo.gh" ]] || fail "an Issue was changed although it stays open or is closed already"
+
+# A default branch that cannot be read closes nothing and warns; the
+# worktree is still removed.
+repo="$(setup_repo default-unknown)"
+add_worktree "$repo" feature/87-unknown develop-87
+merge_into "$repo" feature/87-unknown develop-87 24 develop closes
+MOCK_DEFAULT_FAIL=1 run_cleanup "$repo" 87 || {
+  cat "$repo.out" >&2
+  fail "cleaning failed when the default branch could not be read"
+}
+[[ ! -e "$repo.gh" ]] || fail "an Issue was changed although the default branch is unknown"
+grep -Fq "close Issue #87 by hand" "$repo.out" || fail "the unknown default branch was not reported"
+[[ ! -e "$tmp/develop-87" ]] || fail "the worktree was kept because the default branch is unknown"
 
 echo "cleanup-worktree tests passed"
