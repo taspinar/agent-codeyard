@@ -890,7 +890,6 @@ for line in "accepted-failure: types" "accepted-failure: nothing because" "accep
   expect_failure "$project" "a malformed exception must be refused: $line"
   grep -Fq "accepted-failure" "$project/out.log" || fail "the refusal of '$line' does not say why"
 done
-
 # A scoped exception: a check that already fails must not hide a new failure.
 # The formatter 'fmt' lists the files that contain BAD (its arguments, or every
 # file in src/) and fails when it lists one.
@@ -973,6 +972,14 @@ run_verify "$project" || { cat "$project/out.log" >&2; fail "the default base of
 grep -Eq "^SCOPED +format .*since develop" "$project/out.log" || fail "the default base is not named: $(cat "$project/out.log")"
 git -C "$project" config branch.feature/9-scope.workflow-base gone
 expect_scoped_failure "$project" "a scope without a base" "the files changed since the base cannot be determined"
+# A check that could not run on is not within the scope either, though no
+# file changed.
+git -C "$project" config branch.feature/9-scope.workflow-base develop
+printf 'format: echo src/dev.txt; missing-subcommand\naccepted-failure: format changed-files fmt\n' >"$project/scripts/verify.conf"
+expect_scoped_failure "$project" "a changed-files check that ended with exit 127" \
+  "^FAIL +format \(exit 127, a command was not found\): beyond the scope of its exception"
+grep -Eq "^ +it did not complete \(exit 127, a command was not found\)" "$project/out.log" &&
+  ! grep -q "^SCOPED" "$project/out.log" || fail "a changed-files check that could not run on is in the scope: $(cat "$project/out.log")"
 
 # recorded: the failures are compared with a list that may only shrink.
 project="$(setup_scoped_project scoped-recorded "accepted-failure: format recorded")"
@@ -1025,8 +1032,24 @@ printf 'src/ok.txt\n' >>"$project/.agents/accepted-failures/format"
 expect_scoped_failure "$project" "a recorded list that grew while the check passes" \
   "^FAIL +format \(it passes, but 1 failure\(s\) were added to .agents/accepted-failures/format since develop, where it may only shrink\)"
 git -C "$project" checkout -q -- .agents/accepted-failures/format
+# Only a check that completed is within the scope: one that printed a recorded
+# failure and then could not run on (127), was killed by a signal (143), or
+# timed out (124) fails, and the recorded failures it did not reach are not
+# FIXED.
+git -C "$project" checkout -q -- src
+for check in "echo src/dev.txt; missing-subcommand|exit 127, a command was not found" \
+  'echo src/dev.txt; kill -TERM $$|exit 143' "echo src/dev.txt; timeout 1 sleep 30|exit 124"; do
+  printf 'format: %s\naccepted-failure: format recorded\n' "${check%|*}" >"$project/scripts/verify.conf"
+  expect_scoped_failure "$project" "a recorded check that ended with ${check#*|}" \
+    "^FAIL +format \(${check#*|}\): beyond the scope of its exception"
+  grep -Eq "^ +it did not complete \(${check#*|}\)" "$project/out.log" &&
+    grep -Fq "Error: check 'format' did not complete (${check#*|})" "$project/out.log" &&
+    ! grep -Eq "^(SCOPED|FIXED)" "$project/out.log" || fail "a check that ended with ${check#*|} is in the scope: $(cat "$project/out.log")"
+done
+printf 'fixed\n' >"$project/src/old.txt"
+printf 'fixed\n' >"$project/src/dev.txt"
 # A failure that lists nothing is not within the scope.
-printf 'format: fmt; exit 3\naccepted-failure: format recorded\n' >"$project/scripts/verify.conf"
+printf 'format: fmt && exit 3\naccepted-failure: format recorded\n' >"$project/scripts/verify.conf"
 expect_scoped_failure "$project" "a failure without a listed failure" "it listed no failure to compare with"
 
 for line in "accepted-failure: format changed-files" "accepted-failure: format recorded src/list" "accepted-failure: size changed-files fmt"; do
@@ -1034,11 +1057,9 @@ for line in "accepted-failure: format changed-files" "accepted-failure: format r
   expect_failure "$project" "a malformed scoped exception must be refused: $line"
   grep -Fq "accepted-failure" "$project/out.log" || fail "the refusal of '$line' does not say why"
 done
-
 # Every self-test passes through tests/lib-fakes.sh before it starts anything.
 for test in "$source_root"/tests/*-test.sh; do
   grep -Eq '^source "\$(source_)?root/tests/lib-fakes\.sh"$' "$test" ||
     fail "${test#"$source_root/"} does not source tests/lib-fakes.sh"
 done
-
 echo "verify tests passed"

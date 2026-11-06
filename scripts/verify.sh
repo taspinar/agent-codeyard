@@ -77,6 +77,9 @@ records_arguments=("$@")
 #   that names a file changed since the base, fails; a listed failure that
 #   no longer occurs is reported, so that the list shrinks. The list may only
 #   shrink: an entry that its version at the base does not hold fails.
+# Either applies only to a check that completed: its status is 1 to 123 or
+# 128, its own. A check that could not run, was killed by a signal, or timed
+# out fails, and what it printed reports nothing as FIXED.
 # Either shows the failure as SCOPED, which does not fail the verification.
 # The list is protected by the merge approval gate like the baseline.
 
@@ -148,7 +151,9 @@ usage() {
   echo "one per line, with the list $accepted_lists_relative/<check>: a new one, or one"
   echo "of a changed file, fails. Within its scope the failure is shown as SCOPED, and"
   echo "a recorded failure that no longer occurs is reported as FIXED. The list may only"
-  echo "shrink: an entry it did not hold at the feature's base fails."
+  echo "shrink: an entry it did not hold at the feature's base fails. Either applies"
+  echo "only to a check that completed, with a status of 1 to 123 or 128: one that could"
+  echo "not run, was killed by a signal, or timed out fails, and reports nothing FIXED."
   exit 1
 }
 
@@ -780,11 +785,25 @@ run_check() {
   )
 }
 
-# failure_result <index> <what>: the summary line of a check that failed or
-# could not run, <what> saying how ('exit 1', 'missing tool: x'). Without a
-# baseline and an exception it is FAIL; ACCEPTED, the owner's exception, and
-# SCOPED, a failure within the scope of a scoped exception, are the only
-# results of a failure that do not fail the verification.
+# completed_status <status>: whether a non-zero exit status is the check's
+# own, so that the check ran to its end. 1..123 and 128 are; 124 of 'timeout'
+# and a death by a signal (129 and up) mean that it did not finish, and
+# 125..127 (an error of 'timeout' itself, a command that is not executable or
+# not found) that it could not run. 128 is not reserved: no utility returns it
+# for a command that was not invoked.
+completed_status() {
+  [[ "$1" -ge 1 && ("$1" -le 123 || "$1" -eq 128) ]]
+}
+
+# failure_result <index> <what> [status]: the summary line of a check that
+# failed or could not run, <what> saying how ('exit 1', 'missing tool: x'),
+# <status> its exit status when it ran. Without a baseline and an exception it
+# is FAIL; ACCEPTED, the owner's exception, and SCOPED, a failure within the
+# scope of a scoped exception, are the only results of a failure that do not
+# fail the verification. A scoped exception applies only to a check that
+# completed (completed_status): what a check printed before it crashed, was
+# killed, or timed out is not the whole of its failures, so it is neither
+# SCOPED nor a source of FIXED.
 failure_result() {
   local name="${names[$1]}"
   local accepted
@@ -792,15 +811,18 @@ failure_result() {
   local detail=""
 
   if accepted="$(accepted_index "$name")"; then
-    case "${accepted_scopes[$accepted]}" in
-      "")
-        results+=("ACCEPTED  $name ($2): an accepted exception of scripts/verify.conf: ${accepted_reasons[$accepted]}")
-        accepted_count=$((accepted_count + 1))
-        return 0
-        ;;
-      changed-files) ! scoped_changed_files "$1" "$2" "${accepted_reasons[$accepted]}" || return 0 ;;
-      recorded) ! scoped_recorded "$1" "$2" || { flush_fixed; return 0; } ;;
-    esac
+    if [[ -z "${accepted_scopes[$accepted]}" ]]; then
+      results+=("ACCEPTED  $name ($2): an accepted exception of scripts/verify.conf: ${accepted_reasons[$accepted]}")
+      accepted_count=$((accepted_count + 1))
+      return 0
+    elif ! completed_status "${3:-0}"; then
+      echo "Error: check '$name' did not complete ($2): its scoped exception accepts only the failures of a check that ran to its end, so it fails." >&2
+      scope_lines=("        it did not complete ($2), so its failures cannot be compared with the scope")
+    elif [[ "${accepted_scopes[$accepted]}" == changed-files ]]; then
+      ! scoped_changed_files "$1" "$2" "${accepted_reasons[$accepted]}" || return 0
+    else
+      ! scoped_recorded "$1" "$2" || { flush_fixed; return 0; }
+    fi
     detail=": beyond the scope of its exception in scripts/verify.conf"
   fi
   failed=1
@@ -1115,14 +1137,10 @@ for index in "${!names[@]}"; do
     fi
     outcomes[$index]="pass: $name"
     record_duration "$index" "$elapsed" pass
-  elif [[ "$budget" == "yes" && ("$status" -le 123 || "$status" -eq 128) ]]; then
-    # Over the target: a measurement, not a failure. The exit statuses 1..123
-    # and 128 are the check's own: 124 of 'timeout' and a death by a signal
-    # (129 and up) mean that the check did not finish, and 125..127 (an error
-    # of 'timeout' itself, a command that is not executable or not found)
-    # that it could not run; in both nothing was measured, and it fails like
-    # any check. 128 is not reserved: no utility returns it for a command that
-    # was not invoked, so a measurement may use it like any other status.
+  elif [[ "$budget" == "yes" ]] && completed_status "$status"; then
+    # Over the target: a measurement, not a failure. A budget check that did
+    # not complete (completed_status) measured nothing, and it fails like any
+    # check.
     echo "Note: budget '$name' exceeded its target (exit $status). A budget is a measurement, not a failure: the verification does not fail for it, and nothing repairs it." >&2
     results+=("BUDGET  $name (exit $status)")
     if [[ -s "$output" ]]; then
@@ -1150,10 +1168,10 @@ for index in "${!names[@]}"; do
       failed=1
     elif [[ "$status" -eq 127 ]]; then
       # The shell found no command to run: the check is unavailable here.
-      failure_result "$index" "exit 127, a command was not found"
+      failure_result "$index" "exit 127, a command was not found" "$status"
       outcomes[$index]="unavailable: $name exit 127, a command was not found"
     else
-      failure_result "$index" "exit $status"
+      failure_result "$index" "exit $status" "$status"
       outcomes[$index]="fail: $name exit $status"
     fi
     record_duration "$index" "$elapsed" fail

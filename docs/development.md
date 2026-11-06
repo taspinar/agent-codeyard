@@ -435,10 +435,19 @@ accepted-failure: format recorded
   fails the check, also when the check passes; the first record, a list
   that the base does not have, is the exception.
 
+Either form applies only to a check that completed: it exited with its own
+failure status, 1 to 123 or 128. A check that could not run or could not run
+on (125 to 127: an error of `timeout`, a command that is not executable or
+not found), was killed by a signal (129 and up, such as 143 for `SIGTERM`),
+or timed out (124 of `timeout`) fails the verification with its status, even
+when what it printed before is recorded: that output is not the whole of its
+failures. Nothing is reported as `FIXED` then; a recorded failure counts as
+fixed only when the check ran to its end without printing it.
+
 | Result | When | Fails the verification |
 |---|---|---|
 | `SCOPED` | The check fails, but only within the scope of its exception | No |
-| `FAIL ... beyond the scope of its exception` | A new or changed file fails, the list gained an entry since the base, or the scope cannot be checked | Yes |
+| `FAIL ... beyond the scope of its exception` | A new or changed file fails, the list gained an entry since the base, the check did not complete, or the scope cannot be checked | Yes |
 | `FIXED` | A recorded failure no longer occurs: remove it from the list | No |
 
 Either form needs the base: in a clone without the history back to it, a
