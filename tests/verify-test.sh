@@ -938,7 +938,7 @@ expect_scoped_failure() {
 # changed-files: the unchanged files of the backlog may fail, every file the
 # feature adds or changes must pass, measured from the recorded base: dev.txt
 # is unchanged since 'develop', though not since 'main'.
-project="$(setup_scoped_project scoped-changed "accepted-failure: format changed-files fmt")"
+project="$(setup_scoped_project scoped-changed "accepted-failure: format changed-files exit 1 fmt")"
 run_verify "$project" || { cat "$project/out.log" >&2; fail "an unchanged backlog failed the scoped check"; }
 grep -Eq "^SCOPED +format \(exit 1\): accepted for the files that did not change since develop; no file changed" "$project/out.log" &&
   ! grep -q "^ACCEPTED" "$project/out.log" || fail "the scoped exception is not shown as SCOPED: $(cat "$project/out.log")"
@@ -975,14 +975,21 @@ expect_scoped_failure "$project" "a scope without a base" "the files changed sin
 # A check that could not run on is not within the scope either, though no
 # file changed.
 git -C "$project" config branch.feature/9-scope.workflow-base develop
-printf 'format: echo src/dev.txt; missing-subcommand\naccepted-failure: format changed-files fmt\n' >"$project/scripts/verify.conf"
+printf 'format: echo src/dev.txt; missing-subcommand\naccepted-failure: format changed-files exit 1 fmt\n' >"$project/scripts/verify.conf"
 expect_scoped_failure "$project" "a changed-files check that ended with exit 127" \
   "^FAIL +format \(exit 127, a command was not found\): beyond the scope of its exception"
 grep -Eq "^ +it did not complete \(exit 127, a command was not found\)" "$project/out.log" &&
   ! grep -q "^SCOPED" "$project/out.log" || fail "a changed-files check that could not run on is in the scope: $(cat "$project/out.log")"
+# Nor is a check that ended with a status its exception does not declare: 2
+# of prettier is a problem of the formatter itself, not a formatting failure.
+printf 'format: echo src/dev.txt; exit 2\naccepted-failure: format changed-files exit 1 fmt\n' >"$project/scripts/verify.conf"
+expect_scoped_failure "$project" "a changed-files check that ended with an undeclared exit 2" \
+  "^FAIL +format \(exit 2\): beyond the scope of its exception"
+grep -Eq "^ +it ended with exit 2, not with a status its exception declares \(exit 1\)" "$project/out.log" &&
+  ! grep -q "^SCOPED" "$project/out.log" || fail "a changed-files check that ended with exit 2 is in the scope: $(cat "$project/out.log")"
 
 # recorded: the failures are compared with a list that may only shrink.
-project="$(setup_scoped_project scoped-recorded "accepted-failure: format recorded")"
+project="$(setup_scoped_project scoped-recorded "accepted-failure: format recorded exit 1")"
 expect_scoped_failure "$project" "a recorded exception without its list" "accepted-failures/format, which does not exist"
 mkdir -p "$project/.agents/accepted-failures"
 printf '# The formatter backlog.\nsrc/dev.txt\nsrc/old.txt\nsrc/gone.txt\n' >"$project/.agents/accepted-failures/format"
@@ -1039,20 +1046,42 @@ git -C "$project" checkout -q -- .agents/accepted-failures/format
 git -C "$project" checkout -q -- src
 for check in "echo src/dev.txt; missing-subcommand|exit 127, a command was not found" \
   'echo src/dev.txt; kill -TERM $$|exit 143' "echo src/dev.txt; timeout 1 sleep 30|exit 124"; do
-  printf 'format: %s\naccepted-failure: format recorded\n' "${check%|*}" >"$project/scripts/verify.conf"
+  printf 'format: %s\naccepted-failure: format recorded exit 1\n' "${check%|*}" >"$project/scripts/verify.conf"
   expect_scoped_failure "$project" "a recorded check that ended with ${check#*|}" \
     "^FAIL +format \(${check#*|}\): beyond the scope of its exception"
   grep -Eq "^ +it did not complete \(${check#*|}\)" "$project/out.log" &&
     grep -Fq "Error: check 'format' did not complete (${check#*|})" "$project/out.log" &&
     ! grep -Eq "^(SCOPED|FIXED)" "$project/out.log" || fail "a check that ended with ${check#*|} is in the scope: $(cat "$project/out.log")"
 done
+# Only the status the exception declares means a completed check with
+# failures: a simulated formatter that prints a recorded failure and exits 2,
+# a problem of the formatter itself, fails, with nothing SCOPED or FIXED; the
+# same check passes within its scope where its exception declares 2 too.
+printf '#!/usr/bin/env bash\necho src/dev.txt\nexit 2\n' >"$tmp/bin/fmt-broken"
+chmod +x "$tmp/bin/fmt-broken"
+printf 'format: fmt-broken\naccepted-failure: format recorded exit 1\n' >"$project/scripts/verify.conf"
+expect_scoped_failure "$project" "a recorded check that ended with an undeclared exit 2" \
+  "^FAIL +format \(exit 2\): beyond the scope of its exception"
+grep -Eq "^ +it ended with exit 2, not with a status its exception declares \(exit 1\)" "$project/out.log" &&
+  grep -Fq "Error: check 'format' ended with status 2, which its scoped exception does not declare" "$project/out.log" &&
+  ! grep -Eq "^(SCOPED|FIXED)" "$project/out.log" || fail "a check that ended with an undeclared exit 2 is in the scope: $(cat "$project/out.log")"
+printf 'format: fmt-broken\naccepted-failure: format recorded exit 1,2\n' >"$project/scripts/verify.conf"
+run_verify "$project" || { cat "$project/out.log" >&2; fail "a declared exit 2 is not within the scope"; }
+grep -Eq "^SCOPED +format \(exit 2\): 1 failure\(s\)" "$project/out.log" || fail "a declared exit 2 is not SCOPED: $(cat "$project/out.log")"
 printf 'fixed\n' >"$project/src/old.txt"
 printf 'fixed\n' >"$project/src/dev.txt"
 # A failure that lists nothing is not within the scope.
-printf 'format: fmt && exit 3\naccepted-failure: format recorded\n' >"$project/scripts/verify.conf"
+printf 'format: fmt && exit 3\naccepted-failure: format recorded exit 3\n' >"$project/scripts/verify.conf"
 expect_scoped_failure "$project" "a failure without a listed failure" "it listed no failure to compare with"
 
-for line in "accepted-failure: format changed-files" "accepted-failure: format recorded src/list" "accepted-failure: size changed-files fmt"; do
+# A scoped exception declares its statuses; there is no default, and a status
+# that does not mean a completed check with failures is refused.
+for line in "accepted-failure: format changed-files" "accepted-failure: format changed-files fmt" \
+  "accepted-failure: format changed-files exit 1" "accepted-failure: format recorded" \
+  "accepted-failure: format recorded exit" "accepted-failure: format recorded exit 1 src/list" \
+  "accepted-failure: format recorded exit 0" "accepted-failure: format recorded exit 1,127" \
+  "accepted-failure: format recorded exit 124" "accepted-failure: format recorded exit 143" \
+  "accepted-failure: format recorded exit 1,,2" "accepted-failure: size changed-files exit 1 fmt"; do
   project="$(setup_project "scoped-$RANDOM" "format: fmt" "size budget: fmt" "$line")"
   expect_failure "$project" "a malformed scoped exception must be refused: $line"
   grep -Fq "accepted-failure" "$project/out.log" || fail "the refusal of '$line' does not say why"

@@ -406,13 +406,16 @@ that, one per check:
 
 ```text
 format: npx prettier --list-different .
-accepted-failure: format changed-files npx prettier --check --ignore-unknown
+accepted-failure: format changed-files exit 1 npx prettier --check --ignore-unknown
 ```
 
 ```text
 format: npx prettier --list-different .
-accepted-failure: format recorded
+accepted-failure: format recorded exit 1
 ```
+
+`exit 1` declares the exit status with which the check completed and found
+failures; see below. The rest of the line is the scope:
 
 - **`changed-files <command>`**: when the check fails, `<command>` runs on
   the files the feature adds or changes since its base, given as its
@@ -435,19 +438,27 @@ accepted-failure: format recorded
   fails the check, also when the check passes; the first record, a list
   that the base does not have, is the exception.
 
-Either form applies only to a check that completed: it exited with its own
-failure status, 1 to 123 or 128. A check that could not run or could not run
-on (125 to 127: an error of `timeout`, a command that is not executable or
-not found), was killed by a signal (129 and up, such as 143 for `SIGTERM`),
-or timed out (124 of `timeout`) fails the verification with its status, even
-when what it printed before is recorded: that output is not the whole of its
+Either form applies only to a check that completed with failures, and only
+the check knows which exit status means that: `exit <status>` names it, or
+several separated by commas (`exit 1,3`). There is no default, and a line
+without it is refused. prettier exits with 1 when files are not formatted
+and with 2 when prettier itself has a problem, so its line declares `exit 1`.
+A declared status is one of 1 to 123 or 128; a line that declares any other
+is refused, because 0 is a pass and the rest mean that the check did not
+complete. A check that ended with a status its line does not declare (2 of
+prettier), could not run or could not run on (125 to 127: an error of
+`timeout`, a command that is not executable or not found), was killed by a
+signal (129 and up, such as 143 for `SIGTERM`), or timed out (124 of
+`timeout`) fails the verification with the check and its status, even when
+what it printed before is recorded: that output is not the whole of its
 failures. Nothing is reported as `FIXED` then; a recorded failure counts as
-fixed only when the check ran to its end without printing it.
+fixed only when the check ended with a declared status, or passed, without
+printing it.
 
 | Result | When | Fails the verification |
 |---|---|---|
 | `SCOPED` | The check fails, but only within the scope of its exception | No |
-| `FAIL ... beyond the scope of its exception` | A new or changed file fails, the list gained an entry since the base, the check did not complete, or the scope cannot be checked | Yes |
+| `FAIL ... beyond the scope of its exception` | A new or changed file fails, the list gained an entry since the base, the check did not complete or ended with a status its line does not declare, or the scope cannot be checked | Yes |
 | `FIXED` | A recorded failure no longer occurs: remove it from the list | No |
 
 Either form needs the base: in a clone without the history back to it, a

@@ -67,19 +67,22 @@ records_arguments=("$@")
 #
 # An exception can be scoped instead, for a check that runs per file or per
 # test, so that a check which already fails does not hide a new failure:
-# - 'accepted-failure: <check> changed-files <command>': when the check
-#   fails, <command> runs on the files changed since the feature's base
-#   (lib/base.sh: committed, staged, unstaged, and untracked), and those must
-#   pass.
-# - 'accepted-failure: <check> recorded': the check prints its failures on
-#   standard output, one per line, and they are compared with the list
+# - 'accepted-failure: <check> changed-files exit <statuses> <command>': when
+#   the check fails, <command> runs on the files changed since the feature's
+#   base (lib/base.sh: committed, staged, unstaged, and untracked), and those
+#   must pass.
+# - 'accepted-failure: <check> recorded exit <statuses>': the check prints its
+#   failures on standard output, one per line, and they are compared with the list
 #   .agents/accepted-failures/<check>. A failure that is not in the list, or
 #   that names a file changed since the base, fails; a listed failure that
 #   no longer occurs is reported, so that the list shrinks. The list may only
 #   shrink: an entry that its version at the base does not hold fails.
-# Either applies only to a check that completed: its status is 1 to 123 or
-# 128, its own. A check that could not run, was killed by a signal, or timed
-# out fails, and what it printed reports nothing as FIXED.
+# <statuses> are the exit statuses, separated by commas, with which the check
+# completed and reports failures, such as 'exit 1' for prettier; there is no
+# default. Either applies only to a check that ended with one of them: one
+# that ended with another status (a problem of the tool itself, such as 2 of
+# prettier), could not run, was killed by a signal, or timed out fails, and
+# what it printed reports nothing as FIXED.
 # Either shows the failure as SCOPED, which does not fail the verification.
 # The list is protected by the merge approval gate like the baseline.
 
@@ -145,15 +148,18 @@ usage() {
   echo "the verification does not fail for it."
   echo
   echo "A scoped exception accepts only the failures that predate the change:"
-  echo "'accepted-failure: <check> changed-files <command>' runs <command> on the files"
-  echo "changed since the feature's base when the check fails, and those must pass;"
-  echo "'accepted-failure: <check> recorded' compares the failures the check prints,"
-  echo "one per line, with the list $accepted_lists_relative/<check>: a new one, or one"
-  echo "of a changed file, fails. Within its scope the failure is shown as SCOPED, and"
-  echo "a recorded failure that no longer occurs is reported as FIXED. The list may only"
-  echo "shrink: an entry it did not hold at the feature's base fails. Either applies"
-  echo "only to a check that completed, with a status of 1 to 123 or 128: one that could"
-  echo "not run, was killed by a signal, or timed out fails, and reports nothing FIXED."
+  echo "'accepted-failure: <check> changed-files exit <statuses> <command>' runs <command>"
+  echo "on the files changed since the feature's base when the check fails, and those"
+  echo "must pass; 'accepted-failure: <check> recorded exit <statuses>' compares the"
+  echo "failures the check prints, one per line, with the list $accepted_lists_relative/<check>:"
+  echo "a new one, or one of a changed file, fails. Within its scope the failure is shown"
+  echo "as SCOPED, and a recorded failure that no longer occurs is reported as FIXED. The"
+  echo "list may only shrink: an entry it did not hold at the feature's base fails."
+  echo "<statuses> are the exit statuses, separated by commas, with which the check"
+  echo "completed with failures, such as 'exit 1' for prettier; there is no default."
+  echo "Either applies only to a check that ended with one of them: any other status, a"
+  echo "check that could not run, was killed by a signal, or timed out fails, and reports"
+  echo "nothing FIXED."
   exit 1
 }
 
@@ -328,6 +334,17 @@ accepted_names=()
 accepted_reasons=()
 accepted_lines=()
 accepted_scopes=()
+accepted_statuses=()
+
+# completed_status <status>: whether a non-zero exit status is the check's
+# own, so that the check ran to its end. 1..123 and 128 are; 124 of 'timeout'
+# and a death by a signal (129 and up) mean that it did not finish, and
+# 125..127 (an error of 'timeout' itself, a command that is not executable or
+# not found) that it could not run. 128 is not reserved: no utility returns it
+# for a command that was not invoked.
+completed_status() {
+  [[ "$1" -ge 1 && ("$1" -le 123 || "$1" -eq 128) ]]
+}
 
 # load_checks <file> <paths-entry>
 # Appends the checks of <file> to names, commands, groups, partitions (the
@@ -340,7 +357,8 @@ accepted_scopes=()
 # exception for the failure of a check to accepted_names and accepted_reasons;
 # a scoped exception sets accepted_scopes to 'changed-files' (its reason is
 # then the command for the changed files) or 'recorded', and is empty
-# otherwise.
+# otherwise, and accepted_statuses to the exit statuses it declares, each
+# between spaces (' 1 2 ').
 load_checks() {
   local file="$1"
   local paths_entry="$2"
@@ -353,6 +371,9 @@ load_checks() {
   local budget
   local value
   local existing
+  local scope
+  local statuses
+  local status
   local first="${#names[@]}"
   local heavy_names=""
   local heavy_line=0
@@ -402,19 +423,31 @@ load_checks() {
       accepted_names+=("${BASH_REMATCH[1]}")
       accepted_lines+=("$line_number")
       value="${BASH_REMATCH[2]}"
-      if [[ "$value" =~ ^changed-files([[:space:]]+(.*))?$ ]]; then
-        [[ -n "${BASH_REMATCH[2]}" ]] ||
-          config_fail "'accepted-failure: <check> changed-files' needs the command that checks the changed files, on line $line_number of $label."
-        accepted_scopes+=(changed-files)
-        accepted_reasons+=("${BASH_REMATCH[2]}")
-      elif [[ "$value" =~ ^recorded([[:space:]]|$) ]]; then
-        [[ "$value" == "recorded" ]] ||
-          config_fail "'accepted-failure: <check> recorded' takes nothing more: the failures are recorded in $accepted_lists_relative/<check>, on line $line_number of $label: $value"
-        accepted_scopes+=(recorded)
-        accepted_reasons+=("")
+      if [[ "$value" =~ ^(changed-files|recorded)([[:space:]]|$) ]]; then
+        scope="${BASH_REMATCH[1]}"
+        [[ "$value" =~ ^$scope[[:space:]]+exit[[:space:]]+([0-9]+(,[0-9]+)*)([[:space:]]+(.*))?$ ]] ||
+          config_fail "'accepted-failure: <check> $scope' needs the exit status or statuses, separated by commas, with which the check completed with failures, such as 'exit 1' for prettier, on line $line_number of $label: $value"
+        statuses="${BASH_REMATCH[1]}"
+        value="${BASH_REMATCH[4]}"
+        for status in ${statuses//,/ }; do
+          [[ "$status" =~ ^[1-9][0-9]{0,2}$ ]] && completed_status "$status" ||
+            config_fail "'accepted-failure' declares the exit status $status, which does not mean that the check completed with failures (1 to 123 or 128; 0 is a pass, 124 a time-out, 125 to 127 a check that could not run, 129 and up a signal), on line $line_number of $label."
+        done
+        statuses=" ${statuses//,/ } "
+        if [[ "$scope" == changed-files ]]; then
+          [[ -n "$value" ]] ||
+            config_fail "'accepted-failure: <check> changed-files exit <statuses>' needs the command that checks the changed files, on line $line_number of $label."
+        else
+          [[ -z "$value" ]] ||
+            config_fail "'accepted-failure: <check> recorded exit <statuses>' takes nothing more: the failures are recorded in $accepted_lists_relative/<check>, on line $line_number of $label: $value"
+        fi
+        accepted_scopes+=("$scope")
+        accepted_reasons+=("$value")
+        accepted_statuses+=("$statuses")
       else
         accepted_scopes+=("")
         accepted_reasons+=("$value")
+        accepted_statuses+=("")
       fi
       continue
     fi
@@ -785,29 +818,21 @@ run_check() {
   )
 }
 
-# completed_status <status>: whether a non-zero exit status is the check's
-# own, so that the check ran to its end. 1..123 and 128 are; 124 of 'timeout'
-# and a death by a signal (129 and up) mean that it did not finish, and
-# 125..127 (an error of 'timeout' itself, a command that is not executable or
-# not found) that it could not run. 128 is not reserved: no utility returns it
-# for a command that was not invoked.
-completed_status() {
-  [[ "$1" -ge 1 && ("$1" -le 123 || "$1" -eq 128) ]]
-}
-
 # failure_result <index> <what> [status]: the summary line of a check that
 # failed or could not run, <what> saying how ('exit 1', 'missing tool: x'),
 # <status> its exit status when it ran. Without a baseline and an exception it
 # is FAIL; ACCEPTED, the owner's exception, and SCOPED, a failure within the
 # scope of a scoped exception, are the only results of a failure that do not
 # fail the verification. A scoped exception applies only to a check that
-# completed (completed_status): what a check printed before it crashed, was
-# killed, or timed out is not the whole of its failures, so it is neither
-# SCOPED nor a source of FIXED.
+# completed (completed_status) with a status it declares: what a check
+# printed before it crashed, was killed, timed out, or ended with another
+# status, such as a problem of the tool itself, is not the whole of its
+# failures, so it is neither SCOPED nor a source of FIXED.
 failure_result() {
   local name="${names[$1]}"
   local accepted
   local state
+  local declared
   local detail=""
 
   if accepted="$(accepted_index "$name")"; then
@@ -818,6 +843,11 @@ failure_result() {
     elif ! completed_status "${3:-0}"; then
       echo "Error: check '$name' did not complete ($2): its scoped exception accepts only the failures of a check that ran to its end, so it fails." >&2
       scope_lines=("        it did not complete ($2), so its failures cannot be compared with the scope")
+    elif [[ "${accepted_statuses[$accepted]}" != *" $3 "* ]]; then
+      declared="${accepted_statuses[$accepted]# }"
+      declared="${declared% }"
+      echo "Error: check '$name' ended with status $3, which its scoped exception does not declare as a completed check with failures (exit ${declared// /,}), so it fails." >&2
+      scope_lines=("        it ended with exit $3, not with a status its exception declares (exit ${declared// /,}), so its failures cannot be compared with the scope")
     elif [[ "${accepted_scopes[$accepted]}" == changed-files ]]; then
       ! scoped_changed_files "$1" "$2" "${accepted_reasons[$accepted]}" || return 0
     else
