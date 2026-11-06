@@ -11,7 +11,9 @@ How a project goes from an idea to merged features, in four views:
 
 The commands and their options are described in `docs/development.md`. A
 complete run with a sample project is in `docs/example.md`. What each file in
-the repository is for is in `docs/project-map.md`.
+the repository is for is in `docs/project-map.md`. What to set up on day one
+so that the workflow stays cheap as a project grows is in
+`docs/growth-lessons.md`.
 
 ## Flow
 

@@ -58,6 +58,7 @@ the website describes the current template.
 | `docs/development.md` | Every command and its behaviour | Template |
 | `docs/examples/parallel-ci.yml` | An example of an optional parallel CI: independent group jobs, a consumer that needs its producer, one aggregate required check `verify`, and a deployment after it; explained in `docs/development.md`, "A parallel CI" | Template |
 | `docs/workflow.md` | The workflow in flow, artifact, reference, and principles views | Template |
+| `docs/growth-lessons.md` | A day-one checklist and ten lessons, with their evidence, for keeping the workflow cheap as a project grows, learned in one month of a real project | Template |
 | `docs/example.md` | A complete run with a sample project | Template |
 | `docs/evaluation.md` | Review criteria, finding severities, and the testing principle | Template |
 | `docs/deployment.md`, `docs/operations.md` | Deployment and operations of the project | You |
