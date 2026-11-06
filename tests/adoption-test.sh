@@ -86,7 +86,9 @@ result="$(jq -c '{summary: "A shell service with a test and a linter in its CI."
 (cd "$template" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/adopt-repository.sh "$repo") >"$tmp/adopt.out" 2>&1 ||
   { cat "$tmp/adopt.out" >&2; fail "the adoption failed"; }
 [[ "$(git -C "$repo" branch --show-current)" == "adopt/agent-codeyard" ]] || fail "the adoption is not on its branch"
-grep -Fxq "tests: ./tests.sh" "$repo/scripts/verify.conf" && grep -Fxq "lint: ./lint.sh" "$repo/scripts/verify.conf" ||
+isolation="unset \$(compgen -e | grep -E 'TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY|ACCESS_KEY|PRIVATE_KEY|CREDENTIAL' || true); export DATABASE_URL=postgresql://isolated:isolated@127.0.0.1:1/isolated DO_NOT_TRACK=1; "
+guard='for f in .env .env.* .dev.vars; do [[ ! -e $f && ! -L $f || " .env.example .env.sample .env.template .env.dist .env.defaults " == *" $f "* ]] || { echo "$f: a credential file in the directory of this check, which a tool may load, whether Git tracks it or not. The check stops until the owner has set up the shielding: move the file out for the run, or run the verification in a working copy without it." >&2; exit 1; }; done && '
+grep -Fxq "tests: ${isolation}${guard}./tests.sh" "$repo/scripts/verify.conf" && grep -Fxq "lint: ${isolation}${guard}./lint.sh" "$repo/scripts/verify.conf" ||
   fail "the project's CI commands are not the checks: $(cat "$repo/scripts/verify.conf")"
 [[ "$(cksum <"$repo/.github/workflows/ci.yml")" == "$ci_before" ]] || fail "the project's CI was replaced"
 for document in docs/architecture.md docs/PROJECT_REQUIREMENTS.md docs/roadmap.md; do

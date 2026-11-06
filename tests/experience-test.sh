@@ -320,7 +320,7 @@ jq -e '.invalid[0].errors | any(. == "the derived part is not an object")' <<<"$
 for observation in '{"kind": "fact", "what": "x", "evidence": [{"type": "", "ref": ""}]}' \
   '{"kind": "fact", "what": "x", "evidence": [{"type": "check", "ref": "   "}]}' \
   '{"kind": "fact", "what": "x", "missing_evidence": "  "}' '{"kind": "hypothesis", "what": " "}'; do
-  repo="$(setup_repo "blank-${#observation}-$RANDOM")"
+  repo="$(setup_repo "$(basename "$(mktemp -d "$tmp/blank.XXXXXX")")")"
   in_run "$repo" 0 "mkdir -p .agents/experience; printf '%s\\n' '{\"schema\": \"experience-notes/v1\", \"observations\": [$observation]}' >.agents/experience/12.json
     AGENT_ROLE=implementer experience_notes_written \"\$PWD\" '' call-1" 2>/dev/null
   [[ "$(latest_record "$repo" | jq -r '.agent.errors | map(select(test("JSON object|schema"))) | length')" == "0" && "$(latest_record "$repo" | jq -r '.agent.status')" == "invalid" ]] || fail "blank evidence was accepted, or the notes were not read: $observation $(latest_record "$repo" | jq -c .agent)"

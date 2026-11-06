@@ -44,6 +44,15 @@ printf 'name: ci of the template\non: [push]\njobs: {}\n' >"$template/.github/wo
 printf 'name: guardrails\non: [pull_request]\njobs: {}\n' >"$template/.github/workflows/guardrails.yml"
 cp "$source_root/.github/PULL_REQUEST_TEMPLATE.md" "$template/.github/"
 : >"$template/src/.gitkeep"
+# The starter files of a new project, a decision record of the template's
+# own, and a directory its template.conf excludes: an adoption carries none
+# of the last two, and un-ignores neither.
+mkdir -p "$template/tests/unit" "$template/docs/decisions" "$template/docs/internal"
+: >"$template/tests/unit/.gitkeep"
+printf 'APP_URL=http://localhost:3000\n' >"$template/.env.example"
+printf '# 0001. A decision of the template\n' >"$template/docs/decisions/0001-template-choice.md"
+printf '{}\n' >"$template/docs/internal/notes.json"
+sed -i 's|^paths: .*|& :(exclude)docs/internal|' "$template/.agents/template.conf"
 git -C "$template" init -q -b main
 commit_all "$template" "Template"
 template_commit="$(git -C "$template" rev-parse HEAD)"
@@ -151,6 +160,9 @@ cmp -s "$repo/.github/PULL_REQUEST_TEMPLATE.agent-codeyard.md" "$template/.githu
   fail "the template's pull request template is not placed beside the project's"
 [[ ! -e "$repo/.github/workflows/guardrails.yml" && ! -e "$repo/.github/workflows/ci.agent-codeyard.yml" ]] || fail "a CI workflow was added"
 [[ ! -e "$repo/README.md" && ! -e "$repo/src/.gitkeep" ]] || fail "a product file of the template was carried over"
+[[ ! -e "$repo/docs/decisions/0001-template-choice.md" && ! -e "$repo/docs/internal" ]] ||
+  fail "a decision record of the template, or a path its template.conf excludes, was carried over"
+[[ -f "$repo/tests/unit/.gitkeep" && -f "$repo/.env.example" ]] || fail "the starter files of an application at the top were not added"
 conf="$repo/.agents/template.conf"
 grep -Fxq "commit: $template_commit" "$conf" && grep -Fxq "$(grep '^repository:' "$template/.agents/template.conf")" "$conf" ||
   fail "the template version is not recorded: $(grep -v '^#' "$conf")"
@@ -163,7 +175,12 @@ grep -q "Adopt the agent-codeyard workflow" <(git -C "$repo" log -1 --format=%B)
 
 # The project's own commands become the checks of the verification, in a
 # file of the project's that a sync leaves alone; the CI stays as it is.
-grep -Fxq "tests: npm run test" "$repo/scripts/verify.conf" || fail "the project's command is not a check: $(cat "$repo/scripts/verify.conf")"
+# isolated: no credential of the environment, no database, no telemetry.
+# A check stops while a credential file, tracked by Git or not, is in its
+# directory: a tool loads it past the cleared environment.
+isolation="unset \$(compgen -e | grep -E 'TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY|ACCESS_KEY|PRIVATE_KEY|CREDENTIAL' || true); export DATABASE_URL=postgresql://isolated:isolated@127.0.0.1:1/isolated DO_NOT_TRACK=1; "
+guard='for f in .env .env.* .dev.vars; do [[ ! -e $f && ! -L $f || " .env.example .env.sample .env.template .env.dist .env.defaults " == *" $f "* ]] || { echo "$f: a credential file in the directory of this check, which a tool may load, whether Git tracks it or not. The check stops until the owner has set up the shielding: move the file out for the run, or run the verification in a working copy without it." >&2; exit 1; }; done && '
+grep -Fxq "tests: ${isolation}${guard}npm run test" "$repo/scripts/verify.conf" || fail "the project's command is not an isolated check: $(cat "$repo/scripts/verify.conf")"
 [[ " $paths " == *" :(exclude)scripts/verify.conf "* ]] || fail "the checks of the project are owned by the template: $paths"
 grep -Fq "./scripts/verify.sh --baseline" "$repo.out" || fail "the adoption does not say how to record the baseline: $(cat "$repo.out")"
 # The planning documents the project lacks are a minimal baseline, marked as
@@ -276,7 +293,7 @@ grep -Fq "is adopted already" "$repo.out" && [[ "$(state "$repo")" == "$state_be
 # workflow that the project's .gitignore hides, and only those; the rule
 # further down cannot be undone from there, and the adoption names it.
 repo="$(make_target ignoring)"
-printf 'node_modules/\n*.json\n!package.json\n' >"$repo/.gitignore"
+printf 'node_modules/\n*.json\n!package.json\n/docs/decisions/0*\n' >"$repo/.gitignore"
 printf 'example.md\n' >"$repo/docs/.gitignore"
 commit_all "$repo" "Ignore rules"
 assess "$repo"
@@ -284,6 +301,11 @@ adopt "$repo" || { cat "$repo.out" >&2; fail "the adoption of an ignoring projec
 [[ -z "$(git -C "$repo" status --porcelain --untracked-files=all)" ]] || fail "the adoption left uncommitted files: $(git -C "$repo" status --porcelain)"
 [[ "$(sed -n '/^# The files of the workflow that a rule above would hide/,$p' "$repo/.gitignore" | grep -v '^#')" == \
   $'!/.agents/approval-requests/*.json\n!/.agents/schemas/*.json' ]] || fail "the section does not un-ignore the hidden paths: $(cat "$repo/.gitignore")"
+# The rules hide the template's decision record and docs/internal/notes.json
+# too, which the adoption does not carry: neither is un-ignored nor named
+# (#303).
+! grep -Eq 'docs/(internal|decisions/0001)' "$repo/.gitignore" "$repo.out" ||
+  fail "a path the adoption does not carry was un-ignored or named: $(cat "$repo/.gitignore" "$repo.out")"
 for path in .agents/approval-requests/12.json .agents/schemas/review.schema.json .agents/schemas/new.schema.json package.json; do
   if git -C "$repo" check-ignore -q --no-index "$path"; then fail "$path is still ignored: $(cat "$repo/.gitignore")"; fi
 done
@@ -315,6 +337,30 @@ adopt "$repo" || { cat "$repo.out" >&2; fail "a repeated adoption from main with
 grep -Eq '^  \.agents/schemas/.* \(\*\.json in \.gitignore:2\)$' "$repo.out" &&
   grep -Eq '^  \.agents/approval-requests/.* \(\*\.json in \.gitignore:2\)$' "$repo.out" ||
   fail "a repeated adoption from main does not warn about the paths its branch hides: $(cat "$repo.out")"
+
+# -------------------------------------------- a name that differs only in case
+# The project's docs/ARCHITECTURE.md is renamed to docs/architecture.md with
+# its history: no second file.
+repo="$(make_target cased)"
+git -C "$repo" mv docs/architecture.md docs/ARCHITECTURE.md
+commit_all "$repo" "Upper-case architecture"
+assess "$repo"
+proposal="$(ls -td "$template"/.agents/assessments/cased-*/ | head -n 1)proposal.json"
+jq -e '.collisions | any(.path == "docs/architecture.md" and .kind == "case-only" and .project_path == "docs/ARCHITECTURE.md" and .resolution == "keep-project")' \
+  "$proposal" >/dev/null || fail "the proposal does not resolve the name that differs only in case: $(jq -c .collisions "$proposal")"
+adopt "$repo" || { cat "$repo.out" >&2; fail "the adoption with a name that differs only in case failed"; }
+[[ "$(git -C "$repo" ls-files docs | grep -ci '^docs/architecture\.md$')" -eq 1 && -n "$(git -C "$repo" ls-files -- docs/architecture.md)" ]] ||
+  fail "the project's document was not renamed, or a second one was written: $(git -C "$repo" ls-files docs)"
+[[ "$(cat "$repo/docs/architecture.md")" == "# Our architecture" ]] || fail "the renamed document lost its content: $(cat "$repo/docs/architecture.md")"
+git -C "$repo" diff -M --name-status main adopt/agent-codeyard -- docs | grep -Fxq $'R100\tdocs/ARCHITECTURE.md\tdocs/architecture.md' ||
+  fail "the adoption is no rename: $(git -C "$repo" diff -M --name-status main adopt/agent-codeyard -- docs)"
+[[ "$(git -C "$repo" log --follow --format=%s adopt/agent-codeyard -- docs/architecture.md | tail -n 1)" == "Fixture" ]] ||
+  fail "the history of the document was not kept: $(git -C "$repo" log --follow --format=%s adopt/agent-codeyard -- docs/architecture.md)"
+grep -Fq "docs/ARCHITECTURE.md -> docs/architecture.md" "$repo.out" || fail "the rename is not reported: $(cat "$repo.out")"
+state_before="$(state "$repo")"
+adopt "$repo" || { cat "$repo.out" >&2; fail "a repeated adoption after the rename failed"; }
+grep -Fq "is adopted already" "$repo.out" && [[ "$(state "$repo")" == "$state_before" ]] ||
+  fail "a repeated adoption after the rename changed the repository: $(cat "$repo.out")"
 
 # ------------------------------------------------------- a partial adoption
 # A run that stopped before its commit left some of the files, one of them
@@ -436,6 +482,11 @@ git -C "$repo" push -q origin main
 cat >"$tmp/bin/gh" <<'GH'
 #!/usr/bin/env bash
 echo "$*" >>"$MOCK_GH_LOG"
+previous=""
+for argument in "$@"; do
+  [[ "$previous" != --body-file ]] || cp "$argument" "$MOCK_GH_LOG.body"
+  previous="$argument"
+done
 case "$1 $2" in
   "repo view") echo main ;;
   "pr list") [[ ! -e "$MOCK_GH_LOG.created" ]] || echo "https://github.com/example/fixture/pull/1" ;;
@@ -451,5 +502,89 @@ adopt "$repo" --publish || { cat "$repo.out" >&2; fail "the published adoption f
 grep -q '^pr create --base main --head adopt/agent-codeyard' "$MOCK_GH_LOG" || fail "no pull request was opened: $(cat "$MOCK_GH_LOG")"
 adopt "$repo" --publish || { cat "$repo.out" >&2; fail "the repeated published adoption failed"; }
 [[ "$(grep -c '^pr create' "$MOCK_GH_LOG")" -eq 1 ]] && grep -Fq "(open already)" "$repo.out" || fail "a second pull request was opened"
+
+# ------------------- the integration branch, an application in a subdirectory
+# A Next.js application in nextjs/, whose work happens on develop, where a
+# push deploys; main is checked out. The adoption stops until develop is
+# assessed; then it records develop as the base, runs the project's checks in
+# nextjs/, isolated, adds no starter file beside the application, and its
+# pull request goes into develop and says that the merge deploys. A
+# fictional key in nextjs/.env, ignored by Git or tracked, never reaches the
+# check.
+repo="$(make_target integration)"
+git -C "$repo" rm -q package.json
+mkdir -p "$repo/nextjs/tests"
+printf '{"name": "web", "scripts": {"build": "next build", "test": "vitest run"}, "dependencies": {"next": "15.0.0"}}\n' >"$repo/nextjs/package.json"
+printf 'test("page", () => {});\n' >"$repo/nextjs/tests/page.test.js"
+printf 'DATABASE_URL=\n' >"$repo/nextjs/.env.example"
+printf '.env\n' >"$repo/nextjs/.gitignore"
+printf 'name: deploy\non:\n  push:\n    branches: [develop]\njobs:\n  ship:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npx vercel deploy --prod\n' \
+  >"$repo/.github/workflows/deploy.yml"
+commit_all "$repo" "Next.js in a subdirectory"
+git -C "$repo" checkout -q -b develop
+for number in 1 2; do
+  git -C "$repo" checkout -q -b "feature/$number" develop
+  printf 'feature %s\n' "$number" >"$repo/nextjs/feature-$number.txt"
+  commit_all "$repo" "Feature $number"
+  git -C "$repo" checkout -q develop
+  git -C "$repo" merge -q --no-ff -m "Merge pull request #$number from owner/feature-$number" "feature/$number"
+done
+git -C "$repo" checkout -q main
+git init -q --bare "$tmp/integration-origin.git"
+git -C "$repo" remote add origin "$tmp/integration-origin.git"
+git -C "$repo" push -q origin main develop
+assess "$repo"
+state_before="$(state "$repo")"
+if adopt "$repo"; then fail "an adoption of main, while features merge into develop, succeeded"; fi
+grep -Fq "the assessment measured main, but features merge into develop" "$repo.out" && [[ "$(state "$repo")" == "$state_before" ]] ||
+  fail "the adoption of the wrong branch was not stopped before any change: $(cat "$repo.out")"
+git -C "$repo" checkout -q develop
+assess "$repo"
+export MOCK_GH_LOG="$tmp/gh-integration.log"
+adopt "$repo" --publish || { cat "$repo.out" >&2; fail "the adoption of develop failed"; }
+[[ "$(git -C "$repo" rev-parse adopt/agent-codeyard~1)" == "$(git -C "$repo" rev-parse develop)" ]] || fail "the adoption does not start from develop"
+grep -Fxq "base: develop" "$repo/.agents/template.conf" || fail "the base is not recorded: $(grep -v '^#' "$repo/.agents/template.conf")"
+next_isolation="${isolation%; }"
+grep -Fxq "tests: ${next_isolation} NEXT_TELEMETRY_DISABLED=1; cd nextjs && ${guard}npm run test" "$repo/scripts/verify.conf" ||
+  fail "the check does not run isolated in the application's directory: $(cat "$repo/scripts/verify.conf")"
+# The check as verify.sh runs it, with an npm that loads nextjs/.env as
+# dotenv and Next.js do: while the file is there, the check stops and names
+# it, and the key is not available; in a clean working copy of the same
+# commit it runs, with its tracked .env.example, and finds no key.
+fictional_key="sk_test_fictional_0000_adopt"
+printf 'PAYMENTS_API_KEY=%s\n' "$fictional_key" >"$repo/nextjs/.env"
+mkdir -p "$tmp/npm-bin"
+printf '#!/bin/sh\n[ ! -f .env ] || { set -a; . ./.env; set +a; }\necho "npm ran; the key: ${PAYMENTS_API_KEY:-absent}"\n' >"$tmp/npm-bin/npm"
+chmod +x "$tmp/npm-bin/npm"
+check="$(sed -n 's/^tests: //p' "$repo/scripts/verify.conf")"
+if (cd "$repo" && PATH="$tmp/npm-bin:$PATH" PAYMENTS_API_KEY="$fictional_key" bash -eo pipefail -c "$check") >"$tmp/check.out" 2>&1; then
+  fail "the check ran with a credential file in its directory: $(cat "$tmp/check.out")"
+fi
+grep -Fq ".env: a credential file in the directory of this check, which a tool may load, whether Git tracks it or not" "$tmp/check.out" &&
+  ! grep -Fq -e "$fictional_key" -e "npm ran" "$tmp/check.out" ||
+  fail "the check does not stop with a message that names the file, or the key is available: $(cat "$tmp/check.out")"
+git -C "$repo" worktree add -q --detach "$tmp/integration-clean" adopt/agent-codeyard
+(cd "$tmp/integration-clean" && PATH="$tmp/npm-bin:$PATH" PAYMENTS_API_KEY="$fictional_key" bash -eo pipefail -c "$check") >"$tmp/check.out" 2>&1 &&
+  grep -Fxq "npm ran; the key: absent" "$tmp/check.out" ||
+  fail "the check does not run in a clean working copy, or the key is available there: $(cat "$tmp/check.out")"
+# A .env that Git tracks is loaded all the same: in a working copy where
+# it is committed, the check stops too and the key is not available.
+printf 'PAYMENTS_API_KEY=%s\n' "$fictional_key" >"$tmp/integration-clean/nextjs/.env"
+git -C "$tmp/integration-clean" add -f nextjs/.env
+git -C "$tmp/integration-clean" -c user.name=Test -c user.email=test@example.com commit -qm "A tracked .env"
+if (cd "$tmp/integration-clean" && PATH="$tmp/npm-bin:$PATH" bash -eo pipefail -c "$check") >"$tmp/check.out" 2>&1; then
+  fail "the check ran with a tracked credential file in its directory: $(cat "$tmp/check.out")"
+fi
+grep -Fq ".env: a credential file in the directory of this check" "$tmp/check.out" &&
+  ! grep -Fq -e "$fictional_key" -e "npm ran" "$tmp/check.out" ||
+  fail "the check does not stop on a tracked .env, or the key is available: $(cat "$tmp/check.out")"
+git -C "$repo" worktree remove --force "$tmp/integration-clean"
+rm "$repo/nextjs/.env"
+[[ ! -e "$repo/tests/unit" && ! -e "$repo/.env.example" ]] || fail "starter files were added beside an application in a subdirectory"
+grep -q '^pr create --base develop --head adopt/agent-codeyard' "$MOCK_GH_LOG" || fail "the pull request does not go into develop: $(cat "$MOCK_GH_LOG")"
+grep -Fq '**A merge of this pull request into `develop` triggers a deployment**' "$MOCK_GH_LOG.body" &&
+  grep -Fq '`.github/workflows/deploy.yml`, on a push to `develop`: runs npx vercel deploy --prod' "$MOCK_GH_LOG.body" ||
+  fail "the pull request does not say that the merge deploys: $(cat "$MOCK_GH_LOG.body")"
+grep -Fq "A merge into develop triggers a deployment" "$repo.out" || fail "the adoption does not say that the merge deploys: $(cat "$repo.out")"
 
 echo "adopt-repository tests passed"

@@ -3269,15 +3269,30 @@ assessment fails.
 and the package manager, from the manifests and lock files; the commands the
 project declares (package.json scripts, Makefile targets), the run steps of
 its CI, and those its tools run by convention (`go test ./...`, `pytest`),
-each marked by origin; the CI files with the secrets they refer to by name;
-the deployment files; the requirement, architecture, and decision documents
+each marked by origin and with the directory it runs in (the manifest's, or
+the `working-directory` of the CI step, its job, or the workflow); the CI
+files with the secrets they refer to by name, the events and branches that
+trigger them, and what makes one a deployment (a `deploy` name, a deploy
+action or command, a job `environment:`); the external actions the checks may
+take (`external_actions`): a database client or a migration, an email
+client, a client of an external API, telemetry (Next.js, Sentry, and the
+like), a deployment, from the dependencies of each manifest and the text of
+the commands; the deployment files; the requirement, architecture, and decision documents
 and instructions for agents, each with its first heading, its length, and its
 headings; the files that may hold a secret; the branch,
-the commit, and the uncommitted changes; and, against the template, the files
+the commit, and the uncommitted changes; the branches (`branches`): the one
+it measures, the checked-out branch, and the integration branch, the one
+features merge into, with the reason: among the checked-out branch, the
+default branch of `origin`, a develop-like branch, and the branches the CI
+runs on, the one with the most pull requests merged on its first-parent
+line, else the one the CI runs on for pull requests, else a develop-like
+branch ahead of the checked-out one, else the default branch; and, against the template, the files
 an adoption would add, the paths where the repository already has a file
 (collisions, with whether they have uncommitted changes; a planning document
 of the baseline, `docs/architecture.md`, `docs/PROJECT_REQUIREMENTS.md`, or
-`docs/roadmap.md`, is one also where the template has none), and the directories
+`docs/roadmap.md`, is one also where the template has none; a file whose name
+differs only in case, such as an upper-case `ARCHITECTURE.md` in `docs/`, is one of the kind
+`case-only`, with the project's name), and the directories
 both have (`.agents`, `.github`, `docs`, `scripts`, `tests`). It also names
 every path the workflow commits that an ignore rule of the repository would
 hide (`adoption.ignored`, with the rule, its file, and an ignored directory
@@ -3288,8 +3303,14 @@ and `.agents/verification-baseline`. A rule such as `*.json` would otherwise
 leave a new schema or an approval request out of a later commit, and
 `finish-feature.sh` refuses an approval request that Git ignores. The
 template's own product files stay behind: its site, `README.md`, `LICENSE`,
-`CONTRIBUTING.md`, `SECURITY.md`, its approval requests, and the placeholders
-`src/.gitkeep` and `infra/.gitkeep`.
+`CONTRIBUTING.md`, `SECURITY.md`, its approval requests, the placeholders
+`src/.gitkeep` and `infra/.gitkeep`, its decision records under
+`docs/decisions/` (all but the README), and the paths its own
+`.agents/template.conf` excludes; none of them is named as a hidden path
+either. When the application lives in a subdirectory (a manifest below the
+top, none at it, such as `nextjs/package.json`), the starter files
+`tests/unit/`, `tests/e2e/`, `tests/integration/`, and `.env.example` stay
+behind too (`adoption.left_out`): its tests and its environment are there.
 
 **The assessor is read-only**: a role of its own in `.agents/agents.conf`
 (`assessor`), run as a read-only session in an empty directory, with the
@@ -3324,11 +3345,20 @@ status `proposed, not approved`) with the files to add, the collisions and
 their resolutions, the profile, the verification commands, the template
 version (the commit of the template checkout), the ownership for a later
 `sync-template.sh` (the `paths:` of `.agents/template.conf`, and an
-`:(exclude)` for every template file the project keeps), what a later
+`:(exclude)` for every template file the project keeps), the base
+(`base`: the measured branch, the integration branch, and the proposed
+`base:` of `.agents/template.conf`), the deployment workflows that a push to
+the base starts (`deployment_on_merge`), the isolation of the checks
+(`isolation`) and the external actions of each check, what a later
 baseline would have to run, with its side effects, and the material of the
 baseline documents the adoption writes (the summary, the facts, the
 assumptions, the risks, the questions, and the project's own requirement,
-architecture, and decision documents). Every run makes a new
+architecture, and decision documents). The report has a section for each:
+it names the branch it measured and the integration branch, says plainly
+when the checked-out branch is not the one features merge into, and then
+asks the owner first among its questions which branch features start from
+and merge into; it says when a merge into the base triggers a deployment;
+and it names the external actions each check may take. Every run makes a new
 directory; an earlier assessment is never changed.
 
 ## Adopting an existing repository
@@ -3373,6 +3403,10 @@ it:
   proposal and pass it with `--proposal`, or change the repository and assess
   it again.
 - A file identical to the template's needs no resolution.
+- A file whose name differs only in case (`case-only`, such as
+  an upper-case `ARCHITECTURE.md` in `docs/`): it is renamed to the expected name with `git mv`,
+  so its content and history stay, and the resolution then applies as for a
+  file at that path. No second file is written beside it.
 
 Nothing is written under `.github/workflows/`: the project's CI stays as it
 is, and the template's CI workflows are left out. `paths:` excludes the
@@ -3384,7 +3418,24 @@ management, and deployment files are not touched; the commit runs none of the pr
 
 - `scripts/verify.conf`: the verification commands of the proposal, the
   project's own test, lint, and build commands, one check each, run in their
-  directory. The project's CI runs as before: the same commands become the
+  directory, isolated by default: each check starts by unsetting the
+  variables of the environment whose names look like credentials (`TOKEN`,
+  `SECRET`, `PASSWORD`, `API_KEY`, `ACCESS_KEY`, ...) and exporting
+  `DATABASE_URL` to a closed local port, `DO_NOT_TRACK=1`, and the switch
+  that turns off the telemetry of a tool the project uses
+  (`NEXT_TELEMETRY_DISABLED=1`), as the proposal's `isolation` lists them.
+  Clearing the environment does not shield a credential file that a tool
+  loads by itself (`.env`, `.env.local`, `.env.*.local`, `.dev.vars`): a
+  check stops with a message that names such a file, never its content,
+  while one is in its directory, whether Git tracks it or not, until the
+  owner has set up the shielding. A clean working copy, such as the
+  worktree of a feature, holds none that Git does not track; a tracked one
+  stops the check there too, until it is removed from the repository. An
+  example (`.env.example`, `.env.sample`, ...) does not stop it. The assessment names the credential
+  files it sees in the directories of the checks, tracked or not, names
+  only, in the proposal's `isolation.credential_files` and in the report.
+  A comment above each check names the external actions it may take. A check
+  that needs a real service is changed in a reviewed change. The project's CI runs as before: the same commands become the
   checks of `verify.sh`, which integrates them without replacing the CI. The
   file is the project's (`:(exclude)scripts/verify.conf` under `paths:`), so a
   sync never changes it. Without a command in the proposal, one check fails
@@ -3410,7 +3461,13 @@ management, and deployment files are not touched; the commit runs none of the pr
 
 No ADR is written: the adoption reconstructs no decision of the past.
 
+- `.agents/template.conf` records `base: <branch>` when the proposed base is
+  not `main`, so features start from and merge into it.
+
 **It stops before any change**, with a report that names each file, when the
+proposal's base is not the branch the assessment measured (check the base
+out and assess it again, or set `base.proposed` in the proposal to the
+measured branch), when the
 repository has uncommitted work (also untracked files), a collision is
 unresolved, a path the adoption writes is a symbolic link or lies under one,
 or the repository is not in the assessed state: another HEAD, or a file that
@@ -3426,8 +3483,10 @@ commits it. A file the project changed or removed after the adoption is left
 as it is and reported; a section is never appended twice.
 
 **Publishing** with `--publish` pushes only the branch `adopt/agent-codeyard`
-to `origin` and opens a pull request against the default branch, or reports
-the one that is open. Nothing is pushed to the default branch, merged, or
+to `origin` and opens a pull request against the proposed base (the default
+branch without one), or reports the one that is open. When a merge into the
+base triggers a deployment, the adoption says so, and the pull request
+description repeats it with the workflow and its trigger. Nothing is pushed to the default branch, merged, or
 deployed.
 
 After the merge, `./scripts/sync-template.sh` in the repository takes over

@@ -886,7 +886,7 @@ grep -Eq "^ACCEPTED +types \(missing tool: tsc\): an accepted exception of scrip
 if MOCK_RUFF_EXIT=1 run_verify "$project"; then fail "the known failure of a check without an exception passed"; fi
 [[ ! -e "$project$record" ]] || fail "a failed verification kept the record of the earlier pass"
 for line in "accepted-failure: types" "accepted-failure: nothing because" "accepted-failure [default]: types reason"; do
-  project="$(setup_project "exception-$RANDOM" "types: tsc" "$line")"
+  project="$(setup_project "$(basename "$(mktemp -d "$tmp/exception.XXXXXX")")" "types: tsc" "$line")"
   expect_failure "$project" "a malformed exception must be refused: $line"
   grep -Fq "accepted-failure" "$project/out.log" || fail "the refusal of '$line' does not say why"
 done

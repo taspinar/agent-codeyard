@@ -13,7 +13,9 @@ usage() {
   echo "installers, opens no file that may hold a secret (.env, keys, credentials),"
   echo "and writes nothing in the assessed repository. It gathers the facts (layout,"
   echo "entry points, stack, declared commands, CI, deployment files, documents,"
-  echo "files that collide with the template's, and the working-tree state), and a"
+  echo "files that collide with the template's, the working-tree state, the branch it"
+  echo "measures and the integration branch features merge into, and the external"
+  echo "actions the checks may take), and a"
   echo "read-only agent (role 'assessor' in .agents/agents.conf) writes a report that"
   echo "keeps facts, assumptions, and questions apart, with a proposal for the"
   echo "adoption."
@@ -126,9 +128,15 @@ readable() {
 (cd "$target" && find . -maxdepth 4 \( -name .git -o -name node_modules -o -name vendor -o -name .venv -o -name venv \) -prune -o \
   \( -type f -o -type l \) \( -name '.env' -o -name '.env.*' -o -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx' \
   -o -name 'id_rsa*' -o -name 'id_ed25519*' -o -name 'credentials*.json' -o -name 'service-account*.json' -o -name 'secrets.*' \
-  -o -name '.npmrc' -o -name '.pypirc' -o -name '.netrc' \) -print) | sed 's#^\./##' | sort >"$work/secret-files" || true
-jq -R . "$work/secret-files" | jq -s --slurpfile files "$work/files.json" \
-  'map({id: "secret-file:\(.)", path: ., tracked_or_unignored: (. as $p | any($files[0][]; . == $p)), contents_read: false})' \
+  -o -name '.npmrc' -o -name '.pypirc' -o -name '.netrc' -o -name '.dev.vars' \) -print) | sed 's#^\./##' | sort >"$work/secret-files" || true
+# Which of them Git tracks: a check stops on one in its directory either way
+# (proposal, isolation.credential_files); the report says which are tracked.
+if [[ "$is_git" -eq 1 && -s "$work/secret-files" ]]; then
+  tgit ls-files --cached | grep -Fx -f "$work/secret-files" || true
+fi | jq -R . | jq -s . >"$work/secret-files-tracked.json"
+jq -R . "$work/secret-files" | jq -s --slurpfile files "$work/files.json" --slurpfile tracked "$work/secret-files-tracked.json" \
+  'map({id: "secret-file:\(.)", path: ., tracked_or_unignored: (. as $p | any($files[0][]; . == $p)),
+        tracked: (. as $p | any($tracked[0][]; . == $p)), contents_read: false})' \
   >"$work/secrets.json"
 is_secret() {
   grep -Fxq -- "$1" "$work/secret-files"
@@ -142,6 +150,10 @@ def redact_text: redact
   | gsub("(?<name>[A-Za-z_]*(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY|PRIVATE_KEY|CREDENTIAL|AUTH)[A-Za-z0-9_]*)(?<sep>[=:][ ]?)(?<value>\"[^\"]*\"|'"'"'[^'"'"']*'"'"'|[^\\s\"'"'"']+)"; "\(.name)\(.sep)[value omitted]"; "i")
   | gsub("(?<scheme>Bearer|Basic|token) (?<value>[A-Za-z0-9._~+/=-]{8,})"; "\(.scheme) [value omitted]"; "i")
   | gsub("//[^/@\\s]+@"; "//[credentials omitted]@");'
+
+# glob: a branch pattern of a trigger of GitHub Actions as a regular
+# expression: '*' within a name, '**' across '/'.
+glob_jq='def glob: "^" + (gsub("(?<c>[.+?^${}()|\\[\\]\\\\])"; "\\\(.c)") | gsub("\\*\\*"; "\u0001") | gsub("\\*"; "[^/]*") | gsub("\u0001"; ".*")) + "$";'
 
 # Manifests and lock files, by name, at most three directories deep.
 jq '
@@ -250,27 +262,124 @@ while IFS= read -r path; do
   fi
   readable "$path" || continue
   without_env "$target/$path" >"$work/workflow"
+  : >"$work/triggers"
+  : >"$work/deploys"
+  # The filtered workflow, as records of three fields: 'run', the working
+  # directory of the step (its own, or the defaults of its job or of the
+  # workflow), and the command; 'trigger', an event and a branch it is
+  # limited to ('*' for any branch); 'deploy', and what makes the workflow a
+  # deployment.
   awk '
-    function indent(s) { match(s, /^[ ]*(- )?/); return RLENGTH }
+    function indent(s) { match(s, /^[ ]*/); return RLENGTH }
+    function keyindent(s) { match(s, /^[ ]*(- )?/); return RLENGTH }
+    function unquote(v) {
+      sub(/[ ]+#.*$/, "", v); sub(/[ ]+$/, "", v)
+      if (v ~ /^".*"$/ || v ~ /^'"'"'.*'"'"'$/) v = substr(v, 2, length(v) - 2)
+      return v
+    }
+    function value(s) { sub(/^[ ]*(- )?[^:]*:[ ]*/, "", s); return s }
+    function record(type, a, b) { printf "%s\037%s\037%s%c", type, a, b, 0 }
+    function directory(d) { d = unquote(d); if (d ~ /\$\{\{/) return ""; sub(/^\.\//, "", d); sub(/\/+$/, "", d); return d == "." ? "" : d }
+    function step_end(   first, plain) {
+      if (has_run) {
+        n++; runs[n] = run_text; run_job[n] = job; run_dir[n] = step_dir
+        first = run_text; sub(/\n.*/, "", first)
+        # A database migration named deploy is no deployment.
+        plain = run_text; gsub(/migrate deploy/, "migrate", plain)
+        if (plain ~ /(^|[^A-Za-z0-9_-])(deploy|vercel|kubectl (apply|rollout)|helm (upgrade|install)|terraform apply|pulumi up|wrangler publish|docker push|git push heroku)([^A-Za-z0-9_-]|$)/) deploy("runs " first)
+      }
+      has_run = 0; step_dir = ""
+    }
+    function branches(event, list,   items, k, m, x) {
+      list = unquote(list); if (list ~ /^\[.*\]$/) list = substr(list, 2, length(list) - 2)
+      m = split(list, items, ","); for (k = 1; k <= m; k++) { x = items[k]; gsub(/^[ ]+|[ ]+$/, "", x); x = unquote(x); if (x != "") { limited[event] = 1; trig[++t] = event "\037" x } }
+    }
+    function events(list,   items, k, m, x) {
+      list = unquote(list); if (list ~ /^\[.*\]$/) list = substr(list, 2, length(list) - 2)
+      m = split(list, items, ","); for (k = 1; k <= m; k++) { x = items[k]; gsub(/^[ ]+|[ ]+$/, "", x); x = unquote(x); if (x != "") seen[x] = 1 }
+    }
+    function deploy(reason) { if (!(reason in deploys)) { deploys[reason] = 1; record("deploy", reason, "") } }
     block {
       if ($0 ~ /^[ ]*$/) { text = text "\n"; next }
-      if (indent($0) > base) { line = $0; sub(/^[ ]+/, "", line); text = text (text == "" ? "" : "\n") line; next }
-      sub(/\n+$/, "", text); printf "%s%c", text, 0; block = 0
+      if (keyindent($0) > base) { line = $0; sub(/^[ ]+/, "", line); text = text (text == "" ? "" : "\n") line; next }
+      sub(/\n+$/, "", text); run_text = text; has_run = 1; block = 0
     }
-    /^[ ]*(- )?run:[ ]*/ {
-      base = indent($0); value = $0; sub(/^[ ]*(- )?run:[ ]*/, "", value)
-      if (value ~ /^[|>][-+0-9]*[ ]*$/) { block = 1; text = ""; next }
-      if (value ~ /^".*"$/ || value ~ /^'"'"'.*'"'"'$/) value = substr(value, 2, length(value) - 2)
-      printf "%s%c", value, 0
+    /^[ ]*(#.*)?$/ { next }
+    {
+      ind = indent($0); key = keyindent($0); item = ($0 ~ /^[ ]*- /)
+      line = substr($0, key + 1)
+      name = line; sub(/:.*/, "", name); gsub(/["'"'"']/, "", name)
+      if (ind == 0) {
+        step_end(); in_steps = 0; section = ""
+        if (name == "on" || name == "true") { section = "on"; on_ind = -1; if (value($0) != "") events(value($0)) }
+        else if (name == "jobs") { section = "jobs"; job_ind = -1 }
+        else if (name == "defaults") section = "defaults"
+        next
+      }
+      if (section == "on") {
+        if (on_ind < 0) on_ind = ind
+        if (ind == on_ind && !item) { event = name; seen[event] = 1; filter = ""; filter_ind = -1; next }
+        if (!item && line ~ /^[A-Za-z_-]+:/) { filter = name; filter_ind = ind; if (filter == "tags") tagged[event] = 1; if (filter == "branches" && value($0) != "") branches(event, value($0)); next }
+        if (item && filter == "branches" && ind >= filter_ind) branches(event, substr($0, key + 1))
+        next
+      }
+      if (section == "defaults") { if (name == "working-directory") workflow_dir = directory(value($0)); next }
+      if (section != "jobs") next
+      if (job_ind < 0) job_ind = ind
+      if (ind == job_ind && !item) { step_end(); in_steps = 0; in_defaults = 0; job = name; next }
+      if (in_defaults && ind <= defaults_ind) in_defaults = 0
+      if (in_steps) {
+        if (item_ind < 0 && item) item_ind = ind
+        if (item && ind == item_ind) step_end()
+        else if (ind <= steps_ind) { step_end(); in_steps = 0 }
+      }
+      if (in_steps && key == item_ind + 2) {
+        if (name == "run") {
+          v = value($0)
+          if (v ~ /^[|>][-+0-9]*[ ]*$/) { block = 1; base = key; text = ""; next }
+          if (v ~ /^".*"$/ || v ~ /^'"'"'.*'"'"'$/) v = substr(v, 2, length(v) - 2)
+          run_text = v; has_run = 1
+        }
+        if (name == "working-directory") step_dir = directory(value($0))
+        if (name == "uses") {
+          v = unquote(value($0))
+          if (tolower(v) ~ /(deploy|vercel|netlify|flyctl|wrangler|gh-pages|pages-action|aws-actions\/amazon-ecs|aws-actions\/aws-cloudformation|heroku|kubectl|helm|firebase)/) deploy("uses " v)
+        }
+        next
+      }
+      if (name == "steps" && !item) { step_end(); in_steps = 1; steps_ind = ind; item_ind = -1; next }
+      if (name == "defaults" && !item) { in_defaults = 1; defaults_ind = ind; next }
+      if (in_defaults && name == "working-directory") job_dir[job] = directory(value($0))
+      if (name == "environment" && !in_steps && ind > job_ind) deploy("environment of the job " job)
     }
-    END { if (block) { sub(/\n+$/, "", text); printf "%s%c", text, 0 } }' "$work/workflow" |
-    while IFS= read -r -d '' run; do
-      [[ -n "$run" ]] && command_fact ci "$path" "" "$run" ""
+    END {
+      if (block) { sub(/\n+$/, "", text); run_text = text; has_run = 1 }
+      step_end()
+      for (k = 1; k <= n; k++) {
+        d = run_dir[k]; if (d == "") d = job_dir[run_job[k]]; if (d == "") d = workflow_dir
+        record("run", d, runs[k])
+      }
+      for (k = 1; k <= t; k++) { split(trig[k], pair, "\037"); record("trigger", pair[1], pair[2]) }
+      for (e in seen) if (!(e in limited) && !(e in tagged)) record("trigger", e, "*")
+    }' "$work/workflow" |
+    while IFS= read -r -d '' entry; do
+      type="${entry%%$'\x1f'*}"
+      rest="${entry#*$'\x1f'}"
+      first="${rest%%$'\x1f'*}"
+      second="${rest#*$'\x1f'}"
+      case "$type" in
+        run) [[ -n "$second" ]] && command_fact ci "$path" "$first" "$second" "" ;;
+        trigger) jq -cn --arg event "$first" --arg branch "$second" '{event: $event, branch: $branch}' >>"$work/triggers" ;;
+        deploy) jq -cn --arg reason "$first" "$redact_jq"'$reason | redact_text' >>"$work/deploys" ;;
+      esac
     done
+  [[ "${path,,}" != *deploy* ]] || jq -cn '"the name of the workflow"' >>"$work/deploys"
   jq -cn --arg path "$path" \
     --argjson secrets "$(grep -oE 'secrets\.[A-Za-z_][A-Za-z0-9_]*' "$work/workflow" | sed 's/^secrets\.//' | sort -u | jq -R . | jq -sc .)" \
     --argjson actions "$(sed -n 's/^[[:space:]]*-\{0,1\}[[:space:]]*uses:[[:space:]]*["'"'"']\{0,1\}\([^"'"'"' #]*\).*/\1/p' "$work/workflow" | sort -u | jq -R . | jq -sc .)" \
-    '{id: "ci:\($path)", path: $path, system: "github-actions", parsed: true, secret_references: $secrets, actions: $actions}' >>"$work/ci.jsonl"
+    --slurpfile triggers "$work/triggers" --slurpfile deploys "$work/deploys" \
+    '{id: "ci:\($path)", path: $path, system: "github-actions", parsed: true, secret_references: $secrets, actions: $actions,
+      triggers: ($triggers | unique_by([.event, .branch])), deploys: ($deploys | unique)}' >>"$work/ci.jsonl"
 done < <(grep -E '^(\.github/workflows/[^/]+\.ya?ml|\.gitlab-ci\.yml|\.circleci/config\.ya?ml|Jenkinsfile|azure-pipelines\.yml|\.travis\.yml|bitbucket-pipelines\.yml)$' "$work/files" | sort)
 jq -s 'to_entries | map(.value + {id: "command:\(.key + 1)"})' "$work/commands.jsonl" >"$work/commands.json"
 jq -s . "$work/ci.jsonl" >"$work/ci.json"
@@ -288,6 +397,48 @@ jq '[.[] | . as $p | (split("/") | last) as $name
      elif $p | test("^\\.github/workflows/[^/]*deploy[^/]*\\.ya?ml$"; "i") then "ci-deploy"
      else empty end) as $kind
   | {id: "deploy:\($p)", path: $p, kind: $kind, contents_read: false}]' "$work/files.json" >"$work/deployment.json"
+
+# The external actions the project's checks may take when they run: a
+# database a build or a test reaches, email, external APIs, and telemetry,
+# from the dependencies of each manifest (for the commands in its directory)
+# and from the text of the commands. Only names are matched; nothing runs.
+: >"$work/external.jsonl"
+while IFS= read -r path; do
+  readable "$path" || continue
+  dir="$(dir_of "$path")"
+  if [[ "${path##*/}" == package.json || "${path##*/}" == composer.json ]]; then
+    jq -r '[.dependencies, .devDependencies, .optionalDependencies, .peerDependencies, .require, ."require-dev"]
+      | map(select(type == "object") | keys[]) | unique[]' "$target/$path" 2>/dev/null || true
+  else
+    sed -e 's/#.*//' "$target/$path" | grep -oE '[A-Za-z0-9_.@/-]+' | tr 'A-Z' 'a-z' | sort -u || true
+  fi | awk -v source="$path" -v directory="$dir" '
+    function fact(kind, what, env) { printf "%s\t%s\t%s\t%s\t%s\t%s\n", kind, source, directory, $0, what, env }
+    /^(@prisma\/client|prisma|pg|postgres|mysql2?|mongoose|mongodb|typeorm|sequelize|knex|drizzle-orm|@supabase\/supabase-js|redis|ioredis|@neondatabase\/serverless|@planetscale\/database|psycopg|psycopg2|psycopg2-binary|sqlalchemy|django|pymongo|asyncpg|mysqlclient|activerecord|gorm\.io\/gorm|github\.com\/lib\/pq|github\.com\/jackc\/pgx(\/v[0-9]+)?)$/ {
+      fact("database", "a database client; a build or a test may connect to the database it is configured for", "") }
+    /^(nodemailer|@sendgrid\/mail|resend|postmark|mailgun\.js|@aws-sdk\/client-ses|sendgrid|django-anymail|flask-mail|actionmailer)$/ {
+      fact("email", "an email client; a test may send email", "") }
+    /^(stripe|openai|@anthropic-ai\/sdk|anthropic|twilio|aws-sdk|@aws-sdk\/.*|boto3|firebase|firebase-admin|googleapis|@google-cloud\/.*|google-cloud-.*|@slack\/web-api|@octokit\/rest)$/ {
+      if ($0 != "@aws-sdk/client-ses") fact("external-api", "a client of an external API; a test may call it with the credentials it finds", "") }
+    /^next$/ { fact("telemetry", "Next.js sends telemetry during a build", "NEXT_TELEMETRY_DISABLED") }
+    /^nuxt$/ { fact("telemetry", "Nuxt sends telemetry", "NUXT_TELEMETRY_DISABLED") }
+    /^astro$/ { fact("telemetry", "Astro sends telemetry during a build", "ASTRO_TELEMETRY_DISABLED") }
+    /^gatsby$/ { fact("telemetry", "Gatsby sends telemetry", "GATSBY_TELEMETRY_DISABLED") }
+    /^turbo$/ { fact("telemetry", "Turborepo sends telemetry", "TURBO_TELEMETRY_DISABLED") }
+    /^(@sentry\/.*|sentry-sdk|posthog|posthog-js|posthog-node|@vercel\/analytics|dd-trace|ddtrace|newrelic|@opentelemetry\/.*)$/ {
+      fact("telemetry", "a monitoring or analytics client; a test may report to its service", "") }' |
+    jq -R 'split("\t") | {kind: .[0], source: .[1], directory: .[2], dependency: .[3], what: .[4], env: (if .[5] == "" then null else .[5] end)}'
+done < <(awk -F/ 'NF <= 3' "$work/files" | grep -E '(^|/)(package\.json|composer\.json|requirements[^/]*\.txt|pyproject\.toml|Pipfile|Gemfile|go\.mod)$' | sort) >>"$work/external.jsonl"
+jq -c '.[] | . as $c | "\(.command)\n\(.definition // "")" as $text
+  | (["database", "prisma (migrate( [a-z]+)?|db (push|seed|pull))|(manage\\.py|django-admin)[^\n;&|]* migrate|alembic upgrade|knex migrate|db:migrate|drizzle-kit (push|migrate)|(rails|rake) db:|flyway|liquibase|(^|[^A-Za-z])(psql|mongosh) ",
+       "a database migration or client; it reaches the database it is configured for"],
+     ["external-api", "(^|[^A-Za-z0-9_-])(curl|wget)( |$)", "a download or a request to a server"],
+     ["deployment", "(^|[^A-Za-z0-9_-])((?<!migrate )deploy|vercel|kubectl (apply|rollout)|helm (upgrade|install)|terraform apply|pulumi up|docker push)([^A-Za-z0-9_-]|$)",
+       "a deployment"]) as [$kind, $re, $what]
+  | select($text | test($re))
+  | {kind: $kind, source: $c.id, directory: ($c.directory // "."), dependency: null, what: "\($what) (`\($text | [match($re).string][0] | ltrimstr(" ") | rtrimstr(" "))`)", env: null}' \
+  "$work/commands.json" >>"$work/external.jsonl"
+jq -s 'unique_by([.kind, .source, .dependency, .what]) | map(. + {id: "external:\(.kind):\(.source)\(if .dependency then "#\(.dependency)" else "" end)"})
+  | unique_by(.id)' "$work/external.jsonl" >"$work/external.json"
 
 # Documents: requirements, architecture, decisions, instructions for agents,
 # and the rest, with their first heading, their length, and their headings,
@@ -344,6 +495,8 @@ jq -s 'unique_by([.source, .kind, .target]) | map(. + {id: "entry:\(.source)#\(.
 
 # Git: the branch, the commit, the uncommitted changes, and the remotes,
 # without the credentials of a remote URL.
+branch=""
+head=""
 if [[ "$is_git" -eq 1 ]]; then
   branch="$(tgit symbolic-ref -q --short HEAD 2>/dev/null || true)"
   head="$(tgit rev-parse -q --verify HEAD 2>/dev/null || true)"
@@ -358,6 +511,51 @@ else
   jq -n '{id: "git", repository: false, branch: null, detached: false, head: null, uncommitted_changes: [], remotes: []}' >"$work/git.json"
 fi
 
+# The branches: the one the assessment measures, the checked-out one, and
+# the integration branch, the one features merge into, which may be another,
+# with other CI and documents. The candidates are the checked-out branch, the
+# default branch of origin, a develop-like branch, and a branch the CI runs
+# on, local or remote; a feature branch is none, as it carries the merges of
+# its base. The integration branch is the candidate with the most pull
+# requests merged on its first-parent line, else the one the CI runs on for
+# pull requests, else a develop-like branch with commits the checked-out one
+# lacks, else the default branch, else the checked-out one.
+: >"$work/candidates.jsonl"
+default_branch=""
+if [[ "$is_git" -eq 1 && -n "$head" ]]; then
+  default_branch="$(tgit symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+  default_branch="${default_branch#origin/}"
+  jq -r '[.[] | .triggers[]? | select(.event == "push" or .event == "pull_request") | .branch | select(test("^[A-Za-z0-9._/-]+$"))] | unique[]' \
+    "$work/ci.json" >"$work/ci-branches"
+  tgit for-each-ref --format='%(refname)' refs/heads refs/remotes 2>/dev/null |
+    sed -n -e 's#^refs/heads/\(.*\)$#\1\t&#p' -e 's#^refs/remotes/[^/]*/\(.*\)$#\1\t&#p' | awk -F'\t' '$1 != "HEAD" && !seen[$1]++' |
+    while IFS=$'\t' read -r name ref; do
+      [[ "$name" == "$branch" || "$name" == "$default_branch" ]] || grep -Fxq -- "$name" "$work/ci-branches" ||
+        [[ "$name" =~ ^(develop|development|dev|staging|next|integration)$ ]] || continue
+      merges="$(tgit log --first-parent -n 200 --format=%s "$ref" 2>/dev/null | grep -Ec '^Merge pull request #[0-9]+|\(#[0-9]+\)$' || true)"
+      jq -cn --arg name "$name" --arg ref "$(sed -e 's#^refs/heads/##' -e 's#^refs/remotes/##' <<<"$ref")" --argjson ahead "$(tgit rev-list --count "HEAD..$ref" 2>/dev/null || echo 0)" \
+        --argjson behind "$(tgit rev-list --count "$ref..HEAD" 2>/dev/null || echo 0)" --argjson merges "${merges:-0}" \
+        '{name: $name, ref: $ref, ahead: $ahead, behind: $behind, pull_request_merges: $merges}' >>"$work/candidates.jsonl"
+    done
+fi
+jq -s --arg measured "$branch" --arg default "$default_branch" --slurpfile ci "$work/ci.json" "$glob_jq"'
+  def first_of: sort_by([-.pull_request_merges, (if .pull_request_target then 0 else 1 end), (if .develop_like then 0 else 1 end), -.ahead]) | .[0] | select(. != null);
+  [$ci[0][] | .triggers[]? | select(.event == "pull_request" and .branch != "*") | .branch] as $targets
+  | map(. as $c | . + {develop_like: (.name | test("^(develop|development|dev|staging|next|integration)$")),
+      pull_request_target: any($targets[]; . as $t | $c.name | test($t | glob))}) as $candidates
+  | (([$candidates[] | select(.pull_request_merges > 0)] | first_of
+        | . + {reason: "it has the most pull requests merged on its line, \(.pull_request_merges) of its last 200 commits"})
+     // ([$candidates[] | select(.pull_request_target)] | first_of | . + {reason: "the CI runs on the pull requests into it"})
+     // ([$candidates[] | select(.develop_like and .ahead > 0)] | first_of
+        | . + {reason: "it is a develop-like branch with \(.ahead) commits the checked-out branch lacks"})
+     // ([$candidates[] | select(.name == $default)] | .[0] | select(. != null) | . + {reason: "it is the default branch of origin"})
+     // ([$candidates[] | select(.name == $measured)] | .[0] | select(. != null) | . + {reason: "it is the checked-out branch, and nothing points to another"})
+     // null) as $integration
+  | {id: "branches", measured: (if $measured == "" then null else $measured end), default: (if $default == "" then null else $default end),
+     integration: ($integration | if . == null then null else {name, ref, ahead, behind, pull_request_merges, reason} end),
+     differs: ($integration != null and $integration.name != $measured),
+     candidates: $candidates}' "$work/candidates.jsonl" >"$work/branches.json"
+
 # ------------------------------------------------------- against the template
 # The files an adoption would bring, which of them the template owns
 # (.agents/template.conf, paths:) and which become the project's own, and
@@ -367,14 +565,39 @@ fi
 not_carried='^(documentation/|\.github/workflows/pages\.yml$|README\.md$|LICENSE$|CONTRIBUTING\.md$|SECURITY\.md$|\.agents/approval-requests/|src/\.gitkeep$|infra/\.gitkeep$)'
 template_paths=()
 read -r -a template_paths <<<"$(sed -n 's/^paths:[[:space:]]*//p' "$root/.agents/template.conf" 2>/dev/null | head -n 1)" || true
+# The exclusions of .agents/template.conf are files of the template checkout's
+# own, and the decision records under docs/decisions/ are the template's own
+# decisions, all but their README: an adoption carries neither, so neither is
+# a path of the workflow in the repository.
+template_exclusions=()
+for spec in ${template_paths[@]+"${template_paths[@]}"}; do
+  [[ "$spec" != ':(exclude)'* && "$spec" != ':!'* && "$spec" != ':^'* ]] || template_exclusions+=("$spec")
+done
+# The starter files of a new project's tests and environment stay behind when
+# the application is in a subdirectory (no manifest at the top, one below):
+# its tests and its env example are there, and empty directories at the top
+# would only mislead.
+application_directories="$(jq -r 'if any(.manifests[]; .path | contains("/") | not) then empty
+  else [.manifests[] | .path | sub("/[^/]*$"; "")] | unique | .[] end' "$work/stack.json")"
+starters='^(tests/(unit|e2e|integration)/\.gitkeep|\.env\.example)$'
+: >"$work/left-out.jsonl"
 # The planning documents of the baseline are destinations of the adoption
 # also where the template has none: the adoption writes them from the
 # assessment, and a document the project has there is a collision, which the
 # assessor judges.
 {
-  git -C "$root" ls-files | grep -Ev "$not_carried" || true
+  git -C "$root" ls-files -- . ${template_exclusions[@]+"${template_exclusions[@]}"} | grep -Ev "$not_carried" |
+    awk '!/^docs\/decisions\// || $0 == "docs/decisions/README.md"' || true
   printf '%s\n' docs/architecture.md docs/PROJECT_REQUIREMENTS.md docs/roadmap.md
 } | sort -u >"$work/template-files"
+if [[ -n "$application_directories" ]]; then
+  grep -E "$starters" "$work/template-files" | while IFS= read -r path; do
+    jq -cn --arg path "$path" --arg directories "$application_directories" \
+      '{path: $path, reason: "the application is in \($directories | split("\n") | map("\(.)/") | join(", ")), with its tests and its environment there"}'
+  done >"$work/left-out.jsonl"
+  grep -Ev "$starters" "$work/template-files" >"$work/template-files.kept" || true
+  mv "$work/template-files.kept" "$work/template-files"
+fi
 if [[ ${#template_paths[@]} -gt 0 ]]; then
   git -C "$root" ls-files -- "${template_paths[@]}" | sort >"$work/template-owned" || true
 else
@@ -411,13 +634,22 @@ if [[ "$is_git" -eq 1 ]]; then
     tgit check-ignore -z -v -n --no-index --stdin 2>/dev/null || true)
 fi
 jq -s . "$work/ignored.jsonl" >"$work/ignored.json"
+jq -s . "$work/left-out.jsonl" >"$work/left-out.json"
 
 : >"$work/adoption.jsonl"
 while IFS= read -r path; do
   ownership=project
   grep -Fxq -- "$path" "$work/template-owned" && ownership=template
   kind=""
-  if [[ -L "$target/$path" ]]; then
+  # A file of the project whose name differs only in case, such as
+  # docs/ARCHITECTURE.md for docs/architecture.md: a second file beside it
+  # would split the document, so it is a collision, which the adoption
+  # resolves by renaming the project's file.
+  variant=""
+  grep -Fxq -- "$path" "$work/files" || variant="$(grep -Fxi -- "$path" "$work/files" | head -n 1 || true)"
+  if [[ -n "$variant" ]]; then
+    kind="case-only:$variant"
+  elif [[ -L "$target/$path" ]]; then
     kind=symlink
   elif [[ -d "$target/$path" ]]; then
     kind=directory
@@ -446,9 +678,10 @@ jq -s --slurpfile changes "$work/changes.json" '
   | {additions: map(select(.shared | not) | select(.kind == "") | {path, ownership}),
      collisions: map(select(.shared | not) | select(.kind != "")
        | {id: "collision:\(.path)", path, ownership,
-          kind: (if .kind | startswith("file-in-the-way:") then "file-in-the-way" else .kind end),
+          kind: (if .kind | startswith("file-in-the-way:") then "file-in-the-way" elif .kind | startswith("case-only:") then "case-only" else .kind end),
           blocking_path: (if .kind | startswith("file-in-the-way:") then .kind[16:] else null end),
-          uncommitted: (.path as $p | $changed | any(. == $p or startswith($p + "/")))}),
+          project_path: (if .kind | startswith("case-only:") then .kind[10:] else null end),
+          uncommitted: ((if .kind | startswith("case-only:") then .kind[10:] else .path end) as $p | $changed | any(. == $p or startswith($p + "/")))}),
      shared_directories: map(select(.shared) | {id: "shared:\(.path)", path, files})}' "$work/adoption.jsonl" >"$work/adoption.json"
 
 name="$(basename "$target" | tr -c 'A-Za-z0-9._-' '-' | sed 's/-*$//')"
@@ -461,22 +694,25 @@ jq -n --arg name "$name" --arg path "$target" --arg time "$time" \
   --slurpfile list "$work/files.json" --slurpfile git "$work/git.json" --slurpfile stack "$work/stack.json" \
   --slurpfile commands "$work/commands.json" --slurpfile ci "$work/ci.json" --slurpfile deployment "$work/deployment.json" \
   --slurpfile documents "$work/documents.json" --slurpfile secrets "$work/secrets.json" --slurpfile entries "$work/entries.json" \
-  --slurpfile adoption "$work/adoption.json" --slurpfile ignored "$work/ignored.json" '
+  --slurpfile adoption "$work/adoption.json" --slurpfile ignored "$work/ignored.json" --slurpfile branches "$work/branches.json" \
+  --slurpfile external "$work/external.json" --slurpfile left_out "$work/left-out.json" \
+  --argjson exclusions "$(printf '%s\n' ${template_exclusions[@]+"${template_exclusions[@]}"} | jq -R . | jq -sc 'map(select(. != ""))')" '
   {schema: "assessment-facts/v1", assessed_at: $time,
    repository: {name: $name, path: $path},
    template: {repository: (if $template_repository == "" then null else $template_repository end), commit: $template_commit,
               uncommitted_changes: $template_dirty, checkout: $checkout},
-   git: $git[0],
+   git: $git[0], branches: $branches[0],
    layout: {id: "layout", files: $files,
             top_level: ($list[0] | group_by(split("/")[0])
               | map({name: (.[0] | split("/")[0]), type: (if (.[0] | contains("/")) then "directory" else "file" end), files: length}))},
    manifests: $stack[0].manifests, lockfiles: $stack[0].lockfiles, entry_points: $entries[0],
    commands: $commands[0], ci: $ci[0], deployment: $deployment[0], documents: $documents[0], secret_files: $secrets[0],
-   adoption: ($adoption[0] + {ignored: $ignored[0], template_paths: $template_paths,
-     not_carried: ["documentation/", ".github/workflows/pages.yml", "README.md", "LICENSE", "CONTRIBUTING.md", "SECURITY.md",
-                   ".agents/approval-requests/", "src/.gitkeep", "infra/.gitkeep"]})}
-  | .evidence_ids = (["git", "layout"] + [(.manifests, .lockfiles, .entry_points, .commands, .ci, .deployment, .documents,
-      .secret_files, .adoption.collisions, .adoption.ignored, .adoption.shared_directories)[] | .id] | unique)' >"$work/facts.json"
+   external_actions: $external[0],
+   adoption: ($adoption[0] + {ignored: $ignored[0], template_paths: $template_paths, left_out: $left_out[0],
+     not_carried: (["documentation/", ".github/workflows/pages.yml", "README.md", "LICENSE", "CONTRIBUTING.md", "SECURITY.md",
+                   ".agents/approval-requests/", "src/.gitkeep", "infra/.gitkeep", "docs/decisions/ (all but its README.md)"] + $exclusions)})}
+  | .evidence_ids = (["git", "layout", "branches"] + [(.manifests, .lockfiles, .entry_points, .commands, .ci, .deployment, .documents,
+      .secret_files, .external_actions, .adoption.collisions, .adoption.ignored, .adoption.shared_directories)[] | .id] | unique)' >"$work/facts.json"
 
 # ------------------------------------------------------------ the output
 mkdir -p "$primary/.agents/assessments"
@@ -491,6 +727,9 @@ done
 cp "$work/facts.json" "$dir/facts.json"
 echo "Assessment facts: ${dir#"$primary"/}/facts.json"
 jq -r '"  Repository: \(.repository.path)\(if .git.repository then ", branch \(.git.branch // "(detached)"), \(.git.uncommitted_changes | length) uncommitted changes" else ", not a Git repository" end)",
+  (.branches | select(.measured != null or .integration != null)
+    | "  Measured branch: \(.measured // "(detached)"); integration branch: \(.integration.name // "unknown")\(if .integration then " (\(.integration.reason))" else "" end)",
+      (if .differs then "  The assessment measures \(.measured // "a detached HEAD"), not the integration branch \(.integration.name) (\(.integration.ahead) commits ahead): check out the branch features merge into, and assess again." else empty end)),
   "  Files: \(.layout.files); manifests: \(.manifests | length); commands: \(.commands | length); CI files: \(.ci | length); deployment files: \(.deployment | length)",
   "  Template: \(.adoption.additions | length) files to add, \(.adoption.collisions | length) collisions, \(.adoption.shared_directories | length) shared directories",
   (.adoption.ignored | if length > 0 then "  Hidden by an ignore rule of the repository: \(length) paths the workflow commits (adoption.ignored)" else empty end)' "$dir/facts.json"
@@ -577,23 +816,67 @@ done
 # What looks like a key or a token is replaced in the assessor's text too.
 jq "$RECORDS_REDACT_JQ"' redact_all' "$work/result.json" >"$work/result.redacted.json"
 
+# When the integration branch is not the measured one, the owner is asked
+# which branch features start from and merge into, before the questions of
+# the assessor.
+jq --slurpfile facts "$dir/facts.json" '$facts[0].branches as $b
+  | if $b.differs then .questions = [{question: "The assessment measured \($b.measured // "a detached HEAD"), but features appear to merge into \($b.integration.name): \($b.integration.reason), \($b.integration.ahead) commits ahead of \($b.measured // "HEAD"). Which branch do features start from and merge into?",
+      why: "The base of every feature (base: in .agents/template.conf), and the branch the assessment and the adoption must measure: check it out and assess it again, or set base.proposed in the proposal to the measured branch."}] + (.questions // [])
+    else . end' "$work/result.redacted.json" >"$work/result.questions.json"
+mv "$work/result.questions.json" "$work/result.redacted.json"
+
 # The proposal: what the script determined, with the assessor's resolutions,
 # profile, and commands. A collision of a file the template owns that stays
-# the project's own becomes an exclusion of its ownership.
-jq --slurpfile facts "$dir/facts.json" --arg assessment "$(basename "$dir")" '
+# the project's own becomes an exclusion of its ownership. The base is the
+# integration branch; a deployment workflow that a push to it starts is named,
+# as a merge of the adoption deploys. The checks run isolated by default: the
+# database URL points at a closed local port, telemetry is off, and the
+# variables of the environment that look like credentials are unset; each
+# names the external actions it may take.
+jq --slurpfile facts "$dir/facts.json" --arg assessment "$(basename "$dir")" "$glob_jq"'
   $facts[0] as $f | . as $r
   | ($r.collisions | map({key: .path, value: .}) | from_entries) as $resolution
   | ($f.commands | map({key: .id, value: .}) | from_entries) as $commands
+  | ($f.branches.integration.name // $f.branches.measured) as $base
+  | ($r.verification | map($commands[.source].directory // ".") | unique) as $check_directories
   | {schema: "adoption-proposal/v1", status: "proposed, not approved", assessment: $assessment,
      repository: {name: $f.repository.name, path: $f.repository.path, branch: $f.git.branch, head: $f.git.head},
      template: {repository: $f.template.repository, commit: $f.template.commit, uncommitted_changes: $f.template.uncommitted_changes},
+     base: {measured: $f.branches.measured, integration: $f.branches.integration.name, reason: $f.branches.integration.reason,
+       differs: $f.branches.differs, proposed: $base},
+     deployment_on_merge: (if $base == null then [] else [$f.ci[] | select((.deploys // []) | length > 0)
+       | select(any(.triggers[]?; . as $t | .event == "push" and (.branch == "*" or ($base | test($t.branch | glob)))))
+       | {workflow: .path, branch: $base, triggers: [.triggers[] | select(.event == "push") | .branch], reasons: .deploys}] end),
      additions: $f.adoption.additions,
      collisions: ($f.adoption.collisions | map(del(.id) + {resolution: $resolution[.path].resolution, rationale: $resolution[.path].rationale})),
      shared_directories: ($f.adoption.shared_directories | map(del(.id))),
      ignored: ($f.adoption.ignored // [] | map(del(.id))),
+     left_out: ($f.adoption.left_out // []),
      profile: $r.profile,
+     isolation: {
+       env: ([{name: "DATABASE_URL", value: "postgresql://isolated:isolated@127.0.0.1:1/isolated",
+                why: "a build or a test that reaches for the database finds a closed local port, not a real database"},
+              {name: "DO_NOT_TRACK", value: "1", why: "tools that honour it send no telemetry"}]
+             + ([($f.external_actions // [])[] | select(.env != null) | {name: .env, value: "1", why: .what}] | unique_by(.name))),
+       unset_pattern: "TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY|ACCESS_KEY|PRIVATE_KEY|CREDENTIAL",
+       credential_files: {handling: "stop", names: [".env", ".env.*", ".dev.vars"],
+         except: [".env.example", ".env.sample", ".env.template", ".env.dist", ".env.defaults"],
+         present: [($f.secret_files // [])[]
+           | (.path | split("/")) as $parts | ($parts[:-1] | join("/") | if . == "" then "." else . end) as $d
+           | select(($check_directories | index([$d])) != null)
+           | select($parts[-1] | test("^(\\.env(\\..+)?|\\.dev\\.vars)$"))
+           | select($parts[-1] | IN(".env.example", ".env.sample", ".env.template", ".env.dist", ".env.defaults") | not)
+           | {path, directory: $d, tracked}],
+         why: "A tool or an application loads these files by itself (dotenv, Next.js, Vite, Wrangler): unsetting variables does not shield the credentials they hold. A check stops while such a file is in its directory, whether Git tracks it or not, until the owner has set up the shielding; a clean working copy, such as the worktree of a feature, holds none that Git does not track, and a tracked one is to be removed from the repository."},
+       why: "The checks run on a developer machine, whose environment may hold real credentials and point at real services: by default they get none of them."},
      verification: ($r.verification | map($commands[.source] as $c
-       | {name, command: $c.command, directory: $c.directory, origin: $c.origin, source: $c.source, command_id: .source, rationale})),
+       | ($c.directory // ".") as $d
+       | ([$c.id] + [$f.commands[] | select(.origin == "declared" and (.directory // ".") == $d
+            and (.command | split(" ") | last) == ($c.command | split(" ") | last)) | .id]) as $sources
+       | {name, command: $c.command, directory: $c.directory, origin: $c.origin, source: $c.source, command_id: .source, rationale,
+          isolated: true,
+          external_actions: [($f.external_actions // [])[] | select((.dependency != null and .directory == $d) or (.source as $s | $sources | index([$s])))
+            | {id, kind, what}]})),
      ownership: {template_paths: $f.adoption.template_paths,
        project_exclusions: [$f.adoption.collisions[] | select(.ownership == "template" and $resolution[.path].resolution == "keep-project") | ":(exclude)\(.path)"],
        template_owned: ([$f.adoption.additions[], $f.adoption.collisions[]] | map(select(.ownership == "template") | .path) | sort),
@@ -618,26 +901,46 @@ jq -r --slurpfile facts "$dir/facts.json" --slurpfile proposal "$dir/proposal.js
   + "\n## Questions for the owner\n\n" + (.questions | list("- \(.question)\n  - settles: \(.why)\n"))
   + "\n## Risks (observed, not approved)\n\n" + ((.risks // []) | list("- \(.risk)\n  - basis: \(.basis)\n"))
   + "\n## Proposal\n\nThe proposal is in `proposal.json`, the input of the adoption. Status: \($p.status).\n\n"
+  + "### Base branch\n\n"
+  + "The assessment measured \(if $p.base.measured then "the branch \($p.base.measured | code)" else "a detached HEAD" end): its files, CI, and documents are what this report describes. "
+  + (if $p.base.integration then "The integration branch, the one features merge into, is \($p.base.integration | code): \($p.base.reason).\n\n" else "No integration branch was found.\n\n" end)
+  + (if $p.base.differs then "**The checked-out branch is not the one features merge into.** \($p.base.integration | code) may have other CI and documents. Check it out and assess it again; the adoption stops until the measured branch is the base, or until `base.proposed` in the proposal names the measured branch.\n\n" else "" end)
+  + (if $p.base.proposed then "Proposed for `.agents/template.conf`: `base: \($p.base.proposed)`\(if $p.base.proposed == "main" then " (the default, which the adoption does not write)" else "" end).\n" else "" end)
+  + "\n### Deployment on merge\n\n"
+  + (if ($p.deployment_on_merge | length) == 0 then "No CI workflow of the measured branch deploys on a push to \(($p.base.proposed // "the base") | code).\n"
+     else "**A merge into \($p.base.proposed | code) triggers a deployment**, also the merge of the adoption:\n\n"
+       + ($p.deployment_on_merge | map("- \(.workflow | code), on a push to \(.triggers | map(code) | join(", ")): \(.reasons | join("; "))\n") | join("")) end)
+  + "\n"
   + "### Files to add\n\n\($p.additions | length) files: \($p.additions | map(select(.ownership == "template")) | length) owned by the template, \($p.additions | map(select(.ownership == "project")) | length) that become the project'"'"'s own.\n\n"
   + ($p.additions | list("- \(.path | code) (\(.ownership))\n"))
   + "\n### Collisions\n\n"
   + (if ($p.collisions | length) == 0 then "None.\n" else
       "| Path | Owner in the template | Kind | Uncommitted | Resolution | Rationale |\n|---|---|---|---|---|---|\n"
-      + ($p.collisions | map("| \(.path | code) | \(.ownership) | \(.kind)\(if .blocking_path then " (\(.blocking_path | code))" else "" end) | \(if .uncommitted then "yes" else "no" end) | \(.resolution) | \(.rationale | gsub("\\|"; "\\|") | gsub("\n"; " ")) |\n") | join("")) end)
+      + ($p.collisions | map("| \(.path | code) | \(.ownership) | \(.kind)\(if .blocking_path then " (\(.blocking_path | code))" else "" end)\(if .project_path then " (\(.project_path | code), renamed to the expected name with `git mv`, keeping its history)" else "" end) | \(if .uncommitted then "yes" else "no" end) | \(.resolution) | \(.rationale | gsub("\\|"; "\\|") | gsub("\n"; " ")) |\n") | join("")) end)
   + "\n### Paths an ignore rule of the repository hides\n\n"
   + (if ($p.ignored | length) == 0 then "None.\n" else
       "The workflow commits these paths, now or later, and the repository'"'"'s ignore rules hide them. The adoption appends a `!` line for each to its section of `.gitignore` where the rule is one of that file; the others stay for the owner.\n\n"
       + ($p.ignored | map("- \(.path | code): `\(.rule.pattern)` in \(.rule.source | code)\(if .ignored_directory then ", through the ignored directory \(.ignored_directory | code)" else "" end)\n") | join("")) end)
   + "\n### Shared directories\n\n" + ($p.shared_directories | list("- \(.path | code)/: \(.files) files of the project\n"))
   + "\n### Workflow profile\n\n`\($p.profile.name)`: \($p.profile.rationale)\n"
-  + "\n### Verification commands\n\n" + ($p.verification | list("- \(.name): \(.command | code)\(if .directory then " in \(.directory | code)" else "" end), \(.origin) in \(.source | code). \(.rationale)\n"))
+  + "\n### Verification commands\n\n" + ($p.verification | list("- \(.name): \(.command | code)\(if .directory then " in \(.directory | code)" else "" end), \(.origin) in \(.source | code). \(.rationale)\n"
+      + "  - external actions it may take: \(if (.external_actions | length) == 0 then "none found" else (.external_actions | map("\(.kind), \(.what)") | join("; ")) end)\n"))
+  + "\n### Isolation of the checks\n\n\($p.isolation.why) Each check of `scripts/verify.conf` runs with:\n\n"
+  + ($p.isolation.env | map("- `\(.name)=\(.value)`: \(.why)\n") | join(""))
+  + "- the variables of the environment whose names match `\($p.isolation.unset_pattern)` unset: no real credentials\n"
+  + ($p.isolation.credential_files | "- no credential file: \(.why) The check stops with a message while a file named \(.names | map(code) | join(", ")) (not \(.except | map(code) | join(", "))) is in its directory, tracked by Git or not.\n\n"
+      + (if (.present | length) == 0 then "The assessment sees no such file in the directory of a check.\n"
+         else "The assessment sees such files, names only, never opened: \(.present | map((.path | code) + (if .tracked then " (tracked by Git)" else "" end)) | join(", ")). The checks stop here until the owner has set up the shielding: move the files out of the directory of the check for the run, or run the verification in a working copy without them; a tracked one is in every clean working copy, until it is removed from the repository.\n" end))
+  + "\n### External actions the checks may take\n\n"
+  + (($facts[0].external_actions // []) | list("- \(.kind): \(.what)\(if .dependency then " (\(.dependency | code) in \(.source | code))" else " (\(.source))" end)\n"))
   + "\n### Template version\n\n\($p.template.repository // "(no repository recorded)") at \($p.template.commit | code)\(if $p.template.uncommitted_changes then ", with uncommitted changes in the template checkout" else "" end).\n"
   + "\n### Ownership for a later sync-template.sh\n\n"
   + "- Owned by the template (`paths:` of `.agents/template.conf`): \($p.ownership.template_paths | map(code) | join(" "))\n"
   + "- Exclusions for the files the project keeps: \(if ($p.ownership.project_exclusions | length) == 0 then "none" else ($p.ownership.project_exclusions | map(code) | join(" ")) end)\n"
   + "- Everything else is the project'"'"'s own, also the \($p.ownership.project_owned | length) starter files the adoption adds.\n"
   + "\n### Execution a later baseline needs\n\nNone of this ran.\n\n" + ($p.execution_needed | list("- \(.what)\n  - why: \(.why)\n  - side effects: \(.side_effects)\n"))
-  + "\n### Not carried over\n\n" + ($p.not_carried | list("- \(code)\n"))' "$work/result.redacted.json" >"$dir/report.md"
+  + "\n### Not carried over\n\n" + ($p.not_carried | list("- \(code)\n"))
+  + ($p.left_out | map("- \(.path | code): \(.reason)\n") | join(""))' "$work/result.redacted.json" >"$dir/report.md"
 
 echo
 echo "Assessment: ${dir#"$primary"/}/report.md"

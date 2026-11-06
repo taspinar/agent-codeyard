@@ -18,11 +18,17 @@ usage() {
   echo "  merge,         the template's file is placed beside it, as"
   echo "  take-template  <name>.agent-codeyard.<ext>, to combine by hand."
   echo "  ask-owner, or no resolution, stops the run before any change."
+  echo "A project file whose name differs only in case (docs/ARCHITECTURE.md) is first"
+  echo "renamed to the expected name with git mv, keeping its history."
   echo "Nothing is written under .github/workflows/: the project's CI stays as it is."
   echo
   echo "Written from the proposal, where the project has no such file:"
-  echo "  scripts/verify.conf   the project's own commands as the checks of verify.sh;"
-  echo "                        the project's file, which a sync does not change."
+  echo "  scripts/verify.conf   the project's own commands as the checks of verify.sh,"
+  echo "                        each in its directory and isolated (no credentials, a"
+  echo "                        closed database port, no telemetry; a stop while a"
+  echo "                        credential file such as .env is there); the"
+  echo "                        project's file, which a sync does not change."
+  echo "  .agents/template.conf records the proposal's base as 'base:' where it is not main."
   echo "  docs/architecture.md, docs/PROJECT_REQUIREMENTS.md, docs/roadmap.md"
   echo "                        a minimal baseline from the assessment, marked"
   echo "                        'Observed, not approved' until the planning approval."
@@ -32,7 +38,8 @@ usage() {
   echo "                 the project's text kept unchanged below it."
   echo "No ADR is written: the adoption reconstructs no decision of the past."
   echo
-  echo "The run also stops before any change when the repository has uncommitted"
+  echo "The run also stops before any change when the proposal's base is not the"
+  echo "branch the assessment measured, when the repository has uncommitted"
   echo "work or differs from the assessed state, and when the proposal names a path"
   echo "that is no file of its template commit inside the repository. Run again, it"
   echo "completes a partial adoption and changes nothing on an adopted repository."
@@ -40,7 +47,8 @@ usage() {
   echo
   echo "--proposal names the proposal.json (default: the latest assessment of <path>"
   echo "in .agents/assessments/). --publish pushes the branch to 'origin' of the"
-  echo "repository and opens a pull request. The script never pushes the default"
+  echo "repository and opens a pull request into the base, which says when the merge"
+  echo "deploys. The script never pushes the default"
   echo "branch, merges, or deploys."
   exit 1
 }
@@ -148,6 +156,20 @@ while IFS= read -r path; do
   [[ "$(git -C "$root" cat-file -t "$template_commit:$path" 2>/dev/null)" == blob ]] ||
     invalid_paths+=("\"$path\" (hidden by an ignore rule, but not a path of the workflow)")
 done < <(jq -r "$plain_relative"' (.ignored // [])[] | .path | select(plain_relative)' "$proposal")
+# The project's file of a collision whose name differs only in case is
+# renamed: a plain path, a file of the assessed commit.
+while IFS= read -r line; do
+  invalid_paths+=("$line")
+done < <(jq -r "$plain_relative"' .collisions[] | select(.kind == "case-only") | .project_path | select(plain_relative | not) | tojson' "$proposal")
+while IFS= read -r path; do
+  [[ "$(git -C "$target" cat-file -t "$assessed_head:$path" 2>/dev/null)" == blob ]] ||
+    invalid_paths+=("\"$path\" (to be renamed, but not a file of the assessed commit ${assessed_head:0:7})")
+done < <(jq -r "$plain_relative"' .collisions[] | select(.kind == "case-only") | .project_path | select(plain_relative)' "$proposal")
+base_proposed="$(jq -r '.base.proposed // empty' "$proposal")"
+base_measured="$(jq -r '.base.measured // .repository.branch // empty' "$proposal")"
+if [[ -n "$base_proposed" ]] && ! git check-ref-format --branch "$base_proposed" >/dev/null 2>&1; then
+  invalid_paths+=("base.proposed \"$base_proposed\" (not a valid branch name)")
+fi
 if [[ "${#invalid_paths[@]}" -gt 0 ]]; then
   echo "Error: $proposal names paths that are no files of the template in the repository; the adoption stops before any change:" >&2
   printf '  - %s\n' "${invalid_paths[@]}" >&2
@@ -215,6 +237,9 @@ kind_of() {
 #   reconstruct  a planning document of the baseline written by this script
 #            at the path of the project's insufficient one, whose text it
 #            keeps unchanged below
+#   rename   the project's file whose name differs only in case, renamed to
+#            the expected name with 'git mv' (<path in the template> is the
+#            project's name), before the action for that path
 #   section  a marked section appended to the project's AGENTS.md or .gitignore
 #   keep     the project's file, unchanged
 #   present  the project's file, identical to the template's
@@ -237,7 +262,15 @@ while IFS=$'\t' read -r path ownership; do
   fi
 done < <(jq -r '.additions[] | [.path, .ownership] | @tsv' "$proposal")
 
-while IFS=$'\t' read -r path ownership kind resolution rationale; do
+while IFS=$'\t' read -r path ownership kind resolution project_path rationale; do
+  # A project file whose name differs only in case is renamed first, with its
+  # history; then the collision is resolved as for a file at the path.
+  original="$path"
+  if [[ "$kind" == case-only ]]; then
+    printf 'rename\t%s\t%s\n' "$path" "$project_path" >>"$work/plan"
+    original="$project_path"
+    kind=file
+  fi
   if [[ "$path" == ".agents/template.conf" ]]; then
     problems+=("$path: the repository has its own template configuration. When it was made from this template, take over its changes with ./scripts/sync-template.sh in the repository instead.")
     continue
@@ -266,7 +299,7 @@ while IFS=$'\t' read -r path ownership kind resolution rationale; do
   fi
   # A file that is already the template's needs no resolution.
   if [[ "$kind" == file ]] &&
-    [[ "$(tgit rev-parse -q --verify "$assessed_head:$path" 2>/dev/null)" == "$(git -C "$root" rev-parse -q --verify "$template_commit:$path" 2>/dev/null)" ]]; then
+    [[ "$(tgit rev-parse -q --verify "$assessed_head:$original" 2>/dev/null)" == "$(git -C "$root" rev-parse -q --verify "$template_commit:$path" 2>/dev/null)" ]]; then
     printf 'present\t%s\t%s\n' "$path" "$path" >>"$work/plan"
     continue
   fi
@@ -295,7 +328,13 @@ while IFS=$'\t' read -r path ownership kind resolution rationale; do
       problems+=("$path: the proposal does not resolve this collision. Set a resolution (keep-project, merge, or take-template) in the proposal and pass it with --proposal.")
       ;;
   esac
-done < <(jq -r '.collisions[] | [.path, .ownership, .kind, (.resolution // ""), ((.rationale // "") | gsub("[\t\n]"; " "))] | @tsv' "$proposal")
+done < <(jq -r '.collisions[] | [.path, .ownership, .kind, (.resolution // ""), (.project_path // "-"), ((.rationale // "") | gsub("[\t\n]"; " "))] | @tsv' "$proposal")
+
+# assessed_path <path>: the path of the project's file at <path> in the
+# assessed commit: the name before a rename of the adoption.
+assessed_path() {
+  awk -F'\t' -v path="$1" '$1 == "rename" && $2 == path { print $3; found = 1; exit } END { if (!found) print path }' "$work/plan"
+}
 
 # The checks and the planning documents are written also where the template
 # has no such file, unless the project has its own: a collision of the
@@ -318,7 +357,8 @@ done
 
 # The paths the adoption writes; a partial adoption may have left them
 # uncommitted on its branch.
-awk -F'\t' '$1 == "add" || $1 == "beside" || $1 == "config" || $1 == "verify" || $1 == "document" || $1 == "reconstruct" || $1 == "section" { print $2 }' "$work/plan" | LC_ALL=C sort >"$work/planned"
+awk -F'\t' '$1 == "add" || $1 == "beside" || $1 == "config" || $1 == "verify" || $1 == "document" || $1 == "reconstruct" || $1 == "section" { print $2 }
+  $1 == "rename" { print $2; print $3 }' "$work/plan" | LC_ALL=C sort -u >"$work/planned"
 
 # The paths of the workflow that a rule of the project's .gitignore hides are
 # un-ignored in its section: a file of .agents/, and a path the workflow
@@ -355,6 +395,12 @@ while IFS= read -r -d '' entry; do
   problems+=("$path: uncommitted change (${entry:0:2}). Commit or stash it first; the adoption does not mix with work in progress.")
 done < <(tgit status --porcelain=v1 -z --untracked-files=all --no-renames)
 
+# The adoption is made on the branch features merge into: when the assessment
+# measured another, the owner decides first.
+if [[ -n "$base_proposed" && "$base_proposed" != "$base_measured" ]]; then
+  problems+=("the assessment measured ${base_measured:-a detached HEAD}, but features merge into $base_proposed ($(jq -r '.base.reason // "the proposal says so"' "$proposal")). Check out $base_proposed and assess it again, or, when ${base_measured:-HEAD} is the base, set base.proposed to it in the proposal and pass it with --proposal.")
+fi
+
 tgit var GIT_COMMITTER_IDENT >/dev/null 2>&1 ||
   problems+=("no Git identity is set for $target: set user.name and user.email, so the adoption can be committed.")
 
@@ -375,11 +421,18 @@ fi
 
 # On the assessed commit, the files are as the assessment saw them.
 if [[ "$mode" == fresh ]]; then
-  while IFS=$'\t' read -r path kind; do
+  while IFS=$'\t' read -r path kind project_path; do
+    if [[ "$kind" == case-only ]]; then
+      # The project's file under its own name, and none tracked under the
+      # expected one.
+      [[ -f "$target/$project_path" && ! -L "$target/$project_path" && -z "$(tgit ls-files -- "$path")" ]] ||
+        problems+=("$path: changed since the assessment (was: $project_path, a name that differs only in case). Assess the repository again.")
+      continue
+    fi
     now="$(kind_of "$path")"
     [[ "$now" == "$kind" ]] ||
       problems+=("$path: changed since the assessment (was: ${kind:-free}, is: ${now:-free}). Assess the repository again.")
-  done < <(jq -r '(.additions[] | [.path, ""]), (.collisions[] | [.path, .kind]) | @tsv' "$proposal")
+  done < <(jq -r '(.additions[] | [.path, "", ""]), (.collisions[] | [.path, .kind, (.project_path // "")]) | @tsv' "$proposal")
 fi
 
 if [[ "${#problems[@]}" -gt 0 ]]; then
@@ -398,20 +451,26 @@ paths_value="$(jq -r '.ownership.template_paths | join(" ")' "$proposal") :(excl
 for exclusion in ${exclusions[@]+"${exclusions[@]}"}; do
   paths_value="$paths_value $exclusion"
 done
+# The base of the features is the proposal's, written where it is not the
+# default, main.
 template_file .agents/template.conf "$work/template.conf.base" 2>/dev/null || : >"$work/template.conf.base"
+base_value=""
+[[ -z "$base_proposed" || "$base_proposed" == main ]] || base_value="$base_proposed"
 {
-  has_repository=0 has_paths=0 has_commit=0
+  has_repository=0 has_paths=0 has_commit=0 has_base=0
   while IFS= read -r line || [[ -n "$line" ]]; do
     case "$line" in
       repository:*) printf 'repository: %s\n' "$template_repository" && has_repository=1 ;;
       paths:*) printf 'paths: %s\n' "$paths_value" && has_paths=1 ;;
       commit:*) printf 'commit: %s\n' "$template_commit" && has_commit=1 ;;
+      base:*) [[ -z "$base_value" ]] || printf 'base: %s\n' "$base_value"; has_base=1 ;;
       *) printf '%s\n' "$line" ;;
     esac
   done <"$work/template.conf.base"
   [[ "$has_repository" -eq 1 ]] || printf '\nrepository: %s\n' "$template_repository"
   [[ "$has_paths" -eq 1 ]] || printf '\npaths: %s\n' "$paths_value"
   [[ "$has_commit" -eq 1 ]] || printf '\ncommit: %s\n' "$template_commit"
+  [[ "$has_base" -eq 1 || -z "$base_value" ]] || printf 'base: %s\n' "$base_value"
 } >"$work/template.conf"
 
 agents_marker="<!-- agent-codeyard: begin (added by adopt-repository.sh) -->"
@@ -439,10 +498,41 @@ section_file() {
   fi
 }
 
+# The isolation of the checks, from the proposal, as the start of each
+# check: the variables of the environment whose names match its pattern are
+# unset, and its variables exported. A name or a pattern that is no plain
+# word is left out. It starts with a builtin, which verify.sh finds.
+isolation=""
+isolation_pattern="$(jq -r '.isolation.unset_pattern // empty' "$proposal")"
+[[ "$isolation_pattern" =~ ^[A-Za-z0-9_|]+$ ]] && isolation="unset \$(compgen -e | grep -E '$isolation_pattern' || true); "
+isolation_env=""
+while IFS=$'\t' read -r name value; do
+  [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] && isolation_env="$isolation_env $name=$(printf '%q' "$value")"
+done < <(jq -r '.isolation.env[]? | [.name, .value] | map(tostring | gsub("[\t\n\r]"; " ")) | @tsv' "$proposal")
+[[ -z "$isolation_env" ]] || isolation="${isolation}export$isolation_env; "
+
+# The credential files of the proposal, which a tool loads by itself however
+# the environment is cleared: a check stops while one, tracked by Git or not,
+# is in its directory, and names it, never its content. It runs in the
+# directory of the check, before the command. A name that is no plain file
+# name or pattern is left out.
+credential_guard=""
+credential_names=""
+credential_except=""
+while IFS= read -r name; do
+  [[ "$name" =~ ^[A-Za-z0-9._*-]+$ ]] && credential_names="$credential_names $name"
+done < <(jq -r '.isolation.credential_files.names[]? | tostring' "$proposal")
+while IFS= read -r name; do
+  [[ "$name" =~ ^[A-Za-z0-9._-]+$ ]] && credential_except="$credential_except $name"
+done < <(jq -r '.isolation.credential_files.except[]? | tostring' "$proposal")
+if [[ -n "$credential_names" ]]; then
+  credential_guard="for f in$credential_names; do [[ ! -e \$f && ! -L \$f || \"$credential_except \" == *\" \$f \"* ]] || { echo \"\$f: a credential file in the directory of this check, which a tool may load, whether Git tracks it or not. The check stops until the owner has set up the shielding: move the file out for the run, or run the verification in a working copy without it.\" >&2; exit 1; }; done && "
+fi
+
 # verify_file <file>: scripts/verify.conf with the verification commands of
-# the proposal, the project's own, in the directory each belongs to. Without
-# one, a check that fails says so: nothing of the project is verified yet,
-# and the verification does not claim it is.
+# the proposal, the project's own, in the directory each belongs to, isolated.
+# Without one, a check that fails says so: nothing of the project is verified
+# yet, and the verification does not claim it is.
 verify_file() {
   local name command directory origin source
 
@@ -458,6 +548,23 @@ verify_file() {
     echo "# A check that fails then is a pre-existing failure: it stays visible as"
     echo "# KNOWN and fails the verification until it is fixed, or until the owner"
     echo "# accepts it here with 'accepted-failure: <check> <reason>'."
+    if [[ -n "$isolation" ]]; then
+      echo "#"
+      echo "# Each check runs isolated, as the assessment proposed: the variables of the"
+      echo "# environment that look like credentials are unset, and the database URL"
+      echo "# points at a closed local port, with telemetry off:"
+      jq -r '.isolation.env[]? | "#   \(.name)=\(.value): \(.why)"' "$proposal"
+    fi
+    if [[ -n "$credential_guard" ]]; then
+      echo "#"
+      echo "# A check stops while a credential file, tracked by Git or not, is in its"
+      echo "# directory:$credential_names (not$credential_except). A tool"
+      echo "# loads such a file by itself, past the cleared environment. Move the file"
+      echo "# out for the run, or run the verification in a working copy without it."
+    fi
+    if [[ -n "$isolation$credential_guard" ]]; then
+      echo "# Change a check where it needs more, in a reviewed change."
+    fi
     echo
   } >"$1"
   if [[ "$(jq '.verification // [] | length' "$proposal")" -eq 0 ]]; then
@@ -469,8 +576,9 @@ verify_file() {
   fi
   # The fields are separated by the unit separator: a tab, as white space,
   # would let 'read' drop an empty directory.
-  while IFS=$'\x1f' read -r name command directory origin source; do
+  while IFS=$'\x1f' read -r name command directory origin source actions; do
     printf '# %s, %s in %s.\n' "$name" "$origin" "$source" >>"$1"
+    [[ -z "$actions" ]] || printf '# It may take external actions: %s.\n' "$actions" >>"$1"
     case "$name" in
       paths | budget-seconds | heavy | accepted-failure)
         printf '# Not taken over: %s is a reserved word of this file. Add the check under another name.\n' "$name" >>"$1"
@@ -478,12 +586,14 @@ verify_file() {
         ;;
     esac
     if [[ -n "$directory" && "$directory" != "." ]]; then
-      printf '%s: cd %q && %s\n' "$name" "$directory" "$command" >>"$1"
+      printf '%s: %scd %q && %s%s\n' "$name" "$isolation" "$directory" "$credential_guard" "$command" >>"$1"
     else
-      printf '%s: %s\n' "$name" "$command" >>"$1"
+      printf '%s: %s%s%s\n' "$name" "$isolation" "$credential_guard" "$command" >>"$1"
     fi
   done < <(jq -r '.verification[] | select((.command | type) == "string" and (.command | test("[\n\r]") | not))
-    | [.name, .command, (.directory // ""), (.origin // "declared"), (.source // "the project")] | map(tostring | gsub("\u001f"; " ")) | join("\u001f")' "$proposal")
+    | [.name, .command, (.directory // ""), (.origin // "declared"), (.source // "the project"),
+       ((.external_actions // []) | map("\(.kind) (\(.what))") | join("; ") | gsub("[\n\r]"; " "))]
+    | map(tostring | gsub("\u001f"; " ")) | join("\u001f")' "$proposal")
   jq -r '.verification[] | select((.command | type) != "string" or (.command | test("[\n\r]"))) | "# Not taken over: \(.name), a command of more than one line. Add it as a script."' "$proposal" >>"$1"
 }
 
@@ -495,11 +605,11 @@ document_file() {
   local mark
 
   mark="$PLANNING_OBSERVED_MARK Reconstructed by adopt-repository.sh from the assessment ${assessment:-(unnamed)} of the existing project: what its files show and what the assessment inferred from them, not a decision of the owner. The owner approves it through the planning approval of this repository (./scripts/start-planning.sh, then ./scripts/finish-planning.sh); an approved document no longer carries this mark."
-  jq -r --arg path "$1" --arg mark "$mark" --arg branch "$branch_name" '
+  jq -r --arg path "$1" --arg own "$(assessed_path "$1")" --arg mark "$mark" --arg branch "$branch_name" '
     def list(f): if length == 0 then "None recorded by the assessment.\n" else map(f) | join("") end;
     def code: "`\(.)`";
     (.baseline // {}) as $b
-    | ($b.documents // [] | map(select(.path != $path))) as $documents
+    | ($b.documents // [] | map(select(.path != $path and .path != $own))) as $documents
     | if $path == "docs/architecture.md" then
         "# Architecture\n\n\($mark)\n\n"
         + (if ($b.summary // "") != "" then "\($b.summary)\n\n" else "" end)
@@ -559,7 +669,7 @@ reconstruct_file() {
     printf '\n## The project'"'"'s document, as it was\n\n'
     printf 'The assessment judged `%s` not sufficient as the baseline: %s\n' "$1" "${rationale:-no rationale given}"
     printf 'Its text follows unchanged, for the owner to fold into the planning or to keep where it holds.\n\n'
-    tgit show "$assessed_head:$1"
+    tgit show "$assessed_head:$(assessed_path "$1")"
   } >>"$2"
 }
 
@@ -614,7 +724,7 @@ state() {
         echo kept
       else
         reconstruct_file "$2" "$work/expected"
-        tgit show "$assessed_head:$2" >"$work/original" 2>/dev/null || : >"$work/original"
+        tgit show "$assessed_head:$(assessed_path "$2")" >"$work/original" 2>/dev/null || : >"$work/original"
         if cmp -s "$file" "$work/expected"; then
           echo done
         elif cmp -s "$file" "$work/original"; then
@@ -622,6 +732,17 @@ state() {
         else
           echo kept
         fi
+      fi
+      ;;
+    rename)
+      # By the index, which also tells the names apart where the file system
+      # does not.
+      if [[ -n "$(tgit ls-files -- "$3")" ]]; then
+        if [[ -f "$target/$3" && ! -L "$target/$3" ]] && plain_path "$2"; then echo write; else echo blocked; fi
+      elif [[ -n "$(tgit ls-files -- "$2")" ]]; then
+        echo done
+      else
+        echo kept
       fi
       ;;
     section)
@@ -716,6 +837,17 @@ elif [[ "$current" != "$branch_name" ]]; then
   echo "Switched $target to the branch $branch_name."
 fi
 
+# The renames come first, with their history; the actions for the renamed
+# paths are then evaluated again.
+renamed=()
+while IFS=$'\t' read -r status action path source; do
+  [[ "$status" == write && "$action" == rename ]] || continue
+  mkdir -p "$(dirname "$target/$path")"
+  tgit mv -- "$source" "$path" || fail "could not rename $source to $path in $target."
+  renamed+=("$source -> $path")
+done <"$work/states"
+[[ "${#renamed[@]}" -eq 0 ]] || evaluate
+
 added=()
 beside=()
 sections=()
@@ -778,6 +910,7 @@ if ! tgit diff --cached --quiet; then
     echo "- written from the assessment: ${#written[@]} (the project's checks, and the planning"
     echo "  documents of the baseline, observed, not approved)"
     echo "- placed beside a project file, to combine by hand: ${#beside[@]}"
+    [[ "${#renamed[@]}" -eq 0 ]] || echo "- renamed to the expected name, with its history: ${renamed[*]}"
     echo "- sections appended: ${sections[*]:-none}"
     echo
     echo "The template is $template_repository at $template_commit,"
@@ -797,6 +930,7 @@ print_list() {
 }
 
 echo
+print_list "Renamed to the expected name, with its history:" ${renamed[@]+"${renamed[@]}"}
 print_list "Added:" ${added[@]+"${added[@]}"}
 print_list "Written from the assessment:" ${written[@]+"${written[@]}"}
 print_list "Placed beside the project's file, to combine by hand:" ${beside[@]+"${beside[@]}"}
@@ -818,6 +952,15 @@ else
   echo "Nothing new to commit on $branch_name."
 fi
 
+# A merge into the base that starts a deployment, as the assessment found:
+# said here and in the pull request.
+deploys="$(jq -r '(.deployment_on_merge // [])[] | "- `\(.workflow)`, on a push to \(.triggers | map("`\(.)`") | join(", ")): \(.reasons | join("; "))"' "$proposal")"
+if [[ -n "$deploys" ]]; then
+  echo
+  echo "A merge into ${base_proposed:-the base} triggers a deployment, also the merge of the adoption:"
+  printf '%s\n' "$deploys" | sed 's/^/  /'
+fi
+
 if [[ "$publish" -eq 1 ]]; then
   command -v gh >/dev/null 2>&1 || fail "--publish needs the GitHub CLI (gh)."
   tgit remote get-url origin >/dev/null 2>&1 || fail "$target has no remote 'origin' to publish to."
@@ -825,6 +968,9 @@ if [[ "$publish" -eq 1 ]]; then
     fail "could not read the default branch of the repository on GitHub."
   [[ -n "$default_branch" && "$default_branch" != "$branch_name" ]] ||
     fail "the default branch of the repository is '$default_branch'; the adoption is never pushed to it."
+  # The pull request goes into the base the proposal names, the branch
+  # features merge into; without one, into the default branch.
+  pr_base="${base_proposed:-$default_branch}"
   tgit push -q origin "refs/heads/$branch_name:refs/heads/$branch_name" || fail "could not push $branch_name."
   echo "Pushed $branch_name to origin."
   existing="$(cd "$target" && gh pr list --head "$branch_name" --state open --json url --jq '.[0].url // empty')"
@@ -838,11 +984,21 @@ if [[ "$publish" -eq 1 ]]; then
       echo "- Files the project already had stay its own; where the proposal said to merge, the template's version is placed beside them as \`*.$suffix.*\`, to combine by hand."
       echo "- \`.agents/template.conf\` records the template version and the files it owns, for a later \`sync-template.sh\`."
       echo
-      echo "- \`scripts/verify.conf\` runs the project's own commands from the assessment; the project's CI is not replaced."
+      echo "- \`scripts/verify.conf\` runs the project's own commands from the assessment, isolated: no real credentials, a database URL that points at a closed local port, telemetry off. A check stops while a credential file such as \`.env\`, tracked by Git or not, is in its directory: run the verification in a working copy without it. The project's CI is not replaced."
+      [[ "${#renamed[@]}" -eq 0 ]] || echo "- Renames a file whose name differed only in case to the name the workflow expects, keeping its history: ${renamed[*]}."
+      [[ -z "$base_value" ]] || echo "- \`.agents/template.conf\` records \`base: $base_value\`: features start from and merge into $base_value."
+      if [[ -n "$deploys" ]]; then
+        echo
+        echo "**A merge of this pull request into \`$pr_base\` triggers a deployment**, as the assessment found:"
+        echo
+        printf '%s\n' "$deploys"
+        echo
+        echo "Merge it when a deployment of the current state of \`$pr_base\` is acceptable."
+      fi
       echo
       echo "The planning documents this change writes are reconstructions, marked *observed, not approved*: the owner approves them through the planning approval of this repository. No ADR is written. Before the merge, record the baseline of the verification with \`./scripts/verify.sh --baseline\` on this branch: it runs the project's commands, and a check that fails then stays visible as a known failure."
     } >"$work/body"
-    url="$(cd "$target" && gh pr create --base "$default_branch" --head "$branch_name" \
+    url="$(cd "$target" && gh pr create --base "$pr_base" --head "$branch_name" \
       --title "Adopt the agent-codeyard workflow" --body-file "$work/body")" || fail "could not open the pull request."
     echo "Pull request: $url"
   fi

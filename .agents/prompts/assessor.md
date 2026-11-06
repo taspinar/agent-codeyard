@@ -12,13 +12,23 @@ The script that gathered them ran none of the repository's code and opened
 no file that may hold a secret:
 
 - `git`: the branch, the commit, the uncommitted changes, and the remotes.
+- `branches`: the branch the facts were measured on (`measured`), and the
+  integration branch, the one features merge into, with the reason it was
+  chosen (`integration`); `differs` is true when they are not the same. The
+  facts then describe a branch features do not merge into, whose CI and
+  documents may differ: say so in a risk. The script asks the owner itself.
 - `layout`: the number of files and the top-level entries.
 - `manifests`, `lockfiles`, `entry_points`: the stack, by its files.
 - `commands`: what the project declares (`declared`: package.json scripts,
   Makefile targets), what its CI runs (`ci`), and what its tools run by
   convention (`convention`, which no file of the project declares).
-- `ci`: the CI files, with the secrets they refer to by name and the actions
-  they use.
+- `ci`: the CI files, with the secrets they refer to by name, the actions
+  they use, the events and branches that trigger them (`triggers`), and what
+  makes one a deployment (`deploys`). A CI command carries its working
+  directory in `commands`.
+- `external_actions`: what the project's checks may do outside the machine
+  (a database, email, an external API, telemetry, a deployment), from the
+  dependencies of a manifest or the text of a command.
 - `deployment`: the deployment files, by path only.
 - `documents`: README, requirements, architecture, decision documents, and
   instructions for agents, with their first heading.
@@ -27,8 +37,14 @@ no file that may hold a secret:
 - `adoption`: what the template would add (`additions`), the paths where the
   repository already has a file (`collisions`), the directories both have
   (`shared_directories`), the paths the workflow commits that an ignore rule
-  of the repository hides (`ignored`), and the template's ownership
-  (`template_paths`).
+  of the repository hides (`ignored`), the starter files left out because the
+  application lives in a subdirectory (`left_out`), and the template's
+  ownership (`template_paths`). A collision of the kind `case-only` is a file
+  of the project whose name differs only in case (`project_path`, such as
+  an upper-case `ARCHITECTURE.md` in `docs/` for `docs/architecture.md`): the adoption renames it
+  to the expected name, keeping its history, and then applies your
+  resolution as for a file at that path; judge it by its entry in
+  `documents` under `project_path`.
 - `evidence_ids`: every id you may cite.
 
 You have no access to the repository. Do not look for it: work from the
@@ -92,7 +108,12 @@ approved*: write them so that the owner can check each one.
   `source`, and a `name` of lowercase letters, digits, and `-`. Prefer what
   the CI runs. A `convention` command is an assumption: name it as such in
   `rationale` and ask the owner. Propose no command the facts do not hold;
-  leave the list empty when there is none.
+  leave the list empty when there is none. Each check runs in the directory
+  of its command and isolated, by the script: no credentials of the
+  environment, a database URL that points at a closed local port, and
+  telemetry off; it stops while a credential file such as `.env`, tracked
+  or not, is in its directory. Name in `execution_needed` what a check needs beyond that,
+  such as a real database.
 - `execution_needed`: what would have to run for a baseline later (an
   install, the tests, a build), with `why` and its `side_effects`. Nothing of
   it ran.
