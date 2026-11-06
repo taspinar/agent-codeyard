@@ -395,6 +395,82 @@ passes again, so that the line can go. Adding an exception is protected by
 the merge approval gate, and so is any change of the baseline file: neither
 passes without you.
 
+#### Scoping an accepted failure
+
+An exception of the whole check has a cost: while the check fails, it hides
+every new failure inside it. For a check that runs per file or per test, the
+exception can accept only what predates the change. Take a formatter backlog
+of 440 files: the adoption cannot reformat them all, but every file a feature
+adds or changes has to be formatted. Either of two forms of the line does
+that, one per check:
+
+```text
+format: npx prettier --list-different .
+accepted-failure: format changed-files exit 1 npx prettier --check --ignore-unknown
+```
+
+```text
+format: npx prettier --list-different .
+accepted-failure: format recorded exit 1
+```
+
+`exit 1` declares the exit status with which the check completed and found
+failures; see below. The rest of the line is the scope:
+
+- **`changed-files <command>`**: when the check fails, `<command>` runs on
+  the files the feature adds or changes since its base, given as its
+  arguments: committed, staged, unstaged, and untracked; a deleted file is
+  left out. The base is the feature's own (`branch.<branch>.workflow-base`,
+  then `base:` of `.agents/template.conf`, then `main`), compared at the
+  point where the feature left it. When those files pass, or there are none,
+  the failure is `SCOPED`; when one fails, the check fails. The command gets
+  every changed file, so it must skip the files it does not handle, as
+  `--ignore-unknown` does for prettier.
+- **`recorded`**: the check prints its failures on standard output, one per
+  line, such as `prettier --list-different .` does, and they are compared
+  with the list `.agents/accepted-failures/<check>`, one failure per line
+  (blank lines and `#` comments are skipped). A failure that is not in the
+  list fails the check, and so does a listed one that names a file changed
+  since the base: a file you touch is formatted. A check that fails without
+  printing a failure fails too. A listed failure that no longer occurs is
+  reported as `FIXED`, so that you remove it from the list: the list can
+  only shrink. An entry that the list did not hold at the feature's base
+  fails the check, also when the check passes; the first record, a list
+  that the base does not have, is the exception.
+
+Either form applies only to a check that completed with failures, and only
+the check knows which exit status means that: `exit <status>` names it, or
+several separated by commas (`exit 1,3`). There is no default, and a line
+without it is refused. prettier exits with 1 when files are not formatted
+and with 2 when prettier itself has a problem, so its line declares `exit 1`.
+A declared status is one of 1 to 123 or 128; a line that declares any other
+is refused, because 0 is a pass and the rest mean that the check did not
+complete. A check that ended with a status its line does not declare (2 of
+prettier), could not run or could not run on (125 to 127: an error of
+`timeout`, a command that is not executable or not found), was killed by a
+signal (129 and up, such as 143 for `SIGTERM`), or timed out (124 of
+`timeout`) fails the verification with the check and its status, even when
+what it printed before is recorded: that output is not the whole of its
+failures. Nothing is reported as `FIXED` then; a recorded failure counts as
+fixed only when the check ended with a declared status, or passed, without
+printing it.
+
+| Result | When | Fails the verification |
+|---|---|---|
+| `SCOPED` | The check fails, but only within the scope of its exception | No |
+| `FAIL ... beyond the scope of its exception` | A new or changed file fails, the list gained an entry since the base, the check did not complete or ended with a status its line does not declare, or the scope cannot be checked | Yes |
+| `FIXED` | A recorded failure no longer occurs: remove it from the list | No |
+
+Either form needs the base: in a clone without the history back to it, a
+shallow clone in CI for example, the files changed since it cannot be
+determined, and the check fails. The checkout of such a CI fetches the
+history (`fetch-depth: 0` for `actions/checkout`). A scoped form takes no
+reason, a budget check takes none, and a baseline run (`--baseline`)
+ignores every exception. The scoped line is protected like any added
+exception, and the list `.agents/accepted-failures/<check>` like the
+baseline: you approve any change of it at the merge, also the one that
+shrinks it.
+
 ### Heavy checks and the machine-wide slot
 
 Feature worktrees share the machine: two sessions that run a browser suite or
@@ -2233,7 +2309,8 @@ finished with `--no-review`.
   line, which lets the verification pass while a check fails (see "The
   baseline of an adopted project"). An added check is sensitive;
 - `.agents/verification-baseline`, the baseline of an adopted project,
-  when it is added, changed, or removed.
+  and a recorded list of accepted failures in `.agents/accepted-failures/`
+  ("Scoping an accepted failure"), when it is added, changed, or removed.
 
 What is fundamental in your project you list in
 `.agents/policies/guardrails.conf`, as Git pathspecs:
