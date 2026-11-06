@@ -202,7 +202,7 @@ grep -Fq "(before: 1, after: 0)" <<<"$markdown" || fail "a feature with an unfin
 # A feature in progress in a linked worktree is read from the primary
 # checkout, where its runs are written, also when the report runs there.
 repo="$(setup_repo linked)"
-cp "$source_root/.gitignore" "$repo/.gitignore"
+workflow_gitignore "$repo/.gitignore"
 git -C "$repo" add -A
 git -C "$repo" -c user.name=Test -c user.email=test@example.com commit -qm "Seed"
 git -C "$repo" worktree add -q -b feature/40-linked "$tmp/linked-40" >/dev/null 2>&1

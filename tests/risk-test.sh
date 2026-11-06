@@ -31,7 +31,7 @@ setup_repo() {
 
   mkdir -p "$repo/docs" "$repo/src" "$repo/tests" "$repo/spec" "$repo/.agents/policies"
   copy_workflow "$repo"
-  cp "$source_root/.gitignore" "$repo/.gitignore"
+  workflow_gitignore "$repo/.gitignore"
   cp "$source_root/.agents/policies/autonomy.md" "$repo/.agents/policies/autonomy.md"
   case "$2" in
     template) cp "$source_root/.agents/policies/risk.conf" "$repo/.agents/policies/risk.conf" ;;

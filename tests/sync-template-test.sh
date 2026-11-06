@@ -497,12 +497,14 @@ for case_name in lacks has; do
   fi
 done
 
-# The paths this repository hands out: the documentation site of the template
+# The paths this repository hands out, by the template's list without the
+# exclusions an adopted project adds: the documentation site of the template
 # and the workflow that publishes it never reach a project, while the
 # workflows of the template do.
+template_conf "$tmp/template.conf"
 handed_out="$(
   cd "$source_root"
-  read -r -a pathspecs <<<"$(sed -n 's/^paths: *//p' .agents/template.conf)"
+  read -r -a pathspecs <<<"$(sed -n 's/^paths: *//p' "$tmp/template.conf")"
   git ls-files --cached --others --exclude-standard -- "${pathspecs[@]}"
 )"
 if grep -Eq '^documentation/|^\.github/workflows/pages\.yml$' <<<"$handed_out"; then

@@ -153,12 +153,13 @@ workflow_gitignore() {
 
 # template_conf <file>
 # Writes the template's .agents/template.conf as the template has it: an
-# adopted project's has its own exclusions under paths: and a commit:.
+# adopted project's has its own exclusions under paths:, a commit:, and may
+# have a base:.
 template_conf() {
   local source_root
 
   source_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-  sed -E -e '/^paths:/ s/ :\(exclude\)[^ ]+//g' -e '/^commit:/d' "$source_root/.agents/template.conf" >"$1"
+  sed -E -e '/^paths:/ s/ :\(exclude\)[^ ]+//g' -e '/^(commit|base):/d' "$source_root/.agents/template.conf" >"$1"
 }
 
 # record_reviewed_tree <repo> <review-json> [triage-json]

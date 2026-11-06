@@ -406,7 +406,8 @@ setup_repo() {
   copy_workflow "$seed"
   # The report reads its jq program, which copy_workflow leaves out.
   cp "$source_root/scripts/lib/report.jq" "$seed/scripts/lib/"
-  cp "$source_root/.gitignore" "$seed/.gitignore"
+  workflow_gitignore "$seed/.gitignore"
+  printf 'verify-count.log\n' >>"$seed/.gitignore"
   printf 'implementer: codex sonnet\nimplementer@high: claude fable\nreviewer: claude model-r\nreviewer@high: codex model-rh\n' \
     >"$seed/.agents/agents.conf"
   printf 'default: medium\nhigh: src/auth\n' >"$seed/.agents/policies/risk.conf"
@@ -724,7 +725,8 @@ review_result="{\"architecture_impact\": {\"level\": \"minor\", \"rationale\": \
 repo_review="$tmp/review"
 mkdir -p "$repo_review/.agents/policies"
 copy_workflow "$repo_review"
-cp "$source_root/.gitignore" "$repo_review/.gitignore"
+workflow_gitignore "$repo_review/.gitignore"
+printf 'verify-count.log\n' >>"$repo_review/.gitignore"
 printf 'implementer: codex sonnet\nimplementer@high: claude fable\nreviewer: claude model-r\nreviewer@high: codex model-rh\n' >"$repo_review/.agents/agents.conf"
 printf 'default: medium\nhigh: src/auth\n' >"$repo_review/.agents/policies/risk.conf"
 printf 'count: echo run >>verify-count.log\n' >"$repo_review/scripts/verify.conf"

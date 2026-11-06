@@ -32,7 +32,7 @@ setup_repo() {
   mkdir -p "$repo"
   copy_workflow "$repo"
   cp "$source_root/scripts/lib/report.jq" "$repo/scripts/lib/"
-  cp "$source_root/.gitignore" "$repo/.gitignore"
+  workflow_gitignore "$repo/.gitignore"
   cp "$source_root/.agents/agents.conf" "$repo/.agents/agents.conf"
   printf 'commit: 0123456789abcdef0123456789abcdef01234567\n' >"$repo/.agents/template.conf"
   git -C "$repo" init -q -b main
