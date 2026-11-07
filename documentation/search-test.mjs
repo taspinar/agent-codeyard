@@ -15,7 +15,7 @@ if (process.argv[2]) {
   const [output, base] = process.argv.slice(2);
   const pages = JSON.parse(await readFile(join(output, 'search-index.json'), 'utf8'));
   const docs = pages.filter(p => p.url.startsWith(`${base}docs/`));
-  assert.equal(docs.length, 14);
+  assert.equal(docs.length, 15);
   for (const [query, slug] of [['Troubleshooting', 'troubleshooting'], ['GitHub setup', 'github-setup']]) {
     const results = searchPages(docs, query);
     assert(results.some(p => p.url === `${base}docs/${slug}/`));
@@ -23,6 +23,8 @@ if (process.argv[2]) {
     assert(!results.some(p => p.url === `${base}docs/agent-roles/`), `Sidebar-only match: ${query}`);
   }
   assert(searchPages(pages, 'LICENSE').some(p => p.url === `${base}docs/getting-started/`));
+  // History and research moved from About to the docs (#319).
+  assert(searchPages(docs, 'Physics by Construction').some(p => p.url === `${base}docs/history/`));
   assert(searchPages(pages, 'owner-directed').some(p => p.url === `${base}docs/detailed-workflow/`));
   // Every step is in the workflow reference, and its old anchor on /workflow leads there.
   const reference = await readFile(join(output, 'docs/reference/workflow/index.html'), 'utf8');

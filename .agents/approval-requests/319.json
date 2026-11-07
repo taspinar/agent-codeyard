@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "06aa641400e6dff2c3d6a27cf227390bf6415486",
+  "commit": {
+    "branch": "feature/319-features-and-about-summary",
+    "parent": "6b7578de9e8d1a144993a882b2930e0c1102d4ce",
+    "base": "6b7578de9e8d1a144993a882b2930e0c1102d4ce"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the completion record leaves a criterion of the owner_approval gate pending: Owner screenshot approval of one feature with its disclosure closed and open, and of the About first screen."
+  ],
+  "explanation": "Issue #319: Features and About: summary first, technical proof behind a disclosure (review step 3). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
