@@ -118,6 +118,28 @@ try {
         box: document.querySelector('.workflow .map').getAttribute('viewBox'),
       }));
       assert.deepEqual(await guidedMap(), { planning: false, names: false, box: '-30 215 1260 267' }, 'The guided map shows the feature only, without script and model names');
+      // One guided tour first: at 1440 px the first screen of the explorer is
+      // the summary, the map and at most three buttons (Play, Previous, Next);
+      // the routes, the complete workflow, the list and the switches are below.
+      if (width === 1440) {
+        const first = await page.evaluate(() => {
+          const shown = e => { const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0 && b.top < innerHeight; };
+          const figure = document.querySelector('[data-workflow]');
+          return {
+            summary: shown(figure.querySelector('[data-summary]')),
+            map: figure.querySelector('.map').getBoundingClientRect().bottom <= innerHeight,
+            buttons: [...figure.querySelectorAll('button, summary, input')].filter(shown).map(e => e.dataset.action ?? e.textContent.trim()),
+          };
+        });
+        // Under reduced motion Play hides while a walkthrough is shown.
+        assert(first.summary && first.map, 'The first screen of the explorer shows the summary and the map');
+        assert(first.buttons.length <= 3 && first.buttons.includes('next') && first.buttons.every(b => ['play', 'previous', 'next'].includes(b)), `The first screen of the explorer has only the walkthrough buttons: ${first.buttons}`);
+      }
+      // A step text is at most three sentences; the reference entry of the step tells the rest.
+      assert.equal(await page.locator('[data-caption="ref"] a').innerText(), 'Create a feature Issue');
+      assert.match(await page.locator('[data-caption="ref"] a').getAttribute('href'), /docs\/reference\/workflow\/#create-a-feature-issue$/);
+      const html = await page.content();
+      assert(!html.includes('Nothing in the reference') && !html.includes('Moved to the documentation'));
       assert.equal(await page.locator('[data-key="n-bypass"]').textContent(), 'low risk: no review if the project allows it; then you approve the merge');
       assert.equal(await page.locator('.map [data-label="f-findings.sub"]').textContent(), 'a decision per finding');
       await tabTo('[data-route="repair"]');
@@ -288,10 +310,12 @@ try {
       await p.goto(origin + base + 'workflow/');
       assert(await p.locator('#workflow-words').isVisible());
       assert(await p.locator('.guide-static').isVisible(), 'Without JavaScript the guided route of #241 is a timeline in words');
+      assert.equal(await p.locator('.guide-static li').count(), await p.locator('.guide-static li a[href*="reference/workflow/#"]').count(), 'Without JavaScript every step of the timeline links to its reference entry');
+      assert(await p.locator('.tour-note').isVisible(), 'Without JavaScript the page says why the tour follows #241');
       assert.match(await p.locator('[data-summary]').innerText(), /^Issue #241\s*·\s*medium risk\s*·\s*unattended$/, 'Without JavaScript the summary is that of the #241 timeline');
       assert(!await p.locator('[data-key="w-planning"]').isVisible() && await p.locator('[data-key="w-feature"]').isVisible(), 'Without JavaScript the words list is that of one feature, as #241 ran');
       assert(!await p.locator('.routes').isVisible() && !await p.locator('.advanced').isVisible());
-      assert(!await p.locator('.map-actions').isVisible());
+      for (const actions of await p.locator('.map-actions').all()) assert(!await actions.isVisible());
       assert(!await p.locator('.hint').isVisible() && !await p.locator('.reset').isVisible());
       assert.equal(await p.locator('.station, .detail-btn').count(), 0, 'Without JavaScript nothing pretends to open the step detail');
     }
