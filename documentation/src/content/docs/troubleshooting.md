@@ -64,7 +64,7 @@ A feature is committed only on a review of the complete feature.
 
 **First fix:** run `./scripts/triage-review.sh <review>` and decide on each finding.
 
-Each finding gets one recorded decision: fix it now (`FIX_NOW`), defer it to a follow-up Issue (`DEFER`), or accept it with a reason (`ACCEPT`). Critical and major findings are always fixed. See <a href="../detailed-workflow/#step-triage">decide on the findings</a>.
+Each finding gets one recorded decision: fix it now (`FIX_NOW`), defer it to a follow-up Issue (`DEFER`), or accept it with a reason (`ACCEPT`). Critical and major findings are fixed by default; if you judge one wrong, or accept its risk, you can <a href="../detailed-workflow/#owner-exception">record an exception</a> for it. See <a href="../detailed-workflow/#step-triage">decide on the findings</a>.
 
 ## Planning
 

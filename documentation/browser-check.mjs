@@ -350,6 +350,15 @@ try {
         await page.evaluate(() => document.fonts.ready);
         assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Horizontal overflow: ${path} ${width}`);
+        // Every header link and the theme toggle in view, without scrolling the header.
+        assert.deepEqual(await page.evaluate(() => {
+          const nav = document.querySelector('.top .nav');
+          const hidden = [...nav.querySelectorAll('a, .theme')].filter(e => {
+            const box = e.getBoundingClientRect();
+            return box.left < 0 || box.right > innerWidth;
+          }).map(e => e.textContent.trim());
+          return nav.scrollWidth > nav.clientWidth ? ['the header scrolls', ...hidden] : hidden;
+        }), [], `Header cut off: ${path} ${width}`);
         const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
         const violations = results.violations.filter(v => ['serious', 'critical'].includes(v.impact) || v.id === 'color-contrast');
         report.accessibility.push({ path, theme, width, violations, incomplete: results.incomplete.map(v => ({ id: v.id, targets: v.nodes.map(n => n.target) })) });

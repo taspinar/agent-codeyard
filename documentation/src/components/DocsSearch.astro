@@ -8,7 +8,7 @@ import { href } from "../lib/links";
   <ul id="search-results"></ul>
 </div>
 <script>
-  import { searchPages } from "../lib/search.mjs";
+  import { resultPassage, searchPages } from "../lib/search.mjs";
   const container = document.querySelector<HTMLElement>('.docs-search')!;
   const input = container.querySelector<HTMLInputElement>('input')!;
   const status = container.querySelector<HTMLElement>('[role="status"]')!;
@@ -34,6 +34,18 @@ import { href } from "../lib/links";
         link.href = match.url;
         link.textContent = match.title;
         item.append(link);
+        // A short passage around the matched words, with the words marked.
+        const parts = resultPassage(match, input.value);
+        if (parts.length) {
+          const excerpt = document.createElement('p');
+          excerpt.append(...parts.map(part => {
+            if (!part.match) return part.text;
+            const mark = document.createElement('mark');
+            mark.textContent = part.text;
+            return mark;
+          }));
+          item.append(excerpt);
+        }
         results.append(item);
       }
     } catch {

@@ -95,7 +95,7 @@ An agent of another provider than the implementer, which cannot edit files, chec
 
 ### Decide what to do with review findings
 
-Each finding gets a recorded decision: fix it now, defer it to a follow-up Issue, or accept it with a reason. This step is called triage. Critical and major findings are always fixed. Step by step, an agent proposes and you approve; in an unattended run the agent decides, and you read its decisions on the Issue afterward. For a low- or medium-risk feature the risk policy can ask for a light triage, which defers or accepts a minor finding rather than starting a fix round. <a href="../reference/workflow/#decide-on-the-findings">Reference</a>.
+Each finding gets a recorded decision: fix it now, defer it to a follow-up Issue, or accept it with a reason. This step is called triage. Critical and major findings are always decided as fix now; the one other route is <a href="#owner-exception">your exception</a> for a single finding. Step by step, an agent proposes and you approve; in an unattended run the agent decides, and you read its decisions on the Issue afterward. For a low- or medium-risk feature the risk policy can ask for a light triage, which defers or accepts a minor finding rather than starting a fix round. <a href="../reference/workflow/#decide-on-the-findings">Reference</a>.
 
 <a id="step-fix"></a>
 
@@ -141,7 +141,7 @@ A feature branches from its base and merges back into it. Name the base as the t
 
 ### When you disagree with the triage
 
-If the triage agent's proposal is out of proportion, you can give your own decisions instead, an owner-directed triage. No agent runs; the script shows your decisions for confirmation and records your account and your reason on the Issue. It does not bypass any rule: critical and major findings still have to be fixed, a deferral still needs a follow-up Issue, and an acceptance a reason. The options are in the <a href="../reference/workflow/#decide-on-the-findings">reference</a>, and the file format in [owner-directed triage](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#owner-directed-triage) of the development guide.
+If the triage agent's proposal is out of proportion, you can give your own decisions instead, an owner-directed triage. No agent runs; the script shows your decisions for confirmation and records your account and your reason on the Issue. It does not bypass any rule: critical and major findings are still fix now, and the only other route for one of them is <a href="#owner-exception">your exception</a> below; a deferral still needs a follow-up Issue, and an acceptance a reason. The options are in the <a href="../reference/workflow/#decide-on-the-findings">reference</a>, and the file format in [owner-directed triage](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#owner-directed-triage) of the development guide.
 
 <a id="owner-exception"></a>
 

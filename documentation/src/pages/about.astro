@@ -27,7 +27,7 @@ const improvements = [
   { name: "Parallel features", what: "Dependencies automation can use, and agents working on several features at once", status: "Not built: separate worktrees allow concurrent work that you start" },
   { name: "Environment isolation", what: "Per task its own database, services, ports and credentials", status: "Not built: a worktree separates only the working files" },
   { name: "Browser validation", what: "Browser tests with screenshots or traces for interface changes", status: "Not built: a project can configure its own" },
-  { name: "Remote runs, a dashboard, several repositories", what: "Runs on a server, a browser view of them, work across repositories", status: "Not built" },
+  { name: "Built-in remote runs, a dashboard, several repositories", what: "Starting and watching runs on another machine from Codeyard, a browser view of them, work across repositories", status: "Not built: you can run the scripts yourself on a server, as the maintainer does (Examples)" },
 ];
 ---
 <Base title="About" description="Who maintains Agent Codeyard, why it exists and what it is built on; what it can and cannot do today, its design decisions and the open work.">
@@ -60,7 +60,7 @@ const improvements = [
     <Fragment slot="note">The limits as the docs state them: <a href={href("docs/configuration-and-security/")}>Configuration and security</a>. Short answers: the <a href={href("faq/")}>FAQ</a>.</Fragment>
     <div class="split">
       <div><h3>It can</h3><ul>
-        <li>Start a new project from the template and plan it with you: requirements, architecture and roadmap, reviewed by another provider and approved by you</li>
+        <li>Start a new project with <code>gh repo create --template</code> and plan it with you: requirements, architecture and roadmap, reviewed by another provider and approved by you</li>
         <li>Take each feature from its Issue to an open pull request, step by step or unattended, on its own branch in its own worktree, a second working folder of the same repository</li>
         <li>Compute a risk level for each change from the files it touches, and scale the review and the models to it</li>
         <li>Refuse a reviewer of the implementer's own provider, and run every reviewer read-only</li>
@@ -68,10 +68,10 @@ const improvements = [
         <li>Mark a pull request that needs your approval: a protected file, a major or breaking impact on the architecture, or no review</li>
       </ul></div>
       <div><h3>It cannot, today</h3><ul>
-        <li>Understand an existing repository's code when it adopts the workflow: what the assessment reconstructs stays unapproved until you approve the planning (<a href={href("docs/adopting/")}>Adopting</a>)</li>
+        <li>Take an existing repository's architecture as settled when it adopts the workflow: the assessment reads the files and proposes a provisional reconstruction of the architecture, requirements and roadmap, marked <em>observed, not approved</em> until you approve the planning (<a href={href("docs/adopting/")}>Adopting</a>)</li>
         <li>Stop an agent from merging: no script merges, but an agent has the GitHub rights of the account that started it until it gets an identity of its own (<a href={issue(99)}>#99</a>). Only the settings of <a href={href("docs/github-setup/")}>GitHub setup</a> make GitHub refuse a merge</li>
         <li>Isolate the agents: they run on your machine, as you, under their own tools' sandbox settings; a worktree is not a security boundary</li>
-        <li>Run other coding agents than Claude Code and Codex, tell you a cost in money, or run on a server</li>
+        <li>Run other coding agents than Claude Code and Codex, tell you a cost in money, or start, watch and orchestrate runs remotely: the scripts run where you start them, on your machine or a server of yours, as the <a href={href("examples/#story")}>runs on the maintainer's server</a> show</li>
       </ul></div>
     </div>
   </Section>
@@ -119,7 +119,7 @@ const improvements = [
     <dl class="facts">
       <dt>maintainer</dt><dd>Ahmet Taspinar, founder of <a href="https://jidai.nl/">JIDAI</a></dd>
       <dt>source</dt><dd><a href={site.repository}>{site.repository.replace(/^https:\/\//, "")}</a></dd>
-      <dt>licence</dt><dd>MIT, in <a href={repoFile("LICENSE")}><code>LICENSE</code></a>. A project created from the template chooses its own licence. The fonts of this site are under the SIL Open Font License: <a href={href("fonts/OFL.txt")}>Font licence</a>.</dd>
+      <dt>licence</dt><dd>MIT, in <a href={repoFile("LICENSE")}><code>LICENSE</code></a>. A project created with <code>gh repo create --template</code> chooses its own licence. The fonts of this site are under the SIL Open Font License: <a href={href("fonts/OFL.txt")}>Font licence</a>.</dd>
       <dt>contributing</dt><dd><a href={repoFile("CONTRIBUTING.md")}><code>CONTRIBUTING.md</code></a>: changes start from an Issue, on a feature branch, following <a href={repoFile("AGENTS.md")}><code>AGENTS.md</code></a></dd>
       <dt>security</dt><dd><a href={repoFile("SECURITY.md")}><code>SECURITY.md</code></a>: report security-sensitive findings privately</dd>
     </dl>

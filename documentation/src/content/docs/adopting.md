@@ -1,5 +1,5 @@
 ---
-title: "Adopting Codeyard in an existing repository"
+title: "Adopting Agent Codeyard in an existing repository"
 description: "Bring the workflow into a repository that did not start from the template: assess it, add the workflow on a branch you review, and record an honest baseline."
 order: 8
 ---
@@ -49,7 +49,7 @@ A known failure never turns into a passing verification by itself. Adding an exc
 
 - Ordinary features run as in any Codeyard project: `./scripts/run-feature.sh <issue> <name>`, with the review, the verification against the baseline, and the merge approval gate.
 - The planning documents stay *observed, not approved* until you approve them through the planning of the repository, `./scripts/start-planning.sh` and then `./scripts/finish-planning.sh`. The approved documents lose the mark, and the planning is not approved while a document still carries it. Creating features from the roadmap waits for that approval.
-- Later template changes come in with `./scripts/sync-template.sh`, as described in <a href="../updating/">Updating a Codeyard-based project</a>. It changes only the workflow's files: your checks, your baseline, your CI and the files you kept stay yours.
+- Later template changes come in with `./scripts/sync-template.sh`, as described in <a href="../updating/">Updating an Agent Codeyard project</a>. It changes only the workflow's files: your checks, your baseline, your CI and the files you kept stay yours.
 
 ## What is preserved
 

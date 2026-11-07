@@ -1,10 +1,10 @@
 ---
-title: "Updating a Codeyard-based project"
+title: "Updating an Agent Codeyard project"
 description: "Take over template changes in a project that started from the template, while keeping your project settings."
 order: 8
 ---
 
-This page is for a project that was created from the Codeyard template, or that adopted it. `sync-template.sh` is not the way to adopt it: an existing repository that did not start from the template adopts the workflow first, as <a href="../adopting/">Adopting Codeyard in an existing repository</a> describes, and syncs afterwards.
+This page is for a project that was created from Agent Codeyard with `gh repo create --template`, or that adopted it. `sync-template.sh` is not the way to adopt it: an existing repository that did not start from the template adopts the workflow first, as <a href="../adopting/">Adopting Agent Codeyard in an existing repository</a> describes, and syncs afterwards.
 
 <a id="update-an-existing-project"></a>
 

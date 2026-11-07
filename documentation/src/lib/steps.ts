@@ -149,13 +149,13 @@ export const feature: Step[] = [
       ["refused if", "The verification does not pass, unless `--unverified \"<reason>\"` records why; the commit still needs the checks to pass"],
       ["refused if", "The reviewer would be of the provider that implemented"],
       ["changes only", "In `run-feature.sh` a later round reviews only the changes when the policy allows it, the previous round is valid, the base of the branch is the same and the risk level did not rise; otherwise the complete feature, and the run says why"],
-      ["earlier rounds", "A round gets the decisions of the earlier rounds. An accepted or deferred finding is not raised again unless the change made it worse; a continuing finding names its predecessor and cannot lower its severity or weaken an unresolved fix-now decision"],
+      ["earlier rounds", "A round gets the decisions of the earlier rounds, and the reviewer is told not to raise an accepted or deferred finding again unless the change made it worse. A finding raised again must name its predecessor; the script checks that declaration and refuses one that lowers the severity or reopens an accepted or deferred finding as unresolved"],
     ],
   },
   {
     id: "decide-on-the-findings",
     title: "Decide on the findings",
-    text: "Each finding gets a recorded decision: fix it now, defer it to a follow-up Issue, or accept it with a reason. Critical and major findings are always fixed. For a low- or medium-risk feature the policy can ask for the light triage, which prefers to defer or accept a suggestion or a minor finding over a fix round; a high-risk feature always gets the full triage.",
+    text: "Each finding gets a recorded decision: fix it now, defer it to a follow-up Issue, or accept it with a reason. Critical and major findings are always fix now; only the owner can record an exception for one of them (`record-exception.sh`). For a low- or medium-risk feature the policy can ask for the light triage, which prefers to defer or accept a suggestion or a minor finding over a fix round; a high-risk feature always gets the full triage.",
     facts: [
       ["who", "The triage agent proposes; step by step you approve, unattended it decides"],
       ["script", "`./scripts/triage-review.sh <review-json>`"],

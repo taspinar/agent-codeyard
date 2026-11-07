@@ -87,7 +87,7 @@ const changed: Record<number, string[]> = {
 };
 ---
 <Base title="Examples" description="Real runs of Agent Codeyard: an application project, Physics by Construction, and features of this repository, each with what changed, what the review found and how it was merged, then its records.">
-  <PageHead title="Examples" lede="Real runs, each told result first: what changed, how many review rounds, what the review found, and how it was merged. Then its records. The first comes from another repository, an application that runs this workflow; the others are features of this repository, built with its own workflow.">
+  <PageHead title="Examples" lede="Real runs of Agent Codeyard, each told result first: what changed, how many review rounds, what the review found, and how it was merged. Then its records. The first comes from another repository, an application that runs this workflow; the others are features of this repository, built with its own workflow.">
     <ol class="contents">
       <li><a href="#application">An application: Physics by Construction #388</a></li>
       <li><a href="#memory">When the reviewer did not know what was decided: #217</a></li>
@@ -124,7 +124,7 @@ const changed: Record<number, string[]> = {
     <p class="needs">These are the project's own measurements on its developer machine, quoted from the pull request. They say what the change did to that project's tests, not how fast Codeyard is.</p>
 
     <h3>What the review found</h3>
-    <p>The implementer is the coding agent that writes the change. The reviewer is a second agent from another provider, here Codex, which can read the change but not edit it. A third agent, the triage, decides what happens to each finding; a major finding must be fixed before the change goes in.</p>
+    <p>The implementer is the coding agent that writes the change. The reviewer is a second agent from another provider, here Codex, which can read the change but not edit it. A third agent, the triage, decides what happens to each finding; a major finding must be fixed before the change goes in, unless the owner records <a href={href("docs/detailed-workflow/#owner-exception")}>an exception</a> for it.</p>
     <Table>
       <caption>From the review and triage comments on the Issue, which the workflow publishes for each round with findings, and the review line of the pull request.</caption>
       <thead><tr><th scope="col" class="num">round</th><th scope="col">verdict</th><th scope="col">findings</th><th scope="col">decision</th></tr></thead>
