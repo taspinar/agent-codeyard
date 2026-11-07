@@ -366,6 +366,7 @@ html:not(.js) .theme { display: none; }
 .page-head { padding-block: var(--s-7) var(--s-6); }
 .page-head h1 { font-size: var(--t-2xl); }
 .page-head .lede { margin-bottom: 0; }
+.page-head .answers { margin-top: var(--s-5); }
 
 /* Prose: Markdown and MDX content of the documentation. */
 .prose { max-width: var(--measure); }
@@ -423,6 +424,10 @@ html:not(.js) .docs-search { display: none; }
 .docs-body .prose { max-width: var(--measure-wide); }
 .docs-body .prose table { display: block; overflow-x: auto; }
 .docs-body .prose pre { overflow-x: auto; }
+/* History and research (/docs/history/): the timeline of About, in the prose
+   of a docs page. */
+.prose .words.timeline { padding-left: var(--s-route-indent); }
+.prose .words.timeline li + li { margin-top: 0; }
 .nav-group { font: var(--w-bold) var(--t-xs) var(--sans); color: var(--ink-3); margin: var(--s-5) 0 0; }
 /* Above 1100px "On this page" stays beside the text, sticky like the section
    header column; in one column it sits above the text. */
@@ -570,7 +575,8 @@ html:not(.js) .hint { display: none; }
 .excerpt { margin: 0; border-top: 2px solid var(--ink); background: var(--ground-2); padding: var(--s-4); font: var(--t-record)/var(--lh-code) var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .excerpt .src { display: block; color: var(--ink-3); margin-bottom: var(--s-2); }
 /* Features: the contents in groups, a group's head, and each feature as its
-   problem, what Codeyard does and what you get, then its technical proof. */
+   problem, what you get and what Codeyard does, then its technical proof
+   under a disclosure, closed by default (the pattern of .advanced). */
 .contents.grouped { columns: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 var(--s-6); max-width: none; }
 .contents.grouped > li { padding: 0; border-bottom: 0; counter-increment: none; }
 .contents.grouped > li::before { content: none; }
@@ -585,7 +591,8 @@ main section.group { border-top: 2px solid var(--ink); padding-bottom: 0; }
 .pitch dt { font-weight: var(--w-bold); padding-right: var(--s-4); }
 .pitch dd { margin: 0; }
 .pitch dd:first-of-type { font-size: var(--t-lg); line-height: var(--lh-lede); }
-.body > .proof { margin-top: var(--s-7); padding-top: var(--s-3); border-top: 2px solid var(--ink); margin-bottom: 0; font-size: var(--t-md); font-weight: var(--w-bold); line-height: var(--lh-heading); }
+.proof > summary { font: var(--w-semibold) var(--t-sm) var(--sans); color: var(--ink); cursor: pointer; width: fit-content; }
+.proof > * + * { margin-top: var(--s-5); }
 .split h5 { font-size: var(--t-md); font-weight: var(--w-bold); line-height: var(--lh-heading); letter-spacing: var(--track-snug); margin: 0 0 var(--s-3); padding-bottom: var(--s-2); border-bottom: 2px solid var(--ink); }
 @media (max-width: 760px) {
   .contents { columns: 1; }

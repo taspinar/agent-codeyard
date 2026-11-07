@@ -1,0 +1,98 @@
+---
+// The history of Agent Codeyard, the principles it taught, and the research
+// behind it: moved from About (#319), which keeps one paragraph and a link.
+// Each period links to the pull requests that built it, by their merge dates.
+import DocsPage from "../../components/DocsPage.astro";
+import Table from "../../components/Table.astro";
+import { issue, pull, repoFile } from "../../lib/links";
+
+const prs = (numbers: number[]) => numbers.map((number) => ({ number, url: pull(number) }));
+
+// The history: periods by the merge dates of their pull requests.
+const history = [
+  { title: "A manual workflow", when: "September 2026", prs: prs([5, 8, 12, 14]),
+    text: "Instructions for agents, a few policies, a setup guide, and a rhythm of plan, act and evaluate. A feature was planned in an Issue, built in its own worktree, and read by a second agent. The first scripts took over what was the same every time; soon each review finding got an explicit decision, and the implementer fixed only what was decided." },
+  { title: "Structured planning", when: "September 2026", prs: prs([22]),
+    text: "A planning process before the first feature: from an idea to agreed requirements, an architecture and a roadmap." },
+  { title: "Records instead of reports", when: "2 October", prs: prs([31, 35, 39, 42, 43, 49, 50, 51]),
+    text: "Checks that relied on the agent's own word (the tests passed, the review covers the current code) became records a script can check: one command for the checks, structured data of the reviews and of the decisions on their findings, tied to the reviewed version, read-only reviewers, and a planning review with an approval tied to the approved documents." },
+  { title: "Reliability from real use", when: "6–7 October", prs: prs([61, 71, 74, 76, 77, 79, 81]),
+    text: "A feature resumes from a handoff note, the short note a session keeps so that the next one can continue, a passed verification is reused for unchanged content, an approved plan has a change process, a later review can read only what changed, and a project takes over template changes with a script." },
+  { title: "Unattended runs", when: "8–10 October", prs: prs([89, 90, 91, 95, 100, 101]),
+    text: "One command takes a feature from its Issue to an open pull request without waiting for you; it does not merge. A script, not an agent, decides whether a step succeeded and retries a temporary failure; “blocked” means only that a person has to decide; whether a change needs the owner's approval is no longer left to the agent that made it." },
+  { title: "Learning from runs", when: "13–21 October", prs: prs([126, 136, 138, 139, 140, 164, 168]),
+    text: "The scripts commit and close an Issue only when the implementer's completion record says the work is complete. Every run records its durations and tokens; a report, the experience of each run and an analysis by a read-only agent follow. The owner can give the decisions on review findings directly, with an audit trail, and a feature can wait for evidence that cannot exist yet." },
+  { title: "Effort by risk", when: "26–28 October", prs: prs([185, 194, 197, 198, 199, 200, 202, 211, 213, 214]),
+    text: "Every feature gets a computed risk level that selects the models and what the review rounds require; workflow profiles, a one-line choice of how much process a project wants, make low-risk work lighter. The owner's comments reach every agent of a feature, and the implementer asks before it invents an answer. Budgets measure without failing, and an approval request is tied to a checksum of exactly the content that was reviewed." },
+  { title: "Corrections from the first analysis", when: "27–29 October", prs: prs([183, 208, 215, 222, 223, 224, 225, 228, 229]),
+    text: "Agent attribution became configurable and is disabled by default; Codex may write the runtime files it needs. The five proposals of the run analysis of 28 October were built: earlier review decisions in every round, a recorded reason for every stop, timed checks, warnings about undeclared models. Test escalation was narrowed to removed or changed lines, and the owner can raise the level before the first session." },
+  { title: "This website", when: "30 October", prs: prs([244, 245, 246, 247, 248]),
+    text: "An MIT licence, then the redesign of this site, tracked in #234." },
+  { title: "The first site finished", when: "30–31 October", prs: prs([249, 251, 252]),
+    text: "Features, Examples and About written from the repository's own records; accessibility, performance and publication checked, with a guide for a rename and a custom domain; the browser check detects a missing browser instead of installing one on every run." },
+  { title: "The product-first redesign", when: "31 October", prs: prs([260, 261, 262, 263]),
+    text: "A product-first homepage, from the problem through the route of one feature, risk, review and the owner's gates to the records of one real feature. The workflow map became an explorer with the detail of each step, Features were organised around engineering problems and Examples by risk, and the workflow reference moved into the regrouped docs." },
+  { title: "Agent Codeyard", when: "31 October – 2 November", prs: prs([264, 266, 268]),
+    text: "The site took the name Agent Codeyard, with a social preview image for every page, and About named the maintainer. Two days later the repository and the site moved to agent-codeyard and agentcodeyard.com; the scripts kept their names." },
+  { title: "Value first", when: "4 November", prs: prs([276, 277, 278, 281]),
+    text: "After the owner's editorial audit of 3 November (#269), the homepage, Features, Examples and the docs were rewritten for a developer who has not heard of Codeyard: the value first, the technical proof as the deeper layer." },
+];
+
+// The frameworks compared, from the earlier research page, statuses corrected (#235, item 9).
+const frameworks = [
+  { name: "GitHub Spec Kit", url: "https://github.com/github/spec-kit", took: "Clear links between requirements, plans, tasks and implementation; consistency checks", left: "A second specification system with its own commands and directories", status: "Partly: requirements, roadmap, feature Issues, planning review" },
+  { name: "OpenSpec", url: "https://github.com/Fission-AI/OpenSpec", took: "Explicit change requests for an approved plan", left: "A separate change-management tool with its own documents", status: "Built: the planning change process, with a new approval" },
+  { name: "Superpowers", url: "https://github.com/obra/superpowers", took: "Verification before calling work done, independent reviews, short task contexts, systematic debugging", left: "Every skill installed; test-first development for every change", status: "Partly: reviews, verification, resuming; a debugging method is not built" },
+  { name: "BMAD Method", url: "https://github.com/bmad-code-org/BMAD-METHOD", took: "Separate responsibilities for planning, implementation and review", left: "A large set of mandatory personas and documents", status: "A principle: focused roles" },
+  { name: "GSD Core", url: "https://github.com/open-gsd/gsd-core", took: "Small tasks, progress notes that survive a session, resuming with a fresh context", left: "A second orchestrator; parallel execution by default", status: "Partly: handoff notes and resuming; no task scheduling" },
+];
+
+const toc = [
+  { slug: "history", text: "History" },
+  { slug: "principles", text: "Engineering principles" },
+  { slug: "research", text: "Research" },
+];
+---
+<DocsPage id="history" title="History and research" description="How Agent Codeyard evolved from the first pull request on 10 September 2026, period by period with the pull requests that built it, the principles that history taught, and the frameworks and talks it learned from." toc={toc} class="history">
+  <h2 id="history">History</h2>
+  <p>The ideas behind the workflow are not new: it combines established engineering practice with coding agents, inside a development process on GitHub. It started manual and automated the steps that proved useful and repeatable. Several lessons came from <a href={`${issue(189)}#issuecomment-6443105170`}>Physics by Construction</a>, a project that uses this workflow and where parts of its design were tried first; a fix found there came back in <a href={pull(179)}>PR #179</a>.</p>
+  <ol class="words timeline">
+    {history.map((period) => (
+      <li>
+        <b>{period.title}</b><small class="k">{period.when}</small>
+        <p>{period.text}</p>
+        <p>{period.prs.map((pr, index) => <>{index > 0 && ", "}<a href={pr.url}>#{pr.number}</a></>)}</p>
+      </li>
+    ))}
+  </ol>
+
+  <h2 id="principles">Engineering principles</h2>
+  <p>From the history above and <a href={repoFile("docs/workflow.md")}><code>docs/workflow.md</code></a>.</p>
+  <ul>
+    <li><b>Manual first.</b> Deciding on findings, the planning loop and the unattended run, one command that takes a feature to a pull request without waiting for you, were each a manual routine before they were a script.</li>
+    <li><b>Evidence before automation.</b> Recorded reviews and verification came before the command that runs a feature alone; without them an unattended run would have nothing to stop on.</li>
+    <li><b>A script decides, not an agent.</b> Whether a step succeeded, whether a review is current, what the risk level is: computed from the repository, never taken from an agent's report.</li>
+    <li><b>Effort follows risk.</b> A documentation fix and a change to the workflow's own checks do not get the same treatment; high-risk work keeps every control, whatever the project's profile, its one-line choice of how much process it wants.</li>
+    <li><b>Controls only get stricter.</b> Any source can raise a level or require approval; nothing an agent controls can lower it, and the rules are read from the base branch.</li>
+    <li><b>Driven by real use.</b> Once real work depended on the template, most changes answered something that had gone wrong, and since October the run records show what.</li>
+  </ul>
+
+  <h2 id="research">Research</h2>
+  <p>No code was copied from the projects named here.</p>
+  <p>For every framework we asked one question: would this improve the workflow we have, or add complexity it does not need?</p>
+  <Table label="Frameworks compared">
+    <thead><tr><th scope="col">framework</th><th scope="col">what we took</th><th scope="col">what we left out</th><th scope="col">in Codeyard today</th></tr></thead>
+    <tbody>
+      {frameworks.map((row) => (
+        <tr>
+          <th scope="row"><a href={row.url}>{row.name}</a></th>
+          <td data-col="what we took">{row.took}</td>
+          <td data-col="what we left out">{row.left}</td>
+          <td data-col="in Codeyard today">{row.status}</td>
+        </tr>
+      ))}
+    </tbody>
+  </Table>
+  <p>Two talks shaped the approach: <a href="https://youtu.be/-QFHIoCo-Ko">Matt Pocock, “Full Walkthrough: Workflow for AI Coding”</a>, on clarifying requirements, vertical slices and dependencies between tasks; and <a href="https://youtu.be/rnDm57Py54A">Eric Zakariasson, “Building your own software factory”</a>, on isolated environments, parallel agents and better verification evidence.</p>
+  <p>Among skill collections we looked at <a href="https://github.com/cloudflare/security-audit-skill">Cloudflare's security audit skill</a>, <a href="https://github.com/trailofbits/skills">Trail of Bits' skills</a>, <a href="https://github.com/addyosmani/agent-skills">Addy Osmani's agent skills</a>, <a href="https://github.com/anthropics/skills">Anthropic's skills</a> and <a href="https://github.com/pbakaus/impeccable">Impeccable</a>. None is bundled: a project selects the skills its work needs.</p>
+</DocsPage>
