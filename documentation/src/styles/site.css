@@ -667,3 +667,29 @@ html.js .guide-static { display: none; }
 html:not(.js) .routes, html:not(.js) .advanced { display: none; }
 /* The guided map: the feature's route only, without script and model names. */
 .workflow.guided :is(.plan-part, .map .trunk.plan, .map .sub.k, .map [data-key="n-unattended"], .words small.k) { display: none; }
+
+/* The home page (#317): the hero answers three questions in a definition
+   list; the comparison keeps each row opposite its counterpart (a subgrid of
+   --rows rows: the headings and one per topic); the story is one numbered
+   list under a 2px ink rule, with the explanations of review and merge
+   authority under it. */
+.answers { margin: 0; }
+.answers > div + div { margin-top: var(--s-4); }
+.answers dt { font: var(--w-bold) var(--t-xs) var(--sans); color: var(--ink-3); }
+.answers dd { margin: var(--s-1) 0 0; max-width: var(--measure-lede); color: var(--ink-2); }
+.answers dd.lede { margin-top: var(--s-1); }
+.compare.rows .col { display: grid; grid-row: span var(--rows); grid-template-rows: subgrid; }
+.compare.rows dl { display: contents; }
+.story { margin: 0; padding: 0 0 0 var(--s-indent); border-top: 2px solid var(--ink); }
+.story > li { padding: var(--s-4) 0; border-bottom: 1px solid var(--rule); color: var(--ink-2); font-size: var(--t-sm); }
+.story > li > b { display: block; color: var(--ink); font-size: var(--t-md); }
+.story > li > a { font-weight: var(--w-semibold); }
+.explain .trail { margin: var(--s-5) 0 var(--s-2); color: var(--ink); }
+.explain { margin-top: var(--s-5); }
+.explain p { max-width: var(--measure-wide); color: var(--ink-2); }
+.explain p + p { margin-top: var(--s-4); }
+.explain b { color: var(--ink); }
+@media (max-width: 760px) {
+  .compare.rows .col { display: block; }
+  .compare.rows dl { display: block; }
+}
