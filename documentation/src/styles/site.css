@@ -508,7 +508,7 @@ html:not(.js) .reset { display: none; }
 .switch-row { display: flex; flex-wrap: wrap; gap: var(--s-3) var(--s-6); }
 .switch-row.minor { padding-top: var(--s-3); border-top: 1px solid var(--rule); }
 .switch-row.minor .switch span { font-size: var(--t-xs); }
-.hint { font-size: var(--t-sm); color: var(--ink-2); margin: var(--s-3) 0 0; }
+.hint, .tour-note { font-size: var(--t-sm); color: var(--ink-2); margin: var(--s-3) 0 0; max-width: var(--measure-wide); }
 html:not(.js) .hint { display: none; }
 .map g.station { cursor: pointer; }
 .map g.station:focus { outline: none; }

@@ -2,7 +2,9 @@
 // The workflow as one line map (DESIGN.md, "Route map with switches" and
 // "Workflow explorer"). With JavaScript it opens on the guided route: the
 // walkthrough of one real feature, #241, step by step with who acts, then the
-// routes of its exceptions; the switches are under "Advanced controls".
+// routes of its exceptions; the switches are under "Advanced controls". Directly
+// under the map only Play, Previous and Next; the routes, the complete workflow
+// and the list follow under the hint.
 // project planning on the ink line, feature execution on the green line,
 // with the switches that redraw it for a part of the workflow, the way of
 // running a feature, a risk level, a profile and a situation, and a
@@ -18,8 +20,8 @@
 // data-key, every text that changes data-label. The words list is the map's
 // text alternative and its form on narrow screens.
 import agentsConf from "../../../.agents/agents.conf?raw";
-import { switches, follow, classesOf, parseAgents, guide, routes, example } from "../lib/workflow";
-import { details, parts, stations as detailed, tabs } from "../lib/steps";
+import { switches, follow, classesOf, parseAgents, guide, routes, example, route } from "../lib/workflow";
+import { details, entry, parts, stations as detailed, tabs } from "../lib/steps";
 import { href } from "../lib/links";
 
 // The agents of the roles, as .agents/agents.conf of the repository sets them.
@@ -31,6 +33,13 @@ const panels = Object.keys(detailed).map((key) => ({ key, ...details(key)! }));
 const rows = [switches.filter((s) => !("minor" in s)), switches.filter((s) => "minor" in s)];
 // The guided route in words, for a reader without JavaScript.
 const guided = guide(models);
+// The reference entry of each element a walkthrough reaches: a step's text is
+// at most three sentences, the entry tells the rest.
+const refOf = (key: string) => {
+  const step = entry(key);
+  return step && { href: href(`docs/reference/workflow/#${step.id}`), title: step.title };
+};
+const refs = Object.fromEntries(route.flatMap((key) => { const ref = refOf(key); return ref ? [[key, ref]] : []; }));
 // The guided map shows the feature's route first: without the planning line
 // (the full box draws it) and without script and model names, which the
 // advanced controls and the step detail panel keep.
@@ -105,20 +114,21 @@ const featureWords: Word[] = [
 ];
 const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((s) => s.key === key)?.name ?? key;
 ---
-<figure class="route workflow guided" id="workflow" aria-labelledby="workflow-title" data-workflow data-models={JSON.stringify(models)} data-boxes={JSON.stringify([fullBox, guidedBox])}>
+<figure class="route workflow guided" id="workflow" aria-labelledby="workflow-title" data-workflow data-models={JSON.stringify(models)} data-boxes={JSON.stringify([fullBox, guidedBox])} data-refs={JSON.stringify(refs)}>
   <div class="route-head">
     <h2 id="workflow-title">The route of your change</h2>
     <div class="scenario">
       <p aria-live="polite">
         <strong data-summary>{view.summary.map((bit, i) => <>{i > 0 && <span class="sep" aria-hidden="true">·</span>}{bit}</>)}</strong>
         <span data-caption="lead"></span> <b data-caption="who"></b> <span data-caption="text">{view.caption}</span>
+        <span data-caption="ref" hidden>{" "}In the reference: <a></a>.</span>
       </p>
     </div>
     <div class="guide-static">
       <h3>One real feature: Issue #241, as it ran</h3>
       <ol class="words timeline">
         {guided.map((step) => (
-          <li class:list={{ you: step.you }}><b>{stationName(step.key)}</b><small>{step.who}</small><p>{step.text}</p></li>
+          <li class:list={{ you: step.you }}><b>{stationName(step.key)}</b><small>{step.who}</small><p>{step.text}{refs[step.key] && <> In the reference: <a href={refs[step.key].href}>{refs[step.key].title}</a>.</>}</p></li>
         ))}
       </ol>
     </div>
@@ -170,6 +180,12 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
     <text class:list={["sub", "flag", c("f-merge-approval")]} data-key="f-merge-approval" x="1130" y={F + 74} text-anchor="middle">approval required</text>
   </svg>
 
+  <div class="map-actions" role="group" aria-label="Walkthrough">
+    <button type="button" data-action="play">Play walkthrough</button>
+    <button type="button" data-action="previous" hidden>Previous step</button>
+    <button type="button" data-action="next" hidden>Next step</button>
+  </div>
+
   <ul class="legend" aria-hidden="true">
     <li class="plan-part"><svg width="28" height="8"><path d="M2 4 H26" stroke="var(--ink)" stroke-width="6" stroke-linecap="round" /></svg>planning</li>
     <li><svg width="28" height="8"><path d="M2 4 H26" stroke="var(--line)" stroke-width="6" stroke-linecap="round" /></svg>a feature</li>
@@ -181,6 +197,7 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
   </ul>
 
   <p class="hint">Select a step on the map for what happens, who acts, the command and what can go wrong.</p>
+  <p class="tour-note">The tour follows <a href={href("examples/#story")}>#241</a> because its run wrote the first pages of this site; the home page follows <a href={href("examples/#memory")}>#217</a>, a high-risk change to the workflow itself, from its Issue to its merge.</p>
   <section class="step-panel" id="step-panel" aria-labelledby="step-panel-h" hidden>
     <div class="step-panel-head">
       <h3 id="step-panel-h" tabindex="-1"></h3>
@@ -211,26 +228,23 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
                 ))}
               </dl>
             )
-            : tab.id !== "overview" && <p class="ref-empty">Nothing in the reference for this step.</p>}
+            : null}
         </div>
       ))}
       <p class="ref-link">In the reference: {panel.steps.map((step, i) => <>{i > 0 && " · "}<a href={href(`docs/reference/workflow/#${step.id}`)}>{step.title}</a></>)}</p>
     </template>
   ))}
 
-  <div class="map-actions" role="group" aria-label="Walkthrough and list">
-    <button type="button" data-action="play">Play walkthrough</button>
-    <button type="button" data-action="previous" hidden>Previous step</button>
-    <button type="button" data-action="next" hidden>Next step</button>
-    <button type="button" data-action="finish" hidden>Show the complete workflow</button>
-    <button type="button" class="list-toggle" data-action="list" aria-expanded="false" aria-controls="workflow-words">Show the steps as a list</button>
-  </div>
-
   <div class="routes" role="group" aria-labelledby="routes-label">
     <span class="routes-label" id="routes-label">Follow</span>
     {routes.map((r) => (
       <button type="button" data-route={r.id} aria-pressed={String(r.id === "example")}>{r.name}</button>
     ))}
+  </div>
+
+  <div class="map-actions more" role="group" aria-label="The complete workflow">
+    <button type="button" data-action="finish" hidden>Show the complete workflow</button>
+    <button type="button" class="list-toggle" data-action="list" aria-expanded="false" aria-controls="workflow-words">Show the steps as a list</button>
   </div>
 
   <details class="advanced">
@@ -302,6 +316,8 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
     const lead = figure.querySelector<HTMLElement>('[data-caption="lead"]')!;
     const caption = figure.querySelector<HTMLElement>('[data-caption="text"]')!;
     const who = figure.querySelector<HTMLElement>('[data-caption="who"]')!;
+    const ref = figure.querySelector<HTMLElement>('[data-caption="ref"]')!;
+    const refs = JSON.parse(figure.dataset.refs ?? "{}") as Record<string, { href: string; title: string }>;
     const routeButtons = Array.from(figure.querySelectorAll<HTMLButtonElement>("[data-route]"));
     const advanced = figure.querySelector<HTMLDetailsElement>(".advanced")!;
     const map = figure.querySelector<SVGSVGElement>(".map")!;
@@ -350,6 +366,9 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
       lead.textContent = current ? `Step ${at + 1} of ${view.walk.length}.` : "";
       who.textContent = current?.who ? `${current.who}:` : "";
       caption.textContent = current ? current.text : view.caption;
+      const entry = current && refs[current.key];
+      ref.hidden = !entry;
+      if (entry) Object.assign(ref.querySelector("a")!, { href: entry.href, textContent: entry.title });
       const walking = at >= 0;
       figure.classList.toggle("walking", walking);
       const last = at === view.walk.length - 1;

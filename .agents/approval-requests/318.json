@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "a69df5f96af18a54d414d4d53e6a5633857f5332",
+  "commit": {
+    "branch": "feature/318-workflow-one-guided-tour",
+    "parent": "7c7fee10a3870c5ab1cfede0e40ec5015a142fbb",
+    "base": "7c7fee10a3870c5ab1cfede0e40ec5015a142fbb"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the completion record leaves a criterion of the owner_approval gate pending: Owner screenshot approval of the explorer's first screen."
+  ],
+  "explanation": "Issue #318: Workflow: one guided tour first, shorter step texts (review step 2). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

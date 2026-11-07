@@ -267,6 +267,21 @@ export const stations: Record<string, string[]> = {
   "f-merge": ["merge"],
 };
 
+/** The steps of the reference behind the branches a walkthrough moves along, which are not stations. */
+const branches: Record<string, string> = {
+  "b-clarify": "implement-the-feature",
+  "f-answer": "implement-the-feature",
+  "b-repair": "run-the-checks",
+  "b-fix": "apply-the-fixes",
+};
+
+/** The entry of the reference that a step of a walkthrough links to: the first step of its station, or the step of its branch. */
+export function entry(key: string) {
+  const id = branches[key] ?? stations[key]?.[0];
+  const step = [...planning, ...feature].find((s) => s.id === id);
+  return step && { id: step.id, title: step.title };
+}
+
 /** The tabs of the step detail panel and the fields each shows. */
 export const tabs = [
   { id: "overview", name: "Overview", fields: ["who", "gate"] },

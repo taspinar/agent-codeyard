@@ -3,8 +3,8 @@
 //   node --test "src/**/*.test.ts"  (in documentation/)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { details, feature, fields, planning, reference, stages, stations, tabs } from "./steps.ts";
-import { feature as featureLine, planning as planningLine } from "./workflow.ts";
+import { details, entry, feature, fields, planning, reference, stages, stations, tabs } from "./steps.ts";
+import { feature as featureLine, planning as planningLine, route } from "./workflow.ts";
 
 test("every station of the map opens a detail, and every step it names exists", () => {
   assert.deepEqual(Object.keys(stations).sort(), [...planningLine, ...featureLine].sort());
@@ -65,4 +65,13 @@ test("a reference field keeps the original labels where it gathers several or is
   assert.deepEqual(rows.map((row) => row.label), ["Who acts", "Command", "Stops, retries and exceptions"]);
   assert.equal(rows[0].facts[0].shown, false);
   assert.deepEqual(rows[2].facts.map((fact) => [fact.label, fact.shown]), [["refused if", true], ["without review", true], ["partial", true], ["important", true]]);
+});
+
+test("every element a walkthrough reaches links to its entry in the reference", () => {
+  // The stations and the branches a walkthrough stops at; segments and the bypass only light up.
+  const reached = route.filter((key) => /^(p|f)-|^b-(clarify|repair|fix)$/.test(key));
+  for (const key of reached) assert.ok(entry(key), key);
+  assert.equal(entry("b-fix")!.id, "apply-the-fixes");
+  assert.equal(entry("f-findings")!.id, "decide-on-the-findings", "a station links to its first step");
+  assert.equal(entry("s-f-review"), undefined, "a segment is not a step");
 });

@@ -178,3 +178,14 @@ test("the guided routes are #241 first, then one exception each, step by step, a
   }
   assert.ok(follow("findings", models).walk.some((step) => step.key === "f-findings" && step.you), "step by step you approve the triage");
 });
+
+test("every walkthrough step is at most three sentences; the reference entry tells the rest", () => {
+  const sentences = (text: string) => text.match(/[.!?](?=\s|$)/g)?.length ?? 0;
+  const values = (name: string) => switches.find((s) => s.name === name)!.options.map(([value]) => value);
+  const walks = [guide(models), ...routes.map((r) => follow(r.id, models).walk)];
+  for (const part of values("part")) for (const run of values("run")) for (const risk of values("risk"))
+    for (const profile of values("profile")) for (const situation of values("situation"))
+      walks.push(describe(stateOf({ part, run, risk, profile, situation }), models).walk);
+  for (const walk of walks) for (const step of walk) assert.ok(sentences(step.text) <= 3, `${step.key}: ${step.text}`);
+  assert.equal(sentences("One. Two, in docs/development.md. Three: start-feature.sh <issue> --resume."), 3);
+});

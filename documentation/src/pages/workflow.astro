@@ -48,8 +48,7 @@ const reference = href("docs/reference/workflow/");
   </Section>
 
   <Section id="steps" title="Every step in detail">
-    <Fragment slot="note">Moved to the documentation.</Fragment>
-    <p>Every command, input, output, gate and stop condition, step by step, is in the <a href={reference}>workflow reference</a>.</p>
+    <Fragment slot="note">Every command, input, output, gate and stop condition is in the <a href={reference}>workflow reference</a>.</Fragment>
     {stages.map((stage) => (
       <p class="moved-note">{stage.title}: {stage.steps.map((step, i) => <>{i > 0 && " · "}<a id={step.id} href={`${reference}#${step.id}`}>{step.title}</a></>)}</p>
     ))}
