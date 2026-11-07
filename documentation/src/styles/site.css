@@ -332,7 +332,8 @@ html:not(.js) .switches { display: none; }
 }
 @media (max-width: 760px) {
   .top .wrap { flex-wrap: wrap; gap: 0 var(--s-4); padding-top: var(--s-2); }
-  .nav { order: 3; flex-basis: 100%; gap: var(--s-4); overflow-x: auto; margin-left: 0; padding-bottom: var(--s-1); }
+  /* The links wrap to a second row instead of scrolling out of view. */
+  .nav { order: 3; flex-basis: 100%; flex-wrap: wrap; gap: 0 var(--s-4); margin-left: 0; padding-bottom: var(--s-1); }
   .nav a { white-space: nowrap; }
   .nav .theme { margin-left: auto; }
   .ledger { grid-template-columns: 1fr; }
@@ -420,6 +421,9 @@ pre.astro-code code { font-size: inherit; background: none; padding: 0; }
 .docs-search { margin-bottom: var(--s-5); }
 .docs-search input { width: 100%; padding: var(--s-2); margin-top: var(--s-2); font: inherit; background: var(--ground); color: var(--ink); border: 1px solid var(--rule-strong); }
 .docs-search p { font-size: var(--t-sm); margin-top: var(--s-2); }
+.docs-search li + li { margin-top: var(--s-3); }
+.docs-search li p { color: var(--ink-2); margin: var(--s-1) 0 0; }
+.docs-search mark { background: none; color: inherit; box-shadow: inset 0 -0.55em 0 var(--line-soft); }
 html:not(.js) .docs-search { display: none; }
 .docs-body .prose { max-width: var(--measure-wide); }
 .docs-body .prose table { display: block; overflow-x: auto; }

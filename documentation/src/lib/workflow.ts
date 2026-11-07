@@ -218,7 +218,7 @@ export function describe(state: State, models: Models): View {
     ].filter(Boolean).join(" "),
     "w-f-review.cond": `Another provider than the implementer, read-only: every acceptance criterion against the code and the tests, and the impact on the architecture.${risk === "high" ? " A high-risk feature is always reviewed, under every profile." : ""}`,
     "w-f-findings.cond": [
-      "Per finding: fix now, defer to a follow-up Issue, or accept with a reason; critical and major findings are always fixed.",
+      "Per finding: fix now, defer to a follow-up Issue, or accept with a reason; critical and major findings are fix now, unless you record an exception.",
       lightTriage ? "The light triage prefers to defer or accept suggestions and minor findings over a fix round." : "",
       unattended ? `The triage agent (${triage}) decides without you; read its decisions on the Issue afterwards.` : "You approve the decisions, which are published on the Issue.",
       "Findings to fix are fixed, checked and reviewed again: the changes, then the complete feature.",
@@ -384,7 +384,7 @@ const ran: { key: string; who: string; text: string }[] = [
   { key: "f-implement", who: "The implementer, an agent (claude opus)", text: "In its own branch and its own working copy of the repository, a worktree, it first checked that the Issue left no decision open. It wrote the three pages and their styles in 11 minutes, then a completion record: for each acceptance criterion, whether it is met and the evidence that shows it." },
   { key: "f-checks", who: "A script, verify.sh", text: "Every check the project declares ran: the tests, and the build and check of this site. They passed in 14 seconds. The pass is recorded for exactly this content; any change afterwards needs the checks again." },
   { key: "f-review", who: "The reviewer, an agent of another provider (codex gpt-6-luna) that cannot edit files", text: "At medium risk, the level of any file that no rule of the risk policy names, every change is reviewed. Round 1 compared each acceptance criterion with the code and found one major problem: the Examples page linked the source files of one example only, and the Issue asked for every example." },
-  { key: "f-findings", who: "The triage agent (claude sonnet), because the run was unattended", text: "The triage is a decision per finding: fix it now, defer it to a later Issue, or accept it with a reason. A major finding is always fixed, so it decided fix now, and published the decision on the Issue for you to read. Run step by step, you approve this decision." },
+  { key: "f-findings", who: "The triage agent (claude sonnet), because the run was unattended", text: "The triage is a decision per finding: fix it now, defer it to a later Issue, or accept it with a reason. A major finding is always fix now unless you record an exception, so it decided fix now, and published the decision on the Issue for you to read. Only in a run step by step does the triage agent propose and wait for your approval." },
   { key: "b-fix", who: "The implementer (claude opus)", text: "It fixed only what was decided as fix now: it added the source files of the other four examples, in 85 seconds." },
   { key: "f-checks", who: "A script, verify.sh", text: "The content changed, so the checks ran again. They passed in 15 seconds." },
   { key: "f-review", who: "The reviewer (codex gpt-6-luna)", text: "Round 2 reviewed only the fix and found nothing. Round 3 reviewed the complete feature again: PASS." },

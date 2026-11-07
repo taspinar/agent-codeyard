@@ -50,7 +50,7 @@ const compare = [
   </div>
 
   <Section id="change" title="What changes">
-    <Fragment slot="note">Each line on the right is a script or a policy of the template. <a href={href("features/")}>Features</a> shows how.</Fragment>
+    <Fragment slot="note">Each line on the right is a script or a policy of Codeyard. <a href={href("features/")}>Features</a> shows how.</Fragment>
     <div class="compare rows" role="group" aria-label="Without and with Codeyard" style={`--rows: ${compare.length + 1}`}>
       <div class="col"><h3>Without Codeyard</h3><dl>
         {compare.map((row) => <div><dt>{row.topic}</dt><dd>{row.without}</dd></div>)}
@@ -125,7 +125,7 @@ const compare = [
         </ol>
         <Fragment slot="caption"><span data-k="caption"><strong>Medium risk, standard profile.</strong> Every step on the line runs.</span><span class="policy-link" hidden> <a href={href("docs/risk-policy/")}>When the review is skipped</a>.</span></Fragment>
       </DiagramFrame>
-      <p class="needs">The implementer is the agent that writes the change; the reviewer reads it. The checks are the tests and other checks of <code>verify.sh</code>, and the triage decides what happens to each review finding: fix it now, defer it to a new Issue, or accept it with a reason. <a href={href("workflow/")}>Every step of the route</a>.</p>
+      <p class="needs">The implementer is the agent that writes the change; the reviewer reads it. The checks are the tests and other checks of <code>verify.sh</code>, and the triage decides what happens to each review finding: fix it now, defer it to a new Issue, or accept it with a reason. Step by step you approve those decisions; in an unattended run the triage agent decides and publishes them on the Issue, and you read them before the merge (<a href={href("workflow/#ways")}>the difference</a>). <a href={href("workflow/")}>Every step of the route</a>.</p>
     </div>
   </section>
 
@@ -157,7 +157,7 @@ const compare = [
   <Section id="who" title="Who it is for">
     <Fragment slot="note">What you need: <a href={href("docs/getting-started/")}>Getting started</a>. Cost and more: the <a href={href("faq/")}>FAQ</a>.</Fragment>
     <p class="lede">Developers and teams who already use command-line coding agents and GitHub, and want structure around them. It is not a no-code tool: you work in a terminal and a Git repository.</p>
-    <p>A new project starts from the template. An existing repository adopts the workflow on a branch you review, around its own code, CI and history: <a href={href("docs/adopting/")}>Adopting Codeyard in an existing repository</a>.</p>
+    <p>A new project is created from Codeyard with <code>gh repo create --template</code>. An existing repository adopts the workflow on a branch you review, around its own code, CI and history: <a href={href("docs/adopting/")}>Adopting Agent Codeyard in an existing repository</a>.</p>
   </Section>
 
   <Section id="how" title="Planning: plan once, then one line per feature">
@@ -181,7 +181,7 @@ const compare = [
 <span class="c"># then each feature, from Issue to pull request</span>
 <span class="p">$ </span>./scripts/create-feature-issue.sh F01
 <span class="p">$ </span>./scripts/run-feature.sh 1</pre>
-    <p class="needs">There is no installer: the template is the starting point. You need Git, the GitHub CLI, <code>jq</code>, Claude Code and Codex; <code>doctor.sh</code> checks all of it, including the Codex sandbox and your Git identity.</p>
+    <p class="needs">There is no installer: <code>gh repo create --template</code> is the starting point. You need Git, the GitHub CLI, <code>jq</code>, Claude Code and Codex; <code>doctor.sh</code> checks all of it, including the Codex sandbox and your Git identity.</p>
   </Section>
 
   <section id="cta" aria-labelledby="cta-h">

@@ -1,6 +1,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, relative, sep } from 'node:path';
+import { pageRank } from '../src/lib/search.mjs';
 
 export function plainText(html) {
   const entities = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
@@ -30,9 +31,11 @@ export default function searchIndex() {
             const html = await readFile(path, 'utf8');
             const main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1];
             if (!main) continue;
+            const page = relative(root, path).split(sep).join('/').replace(/index\.html$/, '');
             pages.push({
               title: plainText(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || ''),
-              url: base + relative(root, path).split(sep).join('/').replace(/index\.html$/, ''),
+              url: base + page,
+              rank: pageRank(page),
               text: plainText(main.match(/<article\b[^>]*\bdata-search\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] || main),
             });
           }

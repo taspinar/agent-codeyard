@@ -313,7 +313,7 @@ Verification:
     <dl class="pitch">
       <dt>The problem</dt><dd>An agent that reviews its own code, or code of its own model family, tends to miss while reading what it missed while writing.</dd>
       <dt>What you get</dt><dd>Every reviewed change gets a second, independent reading, and each finding a written decision, published on the Issue.</dd>
-      <dt>What Codeyard does</dt><dd>A reviewer of another AI provider reads the change and cannot edit it: the script refuses one of the implementer's own provider, and as shipped Codex reviews what Claude wrote. In the triage each finding is fixed now, deferred to a new Issue, or accepted with a reason, and critical and major findings are always fixed.</dd>
+      <dt>What Codeyard does</dt><dd>A reviewer of another AI provider reads the change and cannot edit it: the script refuses one of the implementer's own provider, and as shipped Codex reviews what Claude wrote. In the triage each finding is fixed now, deferred to a new Issue, or accepted with a reason. A critical or major finding is fixed by default; the only other route is <a href={href("docs/detailed-workflow/#owner-exception")}>your exception</a> for that one finding, after which the merge needs you.</dd>
     </dl>
     <details class="proof">
       <summary>Technical proof: files, settings and a real record</summary>
@@ -332,7 +332,7 @@ Verification:
         <ol class="words" id="review-words">
           <li><b>Verify</b><small class="k">verify.sh</small></li>
           <li><b>Review</b><small>another provider than the implementer, read-only</small><p class="cond">Exactly the content the verification passed for.</p></li>
-          <li><b>Triage</b><small class="k">FIX_NOW · DEFER · ACCEPT</small><p class="cond">Critical and major findings are always FIX_NOW; DEFER needs a follow-up Issue, ACCEPT a rationale.</p></li>
+          <li><b>Triage</b><small class="k">FIX_NOW · DEFER · ACCEPT</small><p class="cond">Critical and major findings are always FIX_NOW, unless the owner records an exception; DEFER needs a follow-up Issue, ACCEPT a rationale.</p></li>
           <li class="you"><b>Approve the triage</b><small>by you; an unattended run approves it without asking</small><p class="cond">FIX_NOW: apply-triage.sh hands the fixes to an implementer, the result is verified and reviewed in a new round.</p></li>
           <li><b>Commit</b><small class="k">finish-feature.sh</small></li>
         </ol>
@@ -348,7 +348,7 @@ Reviewer: codex (gpt-6-luna), read-only
 ## Verdict
 
 CHANGES REQUIRED</pre>
-      <p><code>review-feature.sh</code> refuses a review by the implementer's own provider; as shipped, Claude implements and Codex reviews. A triage agent proposes one decision per finding: <code>FIX_NOW</code>, <code>DEFER</code> with a follow-up Issue, or <code>ACCEPT</code> with a rationale. Critical and major findings are always fixed. The decisions are published on the Issue, and every later round receives them, so an accepted finding is not raised again as new.</p>
+      <p><code>review-feature.sh</code> refuses a review by the implementer's own provider; as shipped, Claude implements and Codex reviews. A triage agent proposes one decision per finding: <code>FIX_NOW</code>, <code>DEFER</code> with a follow-up Issue, or <code>ACCEPT</code> with a rationale. Critical and major findings are always <code>FIX_NOW</code> and block the commit until they are fixed, unless you record <a href={href("docs/detailed-workflow/#owner-exception")}>an owner exception</a> for one of them. The decisions are published on the Issue, and every later round receives them: a finding raised again must name the one it continues, and the script refuses one that would lower an earlier severity or reopen an accepted finding as unresolved.</p>
       <Table>
         <caption>The roles of a feature in the shipped <code>.agents/agents.conf</code>. The <code>--agent</code> and <code>--model</code> options of a script override it for one run.</caption>
         <thead><tr><th scope="col">role</th><th scope="col">provider and model</th><th scope="col">access</th></tr></thead>
@@ -579,14 +579,14 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
           <rect class="gate" x="510" y="100" width="20" height="20" transform="rotate(45 520 110)"/><text class="st" x="520" y="86" text-anchor="middle">You decide</text>
           <circle class="dot" cx="900" cy="50" r="8"/><text class="sub" x="918" y="55">ADR, instruction, skill, docs</text>
           <circle class="dot" cx="900" cy="110" r="8"/><text class="sub" x="918" y="115">a check in a script</text>
-          <circle class="dot" cx="900" cy="170" r="8"/><text class="sub" x="918" y="175">an Issue, here or in the template</text>
+          <circle class="dot" cx="900" cy="170" r="8"/><text class="sub" x="918" y="175">an Issue, here or in Codeyard</text>
           <text class="note" x="760" y="226" text-anchor="middle">each with the review that applies there</text>
         </svg>
         <ol class="words lines-words" id="learn-words">
           <li><b>Run records</b><small>of the last n features: rounds, findings, triage, stops, time and tokens</small></li>
           <li><b>Analysis</b><small class="k">analyze-runs.sh --last 10</small><p class="cond">A read-only agent; it changes nothing.</p></li>
           <li class="you"><b>You decide</b></li>
-          <li><b>Each proposal in its place</b><small>an ADR, an agent instruction, a skill, the documentation, a check in a script, or an Issue, here or in the template</small><p class="cond">with the review that applies there</p></li>
+          <li><b>Each proposal in its place</b><small>an ADR, an agent instruction, a skill, the documentation, a check in a script, or an Issue, here or in Codeyard's repository</small><p class="cond">with the review that applies there</p></li>
         </ol>
       </figure>
       <ul class="rules">
