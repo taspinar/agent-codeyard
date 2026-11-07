@@ -1,9 +1,11 @@
 ---
-// The home page, built from the approved design (design/DESIGN.md). Value
-// first (#270): the hero, what changes with Codeyard, and who it is for; then
-// the route of one feature and the technical proof as short sections of two
-// or three sentences, each with one link to the page that holds the detail
-// (#284). The facts follow the scripts and policies.
+// The home page, built from the approved design (design/DESIGN.md). The first
+// screen answers three questions: what it is, what you get, what you do
+// (#317). Then the without/with comparison, the route of one feature, and one
+// five-line story of one-line mentions, with the explanations of review and
+// merge authority and the record trail in three paragraphs under it (#284, #317). The exceptions of the risk policy are on
+// Features and in the docs; here the review is "by default", with one link.
+// The facts follow the scripts and policies.
 // The risk and profile switches of the route map are the one island; without
 // script the map shows medium risk under the standard profile, and the words
 // list carries the same route as text.
@@ -16,14 +18,15 @@ import { href, issue, pull } from "../lib/links";
 const [first, second] = site.tagline.split(/(?<=\.) /);
 const templateName = site.repository.replace(/^https:\/\/github\.com\//, "");
 
-// Without and with Codeyard, row by row; each "with" names what the scripts do.
+// Without and with Codeyard, row by row and about as long on both sides, so
+// that each row sits opposite its counterpart. The values are HTML.
 const compare = [
-  { topic: "Unclear requests", without: "The agent guesses what you meant, and the guess is reviewed as if it were the requirement.", with: "Requirements and a plan are agreed with you first. An agent that meets an open decision stops with its questions." },
-  { topic: "Review", without: "The agent that wrote the code checks it, or nobody does.", with: "An agent of another provider reviews the change and can only read; as shipped, Claude writes and Codex reviews every change. A project can let low-risk changes skip the review in its risk policy, the settings file that says how much checking each kind of change gets: with profile: light, a one-line choice of how much ceremony it wants, or with low: review: none. The commit then says it was not reviewed, and its merge needs your approval." },
-  { topic: "Is it finished?", without: "A session that ends looks like finished work.", with: "For each acceptance criterion, the condition the change must meet, the agent records whether it is met and what shows it. The tests ran on exactly the committed code, the code the reviewer read when it was reviewed." },
-  { topic: "Process", without: "A typo and a change to a security check get the same treatment.", with: "Each change gets a risk level from what it touches. High risk gets the stronger model and keeps every control." },
-  { topic: "Merge", without: "You find out afterwards what the agent changed.", with: "No script merges. A pull request that changes a protected file says it needs your approval: a notice, not a lock, since an agent has the GitHub rights of the account that started it, and only your GitHub settings can stop a merge." },
-  { topic: "Afterwards", without: "What happened in a session is gone with the terminal.", with: "Every run leaves a record: the review rounds and findings, the decisions, the checks, and why a run stopped." },
+  { topic: "Unclear requests", without: "The agent guesses what you meant.", with: "You agree the requirements and a plan first. An agent that meets an open decision stops and asks." },
+  { topic: "Review", without: "The agent that wrote the code checks it, or nobody does.", with: `<a href="#review">By default</a>, reviewed before the commit.` },
+  { topic: "Is it finished?", without: "A session that ends looks like finished work.", with: "Each acceptance criterion is recorded as met, with what shows it." },
+  { topic: "Process", without: "A typo and a change to a security check get the same treatment.", with: `Each change gets a <a href="${href("features/#risk")}">risk level</a> from the files it touches: more risk, more checking.` },
+  { topic: "Merge", without: "You find out afterwards what the agent changed.", with: `<a href="#authority">You decide</a> on the merge.` },
+  { topic: "Afterwards", without: "What happened in a session is gone with the terminal.", with: "Every run leaves a record that later runs learn from." },
 ];
 ---
 <Base description={site.description}>
@@ -31,11 +34,15 @@ const compare = [
     <div class="hero-grid">
       <h1>{first} <em>{second}</em></h1>
       <div class="hero-side">
-        <p class="lede">Turn AI-generated code into tested pull requests, changes proposed on GitHub that you read and merge, each independently reviewed unless you let low-risk changes skip the review.</p>
-        <p class="hero-copy">Agent Codeyard is an open-source workflow for developers using Claude Code and Codex: it helps you plan features, run coding agents, verify their work and catch problems before merging. Your agents do the coding, Codeyard manages the process, you stay in control.</p>
+        <dl class="answers">
+          <div><dt>What it is</dt><dd class="lede">Agent Codeyard is an open-source workflow in your repository for Claude Code and Codex: scripts, agent instructions and policy files. It is not an agent and not a platform.</dd></div>
+          <div><dt>What you get</dt><dd>From a feature description to an implemented, tested and, by default, <a href="#review">independently reviewed</a> pull request.</dd></div>
+          <div><dt>What you do</dt><dd>Set the direction, decide where asked, read and merge.</dd></div>
+        </dl>
         <div class="actions">
           <a class="btn" href={href("workflow/")}>Explore the workflow</a>
-          <a href={href("docs/")}>Get started</a>
+          <a href={href("docs/getting-started/")}>Get started</a>
+          <a href={href("docs/adopting/")}>Use it in an existing repository</a>
         </div>
       </div>
     </div>
@@ -44,29 +51,17 @@ const compare = [
 
   <Section id="change" title="What changes">
     <Fragment slot="note">Each line on the right is a script or a policy of the template. <a href={href("features/")}>Features</a> shows how.</Fragment>
-    <div class="compare" role="group" aria-label="Without and with Codeyard">
+    <div class="compare rows" role="group" aria-label="Without and with Codeyard" style={`--rows: ${compare.length + 1}`}>
       <div class="col"><h3>Without Codeyard</h3><dl>
-        {compare.map((row) => <><dt>{row.topic}</dt><dd>{row.without}</dd></>)}
+        {compare.map((row) => <div><dt>{row.topic}</dt><dd>{row.without}</dd></div>)}
       </dl></div>
       <div class="col"><h3>With Codeyard</h3><dl>
-        {compare.map((row) => <><dt>{row.topic}</dt><dd>{row.with}</dd></>)}
+        {compare.map((row) => <div><dt>{row.topic}</dt><dd set:html={row.with} /></div>)}
       </dl></div>
     </div>
-    <p class="needs">Codeyard enforces its rules in its own scripts; GitHub enforces them only with the repository settings described in the docs, and an agent working under your GitHub account has your rights there until a separate agent identity is built (<a href={issue(99)}>#99</a>).</p>
   </Section>
 
-  <Section id="who" title="Who it is for">
-    <Fragment slot="note">What you need: the <a href={href("docs/")}>getting-started guide</a>. Cost, existing repositories and more: the <a href={href("faq/")}>FAQ</a>.</Fragment>
-    <p class="lede">Developers and teams who already use command-line coding agents and GitHub, and want structure around them. It is not a no-code tool: you work in a terminal and a Git repository.</p>
-    <p>Codeyard is not an application and not an agent. It is a set of shell scripts, agent instructions and policy files that live in your repository. A new project starts from the template with <code>gh repo create --template</code>; there is no installer and no platform to host. An existing repository adopts the workflow on a branch you review, around its own code, CI and history: <a href={href("docs/adopting/")}>Adopting Codeyard in an existing repository</a>.</p>
-    <div class="ledger" role="group" aria-label="Who does what">
-      <div><h3>The agents</h3><ul><li>Write the code and the tests</li><li>Review a change, read-only</li><li>Propose the triage: fix, defer or accept each finding</li></ul></div>
-      <div><h3>Codeyard</h3><ul><li>Computes the risk level of each change</li><li>Picks the agent and model for the level</li><li>Refuses a review by the implementer's own provider</li><li>Commits only verified, complete work, reviewed unless your settings let a low-risk change skip the review</li></ul></div>
-      <div><h3>You</h3><ul><li>Approve the plan</li><li>Answer what the agents cannot decide</li><li>Approve protected changes</li><li>Merge; only GitHub settings enforce it</li></ul></div>
-    </div>
-  </Section>
-
-  <section class="route-sec" aria-labelledby="route-title">
+<section class="route-sec" aria-labelledby="route-title">
     <div class="wrap" data-risk="medium" data-profile="standard" id="lifecycle">
       <DiagramFrame id="route" title="The route of one feature">
         <form slot="controls" class="switches" aria-label="Show the route for">
@@ -84,7 +79,7 @@ const compare = [
         </form>
 
         <svg class="map" viewBox="-30 0 1260 262" role="img" aria-labelledby="map-title" aria-describedby="route-words">
-          <title id="map-title">The route of one feature from Issue to merge, with its loops, a clarification stop and a review bypass for a low-risk change under the light profile or the setting low: review: none.</title>
+          <title id="map-title">The route of one feature from Issue to merge, with its loops, a clarification stop and, for some low-risk changes, a route without review.</title>
           <!-- loops above the line -->
           <path class="branch" d="M362 124 L326 88 H254 L218 124"/>
           <text class="note" x="290" y="78" text-anchor="middle">checks fail: repair</text>
@@ -97,9 +92,9 @@ const compare = [
           <path class="trunk" d="M50 130 H450"/>
           <path class="trunk reviewed" d="M450 130 H755"/>
           <path class="trunk" d="M755 130 H1130"/>
-          <!-- review bypass: low risk under the light profile -->
+          <!-- review bypass: shown for low risk under the light profile -->
           <path class="branch bypass" d="M450 136 V200 L472 222 H733 L755 200 V136"/>
-          <text class="note bypass-note" x="602" y="250" text-anchor="middle">low risk, light profile: no review, your approval requested</text>
+          <text class="note bypass-note" x="602" y="250" text-anchor="middle">no review</text>
           <!-- stations -->
           <g><circle class="dot" cx="50" cy="130" r="10"/><text class="st" x="50" y="167" text-anchor="middle">Issue</text><text class="sub" x="50" y="186" text-anchor="middle">from the roadmap</text></g>
           <g><circle class="dot" cx="210" cy="130" r="10"/><text class="st" x="210" y="167" text-anchor="middle">Implement</text><text class="sub k" x="210" y="186" text-anchor="middle" data-k="impl">claude opus</text></g>
@@ -128,57 +123,55 @@ const compare = [
           <li><b>Pull request</b><small>CI checks</small></li>
           <li class="you"><b>Merge</b><small data-k="merge">by you</small></li>
         </ol>
-        <span slot="caption" data-k="caption"><strong>Medium risk.</strong> Claude implements and Codex reviews, so the reviewer always comes from another provider, and the merge stays with you.</span>
+        <Fragment slot="caption"><span data-k="caption"><strong>Medium risk, standard profile.</strong> Every step on the line runs.</span><span class="policy-link" hidden> <a href={href("docs/risk-policy/")}>When the review is skipped</a>.</span></Fragment>
       </DiagramFrame>
-      <p class="needs">The implementer is the agent that writes the change; the reviewer reads it. The checks are the tests and other checks of <code>verify.sh</code>, and the triage decides what happens to each review finding: fix it now, defer it to a new Issue, or accept it with a reason. A commit is made only when the implementer records every criterion as met, the checks passed, and the review is done where one is required. <a href={href("workflow/")}>Every step of the route</a>.</p>
+      <p class="needs">The implementer is the agent that writes the change; the reviewer reads it. The checks are the tests and other checks of <code>verify.sh</code>, and the triage decides what happens to each review finding: fix it now, defer it to a new Issue, or accept it with a reason. <a href={href("workflow/")}>Every step of the route</a>.</p>
     </div>
   </section>
 
-  <Section id="how" title="Plan once, then one line per feature">
-    <Fragment slot="note">Every step, planning and feature, on the <a href={href("workflow/")}>workflow page</a>.</Fragment>
-    <p>Planning runs once: the Project Grill, an agent that questions you about goals, users and scope, writes down the requirements; the architecture and roadmap are planned, reviewed by another provider, and approved by you. A later change to the requirements or the roadmap goes back through that review and your approval. Then each feature, one GitHub Issue, runs its own line to a pull request, step by step or in one unattended command, <code>run-feature.sh</code>, that runs every step without waiting for you and stops whenever it needs you.</p>
-  </Section>
-
-  <Section id="risk" title="More risk, more evidence">
-    <Fragment slot="note">The levels, the profiles and what each changes: <a href={href("features/#risk")}>Risk-proportionate workflow</a>.</Fragment>
-    <p>Each change gets a risk level, low, medium or high, computed from the files it touches; an agent cannot lower it, and high risk gets the stronger model and keeps every control. As shipped there is no low level, so every change is reviewed. With <code>profile: light</code> or <code>low: review: none</code> a low-risk change skips the review, the commit says so, and its merge needs your approval.</p>
-  </Section>
-
-  <Section id="review" title="The agent that writes the code does not judge it">
-    <Fragment slot="note">The implementer, the reviewer and the triage: <a href={href("features/#review")}>Independent review</a>.</Fragment>
-    <p>When a change is reviewed, the reviewer is an agent of another provider than the implementer, Codex for Claude's work as shipped; <code>review-feature.sh</code> refuses one of the same provider. The reviewer can only read, and it reviews exactly the content the checks passed for.</p>
-  </Section>
-
-  <Section id="control" title="Automation stops where ownership begins">
-    <Fragment slot="note">Every decision that stays yours: <a href={href("features/#authority")}>Human authority</a>.</Fragment>
-    <p>You decide at fixed points: you approve the requirements and the plan, answer when an agent asks, decide on the review findings, and merge every pull request. A protected change, a change that skipped the review, or a review that sees major impact on the architecture asks for your approval by name. The workflow records the request; only your repository settings make GitHub enforce it.</p>
-  </Section>
-
-  <Section id="trace" title="Every claim has a record">
-    <Fragment slot="note">Followed in detail: <a href={href("examples/#memory")}>#217, end to end</a>.</Fragment>
-    <p>Each step of a feature leaves a record anyone can open, from the Issue with its acceptance criteria to the pull request that carries all of it. These are the records of one real feature.</p>
-    <ol class="trail" aria-label="The records of feature 217">
-      <li><b>Finding</b><a href={href("examples/#analysis")}>28 October</a><span>The analysis of 41 runs: a fixed finding came back as unresolved in five runs.</span></li>
-      <li><b>Issue</b><a href={issue(217)}>#217</a><span>Six acceptance criteria.</span></li>
-      <li><b>Completion record</b><span>The implementer's claim, criterion by criterion, with evidence.</span></li>
-      <li><b>Review findings</b><a href={issue(217)}>on #217</a><span>Five rounds, each review and triage published.</span></li>
-      <li><b>Verification</b><span>Recorded for exactly the content that was reviewed.</span></li>
-      <li><b>Pull request</b><a href={pull(222)}>#222</a><span>Merged by the owner.</span></li>
+  <Section id="story" title="How it works: automation stops where ownership begins">
+    <Fragment slot="note">One feature followed in detail: <a href={href("examples/#memory")}>#217, end to end</a>.</Fragment>
+    <ol class="story">
+      <li><b>Agents build the feature.</b> Code and tests for one Issue, and the agent stops to ask when a decision is yours. <a href={href("workflow/")}>The workflow</a></li>
+      <li><b>By default, another agent reviews it.</b> <a href="#review">Independent review</a></li>
+      <li><b>The checks and the evidence belong to exactly that change.</b> <a href="#trace">Every claim has a record</a></li>
+      <li><b>You keep the last decision.</b> <a href="#authority">Your merge</a></li>
+      <li id="learn"><b>Earlier runs improve the process.</b> Proposals from the records of your runs, and nothing changes until you decide. <a href={href("features/#learn")}>Learn from your runs</a></li>
     </ol>
+    <div class="explain">
+      <p id="review"><b>Independent review.</b> An agent of another provider reviews the change, read-only, before the commit: as shipped, Codex reviews Claude's work, and <code>review-feature.sh</code> refuses a reviewer of the implementer's own provider. By default every change is reviewed; the <a href={href("docs/risk-policy/")}>risk policy</a> says when a low-risk change is not. <a href={href("features/#review")}>Independent review</a></p>
+      <p id="authority"><b>Your merge.</b> You approve the requirements and the plan, answer when an agent asks, and merge every pull request; no script merges. A protected change asks for your approval by name. Codeyard enforces this in its own scripts; GitHub enforces your approval and the merge only with the repository settings of <a href={href("docs/github-setup/")}>GitHub setup</a>. <a href={href("features/#authority")}>Human authority</a></p>
+      <p id="trace"><b>Every claim has a record.</b> The implementer records each acceptance criterion as met with what shows it, and the verification is recorded for exactly the content the reviewer read. Only then is the change committed. These are the records of one real feature:</p>
+      <ol class="trail" aria-label="The records of feature 217">
+        <li><b>Finding</b><a href={href("examples/#analysis")}>28 October</a><span>The analysis of 41 runs: a fixed finding came back as unresolved in five runs.</span></li>
+        <li><b>Issue</b><a href={issue(217)}>#217</a><span>Six acceptance criteria.</span></li>
+        <li><b>Completion record</b><span>The implementer's claim, criterion by criterion, with evidence.</span></li>
+        <li><b>Review findings</b><a href={issue(217)}>on #217</a><span>Five rounds, each review and triage published.</span></li>
+        <li><b>Verification</b><span>Recorded for exactly the content that was reviewed.</span></li>
+        <li><b>Pull request</b><a href={pull(222)}>#222</a><span>Merged by the owner.</span></li>
+      </ol>
+    </div>
+    <p class="needs"><b>Limits.</b> An agent working under your GitHub account has your rights there until a separate agent identity is built (<a href={issue(99)}>#99</a>).</p>
   </Section>
 
-  <Section id="runs" title="Codeyard builds Codeyard">
+  <Section id="who" title="Who it is for">
+    <Fragment slot="note">What you need: <a href={href("docs/getting-started/")}>Getting started</a>. Cost and more: the <a href={href("faq/")}>FAQ</a>.</Fragment>
+    <p class="lede">Developers and teams who already use command-line coding agents and GitHub, and want structure around them. It is not a no-code tool: you work in a terminal and a Git repository.</p>
+    <p>A new project starts from the template. An existing repository adopts the workflow on a branch you review, around its own code, CI and history: <a href={href("docs/adopting/")}>Adopting Codeyard in an existing repository</a>.</p>
+  </Section>
+
+  <Section id="how" title="Planning: plan once, then one line per feature">
+    <Fragment slot="note">Every step, planning and feature, on the <a href={href("workflow/")}>workflow page</a>.</Fragment>
+    <p>Planning runs once: the Project Grill, an agent that questions you about goals, users and scope, writes down the requirements; the architecture and roadmap are planned, reviewed and approved by you. Then each feature, one GitHub Issue, runs its own line to a pull request, step by step or in one unattended command, <code>run-feature.sh</code>, that runs every step without waiting for you and stops whenever it needs you.</p>
+  </Section>
+
+  <Section id="runs" title="Real runs: Codeyard builds Codeyard">
     <Fragment slot="note">Each run, its rounds and its timings: <a href={href("examples/")}>Examples</a>.</Fragment>
-    <p>This repository is built with its own workflow. Its recent features #217, #193, #189 and #16 changed the workflow itself, so each was high risk; they took one to five review rounds and were merged. Not every run ends in a merge: <a href={issue(157)}>#157</a> was parked after 13 rounds over two attempts, with a finding open at the end of each.</p>
-  </Section>
-
-  <Section id="learn" title="Learn from your runs">
-    <Fragment slot="note">How it works: <a href={href("features/#learn")}>Learning from your runs</a>.</Fragment>
-    <p>Every run records its review rounds and findings, the decisions, the checks that failed, why it stopped, and the time and tokens of each step. A read-only analyst, an agent that changes nothing, reads those records and proposes what to change; nothing changes until you decide. On Codeyard's own 41 runs of 19 features, five proposals became Issues, and all five were merged.</p>
+    <p>This repository is built with its own workflow. Its recent features #217, #193, #189 and #16 changed the workflow itself and were high risk; they took one to five review rounds and were merged. Not every run ends in a merge: <a href={issue(157)}>#157</a> was parked after 13 rounds over two attempts, with a finding open at the end of each.</p>
   </Section>
 
   <Section id="start" title="Start a project">
-    <Fragment slot="note">The full <a href={href("docs/")}>getting-started guide</a>.</Fragment>
+    <Fragment slot="note">The full guide: <a href={href("docs/getting-started/")}>Getting started</a>. For an existing repository: <a href={href("docs/adopting/")}>Adopting</a>.</Fragment>
     <pre role="region" tabindex="0" class="term" aria-label="Terminal commands"><span class="c"># a new repository from the template</span>
 <span class="p">$ </span>gh repo create my-project --template {templateName} --private --clone
 <span class="p">$ </span>cd my-project
@@ -188,7 +181,7 @@ const compare = [
 <span class="c"># then each feature, from Issue to pull request</span>
 <span class="p">$ </span>./scripts/create-feature-issue.sh F01
 <span class="p">$ </span>./scripts/run-feature.sh 1</pre>
-    <p class="needs">There is no installer: the template is the starting point. You need Git, the GitHub CLI, <code>jq</code>, Claude Code and Codex: as shipped, Claude implements and Codex reviews, and a review by the implementer's own provider is refused. <code>doctor.sh</code> checks all of it, including the Codex sandbox and your Git identity.</p>
+    <p class="needs">There is no installer: the template is the starting point. You need Git, the GitHub CLI, <code>jq</code>, Claude Code and Codex; <code>doctor.sh</code> checks all of it, including the Codex sandbox and your Git identity.</p>
   </Section>
 
   <section id="cta" aria-labelledby="cta-h">
@@ -196,7 +189,8 @@ const compare = [
       <h2 id="cta-h">Build with agents. Ship with evidence.</h2>
       <div class="actions">
         <a class="btn" href={href("workflow/")}>Explore the workflow</a>
-        <a href={href("docs/")}>Get started</a>
+        <a href={href("docs/getting-started/")}>Get started</a>
+        <a href={href("docs/adopting/")}>Use it in an existing repository</a>
       </div>
       <p>Open source, MIT licence. Runs on your machine with Claude Code and Codex.</p>
     </div>
@@ -218,14 +212,14 @@ const compare = [
       triage: bypass ? "none" : profile === "light" && level !== "high" ? "minor ones may wait" : "each finding decided",
       merge: "by you",
       caption: bypass
-        ? "<strong>Low risk, light profile.</strong> Documentation and process files skip the review. The commit records that it was not reviewed, and the pull request asks for your approval."
+        ? "<strong>Low risk, light profile.</strong> No review."
         : level === "high"
-          ? "<strong>High risk.</strong> The stronger model implements, every finding is decided before the commit, and no profile can remove the review or lower the level."
+          ? "<strong>High risk.</strong> The stronger model implements, and every finding is decided before the commit."
           : level === "low"
-            ? "<strong>Low risk, standard profile.</strong> Reviewed by another provider, unless the project sets <code>low: review: none</code> or the light profile: then a low-risk change skips the review, the commit records it, and the pull request asks for your approval. As shipped there is no low class; a project adds one in risk.conf."
+            ? "<strong>Low risk, standard profile.</strong> The same route as medium risk."
             : profile === "light"
-              ? "<strong>Medium risk, light profile.</strong> Reviewed; minor findings and suggestions can be accepted or deferred without another fix round."
-              : "<strong>Medium risk.</strong> Claude implements and Codex reviews, so the reviewer always comes from another provider, and the merge stays with you.",
+              ? "<strong>Medium risk, light profile.</strong> Reviewed; minor findings may wait."
+              : "<strong>Medium risk, standard profile.</strong> Every step on the line runs.",
     };
   }
 
@@ -242,6 +236,9 @@ const compare = [
         if (key === "caption") element.innerHTML = text.caption;
         else element.textContent = text[key];
       });
+      // When a low-risk change skips the review is the risk policy's to
+      // explain: the caption of the route without review only links there.
+      root.querySelector(".policy-link")?.toggleAttribute("hidden", !(level === "low" && profile === "light"));
       root.querySelectorAll<HTMLElement>(".r-word").forEach((item) => {
         item.hidden = level === "low" && profile === "light";
       });
