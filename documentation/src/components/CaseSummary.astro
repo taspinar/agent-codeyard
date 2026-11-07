@@ -1,0 +1,11 @@
+---
+// The four lines that open a case on the Examples page, before its records
+// (#320): what changed, the review rounds, what the review found, and the
+// result with its merge. Each line is a named slot, so it can carry links.
+---
+<dl class="facts">
+  <dt>what changed</dt><dd><slot name="changed" /></dd>
+  <dt>rounds</dt><dd><slot name="rounds" /></dd>
+  <dt>review found</dt><dd><slot name="found" /></dd>
+  <dt>result</dt><dd><slot name="result" /></dd>
+</dl>
