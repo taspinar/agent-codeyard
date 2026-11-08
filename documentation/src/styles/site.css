@@ -178,9 +178,6 @@ p { margin: 0 0 var(--s-4); max-width: var(--measure); text-wrap: pretty; }
 
 /* The route map */
 .route { margin-top: var(--s-7); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: var(--s-5) 0 var(--s-4); }
-/* On the home page the route map is a section of its own: the section rules are its hairlines. */
-.route-sec .route { margin-top: 0; border: 0; padding: 0; }
-.route-sec .needs { margin-top: var(--s-4); max-width: var(--measure-wide); }
 .route-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--s-3) var(--s-6); align-items: baseline; }
 .route-head h2 { font-size: var(--t-lg); font-weight: var(--w-bold); letter-spacing: 0; }
 .switches { display: flex; flex-wrap: wrap; gap: var(--s-3) var(--s-6); }
@@ -322,6 +319,13 @@ footer nav { display: flex; flex-wrap: wrap; gap: var(--s-5); }
 html:not(.js) .switches { display: none; }
 
 @media (max-width: 1100px) {
+  /* The seven links of the header do not fit beside the mark: they move to
+     a second row, and wrap onto further rows rather than scroll out of view. */
+  .top .wrap { flex-wrap: wrap; gap: 0 var(--s-4); padding-top: var(--s-2); }
+  /* The links wrap to a second row instead of scrolling out of view. */
+  .nav { order: 3; flex-basis: 100%; flex-wrap: wrap; gap: 0 var(--s-4); margin-left: 0; padding-bottom: var(--s-1); }
+  .nav a { white-space: nowrap; }
+  .nav .theme { margin-left: auto; }
   .hero-grid { grid-template-columns: 1fr; }
   .sec { grid-template-columns: minmax(0, 1fr); gap: var(--s-4); }
   .body { min-width: 0; }
@@ -331,11 +335,6 @@ html:not(.js) .switches { display: none; }
   .artifact { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-  .top .wrap { flex-wrap: wrap; gap: 0 var(--s-4); padding-top: var(--s-2); }
-  /* The links wrap to a second row instead of scrolling out of view. */
-  .nav { order: 3; flex-basis: 100%; flex-wrap: wrap; gap: 0 var(--s-4); margin-left: 0; padding-bottom: var(--s-1); }
-  .nav a { white-space: nowrap; }
-  .nav .theme { margin-left: auto; }
   .ledger { grid-template-columns: 1fr; }
   .ledger > div, .ledger > div + div { padding: var(--s-4) 0; border-right: 0; border-bottom: 1px solid var(--rule); }
   .split, .rules { grid-template-columns: 1fr; }
@@ -618,8 +617,7 @@ main section.group { border-top: 2px solid var(--ink); padding-bottom: 0; }
 }
 
 /* Home in the product-first order (#254, design/prototype-v2/proto-home.css):
-   the fact line, the handoff, the gates list, the artifact trail and the
-   closing call to action. */
+   the fact line, the handoff and the gates list. */
 .facts-line { display: flex; flex-wrap: wrap; gap: var(--s-2) 0; margin: var(--s-6) 0 0; padding: var(--s-3) 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); font: var(--w-semibold) var(--t-sm) var(--sans); color: var(--ink); max-width: none; }
 .facts-line span + span::before { content: "·"; color: var(--line-ink); margin: 0 var(--s-3); }
 .handoff { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: var(--s-5); align-items: stretch; border-top: 2px solid var(--ink); padding-top: var(--s-4); }
@@ -636,26 +634,11 @@ main section.group { border-top: 2px solid var(--ink); padding-bottom: 0; }
 .gates li.ask::before { background: var(--ground); border: 2.5px solid var(--ink); }
 .gates b { display: block; }
 .gates span { font-size: var(--t-sm); color: var(--ink-2); }
-.trail { list-style: none; margin: 0 0 var(--s-6); padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-top: var(--stroke) solid var(--line); }
-.trail li { padding: var(--s-3) var(--s-3) 0 0; font-size: var(--t-sm); position: relative; }
-.trail li::before { content: ""; position: absolute; top: calc(-0.5 * var(--stroke) - 0.55rem); left: 0; width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--ground); border: 3px solid var(--ink); }
-.trail li:last-child::before { border-radius: 0; transform: rotate(45deg); background: var(--ink); }
-.trail b { display: block; }
-.trail a { font-weight: var(--w-semibold); }
-.trail span { display: block; color: var(--ink-2); }
-.cta { padding: var(--s-8) var(--gutter); border-top: 2px solid var(--ink); }
-.cta h2 { font-size: var(--t-display); max-width: 16ch; letter-spacing: var(--track-display); }
-.cta .actions { margin-top: var(--s-5); }
-.cta p { color: var(--ink-2); font-size: var(--t-sm); margin-top: var(--s-4); }
-@media (max-width: 1100px) { .trail { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: var(--s-5); } }
 @media (max-width: 760px) {
   .facts-line { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2) var(--s-4); }
   .facts-line span + span::before { content: none; }
   .handoff { grid-template-columns: minmax(0, 1fr); }
   .handoff-mid { min-height: 2.5rem; }
-  .trail { grid-template-columns: minmax(0, 1fr); border-top: 0; border-left: var(--stroke) solid var(--line); padding-left: var(--s-4); }
-  .trail li { padding: 0 0 var(--s-4); }
-  .trail li::before { top: 0.2rem; left: calc(-1 * var(--s-4) - 0.5 * var(--stroke) - 0.55rem); }
 }
 
 /* The guided routes and the advanced controls (/workflow): the explorer opens
@@ -679,11 +662,11 @@ html:not(.js) .routes, html:not(.js) .advanced { display: none; }
 /* The guided map: the feature's route only, without script and model names. */
 .workflow.guided :is(.plan-part, .map .trunk.plan, .map .sub.k, .map [data-key="n-unattended"], .words small.k) { display: none; }
 
-/* The home page (#317): the hero answers three questions in a definition
-   list; the comparison keeps each row opposite its counterpart (a subgrid of
-   --rows rows: the headings and one per topic); the story is one numbered
-   list under a 2px ink rule, with the explanations of review and merge
-   authority under it. */
+/* The answers of a page head (About, #317), and the home page (#329): the
+   comparison keeps each row opposite its counterpart (a subgrid of --rows
+   rows: the headings and one per topic); the four steps of the example are a
+   words list shown at every width, each step a facts list; the real case is
+   one numbered story under a 2px ink rule. */
 .answers { margin: 0; }
 .answers > div + div { margin-top: var(--s-4); }
 .answers dt { font: var(--w-bold) var(--t-xs) var(--sans); color: var(--ink-3); }
@@ -695,11 +678,13 @@ html:not(.js) .routes, html:not(.js) .advanced { display: none; }
 .story > li { padding: var(--s-4) 0; border-bottom: 1px solid var(--rule); color: var(--ink-2); font-size: var(--t-sm); }
 .story > li > b { display: block; color: var(--ink); font-size: var(--t-md); }
 .story > li > a { font-weight: var(--w-semibold); }
-.explain .trail { margin: var(--s-5) 0 var(--s-2); color: var(--ink); }
-.explain { margin-top: var(--s-5); }
-.explain p { max-width: var(--measure-wide); color: var(--ink-2); }
-.explain p + p { margin-top: var(--s-4); }
-.explain b { color: var(--ink); }
+.scenario-steps { display: block; margin-top: 0; }
+.scenario-steps > li { padding-bottom: var(--s-6); }
+.scenario-steps > li > b { font-size: var(--t-md); }
+.scenario-steps .facts { margin-top: var(--s-3); }
+.asked { margin: var(--s-2) 0 0; padding-left: var(--s-indent); }
+.asked li { padding: 0; list-style: disc; }
+.asked li::before { content: none; }
 @media (max-width: 760px) {
   .compare.rows .col { display: block; }
   .compare.rows dl { display: block; }

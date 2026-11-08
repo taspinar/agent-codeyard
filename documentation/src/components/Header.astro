@@ -11,6 +11,7 @@ const here = Astro.url.pathname;
     <nav class="nav" aria-label="Site">
       {sections.map((section) => {
         const target = href(section.path);
+        // Docs stays marked under Get started, a page of the docs.
         const current = here === target ? "page" : here.startsWith(target) ? "true" : undefined;
         return <a class:list={[{ keep: "keep" in section && section.keep }]} href={target} aria-current={current}>{section.label}</a>;
       })}
