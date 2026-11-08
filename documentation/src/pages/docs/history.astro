@@ -1,6 +1,7 @@
 ---
 // The history of Agent Codeyard, the principles it taught, and the research
-// behind it: moved from About (#319), which keeps one paragraph and a link.
+// behind it: moved from About (#319), which keeps one paragraph and a link;
+// the design decisions followed (#333).
 // Each period links to the pull requests that built it, by their merge dates.
 import DocsPage from "../../components/DocsPage.astro";
 import Table from "../../components/Table.astro";
@@ -38,6 +39,20 @@ const history = [
     text: "After the owner's editorial audit of 3 November (#269), the homepage, Features, Examples and the docs were rewritten for a developer who has not heard of Codeyard: the value first, the technical proof as the deeper layer." },
 ];
 
+// The design decisions, each with the pull request that made it: moved from
+// About (#333).
+const decisions = [
+  { name: "Read-only reviewers", why: "A reviewer that can edit can fix what it should report.", prs: [35] },
+  { name: "A reviewer of another provider", why: "An agent of the same family shares the implementer's blind spots.", prs: [211] },
+  { name: "Evidence tied to content", why: "A review or a verification counts only for the content it saw.", prs: [42, 74, 200] },
+  { name: "Scripts decide outcomes", why: "An unattended run needs a judge that does not depend on how a session ended.", prs: [101] },
+  { name: "The completion gate", why: "A session that ends is not a finished feature.", prs: [126] },
+  { name: "Your merge", why: "No script merges; a protected change asks for the owner's approval, which only GitHub's settings enforce.", prs: [100] },
+  { name: "A computed risk level", why: "Read from the diff and the base branch's rules, so a feature cannot classify itself lower.", prs: [194] },
+  { name: "Local run records", why: "Measurement without sending anything anywhere.", prs: [136] },
+  { name: "Issues when ready", why: "The roadmap is not turned into a backlog in advance.", prs: [44] },
+];
+
 // The frameworks compared, from the earlier research page, statuses corrected (#235, item 9).
 const frameworks = [
   { name: "GitHub Spec Kit", url: "https://github.com/github/spec-kit", took: "Clear links between requirements, plans, tasks and implementation; consistency checks", left: "A second specification system with its own commands and directories", status: "Partly: requirements, roadmap, feature Issues, planning review" },
@@ -50,10 +65,11 @@ const frameworks = [
 const toc = [
   { slug: "history", text: "History" },
   { slug: "principles", text: "Engineering principles" },
+  { slug: "decisions", text: "Design decisions" },
   { slug: "research", text: "Research" },
 ];
 ---
-<DocsPage id="history" title="History and research" description="How Agent Codeyard evolved from the first pull request on 10 September 2026, period by period with the pull requests that built it, the principles that history taught, and the frameworks and talks it learned from." toc={toc} class="history">
+<DocsPage id="history" title="History and research" description="How Agent Codeyard evolved from the first pull request on 10 September 2026, period by period with the pull requests that built it, the principles that history taught, the design decisions with their sources, and the frameworks and talks it learned from." toc={toc} class="history">
   <h2 id="history">History</h2>
   <p>The ideas behind the workflow are not new: it combines established engineering practice with coding agents, inside a development process on GitHub. It started manual and automated the steps that proved useful and repeatable. Several lessons came from <a href={`${issue(189)}#issuecomment-6443105170`}>Physics by Construction</a>, a project that uses this workflow and where parts of its design were tried first; a fix found there came back in <a href={pull(179)}>PR #179</a>.</p>
   <ol class="words timeline">
@@ -76,6 +92,21 @@ const toc = [
     <li><b>Controls only get stricter.</b> Any source can raise a level or require approval; nothing an agent controls can lower it, and the rules are read from the base branch.</li>
     <li><b>Driven by real use.</b> Once real work depended on the template, most changes answered something that had gone wrong, and since October the run records show what.</li>
   </ul>
+
+  <h2 id="decisions">Design decisions</h2>
+  <p>Each with the pull request that made it.</p>
+  <Table label="Design decisions">
+    <thead><tr><th scope="col">decision</th><th scope="col">why</th><th scope="col">source</th></tr></thead>
+    <tbody>
+      {decisions.map((row) => (
+        <tr>
+          <th scope="row">{row.name}</th>
+          <td data-col="why">{row.why}</td>
+          <td data-col="source">{prs(row.prs).map((pr, index) => <>{index > 0 && ", "}<a href={pr.url}>{index === 0 && row.prs.length === 1 ? "PR " : ""}#{pr.number}</a></>)}</td>
+        </tr>
+      ))}
+    </tbody>
+  </Table>
 
   <h2 id="research">Research</h2>
   <p>No code was copied from the projects named here.</p>

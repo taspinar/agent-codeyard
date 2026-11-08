@@ -1,87 +1,121 @@
 ---
-// Short answers to the questions a newcomer asks first, from the facts of the
-// repository (#275): the scripts, the policies and the open Issues. Each
-// answer starts with one line (the lede), the detail below, and names its
-// source; the detail stays in the docs (#321).
+// Plain answers to the questions of a new visitor, in the order of their
+// decision, then the practical questions (#333). Every answer is two to four
+// sentences without a command, a flag or a file name, then one link to the
+// page that holds the detail: the commands, the approval rules and the
+// baseline stay in the docs. The facts come from the repository and the docs
+// (configuration-and-security, adopting, troubleshooting, getting-started,
+// risk-policy); "unattended" is described as Features and Configuration and
+// security describe it (#328, consistency rule 4).
 import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Section from "../components/Section.astro";
-import { href, issue, repoFile } from "../lib/links";
+import { href } from "../lib/links";
+
+const questions = [
+  { id: "what", title: "What does Agent Codeyard do?" },
+  { id: "replace", title: "Why use it next to Claude Code or Codex?" },
+  { id: "who", title: "Do I need to be able to program?" },
+  { id: "software", title: "What software can I build or maintain with it?" },
+  { id: "existing", title: "Can I use an existing project?" },
+  { id: "permission", title: "What do I still do myself?" },
+  { id: "cost", title: "What does it cost, and why does that differ per project?" },
+  { id: "too-heavy", title: "When is this way of working worth it?" },
+  { id: "checked", title: "How do I know what was checked?" },
+  { id: "wrong", title: "What happens when the AI gets stuck or does something wrong?" },
+  { id: "data", title: "Where does it run, and which data goes to the AI providers?" },
+  { id: "online", title: "Is the software also put online automatically?" },
+  { id: "environments", title: "Which computers does it run on?" },
+  { id: "stop", title: "How do I stop a run, and continue it?" },
+  { id: "unattended", title: "What does an unattended run do without me?" },
+  { id: "review", title: "Is every change reviewed?" },
+];
+const title = (id: string) => questions.find((question) => question.id === id)?.title ?? id;
 ---
-<Base title="FAQ" description="Short answers about Agent Codeyard: who it is and is not for, whether it replaces your coding agent or IDE, existing repositories, cost in tokens and time, supported environments, stopping a run, what agents may do without you, and when a change is reviewed.">
-  <PageHead title="FAQ" lede="Short answers to the first questions about Agent Codeyard, each with where the detail is.">
+<Base title="FAQ" description="Plain answers about Agent Codeyard: what it does, why next to Claude Code or Codex, whether you need to program, existing projects, what you still do, cost, when it is worth it, checks, mistakes, data and deployment.">
+  <PageHead title="FAQ" lede="Plain answers to the first questions about Agent Codeyard, each with a link to the detail.">
     <ol class="contents">
-      <li><a href="#who">Who is it for?</a></li>
-      <li><a href="#not-for">Who is it not for?</a></li>
-      <li><a href="#too-heavy">When is Codeyard too heavy for a project?</a></li>
-      <li><a href="#replace">Does it replace Claude Code, Codex or an IDE?</a></li>
-      <li><a href="#existing">Can I use it with my existing repository?</a></li>
-      <li><a href="#cost">How much does it cost?</a></li>
-      <li><a href="#environments">Which environments does it run in?</a></li>
-      <li><a href="#stop">How do I stop a run, and resume it?</a></li>
-      <li><a href="#permission">Can agents make changes without my permission?</a></li>
-      <li><a href="#review">Is independent review always mandatory?</a></li>
+      {questions.map((question) => <li><a href={`#${question.id}`}>{question.title}</a></li>)}
     </ol>
   </PageHead>
 
-  <Section id="who" title="Who is it for?">
-    <Fragment slot="note">What you need: <a href={href("docs/getting-started/")}>Getting started</a>.</Fragment>
-    <p class="lede">Developers and teams who already use command-line coding agents and GitHub, and want structure around them.</p>
-    <p>You work in a terminal and a Git repository: it is not a no-code tool. You need Git, the GitHub CLI, <code>jq</code>, Claude Code and Codex. If pull requests or coding agents are new to you, <a href={href("docs/new-to-agentic-coding/")}>New to agentic coding?</a> explains them first.</p>
+  <Section id="what" title={title("what")}>
+    <p>AI coding tools such as Claude Code and Codex can write software code from a description. Agent Codeyard gives their work a fixed route: clarify what you need, plan the work, then build and check each change. You review the result and decide whether it becomes part of your project.</p>
+    <p class="needs">The route step by step: <a href={href("workflow/")}>How it works</a>.</p>
   </Section>
 
-  <Section id="not-for" title="Who is it not for?">
-    <Fragment slot="note">From <a href={href("docs/new-to-agentic-coding/#when-codeyard-is-relevant")}>When Codeyard is relevant</a>.</Fragment>
-    <p class="lede">Not for someone who wants a no-code tool, a hosted service, or an assistant for writing every line yourself.</p>
-    <p>Codeyard runs in your terminal, on your repository, and expects you to work with Git, GitHub Issues and pull requests. It needs two coding agents of different providers, Claude Code and Codex, because the review must come from the provider that did not write the change. It is also not a security boundary: the agents run on your machine with your permissions, and with your GitHub rights until agents get an identity of their own (<a href={issue(99)}>#99</a>).</p>
+  <Section id="replace" title={title("replace")}>
+    <p>Claude Code and Codex can plan, ask questions, run tests and review on their own. Codeyard turns that into one process: written agreements, fixed roles, checks, and progress the next session can pick up. It writes no code itself; the coding tools do, and you keep your editor.</p>
+    <p class="needs">What the process adds: <a href={href("features/")}>Why Codeyard</a>.</p>
   </Section>
 
-  <Section id="too-heavy" title="When is Codeyard too heavy for a project?">
-    <Fragment slot="note">How much checking each change gets: <a href={href("docs/risk-policy/")}>Risk policy</a>.</Fragment>
-    <p class="lede">When nobody will maintain the result, or a change is too small to be worth an Issue, a review and a pull request.</p>
-    <p>Every feature goes through the same route: an Issue with acceptance criteria, an implementation session, the project's checks, by default a review by another provider, and a pull request you merge. That takes time and costs tokens for each agent; <a href={href("examples/#tradeoff")}>Examples</a> shows what a few recorded runs took, which is not an estimate for your features. For a quick experiment, a throwaway script or a change of a few lines you can check yourself, an agent on its own is faster. A project that wants less can lower the effort for low-risk changes, such as documentation, with <code>profile: light</code>; a high-risk change always gets the full route.</p>
+  <Section id="who" title={title("who")}>
+    <p>To understand what it does, no. To use it, you work in a terminal with Git and GitHub, and it is not a no-code tool. You also need to judge the questions the AI asks and the change it proposes.</p>
+    <p class="needs">The basic ideas first: <a href={href("docs/new-to-agentic-coding/")}>New to agentic coding?</a></p>
   </Section>
 
-  <Section id="replace" title="Does it replace Claude Code, Codex or an IDE?">
-    <Fragment slot="note">The agents and their models: <a href={repoFile(".agents/agents.conf")}><code>agents.conf</code></a>.</Fragment>
-    <p class="lede">No: Codeyard writes no code; Claude Code and Codex do, and you keep your editor.</p>
-    <p>Codeyard is the process around the agents: shell scripts, instructions for the agents and policy files that live in your repository. The scripts start the agents for each step, check their work and record what happened. As shipped, Claude writes the code and Codex reviews it; those are the two providers the scripts can start.</p>
+  <Section id="software" title={title("software")}>
+    <p>Software that lives in a Git repository on GitHub and that you will keep extending, such as an application, a library or a course. Codeyard runs your project's own checks, so it is not tied to one language. Illustrative example: a gym's member application where trainers record attendance and members see their own history.</p>
+    <p class="needs">Real projects and their records: <a href={href("examples/")}>Examples</a>.</p>
   </Section>
 
-  <Section id="existing" title="Can I use it with my existing repository?">
-    <Fragment slot="note">Built in <a href={issue(170)}>#170</a>; a pilot on a real repository follows.</Fragment>
-    <p class="lede">Yes: it is assessed first, the workflow is added on a branch you review, and a baseline records what already fails.</p>
-    <p>There is no installer: you create the repository with <code>gh repo create --template</code>, as <a href={href("docs/getting-started/")}>Getting started</a> shows. For an existing repository, <code>assess-repository.sh</code>, run from a clone of Codeyard's repository, reports what an adoption would add, which files collide and which of the project's commands could verify it, and changes nothing in the repository. <code>adopt-repository.sh</code> then applies that proposal as one commit on the branch <code>adopt/agent-codeyard</code>: it only adds files, never overwrites one, leaves your CI and deployment as they are, and records which files belong to Codeyard so that a later sync updates only those. It also writes your own test, lint and build commands into <code>scripts/verify.conf</code>, and, where you have none, a minimal architecture, requirements and roadmap marked <em>observed, not approved</em> until you approve the planning; it invents no past decision. <code>./scripts/verify.sh --baseline</code> then records which checks fail before any change: such a failure stays visible as known and fails the verification until it is fixed or you accept it. The limits: the assessment reads the files, runs none of your code, and what it reconstructs from them is provisional until you approve the planning; it is tested on synthetic fixtures so far. All steps: <a href={href("docs/adopting/")}>Adopting Agent Codeyard in an existing repository</a>. A project that started from the template can take over later template changes: <a href={href("docs/updating/")}>Updating an Agent Codeyard project</a>.</p>
+  <Section id="existing" title={title("existing")}>
+    <p>Yes. Codeyard first reads your project and reports what it would add, without changing anything. You then review the addition like any other change, and it records which checks already fail, so old failures stay visible as known. So far this is tested on example repositories; a trial on a real one is still to come.</p>
+    <p class="needs">All steps: <a href={href("docs/adopting/")}>Adopting Agent Codeyard in an existing repository</a>.</p>
   </Section>
 
-  <Section id="cost" title="How much does it cost?">
-    <Fragment slot="note">Measured runs: <a href={href("examples/#tradeoff")}>Examples</a>. The licence: <a href={repoFile("LICENSE")}><code>LICENSE</code></a>.</Fragment>
-    <p class="lede">Codeyard is free and open source; what you pay for is the agents' tokens, through your own Claude and Codex accounts, and the time of each run.</p>
-    <p>Codeyard is under the MIT licence. Every feature runs at least one writing agent and, unless your settings let a low-risk change skip it, one reviewing agent; every review round and every fix adds calls. In the recorded runs of this repository, the review and its fixes took from about 90,000 tokens for one round that found nothing to about 1.1 million for five rounds, and a whole run from 13 minutes to an hour and a half; <a href={href("examples/#tradeoff")}>Examples</a> shows each run with its rounds, time and tokens. These are a few runs, not an estimate for your project. Each run records the time and the tokens of every step on your machine, but no cost in money, and no price per feature is published.</p>
+  <Section id="permission" title={title("permission")}>
+    <p>You answer the questions and approve the requirements and the plan before anything is built. You answer when an agent stops with a question, and you read each proposed change and decide whether to merge it; no script merges. Whether GitHub itself refuses a merge depends on your repository settings and the rights of your account.</p>
+    <p class="needs">Which changes always need you: <a href={href("docs/configuration-and-security/#gate")}>Changes that need the owner</a>.</p>
   </Section>
 
-  <Section id="environments" title="Which environments does it run in?">
-    <Fragment slot="note">The prerequisites: <a href={href("docs/getting-started/")}>Getting started</a>; <code>doctor.sh</code> checks them.</Fragment>
-    <p class="lede">A Bash shell on Linux, with Git, the GitHub CLI, <code>jq</code>, and the two providers Claude Code and Codex.</p>
-    <p>The scripts are Bash scripts and start the agents' command-line tools; <code>./scripts/doctor.sh</code> checks every prerequisite and the Codex sandbox. The repository's CI runs them on Ubuntu Linux. A few scripts also handle the tools of macOS, but no CI run covers macOS, and nothing in the scripts or tests addresses Windows. Claude Code and Codex are the only providers the scripts can start; which model does each job is set in <a href={href("docs/agent-roles/")}><code>agents.conf</code></a>.</p>
+  <Section id="cost" title={title("cost")}>
+    <p>Codeyard itself is free and open source, under the MIT licence. You pay for the AI models through your own Claude Code and Codex accounts, by subscription or paid API use, with their usage limits. The amount depends on the size of a change, the number of review rounds and the models your settings choose. That is why no price per feature can be given.</p>
+    <p class="needs">What a few recorded runs took: <a href={href("examples/#tradeoff")}>More rounds find more, and cost more</a>.</p>
   </Section>
 
-  <Section id="stop" title="How do I stop a run, and resume it?">
-    <Fragment slot="note">The details: <a href={href("docs/troubleshooting/#a-session-or-a-run-was-interrupted")}>Troubleshooting</a>.</Fragment>
-    <p class="lede">Stop it like any command, with Ctrl-C; run the same command again to continue where the feature stands.</p>
-    <p>Nothing is merged when a run stops, and the feature's work stays in its own worktree. <code>./scripts/run-feature.sh &lt;issue&gt;</code> started again reads where the feature stands and skips every step that is done: a current review is not repeated and a committed feature is only published. When you work step by step, <code>./scripts/start-feature.sh &lt;issue&gt; --resume</code> starts a new implementer session that reads the handoff note and the files. A run that stops for a decision of yours says so and names the handoff note; answer there or in a comment on the Issue, then run it again.</p>
+  <Section id="too-heavy" title={title("too-heavy")}>
+    <p>Questions, a plan, checks and a second review cost time and model use for every change. That pays off for software you will extend and maintain, where a wrong assumption costs more later. For a quick experiment, a coding tool on its own is faster. A project can also ask for less process on low-risk changes.</p>
+    <p class="needs">How much checking each kind of change gets: <a href={href("docs/risk-policy/")}>Risk policy</a>.</p>
   </Section>
 
-  <Section id="permission" title="Can agents make changes without my permission?">
-    <Fragment slot="note">The limits in the docs: <a href={href("docs/configuration-and-security/")}>Configuration and security</a> and <a href={href("docs/github-setup/")}>GitHub setup</a>.</Fragment>
-    <p class="lede">Inside a feature, yes, that is their job; the workflow asks for you at the decisions that matter, and no script merges.</p>
-    <p>You approve the requirements and the plan before any feature is built, you answer when an agent stops with a question, and the workflow leaves the merge to you. A pull request that changes a protected file, that the reviewer rates as major for the architecture, or that skipped the review carries a request for your approval, which the workflow records; whether GitHub enforces it depends on your repository settings, below. In between, the agents write the code and the tests on the feature's own branch, and the scripts run the checks, commit and open the pull request. Step by step, you also approve what happens to each review finding, and the agent asks before it runs a command that its tool's permission settings do not allow. In an unattended run, one command that takes a feature to a pull request without waiting for you, nothing is asked: what would need your permission is refused instead.</p>
-    <p>What GitHub enforces is a separate matter. An agent works with the GitHub rights of the account that started it: if you may merge, so may the agent. Only the repository settings in <a href={href("docs/github-setup/")}>GitHub setup</a> make GitHub refuse a merge, and an approval that the agent cannot give itself needs a separate identity for the agent, which is <a href={issue(99)}>not built yet (#99)</a>.</p>
+  <Section id="checked" title={title("checked")}>
+    <p>Every proposed change says which of your project's checks ran, what the review found and what was decided about each finding. The AI that built it also states, per agreed requirement, what shows that the requirement is met. A passed check is evidence of what that check examines, not proof that nothing else is wrong.</p>
+    <p class="needs">What the evidence holds: <a href={href("docs/verification-and-completion/")}>Verification and completion</a>.</p>
   </Section>
 
-  <Section id="review" title="Is independent review always mandatory?">
-    <Fragment slot="note">The policy: <a href={repoFile(".agents/policies/risk.conf")}><code>risk.conf</code></a>. The levels: <a href={href("features/#risk")}>Risk-proportionate workflow</a>.</Fragment>
-    <p class="lede">Under the default policy, yes; a project can let a low-risk change skip it, and its merge then needs you.</p>
-    <p>By default every change is reviewed by an agent of another provider, which can only read. A project can choose less: with the one-line setting <code>profile: light</code>, or with <code>low: review: none</code> in its risk policy, the file that says how much checking each kind of change gets, a low-risk change, such as documentation, skips the review. The commit and the pull request then say that it was not reviewed, and the pull request asks for your approval of the merge; your repository settings on GitHub decide whether that is enforced. A high-risk change is always reviewed, and when a change is reviewed, the script refuses a reviewer of the implementer's own provider.</p>
+  <Section id="wrong" title={title("wrong")}>
+    <p>When an agent needs a decision only you can make, it stops and asks instead of guessing. A failing check is repaired and run again a limited number of times; after that, the run stops and says why. A review finding is fixed and the fix is reviewed again, and nothing becomes part of your project until you merge it.</p>
+    <p class="needs">What each stop means and what to do: <a href={href("docs/troubleshooting/")}>Troubleshooting</a>.</p>
+  </Section>
+
+  <Section id="data" title={title("data")}>
+    <p>Codeyard runs on your own machine or server; no Codeyard service sits in between. The coding tools send what they read and write, such as your code and answers, to their providers: Anthropic for Claude Code, OpenAI for Codex. Those providers' terms apply to that data. The records of each run stay on your machine, and your requirements, Issues and proposed changes are in your repository on GitHub.</p>
+    <p class="needs">What an agent may do on your machine: <a href={href("docs/configuration-and-security/")}>Configuration and security</a>.</p>
+  </Section>
+
+  <Section id="online" title={title("online")}>
+    <p>No. Codeyard ends with a proposed change, and the merge is yours. It sets up no deployment and leaves your existing automation as it is. If your project publishes itself after a merge, that is your own setup at work.</p>
+    <p class="needs">What an adoption leaves alone: <a href={href("docs/adopting/#what-is-preserved")}>What is preserved</a>.</p>
+  </Section>
+
+  <Section id="environments" title={title("environments")}>
+    <p>It runs in a Bash shell on Linux, with Git, the GitHub command-line tool, Claude Code and Codex. Parts of it also work on macOS, but no automated test covers macOS, and Windows is not supported. A check that ships with it tells you what is missing.</p>
+    <p class="needs">What to install: <a href={href("docs/getting-started/")}>Getting started</a>.</p>
+  </Section>
+
+  <Section id="stop" title={title("stop")}>
+    <p>Stop a run like any command in the terminal. Nothing is merged, and the work stays in its own working folder. Run the same command again and it continues where the feature stands, skipping the steps that are done. If it stopped for a decision of yours, answer first in the handoff note or on the Issue.</p>
+    <p class="needs">The details: <a href={href("docs/troubleshooting/#a-session-or-a-run-was-interrupted")}>A session or a run was interrupted</a>.</p>
+  </Section>
+
+  <Section id="unattended" title={title("unattended")}>
+    <p>An unattended run takes a feature from its Issue to a proposed change, between your decisions. Its writing agent asks you nothing, and what would need your permission is not granted to it unasked. The run approves the decision an agent proposes for each review finding, and records it. It stops when it needs your decision or reaches a limit or a failure, and it never merges.</p>
+    <p class="needs">How each agent handles what it would have asked: <a href={href("docs/configuration-and-security/#profiles")}>What an agent is allowed to do</a>.</p>
+  </Section>
+
+  <Section id="review" title={title("review")}>
+    <p>Under the shipped settings, yes: an AI of the other provider reads every change and can only read. A project can let low-risk changes, such as documentation, skip the review; such a change says so and asks for your approval of the merge. A high-risk change is always reviewed.</p>
+    <p class="needs">When the review is skipped: <a href={href("docs/risk-policy/")}>Risk policy</a>.</p>
   </Section>
 </Base>
