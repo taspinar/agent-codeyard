@@ -1,25 +1,29 @@
 ---
 title: Documentation
-description: Set up your project, run the workflow and understand its controls.
+description: Understand the workflow, start a project with it, bring it into a repository you have, and get a stopped run going again.
 order: 0
 ---
 import { href } from "../../lib/links";
 
-Two routes into Agent Codeyard, depending on where you start:
+- **Understand it:** <a href={href("docs/new-to-agentic-coding/")}>New to agentic coding? Start here</a> follows one illustrative example, so that afterwards you know what a coding agent, a pull request and a review are, and what Codeyard adds to them.
+- **Start a new project:** <a href={href("docs/getting-started/")}>Getting started</a> ends with your repository created with `gh repo create --template`, a plan you approved and your first feature as a pull request.
+- **Bring it into an existing repository:** <a href={href("docs/adopting/")}>Adopting Agent Codeyard in an existing repository</a> ends with the workflow added on a branch you review and a record of what already fails.
+- **Get help with a stopped run:** <a href={href("docs/troubleshooting/")}>Troubleshooting</a> gives, for the message or symptom you see, the first fix to try and the command that continues the run.
 
-- **A new project:** <a href={href("docs/getting-started/")}>Getting started</a> creates the repository with `gh repo create --template`, plans it with you and runs the first feature.
-- **An existing repository:** <a href={href("docs/adopting/")}>Adopting Agent Codeyard in an existing repository</a> assesses it, adds the workflow on a branch you review and records what already fails.
+## What stays with you
 
-New to coding agents, pull requests or independent reviews? Read <a href={href("docs/new-to-agentic-coding/")}>New to agentic coding? Start here</a> first. Short answers, such as the cost or the supported environments, are in the <a href={href("faq/")}>FAQ</a>. <a href={href("docs/detailed-workflow/")}>How the workflow works</a> explains the route and its choices; the <a href={href("docs/reference/workflow/")}>workflow reference</a> lists the command, the inputs and outputs and the stop conditions of every step. The sidebar covers configuration, risk policy, GitHub settings and recovery.
-
-The workflow runs on your machine. As shipped, Claude implements and Codex reviews, so install both providers. You approve planning and merge pull requests; no script merges for you. Under the shipped policy every feature is reviewed. A project can explicitly allow Low features to skip review; their merge then needs the owner. <a href={href("docs/updating/")}>Updating an Agent Codeyard project</a> covers taking over later changes of Codeyard.
+The workflow runs on your machine. As shipped, Claude implements and Codex reviews, so install both providers. You approve planning and merge pull requests; no script merges for you. Under the shipped policy every feature is reviewed. A project can explicitly allow Low features to skip review; their merge then needs the owner, as <a href={href("docs/risk-policy/")}>Risk policy</a> describes.
 
 ## Find a command or setting
 
-Search matches words in the built pages, including code and tables. Getting started, Adopting, Troubleshooting and the references come first, and each result shows the passage with the words you searched for. It runs entirely in your browser, with a static index and no external service. Without JavaScript, every page remains available through the sidebar and its table of contents.
+Search matches words in the built pages, including code and tables, and lists Getting started, Adopting, Troubleshooting and the references first, each result with the passage that holds your words. It runs in your browser from a static index, with no external service; without JavaScript, the sidebar and the table of contents of each page lead to every page.
+
+## More to read
+
+The sidebar goes from beginning and daily use to configuration and reference. Short answers, such as the cost or the supported environments, are on <a href={href("faq/")}>/faq/</a>. <a href={href("docs/detailed-workflow/")}>How the workflow works</a> explains the route and its choices; the <a href={href("docs/reference/workflow/")}>workflow reference</a> lists the command, the inputs and outputs and the stop conditions of every step. <a href={href("docs/updating/")}>Updating an Agent Codeyard project</a> covers taking over later changes of Codeyard.
 
 ## Sources and scope
 
 The site describes the current version of Codeyard. Your repository's [development guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md), [workflow reference](https://github.com/taspinar/agent-codeyard/blob/main/docs/workflow.md) and [repository setup guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/repository-setup.md) describe the version installed in your project.
 
-The <a href={href("docs/technical-reference/")}>technical reference</a> links scripts and configuration to their source. <a href={href("docs/history/")}>History and research</a> follows how Codeyard evolved; the possible improvements belong to <a href={href("about/")}>About</a>.
+The <a href={href("docs/technical-reference/")}>technical reference</a> links scripts and configuration to their source. <a href={href("docs/history/")}>History and research</a> follows how Codeyard evolved; the possible improvements belong to <a href={href("about/")}>/about/</a>.
