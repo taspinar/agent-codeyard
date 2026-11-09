@@ -31,7 +31,7 @@ If a material conflict remains, stop and report it.
 - `./scripts/verify.sh` passes.
 - No unrelated changes are included.
 - Docs/ADRs are updated when architecture or behavior changed, and so is the
-  documentation site (`documentation/`) where it describes the changed
+  website (`website/`) where it describes the changed
   behavior; a project without the site skips this.
 - Verification evidence is recorded in the commit message and the pull request, which `finish-feature.sh` and `publish-feature.sh` write.
 - Required independent review is complete and no Critical or Major findings

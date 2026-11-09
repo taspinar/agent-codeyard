@@ -1,6 +1,6 @@
 // Tests of the four-step overview of /workflow against the rules of its first
 // layer (#330, the shared scenario of #328). Run by check.sh --build:
-//   node --test "src/**/*.test.ts"  (in documentation/)
+//   node --test "src/**/*.test.ts"  (in website/)
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { answers, label, phases, scenario, steps, words } from "./overview.ts";

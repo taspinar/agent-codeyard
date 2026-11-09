@@ -1,6 +1,6 @@
 # Documentation validation
 
-Run `npm ci` in this directory, then `npm run check`. The documentation check
+Run `npm ci` in this directory, then `npm run check`. The website check
 is also run by the repository's existing verification and the Pages workflow.
 It builds and link-checks the project path (currently
 `/agent-codeyard/`) and `/`, runs the site's
@@ -44,7 +44,7 @@ that the FightAnalytics case is labelled as an illustrative example. Native
 summaries keep both navigation lists usable with JavaScript disabled.
 
 The check writes full-page screenshots and `report.json` under
-`documentation/reports/{project,root}/` (ignored by Git). Set
+`website/reports/{project,root}/` (ignored by Git). Set
 `DOCUMENTATION_REPORT_DIR` to retain them elsewhere. Reports include axe
 results and cases requiring manual inspection, total JavaScript bytes per
 page (inline plus loaded scripts), and the largest total page weight (HTML

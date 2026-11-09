@@ -1,0 +1,5 @@
+# This file marks website/ as the site of the Agent Codeyard template.
+# The website check of scripts/verify.conf and the website steps of
+# .github/workflows/ci.yml run only where it exists, so that a project's own
+# website/ directory is never taken for the template's site. Keep it when
+# you keep the template's site; sync-template.sh never hands it out.

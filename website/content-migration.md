@@ -39,4 +39,4 @@ The owner's comments on #240 explicitly include the licence instruction in getti
 
 ## Validation
 
-`documentation/check.sh --build` builds both base paths, checks links and anchors, requires repository links to name main, checks named scripts at their actual paths, and runs `search-test.mjs` against each generated index. The checker regression tests cover missing files, wrong repository refs and qualified script paths. Search indexes rendered HTML, including MDX, code and tables, locally after the build; no external service is required. Sidebar, contents and previous/next navigation remain ordinary links without JavaScript.
+`website/check.sh --build` builds both base paths, checks links and anchors, requires repository links to name main, checks named scripts at their actual paths, and runs `search-test.mjs` against each generated index. The checker regression tests cover missing files, wrong repository refs and qualified script paths. Search indexes rendered HTML, including MDX, code and tables, locally after the build; no external service is required. Sidebar, contents and previous/next navigation remain ordinary links without JavaScript.

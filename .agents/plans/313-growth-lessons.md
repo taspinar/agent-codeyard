@@ -14,7 +14,7 @@ Pointers:
 - `docs/workflow.md`: one sentence in the introduction.
 - `docs/project-map.md`: a row in "Project documents".
 - The documentation site lists the template's `docs/` files only in the
-  "Project documents" table of `documentation/src/content/docs/technical-reference.md`;
+  "Project documents" table of `website/src/content/docs/technical-reference.md`;
   a row there, nothing else on the site.
 - `.agents/template.conf`: the file joins `paths`, as
   `docs/examples/parallel-ci.yml` did in #295. Without it, a project that

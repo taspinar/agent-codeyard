@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Astro, static output, Markdown/MDX content, islands only where interaction is needed; published by GitHub Actions to GitHub Pages under `/agentic-coding-template/`, with site URL and base path configurable for a future root domain. No backend, no external services, no tracking. (Owner decision, 2026-10-30, Issue #234.) The design phase builds static HTML/CSS in `/home/ubuntu/act-runs/design/`; the files move to `documentation/` in #237.
+Astro, static output, Markdown/MDX content, islands only where interaction is needed; published by GitHub Actions to GitHub Pages under `/agentic-coding-template/`, with site URL and base path configurable for a future root domain. No backend, no external services, no tracking. (Owner decision, 2026-10-30, Issue #234.) The design phase builds static HTML/CSS in `/home/ubuntu/act-runs/design/`; the files move to `website/` in #237.
 
 ## Users
 
