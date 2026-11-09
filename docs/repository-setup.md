@@ -25,6 +25,12 @@ your project. It also copies `LICENSE`, the MIT licence of the template:
 keep it, replace it with the licence of your project, or remove it.
 `sync-template.sh` never overwrites it.
 
+The template's site is recognised by its marker file
+`website/.codeyard-site`: the website check of `./scripts/verify.sh` and the
+website steps of the CI run only where it exists, so a `website/` of your
+own is left alone, and a project that keeps the template's site keeps the
+marker.
+
 **An existing repository that adopted the workflow** (`assess-repository.sh`
 and `adopt-repository.sh`, "Adopting an existing repository" in
 [`docs/development.md`](development.md)) gets none of the template's site,

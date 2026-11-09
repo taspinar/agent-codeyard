@@ -531,4 +531,89 @@ if [[ -n "$site_check" ]]; then
   }
 fi
 
+# A project may have a website/ of its own. The template's site is
+# recognised by its marker, which the project's directory does not have: the
+# check passes there without running the template's site checks, and the
+# website steps of the CI are conditioned on the same marker.
+site_marker="website/.codeyard-site"
+if [[ -d "$source_root/website" && ! -f "$source_root/$site_marker" ]]; then
+  fail "the template's website has no marker $site_marker"
+fi
+if [[ -n "$site_check" ]]; then
+  mkdir -p "$tmp/own-site/website" "$tmp/own-site-bin"
+  echo 22 >"$tmp/own-site/website/.nvmrc"
+  printf '{"name": "project-site", "private": true}\n' >"$tmp/own-site/website/package.json"
+  # npm records that it ran: the template's site checks start with npm ci.
+  printf '#!/usr/bin/env bash\ntouch "%s"\nexit 1\n' "$tmp/own-site-npm-ran" >"$tmp/own-site-bin/npm"
+  chmod +x "$tmp/own-site-bin/npm"
+  (cd "$tmp/own-site" && PATH="$tmp/own-site-bin:$PATH" bash -c "$site_check") >"$tmp/own-site.out" 2>&1 || {
+    cat "$tmp/own-site.out" >&2
+    fail "the website check fails in a repository with a website/ of its own"
+  }
+  [[ ! -e "$tmp/own-site-npm-ran" ]] ||
+    fail "the website check runs the template's site checks on a project's own website/"
+fi
+
+# Evaluates the if: condition of a step of the CI as GitHub would in the
+# checkout $1: hashFiles() is true when a file there matches, always() and
+# success() are true. A condition with anything else cannot be evaluated and
+# fails the test.
+ci_condition_true() {
+  local checkout="$1" expression="$2" pattern found
+  expression="${expression#\$\{\{}"
+  expression="${expression%\}\}}"
+  while [[ "$expression" =~ hashFiles\(\'([^\']*)\'\) ]]; do
+    pattern="${BASH_REMATCH[1]}"
+    found="$(cd "$checkout" && shopt -s globstar nullglob dotglob &&
+      for file in $pattern; do [[ -f "$file" ]] && echo 1 && break; done; true)"
+    expression="${expression/"${BASH_REMATCH[0]}"/${found:-0}}"
+  done
+  expression="${expression//always()/1}"
+  expression="${expression//success()/1}"
+  expression="${expression//\'\'/0}"
+  [[ "$expression" =~ ^[01[:space:]\&\|\!=\(\)]*$ ]] ||
+    fail "cannot evaluate the ci.yml condition: $2"
+  (($expression))
+}
+
+# Prints the if: condition of every step of ci.yml that names website/, one
+# per line; a website step without an if: prints an empty line.
+ci_website_conditions() {
+  awk '
+    function flush() { if (step && site) print cond; step = 0; site = 0; cond = "" }
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*steps:/ { flush(); insteps = 1; indent = ""; next }
+    insteps && match($0, /^[[:space:]]*- /) && (indent == "" || RLENGTH == indent) { indent = RLENGTH; flush(); step = 1 }
+    step && /website/ { site = 1 }
+    step && match($0, /^[[:space:]]*(- )?if:[[:space:]]*/) { cond = substr($0, RLENGTH + 1) }
+    END { flush() }
+  ' "$1"
+}
+
+ci_workflow="$source_root/.github/workflows/ci.yml"
+if [[ -f "$ci_workflow" ]]; then
+  # The project's own website/ with reports of its own: only the marker may
+  # keep the steps from running. With the marker added, they do run.
+  mkdir -p "$tmp/ci-own-site/website/reports"
+  echo 22 >"$tmp/ci-own-site/website/.nvmrc"
+  printf '{"name": "project-site", "private": true}\n' >"$tmp/ci-own-site/website/package.json"
+  printf '<p>report</p>\n' >"$tmp/ci-own-site/website/reports/index.html"
+  cp -R "$tmp/ci-own-site" "$tmp/ci-template-site"
+  touch "$tmp/ci-template-site/$site_marker"
+  website_steps=0
+  while IFS= read -r condition; do
+    website_steps=$((website_steps + 1))
+    [[ -n "$condition" ]] || fail "a website step of ci.yml has no if: and runs on a project's own website/"
+    ! ci_condition_true "$tmp/ci-own-site" "$condition" ||
+      fail "a website step of ci.yml runs without the site's marker: $condition"
+    ci_condition_true "$tmp/ci-template-site" "$condition" ||
+      fail "a website step of ci.yml does not run with the site's marker: $condition"
+  done < <(ci_website_conditions "$ci_workflow")
+  # A ci.yml that names website/ outside comments has website steps: none
+  # found means the steps were not read.
+  if grep -Eq '^[[:space:]]*[^#[:space:]].*website' "$ci_workflow" && [[ "$website_steps" -eq 0 ]]; then
+    fail "ci.yml has no website steps to check"
+  fi
+fi
+
 echo "sync-template tests passed"

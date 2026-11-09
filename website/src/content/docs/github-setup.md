@@ -83,7 +83,8 @@ The complete list of settings is the [repository setup checklist](https://github
 ## Keeping the template website
 
 Projects normally delete `website/` and its Pages workflow. If you keep
-it, configure the name, repository URL, site origin and default base path in
+it, keep its marker `website/.codeyard-site` too: the verification and the CI
+check only the site that has it, and leave a `website/` of your own alone. Then configure the name, repository URL, site origin and default base path in
 `website/site.config.ts`. Validation defaults in
 `website/check.sh` are separate. After a repository
 rename, update `site.config.ts`, use `BASE_PATH=/new-repository-name/`, and update the site
