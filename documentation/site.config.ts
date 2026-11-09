@@ -18,11 +18,11 @@ export const site = {
   shortName: "Codeyard",
   /** The earlier name, which only About names, once, as "formerly". */
   formerName: "Agentic Coding Template (ACT)",
-  /** The positioning line. */
-  tagline: "Autonomous coding. Accountable engineering.",
+  /** The positioning line, the hero headline and the title of the home page. */
+  tagline: "Build software with AI, with a clear plan and checks along the way.",
   /** The supporting line, the description of the home page. */
   description:
-    "An open-source, risk-aware workflow for AI coding agents. From requirements to verified pull requests, with independent reviews, traceable evidence and human control.",
+    "Describe what you want to build. Agent Codeyard helps you clarify it, plan the work and guide AI coding tools as they build and check each change. You decide what to accept.",
   /** The repository on GitHub, without a trailing slash. */
   repository: "https://github.com/taspinar/agent-codeyard",
   /** The branch whose files the site links to. */

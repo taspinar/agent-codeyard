@@ -74,26 +74,29 @@ try {
       await tabTo('.skip');
       await page.keyboard.press('Enter');
       assert.equal(await page.evaluate(() => document.activeElement.id), 'main');
-      // The home page map: the review bypass is hidden wherever policy
-      // excludes it and shows, solid, only under low risk with the light profile.
-      if (width === 1440) {
-        for (const risk of ['low', 'medium', 'high']) {
-          for (const profile of ['standard', 'light']) {
-            await page.locator(`#lifecycle label:has(input[name="risk"][value="${risk}"])`).click();
-            await page.locator(`#lifecycle label:has(input[name="profile"][value="${profile}"])`).click();
-            const shown = await page.evaluate(() => [...document.querySelectorAll('#lifecycle .map :is(.bypass, .bypass-note)')]
-              .map(e => ({ display: getComputedStyle(e).display, dash: getComputedStyle(e).strokeDasharray })));
-            assert(shown.length > 0);
-            const at = `home page bypass at ${risk} risk, ${profile} profile`;
-            if (risk === 'low' && profile === 'light') {
-              for (const r of shown) assert.notEqual(r.display, 'none', at);
-              assert.equal(shown[0].dash, 'none', at);
-            } else {
-              for (const r of shown) assert.equal(r.display, 'none', at);
-            }
-          }
+      // The hero of the home page (#329): plain words only, and the headline,
+      // the lede and both actions in view without scrolling.
+      const hero = page.locator('.hero-grid');
+      const heroText = await hero.innerText();
+      for (const word of ['repository', 'pull request', 'triage', 'evidence', 'gate', 'merge', 'policy', 'script', 'worktree']) {
+        assert(!heroText.toLowerCase().includes(word), `The hero names "${word}"`);
+      }
+      const primary = hero.locator('.actions a.btn');
+      assert.equal(await primary.count(), 1);
+      assert.equal(await primary.innerText(), 'See how it works');
+      assert.equal(await primary.getAttribute('href'), base + 'workflow/');
+      assert.equal(await hero.locator('.actions a:not(.btn)').getAttribute('href'), base + 'docs/getting-started/');
+      for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        await page.evaluate(() => scrollTo(0, 0));
+        for (const selector of ['h1', '.lede', '.actions a.btn', '.actions a:not(.btn)']) {
+          const box = await hero.locator(selector).boundingBox();
+          assert(box && box.y >= 0 && box.y + box.height <= viewport.height, `Hero ${selector} below the fold at ${viewport.width}×${viewport.height}`);
         }
       }
+      await page.setViewportSize({ width, height: 900 });
+      // The header: the seven labels of the navigation, in order.
+      assert.deepEqual(await page.locator('.top .nav a').allInnerTexts(), ['How it works', 'Why Codeyard', 'Projects', 'Docs', 'About', 'Get started', 'GitHub']);
       await page.goto(origin + base + '?theme=' + theme);
       await tabTo('.nav a');
       await page.keyboard.press('Enter');
