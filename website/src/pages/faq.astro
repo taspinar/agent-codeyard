@@ -10,7 +10,7 @@
 import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Section from "../components/Section.astro";
-import { href } from "../lib/links";
+import { href, issue } from "../lib/links";
 
 const questions = [
   { id: "what", title: "What does Agent Codeyard do?" },
@@ -55,12 +55,12 @@ const title = (id: string) => questions.find((question) => question.id === id)?.
   </Section>
 
   <Section id="software" title={title("software")}>
-    <p>Software that lives in a Git repository on GitHub and that you will keep extending, such as an application, a library or a course. Codeyard runs your project's own checks, so it is not tied to one language. Illustrative example: a gym's member application where trainers record attendance and members see their own history.</p>
-    <p class="needs">Real projects and their records: <a href={href("examples/")}>Examples</a>.</p>
+    <p>Software that lives in a Git repository on GitHub and that you will keep extending, such as an application, a library or a course. Codeyard runs your project's own checks, so it is not tied to one language. Illustrative example: a gym's member application, where trainers record attendance for their classes and members see their own training history.</p>
+    <p class="needs">Real projects and their records: <a href={href("examples/")}>Projects</a>.</p>
   </Section>
 
   <Section id="existing" title={title("existing")}>
-    <p>Yes. Codeyard first reads your project and reports what it would add, without changing anything. You then review the addition like any other change, and it records which checks already fail, so old failures stay visible as known. So far this is tested on example repositories; a trial on a real one is still to come.</p>
+    <p>Yes. Codeyard first reads your project and reports what it would add, without changing anything. You then review the addition like any other change, and it records which checks already fail, so old failures stay visible as known. Besides the template's own tests on example repositories, one pilot on a private, existing application ran on 6 November 2026; <a href={issue(170)}>its report</a> describes it in general terms.</p>
     <p class="needs">All steps: <a href={href("docs/adopting/")}>Adopting Agent Codeyard in an existing repository</a>.</p>
   </Section>
 
@@ -71,7 +71,7 @@ const title = (id: string) => questions.find((question) => question.id === id)?.
 
   <Section id="cost" title={title("cost")}>
     <p>Codeyard itself is free and open source, under the MIT licence. You pay for the AI models through your own Claude Code and Codex accounts, by subscription or paid API use, with their usage limits. The amount depends on the size of a change, the number of review rounds and the models your settings choose. That is why no price per feature can be given.</p>
-    <p class="needs">What a few recorded runs took: <a href={href("examples/#tradeoff")}>More rounds find more, and cost more</a>.</p>
+    <p class="needs">What a few recorded runs took: <a href={href("docs/engineering-records/#tradeoff")}>More rounds find more, and cost more</a>.</p>
   </Section>
 
   <Section id="too-heavy" title={title("too-heavy")}>
@@ -110,8 +110,8 @@ const title = (id: string) => questions.find((question) => question.id === id)?.
   </Section>
 
   <Section id="unattended" title={title("unattended")}>
-    <p>An unattended run takes a feature from its Issue to a proposed change, between your decisions. Its writing agent asks you nothing, and what would need your permission is not granted to it unasked. The run approves the decision an agent proposes for each review finding, and records it. It stops when it needs your decision or reaches a limit or a failure, and it never merges.</p>
-    <p class="needs">How each agent handles what it would have asked: <a href={href("docs/configuration-and-security/#profiles")}>What an agent is allowed to do</a>.</p>
+    <p>An unattended run takes a feature from its Issue to a proposed change, between your decisions. Its writing agent asks you nothing: what it would have asked you is decided by the tool's own sandbox or permission check, and whatever would still need your answer is refused. The run approves the decision an agent proposes for each review finding, and records it. It stops when it needs your decision or reaches a limit or a failure, and it never merges.</p>
+    <p class="needs">How each agent handles what it would have asked: <a href={href("docs/configuration-and-security/#unattended")}>What "unattended" means</a>.</p>
   </Section>
 
   <Section id="review" title={title("review")}>

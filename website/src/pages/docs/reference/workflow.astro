@@ -1,16 +1,47 @@
 ---
 // The workflow reference: every step of the workflow (src/lib/steps.ts) with
 // what happens and its facts in the five fixed fields, by stage. It was
-// "Every step in detail" on /workflow, whose old anchors lead here.
+// "Every step in detail" on /workflow, whose old anchors lead here. A compact
+// index of the steps with their command and where it runs, and the
+// parameters of the commands, come first (#335).
 import DocsPage from "../../../components/DocsPage.astro";
-import { parts as values, reference, stages } from "../../../lib/steps";
+import Table from "../../../components/Table.astro";
+import { parameters, parts as values, reference, stages } from "../../../lib/steps";
 
-const toc = stages.map((stage) => ({
-  slug: stage.id, text: stage.title,
-  children: stage.steps.map((step) => ({ slug: step.id, text: step.title })),
-}));
+const toc = [
+  { slug: "index", text: "Step index" },
+  { slug: "parameters", text: "Parameters" },
+  ...stages.map((stage) => ({
+    slug: stage.id, text: stage.title,
+    children: stage.steps.map((step) => ({ slug: step.id, text: step.title })),
+  })),
+];
+const fact = (facts: [string, string][], term: string) => facts.find(([t]) => t === term)?.[1];
 ---
-<DocsPage id="reference/workflow" title="Workflow reference" description="Every step of the workflow: what happens, who acts, the command, what goes in and comes out, the gate, and when it stops or retries." toc={toc} class="ref">
+<DocsPage id="reference/workflow" title="Workflow reference" description="Every step of the workflow: what happens, who acts, the command and where to run it, what goes in and comes out, the gate, and when it stops or retries." toc={toc} class="ref">
+  <p>Look up a step here when you run it. <a href="../../detailed-workflow/">How the workflow works</a> explains when to use which step and what to do when one stops.</p>
+
+  <h2 id="index">Step index</h2>
+  <p>Every step with its command and the checkout or worktree to run it from. Run each command from the root of that checkout. The primary checkout is the clone of your repository; the scripts create the planning and feature worktrees next to it and print their paths.</p>
+  <Table label="Step index">
+    <thead><tr><th scope="col">step</th><th scope="col">command</th><th scope="col">run from</th></tr></thead>
+    <tbody>
+      {stages.flatMap((stage) => stage.steps).map((step) => (
+        <tr>
+          <th scope="row"><a href={`#${step.id}`}>{step.title}</a></th>
+          <td data-col="command">{values(fact(step.facts, "script") ?? "—").map((v) => (v.code ? <code>{v.part}</code> : v.part))}</td>
+          <td data-col="run from">{values(fact(step.facts, "where") ?? "—").map((v) => (v.code ? <code>{v.part}</code> : v.part))}</td>
+        </tr>
+      ))}
+    </tbody>
+  </Table>
+
+  <h2 id="parameters">Parameters</h2>
+  <p>A word in angle brackets in a command is a parameter: replace it, brackets included, with your value. A parameter in square brackets may be left out.</p>
+  <dl class="facts">
+    {parameters.map(([name, meaning]) => <><dt><code>{name}</code></dt><dd>{values(meaning).map((v) => (v.code ? <code>{v.part}</code> : v.part))}</dd></>)}
+  </dl>
+
   {stages.map((stage) => <>
     <h2 id={stage.id}>{stage.title}</h2>
     <p>{stage.note}</p>
@@ -23,7 +54,7 @@ const toc = stages.map((stage) => ({
             <dt>{row.label}</dt>
             <dd>{row.facts.length === 1 && !row.facts[0].shown
               ? values(row.facts[0].value).map((v) => (v.code ? <code>{v.part}</code> : v.part))
-              : <ul>{row.facts.map((fact) => <li><span class="sub">{fact.label}</span> {values(fact.value).map((v) => (v.code ? <code>{v.part}</code> : v.part))}</li>)}</ul>}</dd>
+              : <ul>{row.facts.map((fact) => <li>{fact.shown && <><span class="sub">{fact.label}</span> </>}{values(fact.value).map((v) => (v.code ? <code>{v.part}</code> : v.part))}</li>)}</ul>}</dd>
           </>)}
         </dl>
       </section>

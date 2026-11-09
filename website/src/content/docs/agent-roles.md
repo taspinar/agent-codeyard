@@ -1,6 +1,6 @@
 ---
 title: "Agent roles and models"
-description: "Choose providers and models for every role and risk level."
+description: "Which tool and model does each job of the workflow: the roles, the default configuration, and how to change it per role, per run and per risk level."
 order: 4
 ---
 
@@ -13,18 +13,33 @@ A role is a job in the workflow, not a person or an account. Four jobs do most o
 - **The reviewer** reads the finished change and reports problems. It cannot edit files, and it must come from another provider than the builder.
 - **The fixer** repairs the review findings that were chosen to be fixed now, and nothing else. In the configuration it is the `triage-implementer`; the `triage` role proposes which findings it gets.
 
-You choose which agent and which model does each job. The template's own choice is below; nothing requires it.
+You choose which tool and which model does each job. The template's own choice is the <a href="#shipped-configuration">default configuration</a> below; nothing requires it.
 
-<a id="roles"></a>
+<a id="terms"></a>
 
-## Agent roles and models
+## Role, tool, provider and model
 
-Each role has an agent and a model, set in [`.agents/agents.conf`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/agents.conf), one role per line:
+Four words, each for one thing:
+
+| Word | What it is | Example |
+| --- | --- | --- |
+| **Role** | A job in the workflow | `implementer`, `reviewer` |
+| **Tool** | The coding agent's command-line tool that does the job; the configuration calls it the agent | Claude Code (`claude`) or Codex (`codex`) |
+| **Provider** | The company whose models the tool uses | Anthropic for Claude Code, OpenAI for Codex |
+| **Model** | The model the tool runs, by the name the tool knows it by | `opus`, `gpt-6-luna` |
+
+One line of [`.agents/agents.conf`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/agents.conf) names all of them for one role: the role, then the tool, then the model. The provider follows from the tool, and an independent review means another tool, and so another provider, than the one that implemented:
 
 ```
 implementer: claude opus
 reviewer: codex gpt-6-luna
 ```
+
+The supported tools are Claude Code and Codex. Which models you can use depends on your account with that provider; the workflow passes the model name on as you wrote it and never replaces it with another one, and an unknown tool is an error. `./scripts/doctor.sh` checks that each configured tool is installed.
+
+<a id="roles"></a>
+
+## Agent roles and models
 
 | Role | What it does |
 | --- | --- |
@@ -38,36 +53,22 @@ reviewer: codex gpt-6-luna
 | `analyst` | Compares the runs of several features and proposes improvements, read-only (<a href="../technical-reference/#learning">learning from your runs</a>) |
 | `assessor` | Writes the report and the proposal of an assessment of an existing repository, read-only (`assess-repository.sh`) |
 
-The supported agents are Claude Code (`claude`) and Codex (`codex`). You can override the agent and the model for one run with `--agent` and `--model` on a workflow script. The model you name is passed to the agent as it is: the workflow never replaces it with another one, and an unknown agent is an error.
+The reviewer must use a different tool than the implementer, at every risk level: that is what makes the review independent. `review-feature.sh` refuses to start a reviewer that resolves to a tool the implementer of the feature ran with, and `doctor.sh` warns when a reviewing role and the role it reviews resolve to the same tool.
 
-The reviewer must use a different agent than the implementer, at every risk level: that is what makes the review independent. `review-feature.sh` refuses to start a reviewer that resolves to an agent the implementer of the feature ran with, and `doctor.sh` warns when a reviewing role and the role it reviews resolve to the same agent.
+<a id="default-configuration"></a>
 
-A role of a feature (`implementer`, `reviewer`, `triage`, `triage-implementer`) can also have a line per <a href="../risk-policy/#risk">risk level</a> of the feature, such as `implementer@high: claude fable` next to `implementer: claude opus`. A script that starts the role takes `--agent` and `--model` first, then the line of the level the feature has at that moment, then the plain line; a later session of a feature never runs at a weaker level than an earlier one did. Without a level line the plain line applies. `doctor.sh` validates the lines, and `report-runs.sh` shows the calls per level and model.
+## Shipped configuration
 
-**What the template ships.** These are the template's own choices; set the agents, models, and levels your project wants:
+This is the default configuration of the template, and the one the other pages of this site refer to. Set the tools, models and levels your project wants.
 
 | Role | Low and medium risk | High risk |
 | --- | --- | --- |
-| `implementer`, `triage-implementer` | Claude, `opus` | Claude, `fable` |
+| `implementer`, `triage-implementer` | Claude Code, `opus` | Claude Code, `fable` |
 | `reviewer` | Codex, `gpt-6-luna` | The same |
-| `triage` | Claude, `sonnet` | The same |
-| `project-grill`, `project-planner` | Claude, `fable` | |
+| `triage` | Claude Code, `sonnet` | The same |
+| `project-grill`, `project-planner` | Claude Code, `fable` | |
 | `planning-reviewer` | Codex, `gpt-6-astra` | |
-| `analyst`, `assessor` | Claude, `fable` | |
-
-The levels come from the features that built the template: a feature that changes the workflow and its gate, which is high risk, needed one or two rounds with the strongest model and many with a weaker one, while the other features did not need it. Codex stays supported as implementer for a project that configures it.
-
-<a id="skills"></a>
-
-## Project skills
-
-A skill is guidance for an agent, such as a design method or a writing rule. The template bundles none, and a project without skills has nothing to install or set up. A project that wants one keeps it in its repository, in `.agents/project-skills/<name>/`, with a `skill.conf` that says where it comes from: the source, the exact commit, the licence, whether it is the upstream text or an adapted one and what changed, and a checksum of its files.
-
-The plan of a feature selects the skills the work needs, each pinned by that checksum. The builder, the reviewer, and the fixer are then given the same files by path, whatever their agent would discover by itself, so Claude and Codex read the same guidance. A skill that does not exist, or whose files no longer match the selected checksum, stops the step with a message that says which.
-
-A skill is the lowest source of guidance: the Issue, the decision records, `AGENTS.md`, and the plan come first. It cannot waive your approval, widen an agent's permissions, or count as evidence that a feature is done; a test or a check does that. Nothing in a skill is installed, downloaded, or run. A new version of a skill is an ordinary reviewed change, and a change to an existing skill makes the feature high risk, as a change to an agent's instructions does. `./scripts/check-skills.sh` checks the metadata in the verification. The [development guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md) has the format and a worked example.
-
-## Shipped configuration
+| `analyst`, `assessor` | Claude Code, `fable` | |
 
 The active lines of [.agents/agents.conf](https://github.com/taspinar/agent-codeyard/blob/main/.agents/agents.conf):
 
@@ -84,3 +85,29 @@ triage-implementer@high: claude fable
 analyst: claude fable
 assessor: claude fable
 ```
+
+Why a stronger model at high risk: the template chose it for the features that change the workflow and its gate, after a few of its own runs. That is the experience of one repository, not a measured result for every project. What the level changed in two recorded runs is in <a href="../engineering-records/#levels">What each risk level changed</a>. Codex stays supported as implementer for a project that configures it.
+
+## Further configuration
+
+<a id="overrides"></a>
+
+### One run with another tool or model
+
+`--agent` and `--model` on a workflow script override the tool and the model of its role for that run, such as `--agent codex --model gpt-6-luna`.
+
+<a id="risk-levels"></a>
+
+### Models per risk level
+
+A role of a feature (`implementer`, `reviewer`, `triage`, `triage-implementer`) can also have a line per <a href="../risk-policy/#risk">risk level</a> of the feature, such as `implementer@high: claude fable` next to `implementer: claude opus`. A script that starts the role takes `--agent` and `--model` first, then the line of the level the feature has at that moment, then the plain line; a later session of a feature never runs at a weaker level than an earlier one did. Without a level line the plain line applies. `doctor.sh` validates the lines, and `report-runs.sh` shows the calls per level and model.
+
+<a id="skills"></a>
+
+### Project skills
+
+A skill is guidance for an agent, such as a design method or a writing rule. The template bundles none, and a project without skills has nothing to install or set up. A project that wants one keeps it in its repository, in `.agents/project-skills/<name>/`, with a `skill.conf` that says where it comes from: the source, the exact commit, the licence, whether it is the upstream text or an adapted one and what changed, and a checksum of its files.
+
+The plan of a feature selects the skills the work needs, each pinned by that checksum. The builder, the reviewer, and the fixer are then given the same files by path, whatever their tool would discover by itself, so Claude and Codex read the same guidance. A skill that does not exist, or whose files no longer match the selected checksum, stops the step with a message that says which.
+
+A skill is the lowest source of guidance: the Issue, the decision records, `AGENTS.md`, and the plan come first. It cannot waive your approval, widen an agent's permissions, or count as evidence that a feature is done; a test or a check does that. Nothing in a skill is installed, downloaded, or run. A new version of a skill is an ordinary reviewed change, and a change to an existing skill makes the feature high risk, as a change to an agent's instructions does. `./scripts/check-skills.sh` checks the metadata in the verification. The [development guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md) has the format and a worked example.

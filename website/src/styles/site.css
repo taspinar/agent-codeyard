@@ -454,7 +454,7 @@ html:not(.js) .docs-search { display: none; }
 .ref .ref-step h3 { margin-top: 0; }
 .ref .what { margin-bottom: var(--s-2); }
 .moved-note { font-size: var(--t-sm); color: var(--ink-2); }
-/* An old anchor of a case that moved (/examples/, #344): its one line shows
+/* An old anchor of content that moved (/examples/, #344; Home, #335): its one line shows
    only when a visitor lands on it. */
 .moved-case { display: none; font-size: var(--t-sm); color: var(--ink-2); }
 .moved-case:target { display: block; }

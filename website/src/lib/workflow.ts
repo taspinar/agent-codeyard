@@ -371,7 +371,7 @@ function walk(state: State, models: Models): Step[] {
 /**
  * The real case: Issue #241 as it ran (PR #249, one unattended run of
  * run-feature.sh on 30 October 2026), shown on /workflow below the map.
- * Every figure is that of the Examples page (/examples/#medium), which names
+ * Every figure is that of Engineering records (/docs/engineering-records/#story), which names
  * its sources: the Issue, its published review and triage, the description of
  * PR #249 and the run record. Its route is the walkthrough of this state, so
  * the guide moves along the map exactly as the switches would draw it.
@@ -386,10 +386,10 @@ export const example: State = { part: "feature", run: "unattended", risk: "mediu
  * reference entry of each step tell those.
  */
 const ran: { key: string; who: string; text: string }[] = [
-  { key: "f-issue", who: "You", text: "Issue #241 asked for three pages of this site: Features, Examples and About. You started the run with one command, and it went on without asking you until the pull request." },
+  { key: "f-issue", who: "You", text: "Issue #241 asked for three pages of this site: Features, Examples and About, now Why Codeyard, Projects and About. You started the run with one command, and it went on without asking you until the pull request." },
   { key: "f-implement", who: "The implementer, an agent (claude opus)", text: "In its own branch and working copy, it first checked that the Issue left no decision open. It wrote the three pages in 11 minutes, then recorded for each requirement whether it is met, with evidence." },
   { key: "f-checks", who: "A script", text: "Every check the project declares ran: the tests, and the build of this site. They passed in 14 seconds, and the pass holds for exactly this content." },
-  { key: "f-review", who: "The reviewer, an agent of another provider (codex gpt-6-luna) that cannot edit files", text: "Round 1 compared each requirement of the Issue with the code and found one major problem: the Examples page linked the source files of one example only, and the Issue asked for every example." },
+  { key: "f-review", who: "The reviewer, an agent of another provider (codex gpt-6-luna) that cannot edit files", text: "Round 1 compared each requirement of the Issue with the code and found one major problem: the Examples page (now Projects) linked the source files of one example only, and the Issue asked for every example." },
   { key: "f-findings", who: "The triage agent (claude sonnet), deciding without you", text: "For each finding it decides: fix it now, defer it to a later Issue, or accept it with a reason. A major finding is fixed now, so it decided that and published the decision on the Issue." },
   { key: "b-fix", who: "The implementer (claude opus)", text: "It fixed only what was decided as fix now: it added the source files of the other four examples, in 85 seconds." },
   { key: "f-checks", who: "A script", text: "The content changed, so the checks ran again. They passed in 15 seconds." },

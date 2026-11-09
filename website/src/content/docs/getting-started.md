@@ -132,7 +132,7 @@ implementer@high: claude fable
 reviewer: codex gpt-6-luna
 ```
 
-This is what the template ships: Claude implements, with a stronger model for a high-risk feature, and Codex reviews. A line with `@high` (or `@low`, `@medium`) applies to features of that <a href="../risk-policy/#risk">risk level</a>, and the plain line to the others. The file lists every role, including the planner and the planning reviewer; <a href="../agent-roles/#roles">Agent roles and models</a> explains each one and how to change it. The reviewer must use a different agent than the implementer, at every level.
+This is what the template ships: Claude implements, with a stronger model for a high-risk feature, and Codex reviews. A line with `@high` (or `@low`, `@medium`) applies to features of that <a href="../risk-policy/#risk">risk level</a>, and the plain line to the others. The file lists every role, including the planner and the planning reviewer; <a href="../agent-roles/#shipped-configuration">Agent roles and models</a> explains each one and how to change it. The reviewer must use a different agent than the implementer, at every level.
 
 - **Where:** `my-project`.
 - **Input:** nothing when the shipped models are available to your accounts; otherwise a model your account offers, on the line of its role.
@@ -144,7 +144,7 @@ This is what the template ships: Claude implements, with a stronger model for a 
 Write a short description of what you want to build, in your own words, for example in `idea.md`:
 
 ```
-A member application for a gym. Trainers record attendance for their
+A gym's member application. Trainers record attendance for their
 classes; members see their own training history.
 ```
 

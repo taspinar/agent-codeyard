@@ -94,7 +94,7 @@ export const phases: { id: string; title: string; note: string; steps: Step[] }[
           why: "Problems are caught before the change reaches you.",
         },
         example: [
-          { label: "A check", items: ["A member who asks for another member's history is refused; the check runs with the function."] },
+          { label: "A check", items: ["A member who requests another member's history is refused; the check runs with the feature."] },
           { label: "A review remark", items: ["The first version let every signed-in user open the history view. The reviewer reported it, and the fix was checked."] },
         ],
         reference: ["implement-the-feature", "run-the-checks", "review-the-code", "apply-the-fixes"],

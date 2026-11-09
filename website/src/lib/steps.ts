@@ -34,6 +34,7 @@ export const planning: Step[] = [
     facts: [
       ["who", "You and Project Grill, in the planning worktree"],
       ["script", "`./scripts/start-planning.sh [name]`"],
+      ["where", "A clean primary checkout; the script creates the planning worktree `<repository>-planning-<name>` next to it, on the branch `planning/<name>`"],
       ["result", "`docs/PROJECT_REQUIREMENTS.md`, approved"],
       ["your decision", "You approve the requirements; declining stops the planning and keeps the worktree"],
     ],
@@ -46,7 +47,7 @@ export const planning: Step[] = [
     facts: [
       ["who", "Planning agent"],
       ["script", "The same run of `start-planning.sh`"],
-      ["result", "`docs/architecture.md`, `docs/roadmap.md`, `docs/decisions/`/"],
+      ["result", "`docs/architecture.md`, `docs/roadmap.md`, `docs/decisions/`"],
       ["stops if", "The agent fails or needs a decision from you; the worktree stays as it is"],
     ],
   },
@@ -58,6 +59,7 @@ export const planning: Step[] = [
     facts: [
       ["who", "Planning reviewer, read-only"],
       ["script", "`./scripts/review-planning.sh`"],
+      ["where", "The planning worktree"],
       ["result", "A review round with its findings by severity"],
       ["next", "Address the findings, or approve the plan when there are none"],
     ],
@@ -70,6 +72,7 @@ export const planning: Step[] = [
     facts: [
       ["who", "You and the planning agent"],
       ["script", "`./scripts/revise-planning.sh`"],
+      ["where", "The planning worktree"],
       ["your decision", "You approve the decisions; an escalated finding needs your answer"],
       ["repeat", "Review again after every change, until a round changes nothing"],
     ],
@@ -82,6 +85,7 @@ export const planning: Step[] = [
     facts: [
       ["who", "You"],
       ["script", "`./scripts/finish-planning.sh`"],
+      ["where", "The planning worktree"],
       ["result", "`docs/PLANNING_APPROVAL.md` and the planning commit"],
       ["refused if", "The review is stale, the latest round has a critical or major finding, or a finding has no decision or is escalated"],
     ],
@@ -104,6 +108,7 @@ export const planning: Step[] = [
     facts: [
       ["who", "You and the planning agents"],
       ["script", "`./scripts/start-planning.sh <name> --change <file>`, with `--grill` when the requirements change"],
+      ["where", "`start-planning.sh` from a clean primary checkout; `--amend` in a planning worktree"],
       ["small amendment", "`./scripts/finish-planning.sh --amend`"],
     ],
   },
@@ -118,6 +123,7 @@ export const feature: Step[] = [
     facts: [
       ["who", "Script, started by you"],
       ["script", "`./scripts/create-feature-issue.sh <feature-id>`"],
+      ["where", "The primary checkout, on `main` with the merged plan"],
       ["result", "A GitHub Issue"],
       ["refused if", "The approval of the plan is missing or stale"],
     ],
@@ -130,6 +136,7 @@ export const feature: Step[] = [
     facts: [
       ["who", "Implementer agent; the model follows the risk level"],
       ["script", "`./scripts/start-feature.sh <issue> [slug]`, or `--resume` to continue"],
+      ["where", "A clean primary checkout; the script creates the feature worktree on the branch `feature/<issue>-<slug>`. `--resume` runs from any checkout"],
       ["input", "The Issue with the comments of the owner, members and collaborators of the repository, never those of anyone else and not the workflow's own reports; a comment added later counts from the next session"],
       ["input", "An optional plan in `.agents/plans/`, linked to the Issue with `./scripts/update-issue-with-plan.sh <issue> <plan>`: the Issue owns the scope and the acceptance criteria, the plan the implementation details"],
       ["result", "Changes in the feature worktree, a completion record and a summary of the changes"],
@@ -145,6 +152,7 @@ export const feature: Step[] = [
     facts: [
       ["who", "Verification script"],
       ["script", "`./scripts/verify.sh`"],
+      ["where", "The worktree whose content is checked: the feature worktree, or a planning worktree"],
       ["rule", "The verification has to pass before a review and before the commit"],
       ["fails", "The implementer repairs the failing check; an unattended run resumes it with the failing checks, at most three times"],
       ["partial check", "A policy can name groups of checks for the repair rounds between the first review and the last; a partial run is never a verification, and the commit needs every check"],
@@ -159,6 +167,7 @@ export const feature: Step[] = [
     facts: [
       ["who", "Reviewer agent, read-only"],
       ["script", "`./scripts/review-feature.sh <issue>`, or `--changes` for the recent fixes only"],
+      ["where", "The feature worktree"],
       ["result", "A review tied to the current content; a change afterwards needs a new review"],
       ["refused if", "The verification does not pass, unless `--unverified \"<reason>\"` records why; the commit still needs the checks to pass"],
       ["refused if", "The reviewer would be of the provider that implemented"],
@@ -174,6 +183,7 @@ export const feature: Step[] = [
     facts: [
       ["who", "The triage agent proposes; step by step you approve, unattended it decides"],
       ["script", "`./scripts/triage-review.sh <review-json>`"],
+      ["where", "The feature worktree"],
       ["result", "Recorded decisions, published on the Issue"],
       ["your decision", "Step by step you approve the decisions, or give your own with `--decisions <file>` `--reason \"<why>\"`; unattended, read them on the Issue afterwards"],
       ["owner-directed", "With `--decisions` no agent starts: `--proposal <file>` records the original proposal, the script shows your decisions for confirmation, creates the follow-up Issues and asks again before it stores and publishes; it refuses `--unattended`. Critical and major findings stay fix now, a deferral needs a follow-up Issue and an acceptance a rationale"],
@@ -187,6 +197,7 @@ export const feature: Step[] = [
     facts: [
       ["who", "Implementer agent"],
       ["script", "`./scripts/apply-triage.sh <triage-json>`"],
+      ["where", "The feature worktree"],
       ["per finding", "The implementer names the class of the defect and looks for it in the files the feature changes; a claim it can check, it runs first. It records fixed, refuted, not reproduced or not executable; a finding it returns keeps its code and stays fix now until the triage decides again"],
       ["next", "`./scripts/review-feature.sh <issue> --changes`, then `./scripts/review-feature.sh <issue>`"],
     ],
@@ -199,6 +210,7 @@ export const feature: Step[] = [
     facts: [
       ["who", "Script"],
       ["script", "`./scripts/finish-feature.sh <issue> \"<summary>\"`"],
+      ["where", "The feature worktree"],
       ["refused if", "The completion record is missing or does not say complete or awaiting evidence, the verification does not pass, or the latest review is stale, does not cover the complete feature, or has a critical or major finding without your exception: `./scripts/record-exception.sh`, only by you at a terminal, one finding at a time, for the latest review of exactly this content; the commit lists it and the merge then needs your approval"],
       ["without review", "Low risk with `low: review: none` is committed as not reviewed; the owner can also skip the review with `--no-review \"<reason>\"`, which is recorded"],
       ["partial", "`--partial` commits unfinished work as your explicit choice; its pull request is a draft that leaves the Issue open"],
@@ -213,6 +225,7 @@ export const feature: Step[] = [
     facts: [
       ["who", "Script"],
       ["script", "`./scripts/publish-feature.sh <issue>`"],
+      ["where", "The feature worktree"],
       ["result", "An open pull request that closes the Issue when the feature is complete"],
     ],
   },
@@ -224,6 +237,7 @@ export const feature: Step[] = [
     facts: [
       ["who", "You, or a maintainer by your repository's rules; no script merges"],
       ["script", "`./scripts/check-guardrails.sh` lists what needs you"],
+      ["where", "`check-guardrails.sh` in the feature worktree; the merge on GitHub"],
       ["after the merge", "`./scripts/cleanup-worktree.sh <issue>`, from the primary checkout"],
     ],
   },
@@ -235,12 +249,37 @@ export const feature: Step[] = [
     facts: [
       ["who", "Script that coordinates the agents"],
       ["script", "`./scripts/run-feature.sh <issue> [--risk <level>]`"],
+      ["where", "The primary checkout; the run creates the feature worktree, or continues in it"],
       ["limits", "Four implementer sessions, three repairs of a failed verification, five review rounds"],
       ["result", "An open pull request, or the reason the run stopped"],
       ["important", "It never merges"],
     ],
   },
 ];
+
+/**
+ * The parameters of the commands of the steps: every placeholder a fact names,
+ * with what to put in its place. In square brackets it may be left out.
+ */
+export const parameters: [string, string][] = [
+  ["<issue>", "The number of the feature's GitHub Issue, such as `12`"],
+  ["<slug>", "A short name for the feature branch and worktree, such as `player-movement`: the branch is `feature/<issue>-<slug>`. Without it the slug is derived from the Issue title"],
+  ["<name>", "The name of a planning cycle, such as `shopping-list`: the branch is `planning/<name>`. Without it the first planning is `project-bootstrap`; a change needs one"],
+  ["<repository>", "The directory name of your repository"],
+  ["<feature-id>", "The ID of a roadmap feature, such as `F03`"],
+  ["<file>", "The path of a file: the change request of `--change`, or your decisions or the original proposal of an owner-directed triage"],
+  ["<plan>", "The path of a feature plan in `.agents/plans/`"],
+  ["<review-json>", "The review to triage, such as `.agents/reviews/feature-12-player-movement-review-01.json`"],
+  ["<triage-json>", "The approved triage, such as `.agents/triage/feature-12-player-movement-review-01-triage.json`"],
+  ["<level>", "A risk level: `low`, `medium` or `high`. It only raises the computed level"],
+  ["<summary>", "One line that says what the feature changes, for the commit"],
+  ["<reason>", "Your reason in your own words, in quotes; it is recorded"],
+  ["<why>", "Your reason in your own words, in quotes; it is recorded"],
+];
+
+/** The placeholders of a text: `<word>` and `[word]`, each named as `<word>`. */
+export const placeholders = (text: string) =>
+  [...text.matchAll(/[<[]([a-z][a-z-]*)[>\]]/g)].map((match) => `<${match[1]}>`);
 
 /** The two stages of the workflow, as the reference groups its steps. */
 export const stages = [
@@ -263,7 +302,7 @@ export const fields = [
 export type Field = (typeof fields)[number][0];
 const fieldOf: Record<string, Field> = {
   who: "who",
-  script: "command",
+  script: "command", where: "command",
   input: "io", result: "io", "after the merge": "io",
   "your decision": "gate", rule: "gate", next: "gate",
 };
@@ -320,8 +359,9 @@ function rows(facts: [string, string][], keys: readonly Field[]): Row[] {
   return fields.filter(([field]) => keys.includes(field)).flatMap(([field, label]) => {
     const mine = facts.filter(([term]) => (fieldOf[term] ?? "stops") === field);
     if (!mine.length) return [];
-    const shown = mine.length > 1 || !["who", "command"].includes(field);
-    return [{ label, facts: mine.map(([term, value]) => ({ label: term, value, shown })) }];
+    // Who acts and the command need no label of their own; where the command
+    // runs, and every other fact, keeps its label.
+    return [{ label, facts: mine.map(([term, value]) => ({ label: term, value, shown: !["who", "script"].includes(term) })) }];
   });
 }
 
