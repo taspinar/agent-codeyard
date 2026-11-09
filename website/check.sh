@@ -21,20 +21,20 @@
 # The design reference (design/) is not part of the build and not checked.
 #
 # Usage:
-#   ./documentation/check.sh --build
+#   ./website/check.sh --build
 #       Runs the unit tests of src/, checks the tokens of src/styles/, builds
 #       the site under the project path (/agent-codeyard/) and under
 #       the root (/), and checks both outputs. Needs the dependencies: npm ci
-#       in documentation/ first. After a rename, update the project path in
+#       in website/ first. After a rename, update the project path in
 #       the build loop below and this comment; keep default_site_url in sync
 #       with the site origin in site.config.ts.
-#   ./documentation/check.sh --browser
+#   ./website/check.sh --browser
 #       Checks that Playwright Chromium starts, as --build does first. Installs
 #       it only when it is not installed; reports missing system libraries
 #       with the command that installs them.
-#   ./documentation/check.sh <output> <base-path> [<site-url>]
+#   ./website/check.sh <output> <base-path> [<site-url>]
 #       Checks an output that is already built for that base path.
-#   ./documentation/check.sh --tokens <style sheet>...
+#   ./website/check.sh --tokens <style sheet>...
 #       Checks that outside :root and @font-face a font or spacing property
 #       names only tokens (var()), 0 and keywords, and that no rule names a
 #       colour literal.
@@ -44,12 +44,12 @@ set -euo pipefail
 site="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 root="$(cd "$site/.." && pwd -P)"
 repository="$(sed -n 's/^ *repository: "\(.*\)",$/\1/p' "$site/site.config.ts")"
-[[ -n "$repository" ]] || { echo "documentation: no repository in site.config.ts" >&2; exit 1; }
+[[ -n "$repository" ]] || { echo "website: no repository in site.config.ts" >&2; exit 1; }
 default_site_url="https://agentcodeyard.com"
 problems=0
 
 problem() {
-  echo "documentation: $*" >&2
+  echo "website: $*" >&2
   problems=$((problems + 1))
 }
 
@@ -159,7 +159,7 @@ check_output() {
   fi
   [[ -f "$output/robots.txt" ]] || problem "no robots.txt in $output"
 
-  echo "documentation: $count pages checked under $base."
+  echo "website: $count pages checked under $base."
 }
 
 # browser_ready: exits unless Playwright Chromium starts. Downloads it only when
@@ -168,25 +168,25 @@ browser_ready() {
   local status=0
   (cd "$site" && node browser-ready.mjs) || status=$?
   if [[ "$status" -eq 3 ]]; then
-    echo "documentation: installing Playwright Chromium." >&2
+    echo "website: installing Playwright Chromium." >&2
     if ! (cd "$site" && npx --no-install playwright install chromium); then
-      echo "documentation: Playwright Chromium could not be installed; it needs network access. Run: cd documentation && npx playwright install --with-deps chromium" >&2
+      echo "website: Playwright Chromium could not be installed; it needs network access. Run: cd website && npx playwright install --with-deps chromium" >&2
       exit 1
     fi
     status=0
     (cd "$site" && node browser-ready.mjs) || status=$?
   fi
   if [[ "$status" -eq 4 ]]; then
-    echo "documentation: install the system libraries of Chromium with: cd documentation && sudo npx playwright install-deps chromium" >&2
+    echo "website: install the system libraries of Chromium with: cd website && sudo npx playwright install-deps chromium" >&2
     exit 1
   elif [[ "$status" -ne 0 ]]; then
-    echo "documentation: Playwright Chromium could not be checked (exit $status)." >&2
+    echo "website: Playwright Chromium could not be checked (exit $status)." >&2
     exit 1
   fi
 }
 
 if [[ "${1:-}" == "--build" || "${1:-}" == "--browser" ]]; then
-  [[ -d "$site/node_modules" ]] || { echo "documentation: run npm ci in $site first" >&2; exit 1; }
+  [[ -d "$site/node_modules" ]] || { echo "website: run npm ci in $site first" >&2; exit 1; }
   browser_ready
   [[ "$1" == "--build" ]] || exit 0
   mkdir -p "$site/.astro"
@@ -200,7 +200,7 @@ if [[ "${1:-}" == "--build" || "${1:-}" == "--browser" ]]; then
     output="$work/output-$(echo "$base" | tr -d /)"
     (cd "$site" && SITE_URL="$default_site_url" BASE_PATH="$base" ASTRO_TELEMETRY_DISABLED=1 \
       npx --no-install astro build --silent --outDir "$output") ||
-      { echo "documentation: the build under $base failed" >&2; exit 1; }
+      { echo "website: the build under $base failed" >&2; exit 1; }
     check_output "$output" "$base" "$default_site_url"
     node "$site/search-test.mjs" "$output" "$base"
     (cd "$site" && node browser-check.mjs "$output" "$base")
@@ -216,6 +216,6 @@ else
 fi
 
 if [[ "$problems" -gt 0 ]]; then
-  echo "documentation: $problems problem(s)." >&2
+  echo "website: $problems problem(s)." >&2
   exit 1
 fi

@@ -1,7 +1,7 @@
 name: Documentation
 
 # Publishes the documentation site of the template: builds the Astro project
-# in documentation/ and publishes its output, nothing else of the repository.
+# in website/ and publishes its output, nothing else of the repository.
 # The site address and base path come from the Pages configuration of the
 # repository, so the same build serves the project path and a custom domain.
 #
@@ -14,7 +14,7 @@ on:
   push:
     branches: [main]
     paths:
-      - documentation/**
+      - website/**
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -43,32 +43,32 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
       - uses: actions/setup-node@v4
         with:
-          node-version-file: documentation/.nvmrc
+          node-version-file: website/.nvmrc
           cache: npm
-          cache-dependency-path: documentation/package-lock.json
+          cache-dependency-path: website/package-lock.json
       - name: Install the dependencies
-        working-directory: documentation
+        working-directory: website
         run: npm ci --no-audit --no-fund
-      - name: Install the browser for documentation checks
-        working-directory: documentation
+      - name: Install the browser for the website checks
+        working-directory: website
         run: npx --no-install playwright install --with-deps chromium
       - name: Check the site against the repository
-        working-directory: documentation
+        working-directory: website
         run: ./check.sh --build
       - id: pages
         uses: actions/configure-pages@v5
       - name: Build the site
-        working-directory: documentation
+        working-directory: website
         env:
           SITE_URL: ${{ steps.pages.outputs.origin }}
           BASE_PATH: ${{ steps.pages.outputs.base_path }}/
           ASTRO_TELEMETRY_DISABLED: "1"
         run: npm run build
       - name: Check the build that is published
-        working-directory: documentation
+        working-directory: website
         run: ./check.sh dist "${{ steps.pages.outputs.base_path }}/" "${{ steps.pages.outputs.origin }}"
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: documentation/dist
+          path: website/dist
       - id: deployment
         uses: actions/deploy-pages@v4

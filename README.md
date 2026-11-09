@@ -56,7 +56,7 @@ Before the first run, set the agent and model of each role in
 pull requests may name an agent (the template ships `disabled`; change the
 line to `allowed` to name them), configure GitHub with
 [docs/repository-setup.md](docs/repository-setup.md), and delete
-`documentation/` and `.github/workflows/pages.yml`: they are the website of
+`website/` and `.github/workflows/pages.yml`: they are the website of
 the template itself.
 
 ## Where to read more

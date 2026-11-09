@@ -1,6 +1,6 @@
 // Tests of the order of the docs sidebar, which is also the order of the
 // previous and next links. Run by check.sh --build:
-//   node --test "src/**/*.test.ts"  (in documentation/)
+//   node --test "src/**/*.test.ts"  (in website/)
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { groups } from "./docs.ts";

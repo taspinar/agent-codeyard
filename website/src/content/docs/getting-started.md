@@ -75,7 +75,7 @@ cd my-project
 
 `my-project` is the name of your repository, and of the folder it is cloned into; choose your own. Later commands call that folder `<repository>`.
 
-Or [create it on GitHub](https://github.com/taspinar/agent-codeyard/generate), with the visibility you chose, and clone it. Then delete `documentation/` and `.github/workflows/pages.yml`: they are this website, not part of your project. Keep, replace, or remove `LICENSE`, the MIT licence of the template, for your own project.
+Or [create it on GitHub](https://github.com/taspinar/agent-codeyard/generate), with the visibility you chose, and clone it. Then delete `website/` and `.github/workflows/pages.yml`: they are this website, not part of your project. Keep, replace, or remove `LICENSE`, the MIT licence of the template, for your own project.
 
 Have an existing repository instead? It adopts the workflow on a branch you review, without a new repository: <a href="../adopting/">Adopting Agent Codeyard in an existing repository</a>.
 

@@ -20,10 +20,16 @@ How the workflow itself runs is not described here: the steps are in
 [`docs/development.md`](development.md).
 
 A new repository also holds the website of the template itself. Delete
-`documentation/` and `.github/workflows/pages.yml`: they are not part of
+`website/` and `.github/workflows/pages.yml`: they are not part of
 your project. It also copies `LICENSE`, the MIT licence of the template:
 keep it, replace it with the licence of your project, or remove it.
 `sync-template.sh` never overwrites it.
+
+The template's site is recognised by its marker file
+`website/.codeyard-site`: the website check of `./scripts/verify.sh` and the
+website steps of the CI run only where it exists, so a `website/` of your
+own is left alone, and a project that keeps the template's site keeps the
+marker.
 
 **An existing repository that adopted the workflow** (`assess-repository.sh`
 and `adopt-repository.sh`, "Adopting an existing repository" in
@@ -349,7 +355,7 @@ template.
 ### General
 
 -   [ ] Repository created from template
--   [ ] `documentation/` and `.github/workflows/pages.yml` deleted
+-   [ ] `website/` and `.github/workflows/pages.yml` deleted
 -   [ ] `LICENSE` kept, replaced, or removed for your project
 -   [ ] Correct visibility configured
 -   [ ] Issues enabled
@@ -420,26 +426,26 @@ has taken them once: the repository is now `taspinar/agent-codeyard`, and the
 site is served from the custom domain `https://agentcodeyard.com` with the
 base path `/`. The steps remain the procedure for a later change of the name
 or the address. Configure product names,
-repository URL, site origin and the default base path in `documentation/site.config.ts`. Internal navigation uses that base
-path. The validation defaults in `documentation/check.sh` are separate.
+repository URL, site origin and the default base path in `website/site.config.ts`. Internal navigation uses that base
+path. The validation defaults in `website/check.sh` are separate.
 
 For a repository rename, update the repository URL and default base path in
 that file, use `BASE_PATH=/new-repository-name/` for local builds, and update
 the website and repository links in `README.md`. Audit literal repository
 links in the documentation content too: they link to source files, not through
-the site's navigation helper. In `documentation/check.sh`, replace
+the site's navigation helper. In `website/check.sh`, replace
 the project base path (currently `/agent-codeyard/`) in the `for base in … /`
 list with the new one, retaining `/`, and keep `default_site_url` in sync with
 the site origin in `site.config.ts` (update it if the owner or domain changes).
-Update the path in the check's usage comment and `documentation/validation.md`
-too. Run `documentation/check.sh --build` to build, link-check and browser-test
+Update the path in the check's usage comment and `website/validation.md`
+too. Run `website/check.sh --build` to build, link-check and browser-test
 the new project path and `/`. The Pages workflow gets its actual origin
 and base path from `actions/configure-pages`; keep Settings → Pages set to
 **GitHub Actions** and the Actions variable `PUBLISH_DOCUMENTATION=true`.
 
 For a custom domain, set the local build environment to
 `SITE_URL=https://docs.example.org BASE_PATH=/` (and update defaults in
-`documentation/site.config.ts` if desired). In Settings → Pages, enter the
+`website/site.config.ts` if desired). In Settings → Pages, enter the
 custom domain. Verify domain ownership in GitHub before pointing DNS at it.
 At the DNS provider, a subdomain uses a DNS `CNAME` pointing to
 `<owner>.github.io`, without the repository path; an apex uses GitHub's
@@ -451,13 +457,13 @@ A DNS `CNAME` record and a repository `CNAME` file are different. This site
 publishes with a custom Actions workflow: GitHub ignores a `CNAME` file and
 does not require one. If switching to branch-based publishing in the future,
 the published root needs a `CNAME` containing only the domain; for an Astro
-build that would come from `documentation/public/CNAME`. Do not add that file
+build that would come from `website/public/CNAME`. Do not add that file
 as a substitute for the Pages setting with the current workflow.
 
 Before publication, build and check the intended address locally:
 
 ```sh
-cd documentation
+cd website
 SITE_URL=https://docs.example.org BASE_PATH=/ npm run build
 ./check.sh dist / https://docs.example.org
 ```

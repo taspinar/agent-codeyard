@@ -562,7 +562,7 @@ jq -s --arg measured "$branch" --arg default "$default_branch" --slurpfile ci "$
 # which already exist in the repository. The template's product files stay
 # behind: its README and licence, its site, its own approvals, and
 # the placeholders of a new project's code.
-not_carried='^(documentation/|\.github/workflows/pages\.yml$|README\.md$|LICENSE$|CONTRIBUTING\.md$|SECURITY\.md$|\.agents/approval-requests/|src/\.gitkeep$|infra/\.gitkeep$)'
+not_carried='^(website/|\.github/workflows/pages\.yml$|README\.md$|LICENSE$|CONTRIBUTING\.md$|SECURITY\.md$|\.agents/approval-requests/|src/\.gitkeep$|infra/\.gitkeep$)'
 template_paths=()
 read -r -a template_paths <<<"$(sed -n 's/^paths:[[:space:]]*//p' "$root/.agents/template.conf" 2>/dev/null | head -n 1)" || true
 # The exclusions of .agents/template.conf are files of the template checkout's
@@ -709,7 +709,7 @@ jq -n --arg name "$name" --arg path "$target" --arg time "$time" \
    commands: $commands[0], ci: $ci[0], deployment: $deployment[0], documents: $documents[0], secret_files: $secrets[0],
    external_actions: $external[0],
    adoption: ($adoption[0] + {ignored: $ignored[0], template_paths: $template_paths, left_out: $left_out[0],
-     not_carried: (["documentation/", ".github/workflows/pages.yml", "README.md", "LICENSE", "CONTRIBUTING.md", "SECURITY.md",
+     not_carried: (["website/", ".github/workflows/pages.yml", "README.md", "LICENSE", "CONTRIBUTING.md", "SECURITY.md",
                    ".agents/approval-requests/", "src/.gitkeep", "infra/.gitkeep", "docs/decisions/ (all but its README.md)"] + $exclusions)})}
   | .evidence_ids = (["git", "layout", "branches"] + [(.manifests, .lockfiles, .entry_points, .commands, .ci, .deployment, .documents,
       .secret_files, .external_actions, .adoption.collisions, .adoption.ignored, .adoption.shared_directories)[] | .id] | unique)' >"$work/facts.json"

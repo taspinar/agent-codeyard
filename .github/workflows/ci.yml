@@ -9,32 +9,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # The documentation site of the template is built by the verification
-      # and needs the Node version it pins. A project has no site and skips
-      # this step.
-      - if: hashFiles('documentation/.nvmrc') != ''
+      # The website of the template is built by the verification
+      # and needs the Node version it pins. The site is recognised by its
+      # marker website/.codeyard-site: a project has no site, or a website/
+      # of its own without the marker, and skips these steps.
+      - if: hashFiles('website/.codeyard-site') != ''
         uses: actions/setup-node@v4
         with:
-          node-version-file: documentation/.nvmrc
+          node-version-file: website/.nvmrc
           cache: npm
-          cache-dependency-path: documentation/package-lock.json
-      - name: Install documentation browser dependencies
-        if: hashFiles('documentation/.nvmrc') != ''
-        working-directory: documentation
+          cache-dependency-path: website/package-lock.json
+      - name: Install the website browser dependencies
+        if: hashFiles('website/.codeyard-site') != ''
+        working-directory: website
         run: npm ci --no-audit --no-fund && npx --no-install playwright install --with-deps chromium
       - name: Verify template/project
         run: ./scripts/verify.sh --all
-      - name: Attach documentation screenshots and reports
-        id: documentation-artifact
-        if: always() && hashFiles('documentation/reports/**') != ''
+      - name: Attach website screenshots and reports
+        id: website-artifact
+        if: always() && hashFiles('website/.codeyard-site') != '' && hashFiles('website/reports/**') != ''
         uses: actions/upload-artifact@v4
         with:
-          name: documentation-review
-          path: documentation/reports/
+          name: website-review
+          path: website/reports/
           retention-days: 30
       - name: Link the visual review from the pull request check
-        if: always() && hashFiles('documentation/reports/**') != ''
+        if: always() && hashFiles('website/.codeyard-site') != '' && hashFiles('website/reports/**') != ''
         env:
-          ARTIFACT_URL: ${{ steps.documentation-artifact.outputs.artifact-url }}
+          ARTIFACT_URL: ${{ steps.website-artifact.outputs.artifact-url }}
         run: |
-          echo "[Download documentation screenshots and reports]($ARTIFACT_URL). Review every page at 375, 768 and 1440 px in both themes against documentation/design/PRODUCT.md and documentation/validation.md." >> "$GITHUB_STEP_SUMMARY"
+          echo "[Download website screenshots and reports]($ARTIFACT_URL). Review every page at 375, 768 and 1440 px in both themes against website/design/PRODUCT.md and website/validation.md." >> "$GITHUB_STEP_SUMMARY"

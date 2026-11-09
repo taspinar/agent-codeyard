@@ -18,8 +18,8 @@ A real example: Issue [#265](https://github.com/taspinar/agent-codeyard/issues/2
 
 ```text
 - met: The social preview note states the profile condition.
-  (documentation/og-image.svg reads 'low risk may skip review under the
-  light profile'; documentation/public/og.png re-rendered with node
+  (website/og-image.svg reads 'low risk may skip review under the
+  light profile'; website/public/og.png re-rendered with node
   og-image.mjs and inspected: the line fits under the bypass without overlap)
 ```
 
