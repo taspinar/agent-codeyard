@@ -82,18 +82,18 @@ The complete list of settings is the [repository setup checklist](https://github
 
 ## Keeping the template website
 
-Projects normally delete `documentation/` and its Pages workflow. If you keep
+Projects normally delete `website/` and its Pages workflow. If you keep
 it, configure the name, repository URL, site origin and default base path in
-`documentation/site.config.ts`. Validation defaults in
-`documentation/check.sh` are separate. After a repository
+`website/site.config.ts`. Validation defaults in
+`website/check.sh` are separate. After a repository
 rename, update `site.config.ts`, use `BASE_PATH=/new-repository-name/`, and update the site
 and repository links in `README.md` and literal source links in the content.
-In `documentation/check.sh`, replace the project path (currently
+In `website/check.sh`, replace the project path (currently
 `/agent-codeyard/`) in the `for base in … /` list with the new project base path, retaining `/`. Keep
 `default_site_url` in sync with the site origin in `site.config.ts`, updating
 it if the owner or domain changes. Update the path in the check's usage
-comment and `documentation/validation.md` too. Run
-`documentation/check.sh --build` to build, link-check and browser-test the
+comment and `website/validation.md` too. Run
+`website/check.sh --build` to build, link-check and browser-test the
 new project path and `/` in the same way as CI.
 
 For a custom domain, build with `SITE_URL=https://docs.example.org` and

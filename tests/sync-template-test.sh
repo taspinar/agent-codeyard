@@ -498,7 +498,7 @@ for case_name in lacks has; do
 done
 
 # The paths this repository hands out, by the template's list without the
-# exclusions an adopted project adds: the documentation site of the template
+# exclusions an adopted project adds: the website of the template
 # and the workflow that publishes it never reach a project, while the
 # workflows of the template do.
 template_conf "$tmp/template.conf"
@@ -507,8 +507,8 @@ handed_out="$(
   read -r -a pathspecs <<<"$(sed -n 's/^paths: *//p' "$tmp/template.conf")"
   git ls-files --cached --others --exclude-standard -- "${pathspecs[@]}"
 )"
-if grep -Eq '^documentation/|^\.github/workflows/pages\.yml$' <<<"$handed_out"; then
-  fail "the template paths hand out the documentation site or its workflow"
+if grep -Eq '^website/|^\.github/workflows/pages\.yml$' <<<"$handed_out"; then
+  fail "the template paths hand out the website or its workflow"
 fi
 for workflow in ci.yml guardrails.yml; do
   if [[ -f "$source_root/.github/workflows/$workflow" ]]; then
@@ -516,15 +516,18 @@ for workflow in ci.yml guardrails.yml; do
   fi
 done
 
-# A project has no documentation site: it is not handed out, and a new project
+# A project has no website: it is not handed out, and a new project
 # deletes it. The check of the site in the template's verification passes
 # there.
-site_check="$(sed -n 's/^documentation: *//p' "$source_root/scripts/verify.conf")"
+site_check="$(sed -n 's/^website: *//p' "$source_root/scripts/verify.conf")"
+if [[ -d "$source_root/website" && -z "$site_check" ]]; then
+  fail "the template has a website but no website check in scripts/verify.conf"
+fi
 if [[ -n "$site_check" ]]; then
   mkdir -p "$tmp/no-site"
   (cd "$tmp/no-site" && bash -c "$site_check") >"$tmp/no-site.out" 2>&1 || {
     cat "$tmp/no-site.out" >&2
-    fail "the documentation check fails in a repository without the documentation site"
+    fail "the website check fails in a repository without the website"
   }
 fi
 

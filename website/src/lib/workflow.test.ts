@@ -1,6 +1,6 @@
 // Tests of the states of the workflow map against the rules of
 // docs/development.md that each state draws. Run by check.sh --build:
-//   node --test "src/**/*.test.ts"  (in documentation/)
+//   node --test "src/**/*.test.ts"  (in website/)
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

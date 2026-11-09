@@ -1,0 +1,22 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "90810ebbdf10e13f987451084264399b76e4e216",
+  "commit": {
+    "branch": "feature/316-rename-documentation-to-website",
+    "parent": "fc0257da97f0d8a40dd3ee850a45592abe4bae00",
+    "base": "fc0257da97f0d8a40dd3ee850a45592abe4bae00"
+  },
+  "review": {
+    "round": 4,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".agents/prompts/reviewer.md: the file defines or carries out the workflow and its gate",
+    ".github/workflows/ci.yml: the file defines or carries out the workflow and its gate",
+    ".github/workflows/pages.yml: the file defines or carries out the workflow and its gate",
+    "scripts/verify.conf: an existing check or line is changed or removed",
+    "the independent review classified the impact on the architecture as major: The rename changes the website’s repository location and updates shared verification, CI, Pages build and deployment paths, and template-adoption handling. The supplied diff shows those references consistently moved to website/. "
+  ],
+  "explanation": "Issue #316: Rename documentation/ to website/ so that it is not confused with docs/. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

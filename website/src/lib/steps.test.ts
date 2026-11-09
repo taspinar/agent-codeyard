@@ -1,6 +1,6 @@
 // Tests of the workflow reference and of the step detail of the workflow map
 // against the steps, which both show. Run by check.sh --build:
-//   node --test "src/**/*.test.ts"  (in documentation/)
+//   node --test "src/**/*.test.ts"  (in website/)
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { details, entry, feature, fields, planning, reference, stages, stations, tabs } from "./steps.ts";

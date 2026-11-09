@@ -9,10 +9,10 @@ try {
 } catch (error) {
   const missing = /Executable doesn't exist at (\S+)/.exec(error.message);
   if (missing) {
-    console.error(`documentation: Playwright Chromium is not installed (no ${missing[1]}).`);
+    console.error(`website: Playwright Chromium is not installed (no ${missing[1]}).`);
     process.exit(3);
   }
   const detail = error.message.split('\n').filter(line => line.trim()).slice(0, 8).join('\n  ');
-  console.error(`documentation: Playwright Chromium is installed but does not start, usually because system libraries are missing:\n  ${detail}`);
+  console.error(`website: Playwright Chromium is installed but does not start, usually because system libraries are missing:\n  ${detail}`);
   process.exit(4);
 }

@@ -3,7 +3,7 @@
 # Tests check.sh on small outputs written here, without a build: a correct
 # output under each base path passes, and every kind of fault is reported.
 #
-# Run from anywhere: ./documentation/check-test.sh
+# Run from anywhere: ./website/check-test.sh
 
 set -euo pipefail
 
@@ -61,7 +61,7 @@ expect_fault wrong-repository-ref / \
 
 # Qualified libraries and tests are checked at their actual repository paths.
 output "$work/qualified" /
-sed -i 's|doctor.sh|scripts/lib/risk.sh tests/lib-fakes.sh documentation/check.sh|' "$work/qualified/index.html"
+sed -i 's|doctor.sh|scripts/lib/risk.sh tests/lib-fakes.sh website/check.sh|' "$work/qualified/index.html"
 "$site/check.sh" "$work/qualified" / >/dev/null 2>&1 || fail "qualified scripts were rejected"
 expect_fault missing-qualified-script / \
   'sed -i "s|doctor.sh|scripts/lib/not-real.sh|" index.html' "not in the repository"
