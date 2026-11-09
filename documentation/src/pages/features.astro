@@ -486,7 +486,7 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
         <li><b>Never merges.</b> The run ends at an open pull request and never removes a worktree.</li>
       </ul>
       <pre role="region" class="excerpt" aria-label="Excerpt of the run record of feature 241"><span class="src">.agents/records/feature-241.jsonl · run of PR #249, excerpt</span>{record}</pre>
-      <p>Every run leaves such a record on your machine: each step and its duration, the agent, model and level, the verification seconds, the findings and why a run stopped. <code>report-runs.sh</code> summarises it per feature and <code>analyze-runs.sh</code> lets a read-only analyst propose changes; <a href={href("#learn")}>the analysis of 28 October 2026</a> is how Codeyard found what to change in itself.</p>
+      <p>Every run leaves such a record on your machine: each step and its duration, the agent, model and level, the verification seconds, the findings and why a run stopped. <code>report-runs.sh</code> summarises it per feature and <code>analyze-runs.sh</code> lets a read-only analyst propose changes; <a href={href("examples/#analysis")}>the analysis of 28 October 2026</a> is how Codeyard found what to change in itself.</p>
       <dl class="facts">
         <dt>records</dt><dd><code>.agents/records/feature-&lt;issue&gt;.jsonl</code> in the primary checkout, ignored by Git, format <code>run-record/v1</code> (<a href={`${repoFile("docs/development.md")}#run-records`}><code>docs/development.md</code></a>)</dd>
         <dt>docs</dt><dd><a href={href("docs/technical-reference/#what-is-recorded-on-your-machine")}>What is recorded on your machine</a></dd>
