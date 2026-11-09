@@ -1,9 +1,9 @@
 // The sidebar of the documentation: its pages in groups, in the order of the
 // sidebar and of the previous and next links. A page is the id of an entry of
 // the docs collection, or a page of its own (the workflow reference, built
-// from src/lib/steps.ts, and History and research) with its title. The groups
-// go from beginning and using the workflow to configuring it and looking
-// things up (#334).
+// from src/lib/steps.ts, Engineering records and History and research) with
+// its title. The groups go from beginning and using the workflow to
+// configuring it and looking things up (#334).
 
 export type Page = { id: string; title?: string };
 
@@ -11,7 +11,7 @@ export const groups: { label?: string; pages: Page[] }[] = [
   { label: "Begin", pages: [{ id: "index" }, { id: "new-to-agentic-coding" }, { id: "getting-started" }, { id: "adopting" }] },
   { label: "Use", pages: [{ id: "detailed-workflow" }, { id: "troubleshooting" }, { id: "updating" }] },
   { label: "Configure", pages: [{ id: "github-setup" }, { id: "agent-roles" }, { id: "risk-policy" }, { id: "verification-and-completion" }, { id: "configuration-and-security" }] },
-  { label: "Reference", pages: [{ id: "reference/workflow", title: "Workflow reference" }, { id: "technical-reference" }, { id: "history", title: "History and research" }] },
+  { label: "Reference", pages: [{ id: "reference/workflow", title: "Workflow reference" }, { id: "technical-reference" }, { id: "engineering-records", title: "Engineering records" }, { id: "history", title: "History and research" }] },
 ];
 
 /** The path of a page under the site, without the base. */

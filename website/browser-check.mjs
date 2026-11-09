@@ -286,6 +286,16 @@ try {
         assert.equal(projects.first, 'products', 'The Projects page opens with the products');
         assert(projects.illustrative, 'The FightAnalytics case is labelled as an illustrative example');
         assert.deepEqual(projects.unnamed, [], 'The Projects page names no other product');
+        // A case that moved to Engineering records (#344): its old anchor shows
+        // one line with the link, and only when a visitor lands on it.
+        assert.equal(await page.locator('.moved-case:visible').count(), 0, 'A moved-case line shows without its anchor');
+        await page.goto(origin + base + 'examples/?theme=' + theme + '#memory');
+        const pointer = page.locator('#memory');
+        assert(await pointer.isVisible(), 'The old anchor /examples/#memory shows no pointer');
+        assert.equal(await pointer.innerText(), 'This case moved to Engineering records.');
+        assert.equal(await pointer.locator('a').getAttribute('href'), base + 'docs/engineering-records/#memory');
+        assert(await pointer.evaluate(e => { const r = e.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }), 'The pointer of /examples/#memory is not in view');
+        await page.goto(origin + base + 'examples/?theme=' + theme);
       }
       await tabTo('.contents a');
       // Reaching the final footer link walks every intervening content link too.

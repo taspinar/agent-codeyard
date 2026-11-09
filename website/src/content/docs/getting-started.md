@@ -51,7 +51,19 @@ codex login
 
 There is no installer: a project is a new repository created from the template. Choose its visibility first, because it decides whether GitHub can protect `main` in steps 3 and 7. A ruleset with a required check is available for a private repository with GitHub Pro, GitHub Team and GitHub Enterprise Cloud; with GitHub Free and GitHub Free for organizations it is available only for a public repository ([GitHub's documentation](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)).
 
-With the GitHub CLI, take one of the two:
+In the browser:
+
+1. Open [the template on GitHub](https://github.com/taspinar/agent-codeyard) and choose **Use this template**, then **Create a new repository**.
+2. Name the repository and choose its visibility, one of the two:
+   - **Private**, on a plan that supports the ruleset for it.
+   - **Public**, as a practice repository on GitHub Free. Anyone can read and clone the code and the history of a public repository, so put nothing in it that you would not publish.
+3. Choose **Create repository**, then clone it, with your account in place of `<account>`:
+
+   ```
+   git clone https://github.com/<account>/my-project.git
+   ```
+
+Or, in one command, with the GitHub CLI and the same two choices:
 
 - **A private repository**, on a plan that supports the ruleset for it:
 
@@ -65,8 +77,6 @@ With the GitHub CLI, take one of the two:
   gh repo create my-project --template taspinar/agent-codeyard --public --clone
   ```
 
-  Anyone can read and clone the code and the history of a public repository, so put nothing in it that you would not publish.
-
 Then go to the new folder:
 
 ```
@@ -75,11 +85,11 @@ cd my-project
 
 `my-project` is the name of your repository, and of the folder it is cloned into; choose your own. Later commands call that folder `<repository>`.
 
-Or [create it on GitHub](https://github.com/taspinar/agent-codeyard/generate), with the visibility you chose, and clone it. Then delete `website/` and `.github/workflows/pages.yml`: they are this website, not part of your project. Keep, replace, or remove `LICENSE`, the MIT licence of the template, for your own project.
+Then delete `website/` and `.github/workflows/pages.yml`: they are this website, not part of your project. Keep, replace, or remove `LICENSE`, the MIT licence of the template, for your own project.
 
 Have an existing repository instead? It adopts the workflow on a branch you review, without a new repository: <a href="../adopting/">Adopting Agent Codeyard in an existing repository</a>.
 
-- **Where:** the folder that should hold your project folder, then the new folder `my-project`.
+- **Where:** the template on GitHub in your browser, or the GitHub CLI; then the folder that should hold your project folder, and the new folder `my-project`.
 - **Input:** the name of the repository, and its visibility for your plan.
 - **Result:** a private repository on a plan that supports its ruleset, or a public practice repository on GitHub Free, and its clone on your machine, without the template's website.
 - **Next:** set up GitHub, from the same folder.
