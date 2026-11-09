@@ -36,7 +36,11 @@ it checks that a link into the map opens its disclosure and that nothing
 advances by itself without reduced motion either; on the
 workflow reference it checks that an old step anchor of `/workflow` leads to
 its step and that "On this page" stays beside the text at 1440 px; on a docs
-page, that the copy button of a code block copies the code. Native
+page, that the copy button of a code block copies the code. On the Projects
+page (`/examples/`) at 1440 px it checks that every disclosure starts
+closed, that the page then shows at most 3000 words and is at most 10 000 px
+high, that it opens with the products, that its case anchors resolve, and
+that the FightAnalytics case is labelled as an illustrative example. Native
 summaries keep both navigation lists usable with JavaScript disabled.
 
 The check writes full-page screenshots and `report.json` under

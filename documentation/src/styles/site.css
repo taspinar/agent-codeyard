@@ -144,6 +144,7 @@ p code, li code, td code, dd code { background: var(--ground-2); padding: var(--
 h1, h2, h3 { font-weight: var(--w-heavy); line-height: var(--lh-heading); letter-spacing: var(--track-heading); margin: 0; text-wrap: balance; }
 h2 { font-size: var(--t-2xl); }
 h3 { font-size: var(--t-lg); font-weight: var(--w-bold); letter-spacing: var(--track-snug); }
+h4 { font-size: var(--t-md); font-weight: var(--w-bold); line-height: var(--lh-heading); margin: 0; }
 p { margin: 0 0 var(--s-4); max-width: var(--measure); text-wrap: pretty; }
 .skip { position: absolute; left: -999px; }
 .skip:focus { left: var(--gutter); top: var(--s-3); background: var(--ground); padding: var(--s-2) var(--s-3); z-index: 10; }
@@ -405,6 +406,9 @@ pre.astro-code code { font-size: inherit; background: none; padding: 0; }
 /* Figure: a drawing or table with its caption below. */
 .figure { margin: 0; }
 .figure > figcaption { font-size: var(--t-sm); color: var(--ink-2); margin-top: var(--s-3); max-width: var(--measure-wide); }
+/* Product figure (#332): an image of a product at the content width, one
+   hairline around it, no shadow or frame; the caption names source and date. */
+.figure > img { display: block; width: 100%; height: auto; border: 1px solid var(--rule); }
 
 /* Documentation follows the section grid and remains navigable without JS. */
 .docs-layout { display: grid; grid-template-columns: 16rem minmax(0, 1fr); gap: var(--s-6); padding-bottom: var(--s-8); }

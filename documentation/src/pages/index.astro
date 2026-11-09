@@ -2,12 +2,14 @@
 // The home page, built from the approved design (design/DESIGN.md) and the
 // order of #329: the concrete result and what AI and Codeyard each do, the
 // coding tools and the fact line, why the open decisions come first, the
-// gym scenario of #328 in four steps, who does what, one real case, who it
-// is for, and the ways on. The first layer uses plain words; a technical term
-// follows its plain name. The full route with its risk levels and profiles is
-// on the workflow page; script names and the terminal start are in the docs.
+// gym scenario of #328 in four steps, who does what, one real case with its
+// product figure (#332), who it is for, and the ways on. The first layer uses
+// plain words; a technical term follows its plain name. The full route with
+// its risk levels and profiles is on the workflow page; script names and the
+// terminal start are in the docs.
 import Base from "../layouts/Base.astro";
 import Section from "../components/Section.astro";
+import Figure from "../components/Figure.astro";
 import { site } from "../../site.config";
 import { href } from "../lib/links";
 
@@ -113,6 +115,10 @@ const compare = [
 
   <Section id="projects" title="A real project">
     <Fragment slot="note">The whole case, with its sources: <a href={href("examples/#application")}>Projects</a>.</Fragment>
+    <Figure>
+      <img src={href("images/physics-by-construction-home.png")} width="1280" height="800" loading="lazy" alt="The home page of Physics by Construction: a headline about exploring physics with computation and AI, a Start learning button, and a map of its subjects, from classical mechanics to quantum physics and scientific agents." />
+      <Fragment slot="caption">Physics by Construction, a free physics course, <a href="https://taspinar.github.io/physics-by-construction/">taspinar.github.io/physics-by-construction</a>; screenshot of its home page, 9 November 2026.</Fragment>
+    </Figure>
     <ol class="story">
       <li><b>The project.</b> Physics by Construction, a course by the maintainer, runs this workflow.</li>
       <li><b>The problem.</b> Its tests started hundreds of processes to read the lessons, and one of them crashed now and then.</li>

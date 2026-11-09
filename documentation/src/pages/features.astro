@@ -1,12 +1,16 @@
 ---
-// The engineering problems the workflow answers, in three groups. Each starts
-// in plain words with the problem and what you get, then, short, what Agent
-// Codeyard does (#319); behind the "Technical proof" disclosure, closed by
-// default, follow the mechanism, one real artifact (an excerpt of a file of
-// this repository, a published review, a pull request or a run record), and
-// the docs page with the detail. The facts follow the
-// scripts and policy files on main; every figure names its Issue, pull request
-// or run record.
+// What this way of working adds to using Claude Code or Codex directly, in
+// three groups (#331). The page opens with that answer; what Codeyard is not
+// follows in two sentences. Each feature shows, in plain words, the problem,
+// what you get and one example: the illustrative gym scenario of #328, or a
+// real record with its link. The note beside the heading says whether the
+// feature is on by default or needs configuration. Behind the "How ..."
+// disclosure, closed by default, follow what Codeyard does, the mechanism,
+// one real artifact (an excerpt of a file of this repository, a published
+// review, a pull request or a run record), the files and the docs page with
+// the detail: file names, configuration and JSON appear only there. The facts
+// follow the scripts and policy files on main; every figure names its Issue,
+// pull request or run record.
 import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Section from "../components/Section.astro";
@@ -17,21 +21,23 @@ const comment = (number: number, id: string) => `${issue(number)}#issuecomment-$
 const bare = (url: string) => url.replace(/^https:\/\//, "");
 
 const groups = [
-  { id: "planning", title: "Planning & consistency", features: [
-    { id: "requirements", title: "Requirements before implementation" },
-    { id: "architecture", title: "Architecture before parallel work" },
-    { id: "isolation", title: "Isolated feature execution" },
+  { id: "planning", title: "Before coding starts", features: [
+    { id: "requirements", title: "Agree on what to build before coding starts" },
+    { id: "architecture", title: "Give every feature the same project plan" },
+    { id: "isolation", title: "Keep changes separate while they are being built" },
   ] },
-  { id: "quality", title: "Quality & verification", features: [
-    { id: "evidence", title: "Evidence per acceptance criterion" },
-    { id: "review", title: "Independent review" },
-    { id: "risk", title: "Risk-proportionate workflow" },
+  { id: "quality", title: "Before a change reaches you", features: [
+    { id: "evidence", title: "See what was checked against your requirements" },
+    { id: "review", title: "Give each change a second review" },
+    { id: "risk", title: "Adjust the checks to the kind of change" },
   ] },
-  { id: "control", title: "Automation & control", features: [
-    { id: "unattended", title: "Safe unattended execution" },
-    { id: "authority", title: "Human authority" },
+  { id: "control", title: "Between your decisions", features: [
+    { id: "unattended", title: "Let the workflow run between your decisions" },
+    { id: "authority", title: "Decide which changes become part of your project" },
   ] },
 ];
+const feature = Object.fromEntries(groups.flatMap((group) => group.features).map((item) => [item.id, item.title]));
+const group = Object.fromEntries(groups.map((item) => [item.id, item.title]));
 
 // The shipped .agents/agents.conf, with the permission profile each role runs under.
 const roles = [
@@ -73,8 +79,10 @@ const analysis = `5. **Keep accepted and deferred findings from being re-raised,
 Nothing was changed. A proposal goes through the review and approval that
 apply to its place.`;
 ---
-<Base title="Features" description="Eight problems of building software with Claude Code and Codex, and what Agent Codeyard does about each: requirements and architecture before code, isolated features, evidence per criterion, independent review, process that scales with risk, safe unattended runs and human authority.">
-  <PageHead title="Features" lede="Agent Codeyard does not write code; Claude Code and Codex do. It answers the problems around the code, in three groups. Each feature starts with the problem and what you get; open its technical proof for the files, the settings and a real record it left.">
+<Base title="Why Codeyard" description="What Agent Codeyard adds to using Claude Code or Codex directly: agree on what to build first, one project plan, changes kept apart, checks against your requirements, a second review, checks that fit the change, runs between your decisions, and the final say over every change.">
+  <PageHead title="Why Codeyard" lede="Claude Code and Codex write the code. Codeyard adds the way of working around them: you agree on what to build first, every change is checked against that and read by a second AI, and nothing joins your project until you accept it.">
+    <p>Codeyard writes no code itself and is not a hosted service. It runs on your machine or server, and the coding tools send what they work on to their own providers.</p>
+    <p>The examples follow the <a href={href("#example")}>illustrative example of the home page</a>: a gym's member application, in which trainers record attendance for their classes and members see their own training history.</p>
     <p class="needs">Who it is for, what it costs and whether it works with an existing repository: the <a href={href("faq/")}>FAQ</a>.</p>
     <ol class="contents grouped">
       {groups.map((group) => (
@@ -82,25 +90,27 @@ apply to its place.`;
           <ol>{group.features.map((item) => <li><a href={`#${item.id}`}>{item.title}</a></li>)}</ol>
         </li>
       ))}
+      <li><a href="#learn">Use past runs to improve the process</a></li>
     </ol>
   </PageHead>
 
   <section id="planning" class="group" aria-labelledby="planning-h">
     <div class="wrap">
-      <h2 id="planning-h">Planning & consistency</h2>
-      <p class="lede">Before an agent writes code: what to build, how it fits the rest, and where the work happens.</p>
+      <h2 id="planning-h">{group.planning}</h2>
+      <p class="lede">What to build, how it fits, and where the work happens.</p>
     </div>
   </section>
 
-  <Section id="requirements" title="Requirements before implementation" level={3}>
-    <Fragment slot="note">From <a href={repoFile(".agents/prompts/implementer.md")}><code>implementer.md</code></a> and <a href={repoFile(".agents/prompts/project-grill.md")}><code>project-grill.md</code></a>. <a href={href("docs/detailed-workflow/")}>Every step</a> in the docs.</Fragment>
+  <Section id="requirements" title={feature.requirements} level={3}>
+    <Fragment slot="note"><strong>Default</strong> for every feature. <a href={href("docs/detailed-workflow/")}>Every step</a> in the docs.</Fragment>
     <dl class="pitch">
-      <dt>The problem</dt><dd>An agent fills a gap in the Issue with a guess, and the review then checks the code against the guess instead of against what you wanted.</dd>
-      <dt>What you get</dt><dd>Open questions reach you before any code is written, and only those that change the scope, the behaviour, an interface, the data, the architecture, security or the acceptance criteria.</dd>
-      <dt>What Codeyard does</dt><dd>Once per project, a requirements interview, the Project Grill, writes the requirements down with you. For each feature, the agent that writes the code first decides whether the Issue is clear; when a decision is open, it changes nothing and asks you.</dd>
+      <dt>The problem</dt><dd>An AI tool fills a gap in your description with a guess, and the review then checks the code against the guess, not against what you wanted.</dd>
+      <dt>What you get</dt><dd>Questions that change what is built reach you before any code exists. You decide; the tool does not guess.</dd>
+      <dt>Illustrative example</dt><dd>Before attendance is built, you are asked whether members may see each other's data. You answer: only their own history. The change is later checked against that.</dd>
     </dl>
     <details class="proof">
-      <summary>Technical proof: files, settings and a real record</summary>
+      <summary>How the questions work: files, settings and a real record</summary>
+      <p><b>What Codeyard does.</b> Once per project, a requirements interview, the Project Grill, writes the requirements down with you. For each feature, the agent that writes the code first decides whether the Issue is clear; when a decision is open, it changes nothing and asks you.</p>
       <figure class="plain">
         <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="requirements-t" aria-describedby="requirements-words">
           <title id="requirements-t">Requirements before the code: the Project Grill agrees the project's requirements with you once; per feature the implementer reads the Issue and its context and decides whether it is clear. When it needs clarification the run stops, you answer, and it reads again; when it is clear it implements.</title>
@@ -142,21 +152,23 @@ apply to its place.`;
   Nothing is reviewed or committed until the owner answers.</pre>
       <p>Names, private helpers and other choices the agent can make itself are not questions for you; it records them in the handoff note. Only comments of the owner, members and collaborators reach the agents. On <a href={issue(16)}>#16</a>, the clarification gate itself, the owner's two comments settled the design and the run took 26 minutes from start to pull request (<a href={pull(213)}>PR #213</a>).</p>
       <dl class="facts">
+        <dt>files</dt><dd><a href={repoFile(".agents/prompts/implementer.md")}><code>implementer.md</code></a>, <a href={repoFile(".agents/prompts/project-grill.md")}><code>project-grill.md</code></a></dd>
         <dt>docs</dt><dd><a href={href("docs/detailed-workflow/#clarify-the-requirements-project-grill")}>Clarify the requirements</a>, <a href={href("docs/detailed-workflow/#implement-the-feature")}>Implement the feature</a></dd>
         <dt>built in</dt><dd><a href={pull(22)}>PR #22</a> (planning), <a href={pull(213)}>#213</a> (clarification), <a href={pull(185)}>#185</a> (your comments)</dd>
       </dl>
     </details>
   </Section>
 
-  <Section id="architecture" title="Architecture before parallel work" level={3}>
-    <Fragment slot="note">From <a href={repoFile("AGENTS.md")}><code>AGENTS.md</code></a> and the planning scripts. <a href={href("docs/detailed-workflow/")}>Every step</a> in the docs.</Fragment>
+  <Section id="architecture" title={feature.architecture} level={3}>
+    <Fragment slot="note"><strong>Default</strong> when you plan with Codeyard. <a href={href("docs/detailed-workflow/")}>Every step</a> in the docs.</Fragment>
     <dl class="pitch">
       <dt>The problem</dt><dd>Features built side by side each make their own design choices, and after a few weeks the code no longer follows one design.</dd>
-      <dt>What you get</dt><dd>Features stay on one design, and a change to that design is a decision you see and approve, not a side effect of a feature.</dd>
-      <dt>What Codeyard does</dt><dd>The architecture, the roadmap and the first ADRs (architecture decision records: short files that each record one design decision) are reviewed by an agent of another AI provider and approved by you before the first feature starts. Every feature session reads them first, and an accepted ADR outranks the Issue.</dd>
+      <dt>What you get</dt><dd>Every feature starts from one approved plan; changing the plan is a decision you approve, not a side effect.</dd>
+      <dt>Illustrative example</dt><dd>The plan builds users and roles first, then attendance, then the history view. Both later features use the same roles instead of inventing their own.</dd>
     </dl>
     <details class="proof">
-      <summary>Technical proof: files, settings and a real record</summary>
+      <summary>How the plan is reviewed and approved: files, settings and a real record</summary>
+      <p><b>What Codeyard does.</b> The architecture, the roadmap and the first ADRs (architecture decision records: short files that each record one design decision) are reviewed by an agent of another AI provider and approved by you before the first feature starts. Every feature session reads them first, and an accepted ADR outranks the Issue.</p>
       <figure class="plain">
         <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="planning-t" aria-describedby="planning-words">
           <title id="planning-t">The planning line: plan, independent review of the plan, a decision per finding, your approval. A later change goes back through the review and your approval. Then the features start, and every feature session reads the approved documents first.</title>
@@ -190,6 +202,7 @@ apply to its place.`;
 If a material conflict remains, stop and report it.</pre>
       <p>An accepted ADR outranks the Issue, so a feature cannot quietly change the design: an implementer that would have to stops and reports the conflict, a new ADR enters as <code>Proposed</code>, and a pull request that adds, changes or removes an ADR is marked as needing your approval before the merge. The reviewer classifies each feature's impact on the architecture; major or breaking makes the feature high risk and needs you too.</p>
       <dl class="facts">
+        <dt>rules</dt><dd><a href={repoFile("AGENTS.md")}><code>AGENTS.md</code></a> and the planning scripts</dd>
         <dt>files</dt><dd><a href={repoFile("docs/architecture.md")}><code>docs/architecture.md</code></a>, <a href={repoFile("docs/decisions/README.md")}><code>docs/decisions/</code></a>, <a href={repoFile("docs/roadmap.md")}><code>docs/roadmap.md</code></a></dd>
         <dt>docs</dt><dd><a href={href("docs/detailed-workflow/#create-the-project-plan")}>Create the project plan</a>, <a href={href("docs/detailed-workflow/#approve-the-plan")}>Approve the plan</a></dd>
         <dt>built in</dt><dd><a href={pull(22)}>PR #22</a> (planning), <a href={pull(100)}>#100</a> (the merge approval gate)</dd>
@@ -197,15 +210,16 @@ If a material conflict remains, stop and report it.</pre>
     </details>
   </Section>
 
-  <Section id="isolation" title="Isolated feature execution" level={3}>
-    <Fragment slot="note">Rules in <a href={repoFile("AGENTS.md")}><code>AGENTS.md</code></a>. <a href={href("docs/technical-reference/#working-directories")}>Working directories</a> in the docs.</Fragment>
+  <Section id="isolation" title={feature.isolation} level={3}>
+    <Fragment slot="note"><strong>Default</strong> for every feature. <a href={href("docs/technical-reference/#working-directories")}>Working directories</a> in the docs.</Fragment>
     <dl class="pitch">
-      <dt>The problem</dt><dd>Two agents that write in the same folder overwrite each other's files, and work written straight onto <code>main</code> leaves nothing to review.</dd>
-      <dt>What you get</dt><dd>You can run several features side by side, stop one and resume it later, and each reaches you as its own pull request.</dd>
-      <dt>What Codeyard does</dt><dd>Every feature gets its own branch and its own worktree, a second working folder of the same Git repository, and one agent writes in it. A new session continues from the feature's handoff note, a short file that says what is done and what remains.</dd>
+      <dt>The problem</dt><dd>Two AI tools writing in the same folder overwrite each other's files.</dd>
+      <dt>What you get</dt><dd>Features are built side by side, can stop and continue, and each reaches you as its own change. Separate folders keep files apart, not databases or services.</dd>
+      <dt>Illustrative example</dt><dd>Attendance is built in its own folder while your main copy stays untouched. If the session stops halfway, the next one continues from a short progress note.</dd>
     </dl>
     <details class="proof">
-      <summary>Technical proof: files, settings and a real record</summary>
+      <summary>How a feature gets its own folder: files, settings and a real record</summary>
+      <p><b>What Codeyard does.</b> Every feature gets its own branch and its own worktree, a second working folder of the same Git repository, and one agent writes in it. A new session continues from the feature's handoff note, a short file that says what is done and what remains.</p>
       <pre role="region" tabindex="0" class="term" aria-label="Terminal commands"><span class="c"># a branch feature/&lt;issue&gt;-&lt;slug&gt; and a worktree beside the main checkout</span>
 <span class="p">$ </span>./scripts/start-feature.sh 241
 <span class="c"># a new session continues from the handoff note, not the earlier conversation</span>
@@ -238,6 +252,7 @@ If a material conflict remains, stop and report it.</pre>
       </ul>
       <p>A worktree separates working files; it is not a sandbox for databases, services or credentials. <a href={pull(249)}>PR #249</a>, for example, came from the branch <code>feature/241-write-the-features-examples</code>.</p>
       <dl class="facts">
+        <dt>rules</dt><dd><a href={repoFile("AGENTS.md")}><code>AGENTS.md</code></a></dd>
         <dt>scripts</dt><dd><a href={repoFile("scripts/start-feature.sh")}><code>start-feature.sh</code></a>, <a href={repoFile("scripts/cleanup-worktree.sh")}><code>cleanup-worktree.sh</code></a></dd>
         <dt>built in</dt><dd><a href={pull(57)}>PR #57</a> (cleanup), <a href={pull(71)}>#71</a> (setup script), <a href={pull(77)}>#77</a> (resume)</dd>
       </dl>
@@ -246,20 +261,21 @@ If a material conflict remains, stop and report it.</pre>
 
   <section id="quality" class="group" aria-labelledby="quality-h">
     <div class="wrap">
-      <h2 id="quality-h">Quality & verification</h2>
-      <p class="lede">Before a change reaches you: proof that it does what the Issue asked, checked by an agent that did not write it, with an effort that matches the risk.</p>
+      <h2 id="quality-h">{group.quality}</h2>
+      <p class="lede">What shows a change does what you agreed, and who checked it.</p>
     </div>
   </section>
 
-  <Section id="evidence" title="Evidence per acceptance criterion" level={3}>
-    <Fragment slot="note">Configured in <a href={repoFile("scripts/verify.conf")}><code>verify.conf</code></a>. <a href={href("docs/verification-and-completion/")}>Verification and completion</a> in the docs.</Fragment>
+  <Section id="evidence" title={feature.evidence} level={3}>
+    <Fragment slot="note"><strong>Default</strong>; the checks are the ones your project sets up. <a href={href("docs/verification-and-completion/")}>Verification and completion</a> in the docs.</Fragment>
     <dl class="pitch">
-      <dt>The problem</dt><dd>An agent that says it is done only tells you that its session ended, not which requirements are met or whether the checks ran on the code you are about to merge.</dd>
-      <dt>What you get</dt><dd>Every pull request lists each acceptance criterion with its evidence, and the checks it reports passed for exactly the content you review.</dd>
-      <dt>What Codeyard does</dt><dd>The agent writes a completion record: for each criterion, met or not, and what shows it. One command runs every check of the project and records the content they passed for by its fingerprint, a short code computed from the files; unfinished work goes back to the agent before anything is reviewed.</dd>
+      <dt>The problem</dt><dd>An AI tool that says it is done tells you its session ended, not which requirements are met.</dd>
+      <dt>What you get</dt><dd>Each change lists every requirement with what shows it is met, and checks that ran on exactly that version. A check proves what it examines, no more.</dd>
+      <dt>Illustrative example</dt><dd>The attendance change lists “a member sees only their own history: met”, with the check that refuses a request for another member's history.</dd>
     </dl>
     <details class="proof">
-      <summary>Technical proof: files, settings and a real record</summary>
+      <summary>How the evidence is recorded: files, settings and a real record</summary>
+      <p><b>What Codeyard does.</b> The agent writes a completion record: for each criterion, met or not, and what shows it. One command runs every check of the project and records the content they passed for by its fingerprint, a short code computed from the files; unfinished work goes back to the agent before anything is reviewed.</p>
       <figure class="plain">
         <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="evidence-t" aria-describedby="evidence-words">
           <title id="evidence-t">Evidence before review: the implementer writes the completion record, verify.sh records a pass for the content, and the completion gate reads the record. Partial starts the implementer again; blocked stops the run until you answer; complete or awaiting_evidence goes on to the review.</title>
@@ -308,15 +324,16 @@ Verification:
     </details>
   </Section>
 
-  <Section id="review" title="Independent review" level={3}>
-    <Fragment slot="note">Configured in <a href={repoFile(".agents/agents.conf")}><code>agents.conf</code></a>. <a href={href("docs/agent-roles/")}>Agent roles</a> in the docs.</Fragment>
+  <Section id="review" title={feature.review} level={3}>
+    <Fragment slot="note"><strong>Default</strong> as shipped; a project can let low-risk changes skip it. <a href={href("docs/agent-roles/")}>Agent roles</a> in the docs.</Fragment>
     <dl class="pitch">
-      <dt>The problem</dt><dd>An agent that reviews its own code, or code of its own model family, tends to miss while reading what it missed while writing.</dd>
-      <dt>What you get</dt><dd>Every reviewed change gets a second, independent reading, and each finding a written decision, published on the Issue.</dd>
-      <dt>What Codeyard does</dt><dd>A reviewer of another AI provider reads the change and cannot edit it: the script refuses one of the implementer's own provider, and as shipped Codex reviews what Claude wrote. In the triage each finding is fixed now, deferred to a new Issue, or accepted with a reason. A critical or major finding is fixed by default; the only other route is <a href={href("docs/detailed-workflow/#owner-exception")}>your exception</a> for that one finding, after which the merge needs you.</dd>
+      <dt>The problem</dt><dd>A tool that reviews its own code tends to miss again what it missed while writing.</dd>
+      <dt>What you get</dt><dd>An AI of another provider, which cannot edit the change, reads it, and every finding gets a written decision: a second judgment, not a guarantee that every error is found.</dd>
+      <dt>Illustrative example</dt><dd>The first history view let every signed-in user open it. The reviewer reported it, and the fix was checked again.</dd>
     </dl>
     <details class="proof">
-      <summary>Technical proof: files, settings and a real record</summary>
+      <summary>How the second review works: files, settings and a real record</summary>
+      <p><b>What Codeyard does.</b> A reviewer of another AI provider reads the change and cannot edit it: the script refuses one of the implementer's own provider, and as shipped Codex reviews what Claude wrote. In the triage each finding is fixed now, deferred to a new Issue, or accepted with a reason. A critical or major finding is fixed by default; the only other route is <a href={href("docs/detailed-workflow/#owner-exception")}>your exception</a> for that one finding, after which the merge needs you.</p>
       <figure class="plain">
         <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="review-t" aria-describedby="review-words">
           <title id="review-t">The review loop: the verified content is reviewed read-only by another provider, the triage proposes a decision per finding, and you approve the triage, or an unattended run approves it without asking. FIX_NOW findings are fixed, verified and reviewed in a new round; then the feature is committed.</title>
@@ -370,15 +387,16 @@ CHANGES REQUIRED</pre>
     </details>
   </Section>
 
-  <Section id="risk" title="Risk-proportionate workflow" level={3}>
-    <Fragment slot="note">Configured in <a href={repoFile(".agents/policies/risk.conf")}><code>risk.conf</code></a>. <a href={href("docs/risk-policy/")}>Risk policy</a> in the docs.</Fragment>
+  <Section id="risk" title={feature.risk} level={3}>
+    <Fragment slot="note"><strong>Default</strong>: every change gets a level from the files it changes. A lighter process for low risk needs configuration. <a href={href("docs/risk-policy/")}>Risk policy</a> in the docs.</Fragment>
     <dl class="pitch">
-      <dt>The problem</dt><dd>When a typo fix and a change to the merge rules go through the same process, either the typo waits on ceremony or the risky change gets too little.</dd>
-      <dt>What you get</dt><dd>Effort goes where the risk is, and a high-risk change keeps every control under every profile.</dd>
-      <dt>What Codeyard does</dt><dd>A script gives every feature a risk level, low, medium or high, from the files it changes; you can raise it, and no agent lowers it. The level picks the model and how strict the review rounds are. Under <code>profile: light</code>, or with <code>low: review: none</code>, a low-risk change can go without review; its merge then needs your approval.</dd>
+      <dt>The problem</dt><dd>If a typo fix and a change to your project's rules get the same process, one gets too much and the other too little.</dd>
+      <dt>What you get</dt><dd>Effort goes where the risk is. You can raise a level, no AI tool lowers it, and high risk always keeps the full review.</dd>
+      <dt>Illustrative example</dt><dd>With the lighter process, a fix in the documentation can skip review and then asks for your approval. Changing an existing attendance test makes a change high risk.</dd>
     </dl>
     <details class="proof">
-      <summary>Technical proof: files, settings and a real record</summary>
+      <summary>How the risk level is set: files, settings and a real record</summary>
+      <p><b>What Codeyard does.</b> A script gives every feature a risk level, low, medium or high, from the files it changes; you can raise it, and no agent lowers it. The level picks the model and how strict the review rounds are. Under <code>profile: light</code>, or with <code>low: review: none</code>, a low-risk change can go without review; its merge then needs your approval.</p>
       <figure class="plain">
         <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="risk-t" aria-describedby="risk-words">
           <title id="risk-t">How the level is set: the classes of the changed paths, the escalations and your hint each give a level; the highest counts and nothing lowers it. The review can raise it again: an impact on the architecture classified as major or breaking makes the feature high.</title>
@@ -443,20 +461,21 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
 
   <section id="control" class="group" aria-labelledby="control-h">
     <div class="wrap">
-      <h2 id="control-h">Automation & control</h2>
-      <p class="lede">Running agents without watching them, and keeping the decisions that matter with you.</p>
+      <h2 id="control-h">{group.control}</h2>
+      <p class="lede">Work that runs while you are away, and the decisions that stay yours.</p>
     </div>
   </section>
 
-  <Section id="unattended" title="Safe unattended execution" level={3}>
-    <Fragment slot="note">Limits in <a href={repoFile("scripts/run-feature.sh")}><code>run-feature.sh</code></a>, profiles in <a href={repoFile("scripts/lib/agent.sh")}><code>scripts/lib/agent.sh</code></a>. <a href={href("docs/detailed-workflow/#run-a-feature-unattended")}>Run a feature unattended</a> in the docs.</Fragment>
+  <Section id="unattended" title={feature.unattended} level={3}>
+    <Fragment slot="note"><strong>Your choice</strong> per feature; the limits are set by default. <a href={href("docs/detailed-workflow/#run-a-feature-unattended")}>Run a feature unattended</a> in the docs.</Fragment>
     <dl class="pitch">
-      <dt>The problem</dt><dd>An agent that runs while you are away has nobody to answer its questions and nobody to stop it when it goes round in circles.</dd>
-      <dt>What you get</dt><dd>You can start a feature and come back to a pull request, or to one clear question, with a record of every step on your machine.</dd>
-      <dt>What Codeyard does</dt><dd>One command, <code>run-feature.sh</code>, takes a feature from its Issue to an open pull request without asking you anything, inside fixed limits: anything that would need your permission is denied, sessions, repairs and review rounds are capped, and an agent that needs your decision stops the run instead of guessing.</dd>
+      <dt>The problem</dt><dd>A tool running while you are away has nobody to answer its questions or to stop it going round in circles.</dd>
+      <dt>What you get</dt><dd>The run asks you nothing, and what would need your permission is not granted. It records its decision on each review finding, stops for your decision, a limit or a failure, and never accepts its own change.</dd>
+      <dt>Illustrative example</dt><dd>You start the history view in the evening. In the morning there is a proposed change with its checks and review, or one question for you.</dd>
     </dl>
     <details class="proof">
-      <summary>Technical proof: files, settings and a real record</summary>
+      <summary>How an unattended run is limited: files, settings and a real record</summary>
+      <p><b>What Codeyard does.</b> One command, <code>run-feature.sh</code>, takes a feature from its Issue to an open pull request without asking you anything, inside fixed limits: anything that would need your permission is denied, sessions, repairs and review rounds are capped, and an agent that needs your decision stops the run instead of guessing.</p>
       <figure class="plain">
         <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="unattended-t" aria-describedby="unattended-words">
           <title id="unattended-t">An unattended run: run-feature.sh starts the implementer under the unattended profile, verifies, and runs the review rounds, with the fixes of each round, until an open pull request; there the run ends, and you merge. An agent that needs your decision stops the run with status 3.</title>
@@ -488,6 +507,7 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
       <pre role="region" class="excerpt" aria-label="Excerpt of the run record of feature 241"><span class="src">.agents/records/feature-241.jsonl · run of PR #249, excerpt</span>{record}</pre>
       <p>Every run leaves such a record on your machine: each step and its duration, the agent, model and level, the verification seconds, the findings and why a run stopped. <code>report-runs.sh</code> summarises it per feature and <code>analyze-runs.sh</code> lets a read-only analyst propose changes; <a href={href("examples/#analysis")}>the analysis of 28 October 2026</a> is how Codeyard found what to change in itself.</p>
       <dl class="facts">
+        <dt>limits</dt><dd><a href={repoFile("scripts/run-feature.sh")}><code>run-feature.sh</code></a>; profiles in <a href={repoFile("scripts/lib/agent.sh")}><code>scripts/lib/agent.sh</code></a></dd>
         <dt>records</dt><dd><code>.agents/records/feature-&lt;issue&gt;.jsonl</code> in the primary checkout, ignored by Git, format <code>run-record/v1</code> (<a href={`${repoFile("docs/development.md")}#run-records`}><code>docs/development.md</code></a>)</dd>
         <dt>docs</dt><dd><a href={href("docs/technical-reference/#what-is-recorded-on-your-machine")}>What is recorded on your machine</a></dd>
         <dt>built in</dt><dd><a href={pull(136)}>PR #136</a> to <a href={pull(140)}>#140</a> (records), <a href={pull(223)}>#223</a> (stops)</dd>
@@ -495,15 +515,16 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
     </details>
   </Section>
 
-  <Section id="authority" title="Human authority" level={3}>
-    <Fragment slot="note">Configured in <a href={repoFile(".agents/policies/guardrails.conf")}><code>guardrails.conf</code></a>. <a href={href("docs/configuration-and-security/#changes-that-need-the-owner")}>Changes that need the owner</a> in the docs.</Fragment>
+  <Section id="authority" title={feature.authority} level={3}>
+    <Fragment slot="note"><strong>Default</strong>: no script accepts a change. GitHub enforces your approval only with your repository settings. <a href={href("docs/configuration-and-security/#changes-that-need-the-owner")}>Changes that need the owner</a> in the docs.</Fragment>
     <dl class="pitch">
-      <dt>The problem</dt><dd>With agents doing the work, it becomes unclear which decisions are still yours, and a feature could quietly loosen the rules that check it.</dd>
-      <dt>What you get</dt><dd>The decisions that matter stay with you, and each pull request says whether it needs your approval, and why.</dd>
-      <dt>What Codeyard does</dt><dd>No script merges: you agree the requirements, approve the plan, answer the questions, and merge. A pull request that changes a protected file, such as an ADR, a CI workflow or the workflow's own gate, is marked as needing your approval; GitHub refuses a merge only as far as the settings of <a href={href("docs/github-setup/")}>GitHub setup</a> make it. Until agents get a GitHub identity of their own (<a href={issue(99)}>#99</a>), an agent has the GitHub rights of the account that started it.</dd>
+      <dt>The problem</dt><dd>With AI tools doing the work, it is unclear which decisions are still yours.</dd>
+      <dt>What you get</dt><dd>You agree the requirements, approve the plan and accept each change. A change to the project's rules or design says it needs your approval.</dd>
+      <dt>Illustrative example</dt><dd>Attendance becomes part of the gym's application only when you accept its change; until then your project stays as it was.</dd>
     </dl>
     <details class="proof">
-      <summary>Technical proof: files, settings and a real record</summary>
+      <summary>How your approval is marked: files, settings and a real record</summary>
+      <p><b>What Codeyard does.</b> No script merges: you agree the requirements, approve the plan, answer the questions, and merge. A pull request that changes a protected file, such as an ADR, a CI workflow or the workflow's own gate, is marked as needing your approval; GitHub refuses a merge only as far as the settings of <a href={href("docs/github-setup/")}>GitHub setup</a> make it. Until agents get a GitHub identity of their own (<a href={issue(99)}>#99</a>), an agent has the GitHub rights of the account that started it.</p>
       <figure class="plain">
         <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="authority-t" aria-describedby="authority-words">
           <title id="authority-t">Your decisions: you agree the requirements and approve the plan; a feature asks you only when it needs a decision; a pull request that changes a protected path, has a major or breaking impact or no review is marked as needing your approval of exactly its commit; and the merge is left to you, no script merges.</title>
@@ -554,15 +575,16 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
     </details>
   </Section>
 
-  <Section id="learn" title="Learning from your runs">
-    <Fragment slot="note">With <code>report-runs.sh</code>, <code>show-experience.sh</code> and <code>analyze-runs.sh</code>. <a href={`${repoFile("docs/development.md")}#run-records`}>The records in detail</a>.</Fragment>
+  <Section id="learn" title="Use past runs to improve the process">
+    <Fragment slot="note"><strong>Optional</strong>: records are kept by default; the analysis runs when you start it. <a href={`${repoFile("docs/development.md")}#run-records`}>The records in detail</a>.</Fragment>
     <dl class="pitch">
       <dt>The problem</dt><dd>The same problem can cost review rounds in feature after feature without anyone noticing.</dd>
-      <dt>What you get</dt><dd>Proposals for what to change in your process, each citing the runs it comes from, and nothing changes until you decide.</dd>
-      <dt>What Codeyard does</dt><dd>Every run leaves a record on your machine: the review rounds and their findings, what the triage decided, the checks that failed, why a run stopped, and the time and tokens of each step. When you start it, a read-only analyst reads the records of many features and proposes what to change.</dd>
+      <dt>What you get</dt><dd>When you start it, a read-only AI reads the records of many runs and proposes changes to your process, each citing its runs. Nothing changes until you decide.</dd>
+      <dt>Real example</dt><dd>The analysis of 28 October 2026 found that findings raised again after being settled cost extra triage and repair rounds in five runs. Its proposal became <a href={issue(217)}>Issue #217</a>, carried out in <a href={pull(222)}>PR #222</a>.</dd>
     </dl>
     <details class="proof">
-      <summary>Technical proof: files, settings and a real record</summary>
+      <summary>How the analysis works: files, settings and a real record</summary>
+      <p><b>What Codeyard does.</b> Every run leaves a record on your machine: the review rounds and their findings, what the triage decided, the checks that failed, why a run stopped, and the time and tokens of each step. When you start it, a read-only analyst reads the records of many features and proposes what to change.</p>
       <figure class="plain">
         <svg class="lines learn" viewBox="0 0 1240 236" role="img" aria-labelledby="learn-t" aria-describedby="learn-words">
           <title id="learn-t">The run records of several features run into one analysis. Its proposals pass your decision, and each goes to its own place with the review that applies there.</title>

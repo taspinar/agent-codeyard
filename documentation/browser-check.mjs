@@ -267,6 +267,26 @@ try {
       await tabTo('.docs-pagination a');
 
       await page.goto(origin + base + 'examples/?theme=' + theme);
+      // The Projects page (#332): products first, the engineering case studies
+      // behind closed disclosures; short and complete with every disclosure closed.
+      if (width === 1440) {
+        const projects = await page.evaluate(() => ({
+          words: document.body.innerText.split(/\s+/).filter(Boolean).length,
+          height: document.documentElement.scrollHeight,
+          open: document.querySelectorAll('details[open]').length,
+          missing: ['application', 'memory', 'story', 'tradeoff', 'features', 'owner', 'repair', 'short', 'analysis', 'levels', 'absent', 'sources'].filter(id => !document.getElementById(id)),
+          first: document.querySelector('main section[id]').id,
+          illustrative: document.getElementById('fightanalytics').innerText.includes('Illustrative example.'),
+          unnamed: ['Leyra', 'TrafficInsights', 'ChatDocs'].filter(name => document.body.innerText.includes(name)),
+        }));
+        assert.equal(projects.open, 0, 'Every disclosure of the Projects page starts closed');
+        assert(projects.words <= 3000, `The Projects page shows ${projects.words} words with its disclosures closed`);
+        assert(projects.height <= 10000, `The Projects page is ${projects.height} px high at 1440 px`);
+        assert.deepEqual(projects.missing, [], 'Every anchor of the Projects page resolves');
+        assert.equal(projects.first, 'products', 'The Projects page opens with the products');
+        assert(projects.illustrative, 'The FightAnalytics case is labelled as an illustrative example');
+        assert.deepEqual(projects.unnamed, [], 'The Projects page names no other product');
+      }
       await tabTo('.contents a');
       // Reaching the final footer link walks every intervening content link too.
       await tabTo('footer nav a:last-child');
@@ -390,6 +410,21 @@ try {
           const html = await readFile(join(output, file), 'utf8');
           const inlineJS = [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].reduce((sum, m) => sum + Buffer.byteLength(m[1]), 0);
           report.pages.push({ path, javascriptBytes: inlineJS + resources.filter(r => r.kind === 'script').reduce((s, r) => s + r.bytes, 0), pageBytes: Buffer.byteLength(html) + resources.reduce((s, r) => s + r.bytes, 0), resources });
+        }
+        // Why Codeyard (#331): with the disclosures closed, at most 1300 visible
+        // words in <main> and at most 6000 px high at 1440 px.
+        if (path === base + 'features/' && width === 1440) {
+          const length = await page.evaluate(() => ({
+            open: document.querySelectorAll('main details[open]').length,
+            words: document.querySelector('main').innerText.split(/\s+/).filter(Boolean).length,
+            height: document.documentElement.scrollHeight,
+          }));
+          report.features ??= [];
+          report.features.push({ theme, ...length });
+          console.log(`  ${path} ${theme} 1440 px, disclosures closed: ${length.words} words, ${length.height} px high.`);
+          assert.equal(length.open, 0, `Disclosures open on ${path}`);
+          assert(length.words <= 1300, `${path} shows ${length.words} words, more than 1300`);
+          assert(length.height <= 6000, `${path} is ${length.height} px high at 1440 px, more than 6000`);
         }
       }
     }
