@@ -49,22 +49,39 @@ codex login
 
 ## 2. Create your repository
 
-There is no installer: a project is a new repository created from the template. With the GitHub CLI:
+There is no installer: a project is a new repository created from the template. Choose its visibility first, because it decides whether GitHub can protect `main` in steps 3 and 7. A ruleset with a required check is available for a private repository with GitHub Pro, GitHub Team and GitHub Enterprise Cloud; with GitHub Free and GitHub Free for organizations it is available only for a public repository ([GitHub's documentation](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)).
+
+With the GitHub CLI, take one of the two:
+
+- **A private repository**, on a plan that supports the ruleset for it:
+
+  ```
+  gh repo create my-project --template taspinar/agent-codeyard --private --clone
+  ```
+
+- **A public practice repository**, on GitHub Free:
+
+  ```
+  gh repo create my-project --template taspinar/agent-codeyard --public --clone
+  ```
+
+  Anyone can read and clone the code and the history of a public repository, so put nothing in it that you would not publish.
+
+Then go to the new folder:
 
 ```
-gh repo create my-project --template taspinar/agent-codeyard --private --clone
 cd my-project
 ```
 
 `my-project` is the name of your repository, and of the folder it is cloned into; choose your own. Later commands call that folder `<repository>`.
 
-Or [create it on GitHub](https://github.com/taspinar/agent-codeyard/generate), with the visibility **Private**, and clone it. Then delete `documentation/` and `.github/workflows/pages.yml`: they are this website, not part of your project. Keep, replace, or remove `LICENSE`, the MIT licence of the template, for your own project.
+Or [create it on GitHub](https://github.com/taspinar/agent-codeyard/generate), with the visibility you chose, and clone it. Then delete `documentation/` and `.github/workflows/pages.yml`: they are this website, not part of your project. Keep, replace, or remove `LICENSE`, the MIT licence of the template, for your own project.
 
 Have an existing repository instead? It adopts the workflow on a branch you review, without a new repository: <a href="../adopting/">Adopting Agent Codeyard in an existing repository</a>.
 
 - **Where:** the folder that should hold your project folder, then the new folder `my-project`.
-- **Input:** the name of the repository.
-- **Result:** a private repository on GitHub and its clone on your machine, without the template's website.
+- **Input:** the name of the repository, and its visibility for your plan.
+- **Result:** a private repository on a plan that supports its ruleset, or a public practice repository on GitHub Free, and its clone on your machine, without the template's website.
 - **Next:** set up GitHub, from the same folder.
 
 ## 3. Set up GitHub
@@ -73,7 +90,7 @@ The scripts point out risky changes, but only GitHub can enforce who merges:
 
 - Replace the placeholder `@YOUR_GITHUB_USERNAME` in `.github/CODEOWNERS` with your account, such as `@your-name`.
 - Commit that change and the deletions of step 2, and push them: the planning in step 6 starts only from a working tree without uncommitted changes.
-- Add a ruleset for `main` that requires a pull request and the CI check. GitHub lists the check, `verify`, only after it ran once on your repository, so you add it in step 7.
+- Add a ruleset for `main` that requires a pull request and the CI check. GitHub lists the check, `verify`, only after it ran once on your repository, so you add it in step 7. The ruleset needs the plan and visibility of step 2: a private repository on GitHub Free cannot have one, and then nothing protects its `main`.
 
 The [repository setup guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/repository-setup.md) has every setting; <a href="../github-setup/#github">GitHub setup</a> explains why they matter.
 
@@ -92,7 +109,7 @@ The script checks that the tools above are installed and that the agents you con
 
 - **Where:** `my-project`.
 - **Input:** none.
-- **Result:** `All required prerequisites are available.` A warning that `main` accepts a merge while its checks fail stays until step 7 adds the check; a line marked `FAILED` names what to fix before you go on.
+- **Result:** `All required prerequisites are available.` A warning that `main` accepts a merge while its checks fail stays until step 7 adds the check; if it is still there after step 7, check the plan and visibility of step 2; a line marked `FAILED` names what to fix before you go on.
 - **Next:** choose your agents, or keep the shipped ones.
 
 ## 5. Choose your agents
