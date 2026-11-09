@@ -1,127 +1,86 @@
 ---
-// Who maintains Agent Codeyard, why it exists and what it is built on, in the
-// first screen (#319); then the reasons in more detail, what it can do now and
-// what it cannot, its design decisions, one paragraph on its history, the open
-// work, and the source and licences. The history period by period, the
-// principles it taught and the research moved to /docs/history/. From the
-// earlier site's pages (commit 6a62f84), corrected as the audit of #235 lists;
-// the limits follow the docs (configuration-and-security,
-// new-to-agentic-coding) and the open Issues; Codeyard's own terms are
-// explained at their first use.
+// Why Agent Codeyard exists, who makes it, where it stands and how to take
+// part, in short sentences (#333). Every statement of history has a source on
+// the site: the reason and the problem from the earlier About (#319), the
+// start and the growth from /docs/history/, the maker's own projects from
+// /examples/. The design decisions moved to /docs/history/#decisions; what
+// Codeyard does is one paragraph with links to /features/; the possible
+// improvements are the open Issues, statuses as GitHub shows them on
+// 8 November 2026. Old anchors stay: #why, #limits, #decisions, #history,
+// #research, #improvements, #contribute.
 import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Section from "../components/Section.astro";
-import Table from "../components/Table.astro";
 import { site } from "../../site.config";
-import { href, issue, pull, repoFile } from "../lib/links";
+import { href, issue, repoFile } from "../lib/links";
 
-// Possible improvements, statuses as the audit of #235 corrected them (items 8, 10–13, 15).
+// Possible improvements: each an open Issue, none of them built yet.
 const improvements = [
-  { name: "Separate agent identity", what: "A GitHub identity with limited rights for the agents, so an approval is one the agent cannot give itself", status: "Not built", ref: 99 },
-  { name: "GitHub approval rules", what: "A ruleset, required checks and code-owner review that GitHub enforces on the merge", status: "Available once you configure them; doctor.sh warns when the ruleset is missing" },
-  { name: "Second reviewer", what: "One review of the behaviour and one of the engineering quality", status: "Not built", ref: 66 },
-  { name: "Periodic run analysis", what: "The analysis of feature runs on a schedule", status: "Not built: analyze-runs.sh runs when you start it", ref: 131 },
-  { name: "Selective CI", what: "Running the tests a change affects", status: "Partly: check groups and partial checks in repair rounds" },
-  { name: "Model selection by cost", what: "Choosing a model by what a task needs and what it costs", status: "Partly: a model per role and risk level" },
-  { name: "Cost of runs", what: "Duration, retries, models and cost per run", status: "Partly: durations, retries and tokens; no cost in money" },
-  { name: "Parallel features", what: "Dependencies automation can use, and agents working on several features at once", status: "Not built: separate worktrees allow concurrent work that you start" },
-  { name: "Environment isolation", what: "Per task its own database, services, ports and credentials", status: "Not built: a worktree separates only the working files" },
-  { name: "Browser validation", what: "Browser tests with screenshots or traces for interface changes", status: "Not built: a project can configure its own" },
-  { name: "Built-in remote runs, a dashboard, several repositories", what: "Starting and watching runs on another machine from Codeyard, a browser view of them, work across repositories", status: "Not built: you can run the scripts yourself on a server, as the maintainer does (Examples)" },
+  { name: "Agent identity", what: "A GitHub account with limited rights, so an agent cannot approve its own change.", ref: 99 },
+  { name: "A second reviewer", what: "One review of the behaviour, one of the engineering quality.", ref: 66 },
+  { name: "Run analysis on a schedule", what: "Today you start the analysis of past runs yourself.", ref: 131 },
+  { name: "Complexity creep", what: "Notice across several runs when the workflow itself grows too complex.", ref: 157 },
+  { name: "Parallel helpers", what: "An experiment with agents that split one feature between them.", ref: 159 },
 ];
 ---
-<Base title="About" description="Who maintains Agent Codeyard, why it exists and what it is built on; what it can and cannot do today, its design decisions and the open work.">
-  <PageHead title="About">
-    <dl class="answers">
-      <div><dt>Who</dt><dd class="lede">{site.name} is an open-source project by Ahmet Taspinar, founder of <a href="https://jidai.nl/">JIDAI</a>, who maintains it and merges its pull requests.</dd></div>
-      <div><dt>Why</dt><dd>Coding agents can plan, build, test and review a feature, but they do not show you that the review and the tests saw the code you merge, or keep the decisions that matter with you. Codeyard applies established engineering practice to that.</dd></div>
-      <div><dt>Built on</dt><dd>Claude Code and Codex write the code. Codeyard is the workflow around them, in shell scripts and plain files in your repository, with no platform to host. It is built with its own workflow, as <a href={href("examples/")}>Examples</a> shows.</dd></div>
-    </dl>
+<Base title="About" description="Why Agent Codeyard exists, who makes it, how it relates to JIDAI, where the project stands, how to contribute, and the open improvements.">
+  <PageHead title="About" lede="Why Agent Codeyard exists, who makes it, where it stands, and how to take part.">
     <ol class="contents">
-      <li><a href="#why">Why Codeyard exists</a></li>
-      <li><a href="#limits">What it can do now, and what it cannot</a></li>
-      <li><a href="#decisions">Design decisions</a></li>
-      <li><a href="#history">History and research</a></li>
+      <li><a href="#why">Why it exists</a></li>
+      <li><a href="#maker">The maker, JIDAI and the project</a></li>
+      <li><a href="#contribute">Where it stands, and how to take part</a></li>
+      <li><a href="#limits">What it does, in short</a></li>
       <li><a href="#improvements">Possible improvements</a></li>
-      <li><a href="#contribute">Source, licence and contributing</a></li>
+      <li><a href="#history">History and research</a></li>
+      <li><a href="#source">Source and licence</a></li>
     </ol>
   </PageHead>
 
-  <Section id="why" title="Why Codeyard exists">
-    <p class="lede">How do you keep the requirements consistent, know that a change was reviewed and tested on the code that is merged, and let agents work on their own without giving up the decisions that matter?</p>
+  <Section id="why" title="Why it exists">
+    <p class="lede">Agent Codeyard grew out of the maker's own work with coding agents.</p>
+    <p>Claude Code and Codex could plan, build, test and review a feature. But they did not show whether the review and the tests saw the code that was merged. And the decisions that mattered did not always stay with the owner of the project.</p>
+    <p>On 10 September 2026 it began as a manual routine. A feature was planned in an Issue, built in its own working folder, and read by a second agent. The steps that proved useful and repeatable became scripts. Since then, most changes answer something that went wrong in real use.</p>
+  </Section>
+
+  <Section id="maker" title="The maker, JIDAI and the project">
+    <p>Agent Codeyard is an open-source project by Ahmet Taspinar, founder of <a href="https://jidai.nl/">JIDAI</a>. Ahmet maintains it and merges its pull requests. The projects on <a href={href("examples/")}>Examples</a> are the maker's own: this repository and Physics by Construction, a course project.</p>
+  </Section>
+
+  <Section id="contribute" title="Where it stands, and how to take part">
+    <p>The project is young: work started on 10 September 2026, and it changes often. There are no numbered releases yet. A project takes later changes over as <a href={href("docs/updating/")}>Updating</a> describes. Adoption into an existing repository is so far tested on example repositories only.</p>
     <ul class="rules">
-      <li><b>Clear requirements reduce rework.</b> Every plan starts with a round of questions and your approval, and every feature with the implementer's check that the Issue settles what it needs.</li>
-      <li><b>Independent reviews catch what the author misses.</b> By default every feature is reviewed by a read-only agent of another provider before the commit, and every finding gets a decision: fix, defer, or accept with a reason. A project can let low-risk features skip the review; their merge then needs the owner.</li>
-      <li><b>Approval does not rest on an agent's judgement alone.</b> Rules about what a change touches come first; the reviewer's assessment can only make the outcome stricter.</li>
+      <li><b>Report a problem or an idea</b> as a GitHub Issue, with what you ran and what happened.</li>
+      <li><b>Propose a change</b> from an Issue, on its own branch, following the repository's agent instructions.</li>
+      <li><b>Keep a pull request focused</b>, and include the evidence of its checks.</li>
+      <li><b>Report a security problem privately</b>, not in a public Issue.</li>
     </ul>
   </Section>
 
-  <Section id="limits" title="What it can do now, and what it cannot">
-    <Fragment slot="note">The limits as the docs state them: <a href={href("docs/configuration-and-security/")}>Configuration and security</a>. Short answers: the <a href={href("faq/")}>FAQ</a>.</Fragment>
-    <div class="split">
-      <div><h3>It can</h3><ul>
-        <li>Start a new project with <code>gh repo create --template</code> and plan it with you: requirements, architecture and roadmap, reviewed by another provider and approved by you</li>
-        <li>Take each feature from its Issue to an open pull request, step by step or unattended, on its own branch in its own worktree, a second working folder of the same repository</li>
-        <li>Compute a risk level for each change from the files it touches, and scale the review and the models to it</li>
-        <li>Refuse a reviewer of the implementer's own provider, and run every reviewer read-only</li>
-        <li>Commit only when the checks passed and the implementer's completion record, its account of each acceptance criterion with what shows it, says the work is complete</li>
-        <li>Mark a pull request that needs your approval: a protected file, a major or breaking impact on the architecture, or no review</li>
-      </ul></div>
-      <div><h3>It cannot, today</h3><ul>
-        <li>Take an existing repository's architecture as settled when it adopts the workflow: the assessment reads the files and proposes a provisional reconstruction of the architecture, requirements and roadmap, marked <em>observed, not approved</em> until you approve the planning (<a href={href("docs/adopting/")}>Adopting</a>)</li>
-        <li>Stop an agent from merging: no script merges, but an agent has the GitHub rights of the account that started it until it gets an identity of its own (<a href={issue(99)}>#99</a>). Only the settings of <a href={href("docs/github-setup/")}>GitHub setup</a> make GitHub refuse a merge</li>
-        <li>Isolate the agents: they run on your machine, as you, under their own tools' sandbox settings; a worktree is not a security boundary</li>
-        <li>Run other coding agents than Claude Code and Codex, tell you a cost in money, or start, watch and orchestrate runs remotely: the scripts run where you start them, on your machine or a server of yours, as the <a href={href("examples/#story")}>runs on the maintainer's server</a> show</li>
-      </ul></div>
-    </div>
-  </Section>
-
-  <Section id="decisions" title="Design decisions">
-    <Fragment slot="note">Each with the pull request that made it.</Fragment>
-    <Table>
-      <thead><tr><th scope="col">decision</th><th scope="col">why</th><th scope="col">source</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">Read-only reviewers</th><td data-col="why">A reviewer that can edit can fix what it should report.</td><td data-col="source"><a href={pull(35)}>PR #35</a></td></tr>
-        <tr><th scope="row">A reviewer of another provider</th><td data-col="why">An agent of the same family shares the implementer's blind spots.</td><td data-col="source"><a href={pull(211)}>PR #211</a></td></tr>
-        <tr><th scope="row">Evidence tied to content</th><td data-col="why">A review or a verification counts only for the content it saw.</td><td data-col="source"><a href={pull(42)}>#42</a>, <a href={pull(74)}>#74</a>, <a href={pull(200)}>#200</a></td></tr>
-        <tr><th scope="row">Scripts decide outcomes</th><td data-col="why">An unattended run needs a judge that does not depend on how a session ended.</td><td data-col="source"><a href={pull(101)}>PR #101</a></td></tr>
-        <tr><th scope="row">The completion gate</th><td data-col="why">A session that ends is not a finished feature.</td><td data-col="source"><a href={pull(126)}>PR #126</a></td></tr>
-        <tr><th scope="row">Your merge</th><td data-col="why">No script merges; a protected change asks for the owner's approval, which only GitHub's settings enforce.</td><td data-col="source"><a href={pull(100)}>PR #100</a></td></tr>
-        <tr><th scope="row">A computed risk level</th><td data-col="why">Read from the diff and the base branch's rules, so a feature cannot classify itself lower.</td><td data-col="source"><a href={pull(194)}>PR #194</a></td></tr>
-        <tr><th scope="row">Local run records</th><td data-col="why">Measurement without sending anything anywhere.</td><td data-col="source"><a href={pull(136)}>PR #136</a></td></tr>
-        <tr><th scope="row">Issues when ready</th><td data-col="why">The roadmap is not turned into a backlog in advance.</td><td data-col="source"><a href={pull(44)}>PR #44</a></td></tr>
-      </tbody>
-    </Table>
-  </Section>
-
-  <Section id="history" title="History and research">
-    <p>Codeyard started on 10 September 2026 as a manual workflow and automated the steps that proved useful: recorded reviews and verification first, then unattended runs, records of every run, and effort by risk. Until 31 October it was called {site.formerName}; the repository became <a href={site.repository}>{site.repository.replace(/^https:\/\/github\.com\//, "")}</a> on 2 November (<a href={pull(268)}>PR #268</a>). <a href={href("docs/history/")}>History and research</a> follows each period with its pull requests, the principles it taught, and the <a id="research" href={href("docs/history/#research")}>frameworks and talks</a> it learned from.</p>
+  <Section id="limits" title="What it does, in short">
+    <p>Codeyard writes no code; as shipped, Claude Code writes it and Codex reviews it. Around them it adds a round of questions, a plan you approve, checks and a review per change. The merge stays with you. It is no security boundary: the agents run on your machine, with your rights. <a href={href("features/")}>Why Codeyard</a> explains each part; the <a href={href("faq/")}>FAQ</a> answers the first questions.</p>
   </Section>
 
   <Section id="improvements" title="Possible improvements">
-    <Fragment slot="note">Not a committed roadmap. The open work is in the <a href={`${site.repository}/issues`}>Issues</a>.</Fragment>
-    <Table>
-      <thead><tr><th scope="col">improvement</th><th scope="col">what it would add</th><th scope="col">status</th></tr></thead>
-      <tbody>
-        {improvements.map((row) => (
-          <tr>
-            <th scope="row">{row.name}</th>
-            <td data-col="what it would add">{row.what}</td>
-            <td data-col="status">{row.status}{row.ref && <> (<a href={issue(row.ref)}>#{row.ref}</a>)</>}</td>
-          </tr>
-        ))}
-      </tbody>
-    </Table>
-    <p class="needs">Built since the earlier list of this site: feature clarification (<a href={pull(213)}>PR #213</a>), a model per risk level, check groups, partial checks and budgets.</p>
+    <Fragment slot="note">Not a committed roadmap. All open work: the <a href={`${site.repository}/issues`}>Issues</a>.</Fragment>
+    <ul class="rules">
+      {improvements.map((row) => (
+        <li><b>{row.name}.</b> {row.what} Open: <a href={issue(row.ref)}>#{row.ref}</a>.</li>
+      ))}
+    </ul>
+    <p class="needs">Ideas without an Issue yet: a database and services per task, browser checks, and a run's cost in money.</p>
   </Section>
 
-  <Section id="contribute" title="Source, licence and contributing">
+  <Section id="history" title="History and research">
+    <p>Until 31 October 2026 the project was called {site.formerName}. <a href={href("docs/history/")}>History and research</a> follows each period with its pull requests. It also holds the <a id="decisions" href={href("docs/history/#decisions")}>design decisions</a> and the <a id="research" href={href("docs/history/#research")}>frameworks and talks</a> it learned from.</p>
+  </Section>
+
+  <Section id="source" title="Source and licence">
     <dl class="facts">
       <dt>maintainer</dt><dd>Ahmet Taspinar, founder of <a href="https://jidai.nl/">JIDAI</a></dd>
       <dt>source</dt><dd><a href={site.repository}>{site.repository.replace(/^https:\/\//, "")}</a></dd>
-      <dt>licence</dt><dd>MIT, in <a href={repoFile("LICENSE")}><code>LICENSE</code></a>. A project created with <code>gh repo create --template</code> chooses its own licence. The fonts of this site are under the SIL Open Font License: <a href={href("fonts/OFL.txt")}>Font licence</a>.</dd>
-      <dt>contributing</dt><dd><a href={repoFile("CONTRIBUTING.md")}><code>CONTRIBUTING.md</code></a>: changes start from an Issue, on a feature branch, following <a href={repoFile("AGENTS.md")}><code>AGENTS.md</code></a></dd>
-      <dt>security</dt><dd><a href={repoFile("SECURITY.md")}><code>SECURITY.md</code></a>: report security-sensitive findings privately</dd>
+      <dt>licence</dt><dd>MIT, in <a href={repoFile("LICENSE")}>the licence file</a>. A project created from the template chooses its own licence. The fonts of this site: <a href={href("fonts/OFL.txt")}>Font licence</a>.</dd>
+      <dt>contributing</dt><dd><a href={repoFile("CONTRIBUTING.md")}>Contributing guide</a> and <a href={repoFile("AGENTS.md")}>agent instructions</a></dd>
+      <dt>security</dt><dd><a href={repoFile("SECURITY.md")}>Security policy</a></dd>
     </dl>
   </Section>
 </Base>
