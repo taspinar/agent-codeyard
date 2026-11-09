@@ -604,6 +604,12 @@ main section.group { border-top: 2px solid var(--ink); padding-bottom: 0; }
 .pitch dd:first-of-type { font-size: var(--t-lg); line-height: var(--lh-lede); }
 .proof > summary { font: var(--w-semibold) var(--t-sm) var(--sans); color: var(--ink); cursor: pointer; width: fit-content; }
 .proof > * + * { margin-top: var(--s-5); }
+/* Features (#343): the open technical layer of a feature hangs from a 2px ink
+   rule on its left, its content indented by s-5 in body small; no fill, no
+   border box, no shadow. */
+.proof > .layer { border-left: 2px solid var(--ink); padding-left: var(--s-5); font-size: var(--t-sm); }
+.proof > .layer > * + * { margin-top: var(--s-5); }
+.proof > .layer > :last-child { margin-bottom: 0; }
 .split h5 { font-size: var(--t-md); font-weight: var(--w-bold); line-height: var(--lh-heading); letter-spacing: var(--track-snug); margin: 0 0 var(--s-3); padding-bottom: var(--s-2); border-bottom: 2px solid var(--ink); }
 @media (max-width: 760px) {
   .contents { columns: 1; }
