@@ -27,7 +27,7 @@ A repository created from the template does not inherit these settings: GitHub d
      gh repo view --json squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed,deleteBranchOnMerge
      ```
 
-3. **Protect `main` with a ruleset.** Target the default branch; restrict deletions, block force pushes, and require a pull request before merging.
+3. **Protect `main` with a ruleset.** Target the default branch; restrict deletions, block force pushes, and require a pull request before merging. Rulesets are available for public repositories with GitHub Free and GitHub Free for organizations, and for public and private repositories with GitHub Pro, GitHub Team and GitHub Enterprise Cloud ([GitHub's documentation](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)).
    - Where: **Settings → Rules → Rulesets → New branch ruleset**.
    - Check: this lists the rules `deletion`, `non_fast_forward` and `pull_request`:
 

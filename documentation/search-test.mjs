@@ -52,6 +52,11 @@ if (process.argv[2]) {
       if (at >= 0 && before >= 0) assert(before < at, `${task} after ${product}`);
     }
   }
+  // The questions of a new visitor lead to a task page first (#334).
+  for (const query of ['existing project', 'cost', 'planning', 'resume', 'risk', 'run-feature.sh']) {
+    const results = searchPages(pages, query);
+    assert.equal(pageRank(results[0]?.url.slice(base.length) ?? ''), 0, `First for "${query}": ${results[0]?.url}`);
+  }
   // The sitemap lists the pages outside the docs collection too.
   const sitemap = await readFile(join(output, 'sitemap.xml'), 'utf8');
   assert(sitemap.includes(`${base}docs/reference/workflow/</loc>`), 'The workflow reference is missing from the sitemap');
