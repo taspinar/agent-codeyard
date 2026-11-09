@@ -1,22 +1,27 @@
 ---
-// Real runs of Agent Codeyard. The page opens with an application: #388 of
-// Physics by Construction, a course project by the maintainer that runs this
-// workflow, from the records it published on GitHub (the owner's decision on
-// #320). #217 follows, then #241, the run that wrote the first pages of this
-// site, the trade-off of more review rounds, and the more complex cases, each
-// from the problem it solved. Every case starts with its four-line summary
-// (CaseSummary) and its figures; the records follow (#320). The high-risk
-// candidates are those of the audit on #235. Every figure comes from a source
-// named beside it: the Issue and its published review and triage comments,
-// the pull request description that finish-feature.sh and publish-feature.sh
-// wrote, its timestamps, or the run record of the feature
-// (.agents/records/feature-<n>.jsonl on the maintainer's machine, not in the
-// repository; report-runs.sh reads it).
+// The Projects page (#332, step 4 of #328), at the route /examples/. It opens
+// with two products of the maker in the seven parts of a product case
+// (ProductCase): FightAnalytics, the gym platform the illustrative example of
+// #328 is modelled on, whose repository and records are private, so it shows
+// the public website and the labelled example only (the owner's decisions 1
+// to 3 on #328); and Physics by Construction, a course that runs this
+// workflow, with #388 from the records it published on GitHub. The second
+// layer is the engineering case studies of this repository: each a title
+// that names the problem, a summary of at most 80 words, and its records
+// under a closed "proof" disclosure, so that the first layer stays short and
+// every anchor keeps resolving. The high-risk candidates are those of the
+// audit on #235. Every figure comes from a source named beside it: the Issue
+// and its published review and triage comments, the pull request description
+// that finish-feature.sh and publish-feature.sh wrote, its timestamps, or the
+// run record of the feature (.agents/records/feature-<n>.jsonl on the
+// maintainer's machine, not in the repository; report-runs.sh reads it).
 import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Section from "../components/Section.astro";
 import Table from "../components/Table.astro";
+import Figure from "../components/Figure.astro";
 import CaseSummary from "../components/CaseSummary.astro";
+import ProductCase from "../components/ProductCase.astro";
 import { href, issue, pull, repoFile } from "../lib/links";
 
 const comment = (number: number, id: string) => `${issue(number)}#issuecomment-${id}`;
@@ -85,79 +90,148 @@ const changed: Record<number, string[]> = {
   205: ["scripts/review-feature.sh", ".agents/prompts/reviewer.md", "tests/review-feature-test.sh"],
   213: ["scripts/run-feature.sh", ".agents/prompts/implementer.md", "scripts/lib/completion.sh", "tests/run-feature-test.sh"],
 };
+
+// The groups of the page and their parts, for the contents list.
+const groups = [
+  { id: "products", title: "Products", items: [
+    { id: "fightanalytics", title: "FightAnalytics, a platform for gyms" },
+    { id: "application", title: "Physics by Construction, a physics course" },
+  ] },
+  { id: "engineering", title: "Engineering case studies", items: [
+    { id: "memory", title: "When the reviewer did not know what was decided" },
+    { id: "story", title: "When new pages left out their sources" },
+    { id: "tradeoff", title: "How many review rounds are worth it" },
+    { id: "features", title: "Four more problems, four more runs" },
+    { id: "owner", title: "When every feature got the same workflow" },
+    { id: "repair", title: "When a missed target sent the agent to repair" },
+    { id: "short", title: "When one round is enough" },
+    { id: "analysis", title: "What 41 recorded runs showed" },
+    { id: "levels", title: "What each risk level changed" },
+  ] },
+  { id: "figures", title: "About the figures", items: [
+    { id: "absent", title: "What is not shown" },
+    { id: "sources", title: "Where the figures come from" },
+  ] },
+];
 ---
-<Base title="Examples" description="Real runs of Agent Codeyard: an application project, Physics by Construction, and features of this repository, each with what changed, what the review found and how it was merged, then its records.">
-  <PageHead title="Examples" lede="Real runs of Agent Codeyard, each told result first: what changed, how many review rounds, what the review found, and how it was merged. Then its records. The first comes from another repository, an application that runs this workflow; the others are features of this repository, built with its own workflow.">
-    <ol class="contents">
-      <li><a href="#application">An application: Physics by Construction #388</a></li>
-      <li><a href="#memory">When the reviewer did not know what was decided: #217</a></li>
-      <li><a href="#story">How these pages were built: #241</a></li>
-      <li><a href="#tradeoff">More rounds find more, and cost more</a></li>
-      <li><a href="#features">More runs, by the problem they solved</a></li>
-      <li><a href="#analysis">Codeyard's analysis of its own runs</a></li>
-      <li><a href="#levels">The examples by risk</a></li>
-      <li><a href="#absent">What is not shown</a></li>
-      <li><a href="#sources">Where the figures come from</a></li>
+<Base title="Projects" description="What working with Agent Codeyard looks like in two products of its maker, a gym platform and a physics course, then the engineering case studies of Codeyard itself, each with its records.">
+  <PageHead title="Projects" lede="Two products by the maker of Agent Codeyard, and what working with it looks like in each. FightAnalytics, a platform for gyms, is shown with an illustrative example modelled on it. Physics by Construction, a physics course, is shown with a real change and its public records.">
+    <p class="needs">Then the engineering case studies: features of Codeyard itself, built with its own workflow. Each starts with a short summary; its records follow when you open them.</p>
+    <ol class="contents grouped">
+      {groups.map((group) => (
+        <li><a href={`#${group.id}`}>{group.title}</a>
+          <ol>{group.items.map((item) => <li><a href={`#${item.id}`}>{item.title}</a></li>)}</ol>
+        </li>
+      ))}
     </ol>
   </PageHead>
 
-  <Section id="application" title="An application: Physics by Construction #388">
-    <Fragment slot="note"><a href={pbcIssue(388)}>Issue #388</a>, <a href={pbcPull(390)}>PR #390</a> of <a href={pbc}>Physics by Construction</a>, a course project by the maintainer. 6 November 2026.</Fragment>
-    <CaseSummary>
-      <Fragment slot="changed">Reading the claims of the course's lessons starts the pandoc that ships with Quarto directly, instead of one <code>quarto pandoc</code> per lesson block, and the tests read the claims when they run, not when they are loaded.</Fragment>
-      <Fragment slot="rounds">4. Rounds 1 and 2 each raised major findings, all fixed; round 4 passed.</Fragment>
-      <Fragment slot="found">That the new test of all lessons could skip itself, which under the project's own rules raises the risk level of the change. The level went from 2 to 3, and the merge needed the owner's approval.</Fragment>
-      <Fragment slot="result"><a href={pbcPull(390)}>PR #390</a>, opened at 14:09 UTC and merged by the owner at 15:38 UTC. Its description, written at the opening, records the full CI run as pending; that run passed at 15:35, before the merge.</Fragment>
-    </CaseSummary>
+  <section id="products" class="group" aria-labelledby="products-h">
+    <div class="wrap">
+      <h2 id="products-h">Products</h2>
+      <p class="lede">What each product is and who uses it, then one change in seven parts: the problem, the change, what was settled first, the agreed check, what the review found, the owner's decision, and the sources.</p>
+    </div>
+  </section>
+
+  <Section id="fightanalytics" title="FightAnalytics, a platform for gyms" level={3}>
+    <Fragment slot="note"><a href="https://fightanalytics.nl">fightanalytics.nl</a>, the maker's own product. Its repository is private.</Fragment>
+    <p class="lede">FightAnalytics is a platform for martial-arts gyms, made by Ahmet Taspinar, who also makes Codeyard. Gym owners, trainers and members use it.</p>
     <dl class="facts">
-      <dt>lead time</dt><dd>9 h 20 min, from the opening of the Issue, 06:18 UTC, to the merge, 15:38 UTC; the pull request was open for 1 h 29 min. Source: the timestamps of <a href={pbcIssue(388)}>the Issue</a> and <a href={pbcPull(390)}>the pull request</a> on GitHub.</dd>
-      <dt>tokens, interventions</dt><dd>Not shown. The tokens the models read and the owner's recorded interventions are in the project's run record, which stays on the owner's machine (<a href="#sources">sources</a>).</dd>
+      <dt>gym owners</dt><dd>Manage locations, groups, trainers, users and their roles, with reports per gym and per group.</dd>
+      <dt>trainers</dt><dd>Record attendance by scanning a member's barcode, write performance reports, and give members feedback.</dd>
+      <dt>members</dt><dd>Check in at a class with their barcode, follow their goals and progress over time in charts, and read their trainer's reports.</dd>
     </dl>
-    <p class="lede">Physics by Construction is a repository of its own, a course project by the maintainer, and it runs this workflow. Its tests started hundreds of processes to read the lessons, and one of those processes crashed now and then, failing checks that had nothing to do with it.</p>
+    <Figure>
+      <img src={href("images/fightanalytics-dashboard.png")} width="1600" height="1000" loading="lazy" alt="A member's progress page, in Dutch. Left, a gauge with an overall score of 8.2 out of 10, marked as above the group average and 0.9 higher than 90 days before. Right, a radar chart of nine skills, such as technique, condition and strength, in December 2025 against the start in March 2025. Below, the strongest area, the point to improve and the latest personal record." />
+      <Fragment slot="caption">The dashboard image that FightAnalytics publishes on its home page, <a href="https://fightanalytics.nl">fightanalytics.nl</a>, as published on 9 November 2026. The functions above are those its website names.</Fragment>
+    </Figure>
+    <p><strong>Illustrative example.</strong> The gym example of this site is modelled on FightAnalytics. Its questions, check and review finding are made up to show the steps; it does not say how FightAnalytics was built.</p>
+    <ProductCase>
+      <Fragment slot="problem">Trainers want to record attendance for their classes. Members want to see their own training history.</Fragment>
+      <Fragment slot="change">One function: trainers record attendance, members see their own history. Planned in order: users and roles, then classes and attendance, then the member's history view.</Fragment>
+      <Fragment slot="settled">May members see other members' data? Agreed: no, a member sees only their own history. Also agreed: trainers record and correct attendance for their own classes, and a correction keeps the original entry visible, marked as corrected.</Fragment>
+      <Fragment slot="check">A check that runs with the feature: a member who asks for another member's history is refused.</Fragment>
+      <Fragment slot="found">The first version let every signed-in user open the history view. The reviewer reported it, and the fix was checked.</Fragment>
+      <Fragment slot="result">A proposed change, with the checks that ran and the review's remarks. The owner decides whether it becomes part of the application.</Fragment>
+      <Fragment slot="sources">None: this part is an illustration. The records of FightAnalytics are private, so this page shows none of them.</Fragment>
+    </ProductCase>
+    <p class="needs">Every step of the example: <a href={href("workflow/")}>How it works</a>.</p>
+  </Section>
 
-    <h3>The request</h3>
-    <p>The work started from <a href={pbcIssue(388)}>Issue #388</a>: the GitHub Issue, the ticket that says what to build and how to tell it is done. It names the cause: “Reading the claims of the lessons […] starts one <code>quarto pandoc</code> per lesson block, 183 processes for 94 lessons.” Each call first started Quarto's JavaScript runtime, which took 0.3 s and crashed now and then; according to the Issue the crash stopped the pipelines of another feature four times. The owner asked for both changes, reading the claims on first use and starting pandoc directly, in one Issue and one pull request, and let a small deferred fix ride along (<a href={pbcIssue(364)}>#364</a>).</p>
-    <p>The Issue has six acceptance criteria, the conditions the result must meet. The first reads “Reading the claims of all lessons returns the same claims as before (344 at 94 lessons) without starting <code>quarto</code>, and takes under 20 s on the developer machine (measured, not a budget of a test).”</p>
+  <Section id="application" title="Physics by Construction, a physics course" level={3}>
+    <Fragment slot="note"><a href={pbc}>Physics by Construction</a> on GitHub, the maker's own course. The change: <a href={pbcIssue(388)}>Issue #388</a>, <a href={pbcPull(390)}>PR #390</a>, 6 November 2026.</Fragment>
+    <p class="lede">Physics by Construction is a free website for people who learn physics. Each lesson turns a model into a short program you can run, and tests it against theory, measurements or a proof that a computer checks.</p>
+    <p>It is made by Ahmet Taspinar, and its development runs the Codeyard workflow. A lesson whose code fails cannot be published, so the site's checks run on every change. This case is one maintenance change to those checks.</p>
+    <Figure>
+      <img src={href("images/physics-by-construction-home.png")} width="1280" height="800" loading="lazy" alt="The home page of Physics by Construction: a headline about exploring physics with computation and AI, a Start learning button, and a map of its subjects, from classical mechanics to quantum physics and scientific agents." />
+      <Fragment slot="caption">The home page of Physics by Construction, <a href="https://taspinar.github.io/physics-by-construction/">taspinar.github.io/physics-by-construction</a>, screenshot of 9 November 2026.</Fragment>
+    </Figure>
+    <ProductCase>
+      <Fragment slot="problem">The checks that keep every lesson correct crashed now and then, and stopped work that had nothing to do with them. After the change they read the lessons without the step that crashed, and faster.</Fragment>
+      <Fragment slot="change">Made with Codeyard: the checks read the lessons with a more direct program, and only when a test needs them. No lesson changed.</Fragment>
+      <Fragment slot="settled">Should the two fixes be one change? The owner decided: one request and one proposed change, with a small earlier fix taken along.</Fragment>
+      <Fragment slot="check">Six agreed conditions. The first: reading all lessons gives exactly the same results as before, without the step that crashed.</Fragment>
+      <Fragment slot="found">A new test could skip itself when something was missing, and so pass without checking anything. It was fixed: the test now checks what it needs. Under the project's own rules the finding raised the change to its highest risk level.</Fragment>
+      <Fragment slot="result">At that level the change needed the owner's approval. The owner accepted it the same day.</Fragment>
+      <Fragment slot="sources">The request, the four review rounds, the annotated proposed change and the measured times, in the records below.</Fragment>
+    </ProductCase>
+    <details class="proof">
+      <summary>Records: the request, the review rounds, the pull request and the run</summary>
+      <CaseSummary>
+        <Fragment slot="changed">Reading the claims of the course's lessons starts the pandoc that ships with Quarto directly, instead of one <code>quarto pandoc</code> per lesson block, and the tests read the claims when they run, not when they are loaded.</Fragment>
+        <Fragment slot="rounds">4. Rounds 1 and 2 each raised major findings, all fixed; round 4 passed.</Fragment>
+        <Fragment slot="found">That the new test of all lessons could skip itself, which under the project's own rules raises the risk level of the change. The level went from 2 to 3, and the merge needed the owner's approval.</Fragment>
+        <Fragment slot="result"><a href={pbcPull(390)}>PR #390</a>, opened at 14:09 UTC and merged by the owner at 15:38 UTC. Its description, written at the opening, records the full CI run as pending; that run passed at 15:35, before the merge.</Fragment>
+      </CaseSummary>
+      <dl class="facts">
+        <dt>active run time</dt><dd>Not shown: it is in the run record, which stays on the owner's machine.</dd>
+        <dt>waiting time</dt><dd>At least 1 h 29 min: the pull request was open that long before the owner merged it. How long the request waited before the run started is not in the public records.</dd>
+        <dt>total lead time</dt><dd>9 h 20 min, from the opening of the Issue, 06:18 UTC, to the merge, 15:38 UTC. Source: the timestamps of <a href={pbcIssue(388)}>the Issue</a> and <a href={pbcPull(390)}>the pull request</a> on GitHub.</dd>
+        <dt>tokens, interventions</dt><dd>Not shown. The tokens the models read and the owner's recorded interventions are in the project's run record, which stays on the owner's machine (<a href="#sources">sources</a>).</dd>
+      </dl>
+      <h4>The request</h4>
+      <p>The work started from <a href={pbcIssue(388)}>Issue #388</a>: the GitHub Issue, the ticket that says what to build and how to tell it is done. It names the cause: “Reading the claims of the lessons […] starts one <code>quarto pandoc</code> per lesson block, 183 processes for 94 lessons.” Each call first started Quarto's JavaScript runtime, which took 0.3 s and crashed now and then; according to the Issue the crash stopped the pipelines of another feature four times. The owner asked for both changes, reading the claims on first use and starting pandoc directly, in one Issue and one pull request, and let a small deferred fix ride along (<a href={pbcIssue(364)}>#364</a>).</p>
+      <p>The Issue has six acceptance criteria, the conditions the result must meet. The first reads “Reading the claims of all lessons returns the same claims as before (344 at 94 lessons) without starting <code>quarto</code>, and takes under 20 s on the developer machine (measured, not a budget of a test).”</p>
 
-    <h3>The result</h3>
-    <p>The description of the pull request, the proposed change on GitHub that the owner reads and merges, states the result as the project measured it: the bundled pandoc “gives the same 344 claims in 9 s instead of 56 s”, and “collecting tests/e2e takes 4 s instead of 65 s and the six selection tests 29 s instead of about five minutes.”</p>
-    <p class="needs">These are the project's own measurements on its developer machine, quoted from the pull request. They say what the change did to that project's tests, not how fast Codeyard is.</p>
+      <h4>The result</h4>
+      <p>The description of the pull request, the proposed change on GitHub that the owner reads and merges, states the result as the project measured it: the bundled pandoc “gives the same 344 claims in 9 s instead of 56 s”, and “collecting tests/e2e takes 4 s instead of 65 s and the six selection tests 29 s instead of about five minutes.”</p>
+      <p class="needs">These are the project's own measurements on its developer machine, quoted from the pull request. They say what the change did to that project's tests, not how fast Codeyard is.</p>
 
-    <h3>What the review found</h3>
-    <p>The implementer is the coding agent that writes the change. The reviewer is a second agent from another provider, here Codex, which can read the change but not edit it. A third agent, the triage, decides what happens to each finding; a major finding must be fixed before the change goes in, unless the owner records <a href={href("docs/detailed-workflow/#owner-exception")}>an exception</a> for it.</p>
-    <Table>
-      <caption>From the review and triage comments on the Issue, which the workflow publishes for each round with findings, and the review line of the pull request.</caption>
-      <thead><tr><th scope="col" class="num">round</th><th scope="col">verdict</th><th scope="col">findings</th><th scope="col">decision</th></tr></thead>
-      <tbody>
-        {pbcRounds.map((row) => (
-          <tr>
-            <th scope="row" class="num">{row.link ? <a href={row.link}>{row.round}</a> : row.round}</th>
-            <td data-col="verdict" class:list={["k", { off: row.verdict === "–" }]}>{row.verdict}</td>
-            <td data-col="findings" class:list={{ off: row.finding === "–" || row.round === 3 }}>{row.finding}</td>
-            <td data-col="decision" class:list={["k", { off: row.decision === "–" }]}>{row.decision}</td>
-          </tr>
-        ))}
-      </tbody>
-    </Table>
-    <p>Round 1 found that the evidence for the first criterion covered one sample page, not all lessons, and that the completion record, the implementer's account of what is done, claimed the closing of #364 before it could happen. The fixes added a test that compares the claims of every lesson both ways. Round 2 found the catch in that test:</p>
-    <pre role="region" tabindex="0" class="excerpt" aria-label="Excerpt of the review of round 2 of Physics by Construction Issue 388"><span class="src">{pbcIssue(388).replace(/^https:\/\//, "")} · round 2 · review, excerpt</span>### M1. The added skips trigger Level 3 and are missing from the risk record
+      <h4>What the review found</h4>
+      <p>The implementer is the coding agent that writes the change. The reviewer is a second agent from another provider, here Codex, which can read the change but not edit it. A third agent, the triage, decides what happens to each finding; a major finding must be fixed before the change goes in, unless the owner records <a href={href("docs/detailed-workflow/#owner-exception")}>an exception</a> for it.</p>
+      <Table>
+        <caption>From the review and triage comments on the Issue, which the workflow publishes for each round with findings, and the review line of the pull request.</caption>
+        <thead><tr><th scope="col" class="num">round</th><th scope="col">verdict</th><th scope="col">findings</th><th scope="col">decision</th></tr></thead>
+        <tbody>
+          {pbcRounds.map((row) => (
+            <tr>
+              <th scope="row" class="num">{row.link ? <a href={row.link}>{row.round}</a> : row.round}</th>
+              <td data-col="verdict" class:list={["k", { off: row.verdict === "–" }]}>{row.verdict}</td>
+              <td data-col="findings" class:list={{ off: row.finding === "–" || row.round === 3 }}>{row.finding}</td>
+              <td data-col="decision" class:list={["k", { off: row.decision === "–" }]}>{row.decision}</td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+      <p>Round 1 found that the evidence for the first criterion covered one sample page, not all lessons, and that the completion record, the implementer's account of what is done, claimed the closing of #364 before it could happen. The fixes added a test that compares the claims of every lesson both ways. Round 2 found the catch in that test:</p>
+      <pre role="region" tabindex="0" class="excerpt" aria-label="Excerpt of the review of round 2 of Physics by Construction Issue 388"><span class="src">{pbcIssue(388).replace(/^https:\/\//, "")} · round 2 · review, excerpt</span>### M1. The added skips trigger Level 3 and are missing from the risk record
 
 **Evidence:** `tests/unit/test_evidence.py::test_the_whole_site_gives_the_same_claims_through_both_ways`
 adds `pytest.skip` when lesson sources or a bundled pandoc are unavailable.
 The supplied risk record says Level 2 and lists no triggers; ADR 020
 decision 1 classifies a new skip as an escalation trigger.</pre>
-    <p>A test that skips itself where something is missing can pass without checking anything. The risk level, which the scripts compute from the files a change touches and from triggers such as this one, decides among other things whether the merge needs the owner's approval. The project's own risk policy, which names levels 1 to 3 in a decision record of that project, treats a new skip as a reason for the highest level. The fix removed the skips, and the test now asserts what it needs; the level stayed at 3, as the pull request records.</p>
+      <p>A test that skips itself where something is missing can pass without checking anything. The risk level, which the scripts compute from the files a change touches and from triggers such as this one, decides among other things whether the merge needs the owner's approval. The project's own risk policy, which names levels 1 to 3 in a decision record of that project, treats a new skip as a reason for the highest level. The fix removed the skips, and the test now asserts what it needs; the level stayed at 3, as the pull request records.</p>
 
-    <h3>What ran unattended, and where the owner decided</h3>
-    <ul class="rules">
-      <li><b>Unattended.</b> The triage of rounds 1 and 2, and so the decision to fix: each published triage says “by an unattended run; no human approved these decisions”.</li>
-      <li><b>The owner: the scope.</b> The Issue records the owner's word: combine the two changes in one Issue and one pull request, “create the Issue, do not start it yet”, and take #364 along.</li>
-      <li><b>The owner: the merge.</b> At level 3 the pull request said “Merge approval: required from the project owner, for exactly this commit”. The owner merged it at 15:38 UTC; #364 closed with it.</li>
-    </ul>
+      <h4>What ran unattended, and where the owner decided</h4>
+      <ul class="rules">
+        <li><b>Unattended.</b> The triage of rounds 1 and 2, and so the decision to fix: each published triage says “by an unattended run; no human approved these decisions”.</li>
+        <li><b>The owner: the scope.</b> The Issue records the owner's word: combine the two changes in one Issue and one pull request, “create the Issue, do not start it yet”, and take #364 along.</li>
+        <li><b>The owner: the merge.</b> At level 3 the pull request said “Merge approval: required from the project owner, for exactly this commit”. The owner merged it at 15:38 UTC; #364 closed with it.</li>
+      </ul>
 
-    <h3>The pull request, annotated</h3>
-    <div class="artifact">
-      <pre role="region" tabindex="0" class="record" aria-label="Excerpt of the description of pull request 390 of Physics by Construction"><span class="src">{pbcPull(390).replace(/^https:\/\//, "")} · excerpt</span><span class="pin" aria-hidden="true">1</span><mark>Completion: partial</mark>
+      <h4>The pull request, annotated</h4>
+      <div class="artifact">
+        <pre role="region" tabindex="0" class="record" aria-label="Excerpt of the description of pull request 390 of Physics by Construction"><span class="src">{pbcPull(390).replace(/^https:\/\//, "")} · excerpt</span><span class="pin" aria-hidden="true">1</span><mark>Completion: partial</mark>
 - met: Reading the claims of all lessons returns
   the same claims as before without starting
   quarto, in under 20 s on the developer machine […]
@@ -185,74 +259,87 @@ triage published on #388
   record: skip or expected failure added (review
   02 M1: […] removed, the test now asserts its
   prerequisites)</pre>
-      <ol class="notes">
-        <li><span class="pin" aria-hidden="true">1</span><div><b>Completion record</b><span>The implementer's claim, criterion by criterion, with evidence. “Partial” here means waiting, not unfinished: two criteria could only be shown after publishing, the CI run of the pull request and the closing of #364.</span></div></li>
-        <li><span class="pin" aria-hidden="true">2</span><div><b>Verification</b><span>The project's full set of checks, recorded for exactly this content.</span></div></li>
-        <li><span class="pin" aria-hidden="true">3</span><div><b>Independent review</b><span>Another provider, read-only. The fourth round passed; the triage of the rounds with findings is on the Issue.</span></div></li>
-        <li><span class="pin" aria-hidden="true">4</span><div><b>The owner's approval</b><span>Bound to one commit. No script merged it.</span></div></li>
-        <li><span class="pin" aria-hidden="true">5</span><div><b>Risk level</b><span>Raised from the minimum of the changed paths by the finding of round 2, and not lowered after the fix.</span></div></li>
-      </ol>
-    </div>
+        <ol class="notes">
+          <li><span class="pin" aria-hidden="true">1</span><div><b>Completion record</b><span>The implementer's claim, criterion by criterion, with evidence. “Partial” here means waiting, not unfinished: two criteria could only be shown after publishing, the CI run of the pull request and the closing of #364.</span></div></li>
+          <li><span class="pin" aria-hidden="true">2</span><div><b>Verification</b><span>The project's full set of checks, recorded for exactly this content.</span></div></li>
+          <li><span class="pin" aria-hidden="true">3</span><div><b>Independent review</b><span>Another provider, read-only. The fourth round passed; the triage of the rounds with findings is on the Issue.</span></div></li>
+          <li><span class="pin" aria-hidden="true">4</span><div><b>The owner's approval</b><span>Bound to one commit. No script merged it.</span></div></li>
+          <li><span class="pin" aria-hidden="true">5</span><div><b>Risk level</b><span>Raised from the minimum of the changed paths by the finding of round 2, and not lowered after the fix.</span></div></li>
+        </ol>
+      </div>
 
-    <h3>The run</h3>
-    <ol class="words timeline" aria-label="The run of Physics by Construction Issue 388, 6 November 2026">
-      <li><b>Issue opened</b><small class="k">06:18 UTC</small><p>On the owner's instruction, with six acceptance criteria.</p></li>
-      <li><b>Round 1 and triage</b><small class="k">10:05</small><p>Two major findings, fix now.</p></li>
-      <li><b>Round 2 and triage</b><small class="k">10:45</small><p>One major finding, fix now; the level becomes 3.</p></li>
-      <li><b>Rounds 3 and 4</b><small class="k">between 10:45 and 14:09</small><p>No comment on the Issue; round 4 passed.</p></li>
-      <li><b>Pull request</b><small class="k">14:09</small><p>With the completion record, the verification, the review line, the risk level and the merge approval.</p></li>
-      <li class="you"><b>Merge by the owner</b><small class="k">15:38 UTC</small><p>The CI run of the pull request had passed at 15:35; the description still shows that criterion as pending, because it was written at the opening. The Issue stays open until its pending criteria are recorded, as the pull request says.</p></li>
-    </ol>
+      <h4>The run</h4>
+      <ol class="words timeline" aria-label="The run of Physics by Construction Issue 388, 6 November 2026">
+        <li><b>Issue opened</b><small class="k">06:18 UTC</small><p>On the owner's instruction, with six acceptance criteria.</p></li>
+        <li><b>Round 1 and triage</b><small class="k">10:05</small><p>Two major findings, fix now.</p></li>
+        <li><b>Round 2 and triage</b><small class="k">10:45</small><p>One major finding, fix now; the level becomes 3.</p></li>
+        <li><b>Rounds 3 and 4</b><small class="k">between 10:45 and 14:09</small><p>No comment on the Issue; round 4 passed.</p></li>
+        <li><b>Pull request</b><small class="k">14:09</small><p>With the completion record, the verification, the review line, the risk level and the merge approval.</p></li>
+        <li class="you"><b>Merge by the owner</b><small class="k">15:38 UTC</small><p>The CI run of the pull request had passed at 15:35; the description still shows that criterion as pending, because it was written at the opening. The Issue stays open until its pending criteria are recorded, as the pull request says.</p></li>
+      </ol>
+    </details>
   </Section>
 
-  <Section id="memory" title="When the reviewer did not know what was decided: #217">
-    <Fragment slot="note"><a href={issue(217)}>Issue #217</a>, <a href={pull(222)}>PR #222</a>. One unattended run of <code>run-feature.sh</code>, 28 October 2026.</Fragment>
-    <CaseSummary>
-      <Fragment slot="changed">Every review round after the first receives the decisions of the earlier rounds, and a finding raised again names the one it continues.</Fragment>
-      <Fragment slot="rounds">5. Rounds 1 and 3 each raised a major finding, fixed; round 5 passed with one minor finding, accepted.</Fragment>
-      <Fragment slot="found">In round 3, that the fix of round 1 could still let a raised finding lose its severity, which would have weakened the very check the Issue protects.</Fragment>
-      <Fragment slot="result"><a href={pull(222)}>PR #222</a>, merged by the owner with the required approval, 29 October, 01:14 UTC.</Fragment>
-    </CaseSummary>
-    <dl class="facts">
-      <dt>tokens</dt><dd>about 1.7 million in all, about 1.1 million of them for review and fixes. Tokens are the units of text the models read, as the providers report them, cached reads included. Source: the run record.</dd>
-      <dt>interventions</dt><dd>none recorded. An intervention is something the owner did during the run that a script recorded, such as resuming a session by hand. Source: the run record.</dd>
-      <dt>lead time</dt><dd>3 h 36 min, from the opening of the Issue, 21:37 UTC, to the merge. Source: the timestamps on GitHub.</dd>
-    </dl>
-    <p class="lede">Each review round started without the decisions of the rounds before it. So the reviewer raised findings again that had already been fixed, or that the triage had accepted, and every such repeat cost a round. #217 gave every later round the earlier decisions.</p>
+  <section id="engineering" class="group" aria-labelledby="engineering-h">
+    <div class="wrap">
+      <h2 id="engineering-h">Engineering case studies</h2>
+      <p class="lede">Features of Codeyard itself, built with its own workflow, each named by the problem it solved. A short summary first; open the records for the figures, the review rounds and the excerpts. Issue numbers name the sources.</p>
+    </div>
+  </section>
 
-    <h3>The problem, from the run records</h3>
-    <p>The run analysis of 28 October 2026, in which a read-only agent reads the records of earlier runs, found that in five runs the reviewer raised a finding again as unresolved after it had been fixed, and that in one feature it raised findings again that the triage had accepted. The Issue asks that every review after round 1 receives the decisions of all earlier rounds, that a finding names the one it continues (<code>unresolved</code> or <code>worsened</code>), and that the stored review is checked against the recorded decisions. It has six acceptance criteria; the last one reads “No gate is weakened: a FIX_NOW finding that is really unresolved is still reported and still blocks.” Out of scope: the triage rules, the round limit, and the owner-exception mechanism.</p>
+  <Section id="memory" title="When the reviewer did not know what was decided" level={3}>
+    <Fragment slot="note">Source: <a href={issue(217)}>Issue #217</a>, <a href={pull(222)}>PR #222</a>. One unattended run of <code>run-feature.sh</code>, 28 October 2026.</Fragment>
+    <p>Each review round started without the decisions of the rounds before it. So the reviewer raised findings again that were already fixed or accepted, and every repeat cost a round. The change gives every later round the earlier decisions. Its own review took five rounds: round 3 found that the first fix could still let a raised finding lose its severity. That was fixed, and the owner merged it with the required approval.</p>
+    <details class="proof">
+      <summary>Records: figures, agents, review rounds, the run and the pull request</summary>
+      <CaseSummary>
+        <Fragment slot="changed">Every review round after the first receives the decisions of the earlier rounds, and a finding raised again names the one it continues.</Fragment>
+        <Fragment slot="rounds">5. Rounds 1 and 3 each raised a major finding, fixed; round 5 passed with one minor finding, accepted.</Fragment>
+        <Fragment slot="found">In round 3, that the fix of round 1 could still let a raised finding lose its severity, which would have weakened the very check the Issue protects.</Fragment>
+        <Fragment slot="result"><a href={pull(222)}>PR #222</a>, merged by the owner with the required approval, 29 October, 01:14 UTC.</Fragment>
+      </CaseSummary>
+      <dl class="facts">
+        <dt>tokens</dt><dd>about 1.7 million in all, about 1.1 million of them for review and fixes. Tokens are the units of text the models read, as the providers report them, cached reads included. Source: the run record.</dd>
+        <dt>interventions</dt><dd>none recorded. An intervention is something the owner did during the run that a script recorded, such as resuming a session by hand. Source: the run record.</dd>
+        <dt>active run time</dt><dd>1 h 30 min, from the start of the run, 21:38 UTC, to the pull request, 23:08. Source: the run record.</dd>
+        <dt>waiting time</dt><dd>About 2 h 6 min, nearly all of it after the pull request opened, until the merge.</dd>
+        <dt>total lead time</dt><dd>3 h 36 min, from the opening of the Issue, 21:37 UTC, to the merge, 29 October, 01:14. Source: the timestamps on GitHub.</dd>
+      </dl>
+      <p class="lede">Each review round started without the decisions of the rounds before it. So the reviewer raised findings again that had already been fixed, or that the triage had accepted, and every such repeat cost a round. #217 gave every later round the earlier decisions.</p>
 
-    <h3>Risk level and agents</h3>
-    <dl class="facts">
-      <dt>risk</dt><dd><span class="lvl high">high</span>: the feature changes <code>.agents/prompts/reviewer.md</code> and <code>.agents/schemas/feature-review.schema.json</code>, existing contract files; <code>scripts/lib/review-data.sh</code> and <code>scripts/review-feature.sh</code>, listed as high in <code>risk.conf</code>; and four existing test files. The reviewer also classified the impact on the architecture as major.</dd>
-      <dt>implementer</dt><dd><code>claude opus</code>. The first session started before there was a diff, so the level was still the default, medium. That gap became <a href={issue(227)}>#227</a>: you can now raise the level before the first session (<a href={pull(229)}>PR #229</a>).</dd>
-      <dt>fixes</dt><dd><code>claude fable</code>, selected by the line <code>triage-implementer@high</code></dd>
-      <dt>review</dt><dd><code>codex gpt-6-luna</code>, read-only</dd>
-      <dt>triage</dt><dd><code>claude sonnet</code>, read-only</dd>
-    </dl>
+      <h4>The problem, from the run records</h4>
+      <p>The run analysis of 28 October 2026, in which a read-only agent reads the records of earlier runs, found that in five runs the reviewer raised a finding again as unresolved after it had been fixed, and that in one feature it raised findings again that the triage had accepted. The Issue asks that every review after round 1 receives the decisions of all earlier rounds, that a finding names the one it continues (<code>unresolved</code> or <code>worsened</code>), and that the stored review is checked against the recorded decisions. It has six acceptance criteria; the last one reads “No gate is weakened: a FIX_NOW finding that is really unresolved is still reported and still blocks.” Out of scope: the triage rules, the round limit, and the owner-exception mechanism.</p>
 
-    <h3>Implementation and tests</h3>
-    <p>The change adds the earlier decisions to the reviewer's context in <code>scripts/review-feature.sh</code>, the optional <code>previous</code> field to the finding schema, and the validation in <code>review_artifact_errors</code> of <a href={repoFile("scripts/lib/review-data.sh")}><code>scripts/lib/review-data.sh</code></a>. A new test file, <a href={repoFile("tests/review-data-test.sh")}><code>tests/review-data-test.sh</code></a>, covers each invalid case; existing tests only gained blocks, no assertion was changed. Each re-raise becomes a <code>finding</code> event in the run record, and <code>report-runs.sh</code> counts them per feature.</p>
+      <h4>Risk level and agents</h4>
+      <dl class="facts">
+        <dt>risk</dt><dd><span class="lvl high">high</span>: the feature changes <code>.agents/prompts/reviewer.md</code> and <code>.agents/schemas/feature-review.schema.json</code>, existing contract files; <code>scripts/lib/review-data.sh</code> and <code>scripts/review-feature.sh</code>, listed as high in <code>risk.conf</code>; and four existing test files. The reviewer also classified the impact on the architecture as major.</dd>
+        <dt>implementer</dt><dd><code>claude opus</code>. The first session started before there was a diff, so the level was still the default, medium. That gap became <a href={issue(227)}>#227</a>: you can now raise the level before the first session (<a href={pull(229)}>PR #229</a>).</dd>
+        <dt>fixes</dt><dd><code>claude fable</code>, selected by the line <code>triage-implementer@high</code></dd>
+        <dt>review</dt><dd><code>codex gpt-6-luna</code>, read-only</dd>
+        <dt>triage</dt><dd><code>claude sonnet</code>, read-only</dd>
+      </dl>
 
-    <h3>Independent review and triage</h3>
-    <Table>
-      <caption>Rounds 1, 3 and 5 reviewed the complete feature, 2 and 4 only the fixes. The triage of each round with findings is published on the Issue, marked as approved by an unattended run.</caption>
-      <thead><tr><th scope="col" class="num">round</th><th scope="col">reviewed</th><th scope="col">verdict</th><th scope="col">finding</th><th scope="col">decision</th></tr></thead>
-      <tbody>
-        {rounds.map((row) => (
-          <tr>
-            <th scope="row" class="num">{row.link ? <a href={row.link}>{row.round}</a> : row.round}</th>
-            <td data-col="reviewed">{row.kind}</td>
-            <td data-col="verdict" class="k">{row.verdict}</td>
-            <td data-col="finding" class:list={{ off: row.finding === "–" }}>{row.finding}</td>
-            <td data-col="decision" class:list={["k", { off: row.decision === "–" }]}>{row.decision}</td>
-          </tr>
-        ))}
-      </tbody>
-    </Table>
-    <p>Round 3 is the review doing its job: the fix of round 1 was correct, but the new rule could still let a re-raised finding lower its severity, which would have weakened the very gate the Issue protects. Round 5 found one minor point, and the triage accepted it with a rationale, quoted below.</p>
-    <pre role="region" class="excerpt" aria-label="Excerpt of the triage of round 5"><span class="src">{issue(217).replace(/^https:\/\//, "")} · round 5 · triage, excerpt</span>### MIN1. The review schema makes `previous` required
+      <h4>Implementation and tests</h4>
+      <p>The change adds the earlier decisions to the reviewer's context in <code>scripts/review-feature.sh</code>, the optional <code>previous</code> field to the finding schema, and the validation in <code>review_artifact_errors</code> of <a href={repoFile("scripts/lib/review-data.sh")}><code>scripts/lib/review-data.sh</code></a>. A new test file, <a href={repoFile("tests/review-data-test.sh")}><code>tests/review-data-test.sh</code></a>, covers each invalid case; existing tests only gained blocks, no assertion was changed. Each re-raise becomes a <code>finding</code> event in the run record, and <code>report-runs.sh</code> counts them per feature.</p>
+
+      <h4>Independent review and triage</h4>
+      <Table>
+        <caption>Rounds 1, 3 and 5 reviewed the complete feature, 2 and 4 only the fixes. The triage of each round with findings is published on the Issue, marked as approved by an unattended run.</caption>
+        <thead><tr><th scope="col" class="num">round</th><th scope="col">reviewed</th><th scope="col">verdict</th><th scope="col">finding</th><th scope="col">decision</th></tr></thead>
+        <tbody>
+          {rounds.map((row) => (
+            <tr>
+              <th scope="row" class="num">{row.link ? <a href={row.link}>{row.round}</a> : row.round}</th>
+              <td data-col="reviewed">{row.kind}</td>
+              <td data-col="verdict" class="k">{row.verdict}</td>
+              <td data-col="finding" class:list={{ off: row.finding === "–" }}>{row.finding}</td>
+              <td data-col="decision" class:list={["k", { off: row.decision === "–" }]}>{row.decision}</td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+      <p>Round 3 is the review doing its job: the fix of round 1 was correct, but the new rule could still let a re-raised finding lower its severity, which would have weakened the very gate the Issue protects. Round 5 found one minor point, and the triage accepted it with a rationale, quoted below.</p>
+      <pre role="region" class="excerpt" aria-label="Excerpt of the triage of round 5"><span class="src">{issue(217).replace(/^https:\/\//, "")} · round 5 · triage, excerpt</span>### MIN1. The review schema makes `previous` required
 
 - Severity: minor
 - Rationale: Listing `previous` in `required` while allowing null
@@ -262,40 +349,40 @@ triage published on #388
   artifacts that omit it, so old artifacts stay valid [...]
   The mismatch is cosmetic and blocks nothing.</pre>
 
-    <h3>Verification evidence</h3>
-    <p>The full verification ran three times, once after each writing session: 1046, 1049 and 1118 seconds. They included the workflow's self-tests, because #217 changed workflow files; the header of <a href={repoFile("scripts/verify-workflow.conf")}><code>verify-workflow.conf</code></a> records that suite at 915 seconds when its budget was set. Eight more times a step required a verification and reused the recorded pass, because the content had not changed since. Every review report names the reviewed tree and the verification that passed for it.</p>
+      <h4>Verification evidence</h4>
+      <p>The full verification ran three times, once after each writing session: 1046, 1049 and 1118 seconds. They included the workflow's self-tests, because #217 changed workflow files; the header of <a href={repoFile("scripts/verify-workflow.conf")}><code>verify-workflow.conf</code></a> records that suite at 915 seconds when its budget was set. Eight more times a step required a verification and reused the recorded pass, because the content had not changed since. Every review report names the reviewed tree and the verification that passed for it.</p>
 
-    <h3>The run</h3>
-    <figure class="plain">
-      <svg class="lines" viewBox="0 0 1300 150" role="img" aria-labelledby="run-217-t" aria-describedby="run-217-words">
-        <title id="run-217-t">The run of #217: Issue, implementation, round 1 and its fixes, rounds 2 and 3 and their fixes, rounds 4 and 5, commit and pull request, and the merge by the owner.</title>
-        <path class="l2" d="M70 60 H1230"/>
-        <circle class="dot" cx="70" cy="60" r="10"/><text class="st" x="70" y="97" text-anchor="middle">Issue</text><text class="sub k" x="70" y="117" text-anchor="middle">21:37</text>
-        <circle class="dot" cx="215" cy="60" r="10"/><text class="st" x="215" y="97" text-anchor="middle">Implement</text><text class="sub k" x="215" y="117" text-anchor="middle">21:38</text>
-        <circle class="dot" cx="360" cy="60" r="10"/><text class="st" x="360" y="97" text-anchor="middle">Round 1</text><text class="sub k" x="360" y="117" text-anchor="middle">22:22</text>
-        <circle class="dot" cx="505" cy="60" r="10"/><text class="st" x="505" y="97" text-anchor="middle">Fixes</text><text class="sub k" x="505" y="117" text-anchor="middle">22:22</text>
-        <circle class="dot" cx="650" cy="60" r="10"/><text class="st" x="650" y="97" text-anchor="middle">Rounds 2–3</text><text class="sub k" x="650" y="117" text-anchor="middle">22:43</text>
-        <circle class="dot" cx="795" cy="60" r="10"/><text class="st" x="795" y="97" text-anchor="middle">Fixes</text><text class="sub k" x="795" y="117" text-anchor="middle">22:43</text>
-        <circle class="dot" cx="940" cy="60" r="10"/><text class="st" x="940" y="97" text-anchor="middle">Rounds 4–5</text><text class="sub k" x="940" y="117" text-anchor="middle">23:07</text>
-        <circle class="dot" cx="1085" cy="60" r="10"/><text class="st" x="1085" y="97" text-anchor="middle">Commit, PR</text><text class="sub k" x="1085" y="117" text-anchor="middle">23:08</text>
-        <rect class="gate" x="1220" y="50" width="20" height="20" transform="rotate(45 1230 60)"/><text class="st" x="1230" y="97" text-anchor="middle">Merge</text><text class="sub k" x="1230" y="117" text-anchor="middle">29 Oct, 01:14</text>
-      </svg>
-    </figure>
-    <ol class="words timeline" id="run-217-words">
-      <li><b>Issue created</b><small class="k">21:37 UTC</small><p>From the run analysis, with six acceptance criteria.</p></li>
-      <li><b>Implementation</b><small class="k">21:38 – 22:22</small><p>claude opus, unattended; verification 1046 s; completion record: complete.</p></li>
-      <li><b>Round 1 and triage</b><small class="k">22:22</small><p>M1 major, FIX_NOW.</p></li>
-      <li><b>Fixes</b><small class="k">22:22 – 22:42</small><p>claude fable; verification 1049 s.</p></li>
-      <li><b>Rounds 2 and 3, triage</b><small class="k">22:43</small><p>Round 2: no findings. Round 3: M1 major, FIX_NOW.</p></li>
-      <li><b>Fixes</b><small class="k">22:43 – 23:07</small><p>claude fable; verification 1118 s.</p></li>
-      <li><b>Rounds 4 and 5, triage</b><small class="k">23:07 – 23:08</small><p>Round 4: no findings. Round 5: PASS WITH MINOR FINDINGS, MIN1 accepted.</p></li>
-      <li><b>Commit and pull request</b><small class="k">23:08</small><p>The completion gate passed; <code>finish-feature.sh</code> committed and <code>publish-feature.sh</code> opened PR #222.</p></li>
-      <li class="you"><b>Merge by the owner</b><small class="k">29 October, 01:14 UTC</small><p>The pull request said “Merge approval: required from the project owner, for exactly this commit”.</p></li>
-    </ol>
+      <h4>The run</h4>
+      <figure class="plain">
+        <svg class="lines" viewBox="0 0 1300 150" role="img" aria-labelledby="run-217-t" aria-describedby="run-217-words">
+          <title id="run-217-t">The run of #217: Issue, implementation, round 1 and its fixes, rounds 2 and 3 and their fixes, rounds 4 and 5, commit and pull request, and the merge by the owner.</title>
+          <path class="l2" d="M70 60 H1230"/>
+          <circle class="dot" cx="70" cy="60" r="10"/><text class="st" x="70" y="97" text-anchor="middle">Issue</text><text class="sub k" x="70" y="117" text-anchor="middle">21:37</text>
+          <circle class="dot" cx="215" cy="60" r="10"/><text class="st" x="215" y="97" text-anchor="middle">Implement</text><text class="sub k" x="215" y="117" text-anchor="middle">21:38</text>
+          <circle class="dot" cx="360" cy="60" r="10"/><text class="st" x="360" y="97" text-anchor="middle">Round 1</text><text class="sub k" x="360" y="117" text-anchor="middle">22:22</text>
+          <circle class="dot" cx="505" cy="60" r="10"/><text class="st" x="505" y="97" text-anchor="middle">Fixes</text><text class="sub k" x="505" y="117" text-anchor="middle">22:22</text>
+          <circle class="dot" cx="650" cy="60" r="10"/><text class="st" x="650" y="97" text-anchor="middle">Rounds 2–3</text><text class="sub k" x="650" y="117" text-anchor="middle">22:43</text>
+          <circle class="dot" cx="795" cy="60" r="10"/><text class="st" x="795" y="97" text-anchor="middle">Fixes</text><text class="sub k" x="795" y="117" text-anchor="middle">22:43</text>
+          <circle class="dot" cx="940" cy="60" r="10"/><text class="st" x="940" y="97" text-anchor="middle">Rounds 4–5</text><text class="sub k" x="940" y="117" text-anchor="middle">23:07</text>
+          <circle class="dot" cx="1085" cy="60" r="10"/><text class="st" x="1085" y="97" text-anchor="middle">Commit, PR</text><text class="sub k" x="1085" y="117" text-anchor="middle">23:08</text>
+          <rect class="gate" x="1220" y="50" width="20" height="20" transform="rotate(45 1230 60)"/><text class="st" x="1230" y="97" text-anchor="middle">Merge</text><text class="sub k" x="1230" y="117" text-anchor="middle">29 Oct, 01:14</text>
+        </svg>
+      </figure>
+      <ol class="words timeline" id="run-217-words">
+        <li><b>Issue created</b><small class="k">21:37 UTC</small><p>From the run analysis, with six acceptance criteria.</p></li>
+        <li><b>Implementation</b><small class="k">21:38 – 22:22</small><p>claude opus, unattended; verification 1046 s; completion record: complete.</p></li>
+        <li><b>Round 1 and triage</b><small class="k">22:22</small><p>M1 major, FIX_NOW.</p></li>
+        <li><b>Fixes</b><small class="k">22:22 – 22:42</small><p>claude fable; verification 1049 s.</p></li>
+        <li><b>Rounds 2 and 3, triage</b><small class="k">22:43</small><p>Round 2: no findings. Round 3: M1 major, FIX_NOW.</p></li>
+        <li><b>Fixes</b><small class="k">22:43 – 23:07</small><p>claude fable; verification 1118 s.</p></li>
+        <li><b>Rounds 4 and 5, triage</b><small class="k">23:07 – 23:08</small><p>Round 4: no findings. Round 5: PASS WITH MINOR FINDINGS, MIN1 accepted.</p></li>
+        <li><b>Commit and pull request</b><small class="k">23:08</small><p>The completion gate passed; <code>finish-feature.sh</code> committed and <code>publish-feature.sh</code> opened PR #222.</p></li>
+        <li class="you"><b>Merge by the owner</b><small class="k">29 October, 01:14 UTC</small><p>The pull request said “Merge approval: required from the project owner, for exactly this commit”.</p></li>
+      </ol>
 
-    <h3>The pull request</h3>
-    <p>The description of <a href={pull(222)}>PR #222</a> carries the completion record with evidence for all six criteria, the verification, the review line, the risk level with its reasons, and the merge approval block.</p>
-    <pre role="region" class="excerpt" aria-label="Excerpt of the description of pull request 222"><span class="src">{pull(222).replace(/^https:\/\//, "")} · excerpt</span>Review: round 5, PASS WITH MINOR FINDINGS, by codex (gpt-6-luna); triage published on #217
+      <h4>The pull request</h4>
+      <p>The description of <a href={pull(222)}>PR #222</a> carries the completion record with evidence for all six criteria, the verification, the review line, the risk level with its reasons, and the merge approval block.</p>
+      <pre role="region" class="excerpt" aria-label="Excerpt of the description of pull request 222"><span class="src">{pull(222).replace(/^https:\/\//, "")} · excerpt</span>Review: round 5, PASS WITH MINOR FINDINGS, by codex (gpt-6-luna); triage published on #217
 
 Merge approval:
 - required from the project owner, for exactly this commit
@@ -304,76 +391,82 @@ Merge approval:
 - the independent review classified the impact on the architecture as major: [...]
 [...]
 - approval request: .agents/approval-requests/217.json (asks and records; grants nothing)</pre>
+    </details>
   </Section>
 
-  <Section id="story" title="How these pages were built: #241">
-    <Fragment slot="note"><a href={issue(241)}>Issue #241</a>, <a href={pull(249)}>PR #249</a>. One unattended run, 30 October 2026.</Fragment>
-    <CaseSummary>
-      <Fragment slot="changed">The first Features, Examples and About pages of this site.</Fragment>
-      <Fragment slot="rounds">3. Round 1 raised one major finding, fixed in the same run; round 3 passed.</Fragment>
-      <Fragment slot="found">That only one of the five examples linked the source files it changed, which an acceptance criterion required.</Fragment>
-      <Fragment slot="result"><a href={pull(249)}>PR #249</a>, merged by the owner without a separate approval, 30 October, 20:09 UTC.</Fragment>
-    </CaseSummary>
-    <p class="lede">The Features, Examples and About pages of this site were first written by an agent, checked by a second agent from another provider, and corrected before the owner merged them. Nobody watched the run; the records it left tell the story.</p>
-    <p>It started from <a href={issue(241)}>Issue #241</a>. Its acceptance criteria included this one: link every example to its Issue, its pull request and the source files it changed.</p>
+  <Section id="story" title="When new pages left out their sources" level={3}>
+    <Fragment slot="note">Source: <a href={issue(241)}>Issue #241</a>, <a href={pull(249)}>PR #249</a>. One unattended run, 30 October 2026.</Fragment>
+    <p>One unattended run wrote the first Features, Examples and About pages of this site. The request asked that every example link the source files it changed. The review found that only one of five examples did; the fix took one short session, and the third round passed. The owner merged it the same evening.</p>
+    <details class="proof">
+      <summary>Records: the run step by step, figures, review rounds and the pull request</summary>
+      <CaseSummary>
+        <Fragment slot="changed">The first Features, Examples and About pages of this site.</Fragment>
+        <Fragment slot="rounds">3. Round 1 raised one major finding, fixed in the same run; round 3 passed.</Fragment>
+        <Fragment slot="found">That only one of the five examples linked the source files it changed, which an acceptance criterion required.</Fragment>
+        <Fragment slot="result"><a href={pull(249)}>PR #249</a>, merged by the owner without a separate approval, 30 October, 20:09 UTC.</Fragment>
+      </CaseSummary>
+      <p class="lede">The Features, Examples and About pages of this site were first written by an agent, checked by a second agent from another provider, and corrected before the owner merged them. Nobody watched the run; the records it left tell the story.</p>
+      <p>It started from <a href={issue(241)}>Issue #241</a>. Its acceptance criteria included this one: link every example to its Issue, its pull request and the source files it changed.</p>
 
-    <figure class="plain">
-      <svg class="lines" viewBox="0 0 1100 150" role="img" aria-labelledby="run-241-t" aria-describedby="run-241-words">
-        <title id="run-241-t">The run of #241: implementation, round 1 and its fix, rounds 2 and 3, commit and pull request, and the merge by the owner.</title>
-        <path class="l2" d="M70 60 H1030"/>
-        <circle class="dot" cx="70" cy="60" r="10"/><text class="st" x="70" y="97" text-anchor="middle">Implement</text><text class="sub k" x="70" y="117" text-anchor="middle">19:27</text>
-        <circle class="dot" cx="262" cy="60" r="10"/><text class="st" x="262" y="97" text-anchor="middle">Round 1</text><text class="sub k" x="262" y="117" text-anchor="middle">19:38</text>
-        <circle class="dot" cx="454" cy="60" r="10"/><text class="st" x="454" y="97" text-anchor="middle">Fix</text><text class="sub k" x="454" y="117" text-anchor="middle">19:38</text>
-        <circle class="dot" cx="646" cy="60" r="10"/><text class="st" x="646" y="97" text-anchor="middle">Rounds 2–3</text><text class="sub k" x="646" y="117" text-anchor="middle">19:40</text>
-        <circle class="dot" cx="838" cy="60" r="10"/><text class="st" x="838" y="97" text-anchor="middle">Commit, PR</text><text class="sub k" x="838" y="117" text-anchor="middle">19:40</text>
-        <rect class="gate" x="1020" y="50" width="20" height="20" transform="rotate(45 1030 60)"/><text class="st" x="1030" y="97" text-anchor="middle">Merge</text><text class="sub k" x="1030" y="117" text-anchor="middle">20:09</text>
-      </svg>
-    </figure>
-    <ol class="words timeline" id="run-241-words">
-      <li><b>The implementer built the pages</b><small class="k">19:27 – 19:38 UTC</small><p>The implementer, here Claude Opus, wrote the three pages and the styles in under eleven minutes, ran the project's checks, and wrote in its completion record that all six acceptance criteria were met.</p></li>
-      <li><b>The independent reviewer found a gap</b><small class="k">19:38</small><p>The reviewer, here Codex, compared the pages with the Issue and found that only one of the five examples linked the source files it changed. It rated this major, and the triage confirmed it: fix now.</p></li>
-      <li><b>The implementer fixed it, and the final review passed</b><small class="k">19:38 – 19:40</small><p>The implementer added the source files of the other four examples in 85 seconds. Round 2 reviewed only the fix and found nothing; round 3 reviewed the complete feature again and passed.</p></li>
-      <li><b>The scripts opened a pull request</b><small class="k">19:40</small><p>Its description carries the evidence for each criterion, the checks and the review.</p></li>
-      <li class="you"><b>The owner merged it</b><small class="k">20:09 UTC</small><p>No script merges. This change needed no separate approval, so the owner merged it like any pull request.</p></li>
-    </ol>
+      <figure class="plain">
+        <svg class="lines" viewBox="0 0 1100 150" role="img" aria-labelledby="run-241-t" aria-describedby="run-241-words">
+          <title id="run-241-t">The run of #241: implementation, round 1 and its fix, rounds 2 and 3, commit and pull request, and the merge by the owner.</title>
+          <path class="l2" d="M70 60 H1030"/>
+          <circle class="dot" cx="70" cy="60" r="10"/><text class="st" x="70" y="97" text-anchor="middle">Implement</text><text class="sub k" x="70" y="117" text-anchor="middle">19:27</text>
+          <circle class="dot" cx="262" cy="60" r="10"/><text class="st" x="262" y="97" text-anchor="middle">Round 1</text><text class="sub k" x="262" y="117" text-anchor="middle">19:38</text>
+          <circle class="dot" cx="454" cy="60" r="10"/><text class="st" x="454" y="97" text-anchor="middle">Fix</text><text class="sub k" x="454" y="117" text-anchor="middle">19:38</text>
+          <circle class="dot" cx="646" cy="60" r="10"/><text class="st" x="646" y="97" text-anchor="middle">Rounds 2–3</text><text class="sub k" x="646" y="117" text-anchor="middle">19:40</text>
+          <circle class="dot" cx="838" cy="60" r="10"/><text class="st" x="838" y="97" text-anchor="middle">Commit, PR</text><text class="sub k" x="838" y="117" text-anchor="middle">19:40</text>
+          <rect class="gate" x="1020" y="50" width="20" height="20" transform="rotate(45 1030 60)"/><text class="st" x="1030" y="97" text-anchor="middle">Merge</text><text class="sub k" x="1030" y="117" text-anchor="middle">20:09</text>
+        </svg>
+      </figure>
+      <ol class="words timeline" id="run-241-words">
+        <li><b>The implementer built the pages</b><small class="k">19:27 – 19:38 UTC</small><p>The implementer, here Claude Opus, wrote the three pages and the styles in under eleven minutes, ran the project's checks, and wrote in its completion record that all six acceptance criteria were met.</p></li>
+        <li><b>The independent reviewer found a gap</b><small class="k">19:38</small><p>The reviewer, here Codex, compared the pages with the Issue and found that only one of the five examples linked the source files it changed. It rated this major, and the triage confirmed it: fix now.</p></li>
+        <li><b>The implementer fixed it, and the final review passed</b><small class="k">19:38 – 19:40</small><p>The implementer added the source files of the other four examples in 85 seconds. Round 2 reviewed only the fix and found nothing; round 3 reviewed the complete feature again and passed.</p></li>
+        <li><b>The scripts opened a pull request</b><small class="k">19:40</small><p>Its description carries the evidence for each criterion, the checks and the review.</p></li>
+        <li class="you"><b>The owner merged it</b><small class="k">20:09 UTC</small><p>No script merges. This change needed no separate approval, so the owner merged it like any pull request.</p></li>
+      </ol>
 
-    <h3>The figures</h3>
-    <dl class="facts">
-      <dt>13 min</dt><dd>the recorded run, from its start to the pull request, 19:27 to 19:40 UTC. Source: the run record of #241.</dd>
-      <dt>3 review rounds</dt><dd>two of the complete feature, one of the fix alone. Source: the review line of <a href={pull(249)}>PR #249</a>.</dd>
-      <dt>1 major finding</dt><dd>corrected in the same run. Source: <a href={comment(241, "6531925164")}>the review and triage of round 1</a>, published on the Issue.</dd>
-      <dt>tokens</dt><dd>about 9.4 million in all, about 540,000 of them for review and fixes; the rest is the implementer's one session. Source: the run record.</dd>
-      <dt>interventions</dt><dd>none recorded. Source: the run record.</dd>
-      <dt>lead time</dt><dd>13 h 46 min, from the opening of the Issue, 06:23 UTC, to the merge; the run itself started at 19:27. Source: the timestamps on GitHub.</dd>
-    </dl>
-    <p class="needs">This is one recorded run on the maintainer's server, not a benchmark. Another change, model or machine takes a different time.</p>
+      <h4>The figures</h4>
+      <dl class="facts">
+        <dt>13 min</dt><dd>the recorded run, from its start to the pull request, 19:27 to 19:40 UTC. Source: the run record of #241.</dd>
+        <dt>3 review rounds</dt><dd>two of the complete feature, one of the fix alone. Source: the review line of <a href={pull(249)}>PR #249</a>.</dd>
+        <dt>1 major finding</dt><dd>corrected in the same run. Source: <a href={comment(241, "6531925164")}>the review and triage of round 1</a>, published on the Issue.</dd>
+        <dt>tokens</dt><dd>about 9.4 million in all, about 540,000 of them for review and fixes; the rest is the implementer's one session. Source: the run record.</dd>
+        <dt>interventions</dt><dd>none recorded. Source: the run record.</dd>
+        <dt>active run time</dt><dd>13 min, from the start of the run, 19:27 UTC, to the pull request, 19:40. Source: the run record.</dd>
+        <dt>waiting time</dt><dd>13 h 33 min: 13 h 4 min before the run started, and 29 min from the pull request to the merge.</dd>
+        <dt>total lead time</dt><dd>13 h 46 min, from the opening of the Issue, 06:23 UTC, to the merge, 20:09. Source: the timestamps on GitHub.</dd>
+      </dl>
+      <p class="needs">This is one recorded run on the maintainer's server, not a benchmark. Another change, model or machine takes a different time.</p>
 
-    <h3>The run in detail</h3>
-    <p>The same run with the records each step left, for readers who want the mechanics.</p>
-    <dl class="facts">
-      <dt>risk</dt><dd><span class="lvl medium">medium</span>. The risk level is what the scripts compute from the files a change touches; it decides which model writes the fixes and whether the merge needs the owner's approval. The four changed files, three pages and the style sheet, are named by no class of <code>risk.conf</code>, so each gets the default. No escalation applied, the reviewer classified the impact on the architecture as minor, and the triage was full, the default.</dd>
-      <dt>implementer</dt><dd><code>claude opus</code>, the plain line <code>implementer</code> of <code>agents.conf</code></dd>
-      <dt>fixes</dt><dd><code>claude opus</code>, the plain line <code>triage-implementer</code>; at high, as in #217, <code>claude fable</code></dd>
-      <dt>review</dt><dd><code>codex gpt-6-luna</code>, read-only</dd>
-      <dt>triage</dt><dd><code>claude sonnet</code>, read-only</dd>
-    </dl>
-    <Table>
-      <caption>Rounds 1 and 3 reviewed the complete feature, round 2 only the fix. The triage of round 1 is published on the Issue, marked as approved by an unattended run.</caption>
-      <thead><tr><th scope="col" class="num">round</th><th scope="col">reviewed</th><th scope="col">verdict</th><th scope="col">finding</th><th scope="col">decision</th></tr></thead>
-      <tbody>
-        {storyRounds.map((row) => (
-          <tr>
-            <th scope="row" class="num">{row.link ? <a href={row.link}>{row.round}</a> : row.round}</th>
-            <td data-col="reviewed">{row.kind}</td>
-            <td data-col="verdict" class="k">{row.verdict}</td>
-            <td data-col="finding" class:list={{ off: row.finding === "–" }}>{row.finding}</td>
-            <td data-col="decision" class:list={["k", { off: row.decision === "–" }]}>{row.decision}</td>
-          </tr>
-        ))}
-      </tbody>
-    </Table>
-    <p>The verification, the project's full set of checks in <code>verify.sh</code>, ran twice, after the implementation and after the fix: 14 and 15 seconds, of which 13 were the check of this site. The workflow's own self-tests in <a href={repoFile("scripts/verify-workflow.conf")}><code>verify-workflow.conf</code></a> run only when a workflow file changes, and #241 changed none. Five more times a step reused the recorded pass, because the content had not changed since.</p>
-    <pre role="region" class="excerpt" aria-label="Excerpt of the description of pull request 249"><span class="src">{pull(249).replace(/^https:\/\//, "")} · excerpt</span>Review: round 3, PASS, by codex (gpt-6-luna); triage published on #241
+      <h4>The run in detail</h4>
+      <p>The same run with the records each step left, for readers who want the mechanics.</p>
+      <dl class="facts">
+        <dt>risk</dt><dd><span class="lvl medium">medium</span>. The risk level is what the scripts compute from the files a change touches; it decides which model writes the fixes and whether the merge needs the owner's approval. The four changed files, three pages and the style sheet, are named by no class of <code>risk.conf</code>, so each gets the default. No escalation applied, the reviewer classified the impact on the architecture as minor, and the triage was full, the default.</dd>
+        <dt>implementer</dt><dd><code>claude opus</code>, the plain line <code>implementer</code> of <code>agents.conf</code></dd>
+        <dt>fixes</dt><dd><code>claude opus</code>, the plain line <code>triage-implementer</code>; at high, as in #217, <code>claude fable</code></dd>
+        <dt>review</dt><dd><code>codex gpt-6-luna</code>, read-only</dd>
+        <dt>triage</dt><dd><code>claude sonnet</code>, read-only</dd>
+      </dl>
+      <Table>
+        <caption>Rounds 1 and 3 reviewed the complete feature, round 2 only the fix. The triage of round 1 is published on the Issue, marked as approved by an unattended run.</caption>
+        <thead><tr><th scope="col" class="num">round</th><th scope="col">reviewed</th><th scope="col">verdict</th><th scope="col">finding</th><th scope="col">decision</th></tr></thead>
+        <tbody>
+          {storyRounds.map((row) => (
+            <tr>
+              <th scope="row" class="num">{row.link ? <a href={row.link}>{row.round}</a> : row.round}</th>
+              <td data-col="reviewed">{row.kind}</td>
+              <td data-col="verdict" class="k">{row.verdict}</td>
+              <td data-col="finding" class:list={{ off: row.finding === "–" }}>{row.finding}</td>
+              <td data-col="decision" class:list={["k", { off: row.decision === "–" }]}>{row.decision}</td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+      <p>The verification, the project's full set of checks in <code>verify.sh</code>, ran twice, after the implementation and after the fix: 14 and 15 seconds, of which 13 were the check of this site. The workflow's own self-tests in <a href={repoFile("scripts/verify-workflow.conf")}><code>verify-workflow.conf</code></a> run only when a workflow file changes, and #241 changed none. Five more times a step reused the recorded pass, because the content had not changed since.</p>
+      <pre role="region" class="excerpt" aria-label="Excerpt of the description of pull request 249"><span class="src">{pull(249).replace(/^https:\/\//, "")} · excerpt</span>Review: round 3, PASS, by codex (gpt-6-luna); triage published on #241
 
 Merge approval:
 - not required
@@ -382,174 +475,219 @@ Merge approval:
 Risk: medium
 [...]
 - profile: none</pre>
+    </details>
   </Section>
 
-  <Section id="tradeoff" title="More rounds find more, and cost more">
+  <Section id="tradeoff" title="How many review rounds are worth it" level={3}>
     <Fragment slot="note">From the run records of <a href={issue(204)}>#204</a>, <a href={issue(241)}>#241</a> and <a href={issue(217)}>#217</a>. <a href="#sources">Sources</a>.</Fragment>
-    <p class="lede">Every review round is another call of the reviewer, and every finding that must be fixed sends the implementer back to work. The review repeats until a round passes, and stops for the owner after five.</p>
-    <Table>
-      <caption>Review time: from the start of round 1 to the end of the last review or triage, fixes included. Tokens: the input tokens of every reviewer, triage and fix call, as the providers report them, cached reads included.</caption>
-      <thead><tr><th scope="col">run</th><th scope="col" class="num">rounds</th><th scope="col">what the rounds found</th><th scope="col">review and fixes</th><th scope="col">whole run</th><th scope="col">tokens of review and fixes</th></tr></thead>
-      <tbody>
-        {costs.map((row) => (
-          <tr>
-            <th scope="row"><a href={`#${row.anchor}`}>#{row.issue}</a></th>
-            <td data-col="rounds" class="num">{row.rounds}</td>
-            <td data-col="what the rounds found">{row.found}</td>
-            <td data-col="review and fixes">{row.time}</td>
-            <td data-col="whole run">{row.run}</td>
-            <td data-col="tokens of review and fixes">{row.tokens}</td>
-          </tr>
-        ))}
-      </tbody>
-    </Table>
-    <p>What the extra rounds bought: in #217, round 3 found that the fix of round 1 could still let a raised finding lose its severity, which would have weakened the very check the Issue was written to protect. Round 2, which read only the fix, found nothing; the gap showed when round 3 read the complete feature again. What they cost: the review and its two fixes took 46 of the 90 minutes, and about twelve times the tokens of the single round of #204. In #241 the one finding cost under three minutes. A round that finds nothing, as in #204, costs seconds.</p>
+    <p>Every review round is another call of the reviewer, and every finding that must be fixed sends the builder back to work. The rounds repeat until one passes, and stop for the owner after five. In the three runs compared here, one round that found nothing took seconds; five rounds that found two real problems took about half of the run.</p>
+    <details class="proof">
+      <summary>Records: rounds, time and tokens of three runs</summary>
+      <Table>
+        <caption>Review time: from the start of round 1 to the end of the last review or triage, fixes included. Tokens: the input tokens of every reviewer, triage and fix call, as the providers report them, cached reads included.</caption>
+        <thead><tr><th scope="col">run</th><th scope="col" class="num">rounds</th><th scope="col">what the rounds found</th><th scope="col">review and fixes</th><th scope="col">active run time</th><th scope="col">tokens of review and fixes</th></tr></thead>
+        <tbody>
+          {costs.map((row) => (
+            <tr>
+              <th scope="row"><a href={`#${row.anchor}`}>#{row.issue}</a></th>
+              <td data-col="rounds" class="num">{row.rounds}</td>
+              <td data-col="what the rounds found">{row.found}</td>
+              <td data-col="review and fixes">{row.time}</td>
+              <td data-col="active run time">{row.run}</td>
+              <td data-col="tokens of review and fixes">{row.tokens}</td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+      <p>What the extra rounds bought: in #217, round 3 found that the fix of round 1 could still let a raised finding lose its severity, which would have weakened the very check the Issue was written to protect. Round 2, which read only the fix, found nothing; the gap showed when round 3 read the complete feature again. What they cost: the review and its two fixes took 46 of the 90 minutes, and about twelve times the tokens of the single round of #204. In #241 the one finding cost under three minutes. A round that finds nothing, as in #204, costs seconds.</p>
+    </details>
   </Section>
 
-  <Section id="features" title="More runs, by the problem they solved">
+  <Section id="features" title="Four more problems, four more runs" level={3}>
     <Fragment slot="note">From the run record of each feature and the description of its pull request. <a href="#sources">Sources</a>.</Fragment>
-    <p>Four more features of the audit's candidate list. All four changed the workflow and its gate, so all were high risk: the full triage applied, and each pull request said that the merge needed the owner's approval.</p>
-    <Table>
-      <caption>Verification: each full run of <code>verify.sh</code>, in seconds, on the maintainer's server; every other verification of the feature reused a recorded pass. Run: from the start of <code>run-feature.sh</code>, the script that takes a feature from the Issue to the pull request, to the pull request.</caption>
-      <thead><tr><th scope="col">issue</th><th scope="col">problem</th><th scope="col">what changed</th><th scope="col" class="num">rounds</th><th scope="col">findings</th><th scope="col">full verifications (s)</th><th scope="col">run</th><th scope="col">result</th></tr></thead>
-      <tbody>
-        {features.map((row) => (
-          <tr>
-            <th scope="row"><a href={`#${row.anchor}`}>#{row.issue}</a></th>
-            <td data-col="problem">{row.problem}</td>
-            <td data-col="what changed">{row.change}</td>
-            <td data-col="rounds" class="num">{row.rounds}</td>
-            <td data-col="findings">{row.findings}</td>
-            <td data-col="full verifications (s)" class="k">{row.verify}</td>
-            <td data-col="run">{row.run}</td>
-            <td data-col="result"><a href={pull(row.pull)}>PR #{row.pull}</a></td>
-          </tr>
-        ))}
-      </tbody>
-    </Table>
-  </Section>
-
-  <Section id="owner" title="When every feature got the same workflow: #189">
-    <Fragment slot="note"><a href={issue(189)}>Issue #189</a>, <a href={pull(194)}>PR #194</a>, 27 October 2026.</Fragment>
-    <CaseSummary>
-      <Fragment slot="changed">The risk level of a feature is computed from one policy file.</Fragment>
-      <Fragment slot="rounds">3, none with findings.</Fragment>
-      <Fragment slot="found">Nothing. The owner found a defect before the merge: a failed listing of the changed files fell back to the default level.</Fragment>
-      <Fragment slot="result"><a href={pull(194)}>PR #194</a>, merged by the owner with the required approval, 27 October, 14:47 UTC.</Fragment>
-    </CaseSummary>
-    <dl class="facts">
-      <dt>tokens</dt><dd>about 3.2 million in all, about 730,000 of them for review. Source: the run record.</dd>
-      <dt>interventions</dt><dd>1: the owner resumed the implementer by hand. Source: the run record.</dd>
-      <dt>lead time</dt><dd>2 h 18 min, from the opening of the Issue, 12:29 UTC, to the merge. Source: the timestamps on GitHub.</dd>
-    </dl>
-    <p class="lede">Nothing in the workflow computed how risky a change was, so every feature went through the same steps, whatever it changed. #189 introduced the risk level, computed from one policy file. The owner sharpened its scope in a comment, and caught a defect before the merge.</p>
+    <p>Four more features of the audit's candidate list, each high risk because it changed the workflow and its checks:</p>
     <ul class="rules">
-      <li><b>A comment as a decision.</b> After the first run, <a href={comment(189, "6443105170")}>the owner's comment</a> set two rules from experience with another project: an escalation reads only changed or removed lines of existing files, and a feature already in progress is not refused.</li>
-      <li><b>A resumed session.</b> The owner resumed the implementer by hand, which the run record notes as an intervention. The record also shows the comment passed on to the resumed implementer and to each later review.</li>
-      <li><b>A correction before the merge.</b> The owner found that a failed listing of the changed files fell back to the default level. The fix makes it high, with a test that fails against the earlier commit and passes with the fix, as the completion record in the pull request states.</li>
-      <li><b>Three rounds, no findings.</b> Review by <code>codex gpt-6-luna</code>, ten of ten criteria met; full verifications of 556, 575 and 572 seconds.</li>
+      {features.map((row) => <li><b>{row.problem}.</b> <a href={`#${row.anchor}`}>The case</a></li>)}
     </ul>
-    <p>Source files changed by <a href={pull(194)}>PR #194</a>: {changed[194].map((path, i) => (<>{i > 0 && ", "}<a href={repoFile(path)}><code>{path}</code></a></>))}.</p>
+    <details class="proof">
+      <summary>Records: rounds, findings, verifications and runs of the four</summary>
+      <p>All four were high risk: the full triage applied, and each pull request said that the merge needed the owner's approval.</p>
+      <Table>
+        <caption>Verification: each full run of <code>verify.sh</code>, in seconds, on the maintainer's server; every other verification of the feature reused a recorded pass. Active run time: from the start of <code>run-feature.sh</code>, the script that takes a feature from the Issue to the pull request, to the pull request.</caption>
+        <thead><tr><th scope="col">issue</th><th scope="col">problem</th><th scope="col">what changed</th><th scope="col" class="num">rounds</th><th scope="col">findings</th><th scope="col">full verifications (s)</th><th scope="col">active run time</th><th scope="col">result</th></tr></thead>
+        <tbody>
+          {features.map((row) => (
+            <tr>
+              <th scope="row"><a href={`#${row.anchor}`}>#{row.issue}</a></th>
+              <td data-col="problem">{row.problem}</td>
+              <td data-col="what changed">{row.change}</td>
+              <td data-col="rounds" class="num">{row.rounds}</td>
+              <td data-col="findings">{row.findings}</td>
+              <td data-col="full verifications (s)" class="k">{row.verify}</td>
+              <td data-col="active run time">{row.run}</td>
+              <td data-col="result"><a href={pull(row.pull)}>PR #{row.pull}</a></td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </details>
   </Section>
 
-  <Section id="repair" title="When a fix did not hold: #193">
-    <Fragment slot="note"><a href={issue(193)}>Issue #193</a>, <a href={pull(199)}>PR #199</a>, 27 October 2026.</Fragment>
-    <CaseSummary>
-      <Fragment slot="changed">A check against a target for a duration or a size became a measurement that is reported, not repaired.</Fragment>
-      <Fragment slot="rounds">4. Rounds 1 and 2 raised findings, all fixed; rounds 3 and 4 passed.</Fragment>
-      <Fragment slot="found">In round 2, the major finding of round 1 again, as unresolved: the fix treated an exit status that a measurement can return as a failure.</Fragment>
-      <Fragment slot="result"><a href={pull(199)}>PR #199</a>, merged by the owner with the required approval, 27 October, 19:48 UTC.</Fragment>
-    </CaseSummary>
-    <dl class="facts">
-      <dt>tokens</dt><dd>about 7.2 million in all, about 1.0 million of them for review and fixes. Source: the run record.</dd>
-      <dt>interventions</dt><dd>none recorded. Source: the run record.</dd>
-      <dt>lead time</dt><dd>7 h 17 min, from the opening of the Issue, 12:31 UTC, to the merge. Source: the timestamps on GitHub.</dd>
-    </dl>
-    <p class="lede">A check that measures a duration or a size against a target failed the verification when the target was missed, and the scripts sent the implementer to repair it, with no diagnosed problem. #193 made such budget checks measurements that are reported, not repaired.</p>
-    <p>In round 1 the reviewer found that a failing timeout utility was reported as an exceeded budget (major) and that a budget's output was cut short (minor); the triage decided to fix both. In round 2 the reviewer raised the major finding again, as “Unresolved M1”: the fix now treated exit status 128 as a failure of the call, though a measurement can return it. A second fix round resolved it, and rounds 3 and 4 passed. Each round's report and triage is <a href={issue(193)}>on the Issue</a>.</p>
-    <p>Source files changed by <a href={pull(199)}>PR #199</a>: {changed[199].map((path, i) => (<>{i > 0 && ", "}<a href={repoFile(path)}><code>{path}</code></a></>))}.</p>
+  <Section id="owner" title="When every feature got the same workflow" level={3}>
+    <Fragment slot="note">Source: <a href={issue(189)}>Issue #189</a>, <a href={pull(194)}>PR #194</a>, 27 October 2026.</Fragment>
+    <p>Nothing computed how risky a change was, so every feature went through the same steps, whatever it changed. The change computes a risk level from one policy file. Its three review rounds found nothing. The owner sharpened the scope in a comment and, before the merge, caught a defect: a failed listing of the changed files fell back to the default level instead of the highest.</p>
+    <details class="proof">
+      <summary>Records: figures, the owner's part and the changed files</summary>
+      <CaseSummary>
+        <Fragment slot="changed">The risk level of a feature is computed from one policy file.</Fragment>
+        <Fragment slot="rounds">3, none with findings.</Fragment>
+        <Fragment slot="found">Nothing. The owner found a defect before the merge: a failed listing of the changed files fell back to the default level.</Fragment>
+        <Fragment slot="result"><a href={pull(194)}>PR #194</a>, merged by the owner with the required approval, 27 October, 14:47 UTC.</Fragment>
+      </CaseSummary>
+      <dl class="facts">
+        <dt>tokens</dt><dd>about 3.2 million in all, about 730,000 of them for review. Source: the run record.</dd>
+        <dt>interventions</dt><dd>1: the owner resumed the implementer by hand. Source: the run record.</dd>
+        <dt>active run time</dt><dd>No single figure: the feature took four runs, because the owner resumed the implementer by hand. Source: the run record.</dd>
+        <dt>total lead time</dt><dd>2 h 18 min, from the opening of the Issue, 12:29 UTC, to the merge; waiting and active time are not separated here. Source: the timestamps on GitHub.</dd>
+      </dl>
+      <p class="lede">Nothing in the workflow computed how risky a change was, so every feature went through the same steps, whatever it changed. #189 introduced the risk level, computed from one policy file. The owner sharpened its scope in a comment, and caught a defect before the merge.</p>
+      <ul class="rules">
+        <li><b>A comment as a decision.</b> After the first run, <a href={comment(189, "6443105170")}>the owner's comment</a> set two rules from experience with another project: an escalation reads only changed or removed lines of existing files, and a feature already in progress is not refused.</li>
+        <li><b>A resumed session.</b> The owner resumed the implementer by hand, which the run record notes as an intervention. The record also shows the comment passed on to the resumed implementer and to each later review.</li>
+        <li><b>A correction before the merge.</b> The owner found that a failed listing of the changed files fell back to the default level. The fix makes it high, with a test that fails against the earlier commit and passes with the fix, as the completion record in the pull request states.</li>
+        <li><b>Three rounds, no findings.</b> Review by <code>codex gpt-6-luna</code>, ten of ten criteria met; full verifications of 556, 575 and 572 seconds.</li>
+      </ul>
+      <p>Source files changed by <a href={pull(194)}>PR #194</a>: {changed[194].map((path, i) => (<>{i > 0 && ", "}<a href={repoFile(path)}><code>{path}</code></a></>))}.</p>
+    </details>
   </Section>
 
-  <Section id="short" title="When one round is enough: #204 and #16">
-    <Fragment slot="note"><a href={pull(205)}>PR #205</a> and <a href={pull(213)}>PR #213</a>, 28 October 2026.</Fragment>
-    <p class="lede">Most features do not need several rounds. These two had a clear problem and a clear Issue, and the first review passed.</p>
-
-    <h3>#204</h3>
-    <CaseSummary>
-      <Fragment slot="changed">The reviewer is shown no change in the paths that the fingerprint, the hash that identifies the reviewed content, leaves out.</Fragment>
-      <Fragment slot="rounds">1, passed.</Fragment>
-      <Fragment slot="found">Nothing.</Fragment>
-      <Fragment slot="result"><a href={pull(205)}>PR #205</a>, merged by the owner with the required approval, 28 October, 08:09 UTC.</Fragment>
-    </CaseSummary>
-    <dl class="facts">
-      <dt>tokens</dt><dd>about 290,000 in all, about 90,000 of them for review. Source: the run record.</dd>
-      <dt>interventions</dt><dd>none recorded. Source: the run record.</dd>
-      <dt>lead time</dt><dd>2 h 30 min, from the opening of the Issue, 05:38 UTC, to the merge. Source: the timestamps on GitHub.</dd>
-    </dl>
-    <p><a href={issue(204)}>#204</a>: the reviewer was shown the workflow's own approval records as deleted, though the change never touched them. It ran from <code>run-feature.sh</code> to the pull request in 38 minutes: one implementation session, one verification of 909 seconds reused twice, one review that passed.</p>
-    <p>Source files changed by #204 in <a href={pull(205)}>PR #205</a>: {changed[205].map((path, i) => (<>{i > 0 && ", "}<a href={repoFile(path)}><code>{path}</code></a></>))}.</p>
-
-    <h3>#16</h3>
-    <CaseSummary>
-      <Fragment slot="changed">The clarification gate: an agent stops and asks before it builds while a decision that only the owner can make is open.</Fragment>
-      <Fragment slot="rounds">1, passed.</Fragment>
-      <Fragment slot="found">Nothing.</Fragment>
-      <Fragment slot="result"><a href={pull(213)}>PR #213</a>, merged by the owner with the required approval, 28 October, 16:34 UTC.</Fragment>
-    </CaseSummary>
-    <dl class="facts">
-      <dt>tokens</dt><dd>about 390,000 in all, about 70,000 of them for review. Source: the run record.</dd>
-      <dt>interventions</dt><dd>none recorded. Source: the run record.</dd>
-      <dt>lead time</dt><dd>43 days, from the opening of the Issue on 15 September to the merge; the run itself took 26 minutes. Source: the timestamps on GitHub and the run record.</dd>
-    </dl>
-    <p><a href={issue(16)}>#16</a> waited in the backlog for six weeks. The run took 26 minutes: the implementer received the owner's two comments with the Issue, which settled the design, and the single review passed.</p>
-    <p>Source files changed by #16 in <a href={pull(213)}>PR #213</a>: {changed[213].map((path, i) => (<>{i > 0 && ", "}<a href={repoFile(path)}><code>{path}</code></a></>))}.</p>
+  <Section id="repair" title="When a missed target sent the agent to repair" level={3}>
+    <Fragment slot="note">Source: <a href={issue(193)}>Issue #193</a>, <a href={pull(199)}>PR #199</a>, 27 October 2026.</Fragment>
+    <p>A check against a time or size target failed the verification when the target was missed, and the builder was sent to repair it without a diagnosed problem. The change reports such a check as a measurement instead. The review raised the same major finding twice: the first fix still treated an exit status that a measurement can return as a failure. The second fix held.</p>
+    <details class="proof">
+      <summary>Records: figures, review rounds and the changed files</summary>
+      <CaseSummary>
+        <Fragment slot="changed">A check against a target for a duration or a size became a measurement that is reported, not repaired.</Fragment>
+        <Fragment slot="rounds">4. Rounds 1 and 2 raised findings, all fixed; rounds 3 and 4 passed.</Fragment>
+        <Fragment slot="found">In round 2, the major finding of round 1 again, as unresolved: the fix treated an exit status that a measurement can return as a failure.</Fragment>
+        <Fragment slot="result"><a href={pull(199)}>PR #199</a>, merged by the owner with the required approval, 27 October, 19:48 UTC.</Fragment>
+      </CaseSummary>
+      <dl class="facts">
+        <dt>tokens</dt><dd>about 7.2 million in all, about 1.0 million of them for review and fixes. Source: the run record.</dd>
+        <dt>interventions</dt><dd>none recorded. Source: the run record.</dd>
+        <dt>active run time</dt><dd>1 h 18 min, from the start of the run to the pull request. Source: the run record.</dd>
+        <dt>waiting time</dt><dd>About 5 h 59 min, before the run started and until the merge together.</dd>
+        <dt>total lead time</dt><dd>7 h 17 min, from the opening of the Issue, 12:31 UTC, to the merge. Source: the timestamps on GitHub.</dd>
+      </dl>
+      <p class="lede">A check that measures a duration or a size against a target failed the verification when the target was missed, and the scripts sent the implementer to repair it, with no diagnosed problem. #193 made such budget checks measurements that are reported, not repaired.</p>
+      <p>In round 1 the reviewer found that a failing timeout utility was reported as an exceeded budget (major) and that a budget's output was cut short (minor); the triage decided to fix both. In round 2 the reviewer raised the major finding again, as “Unresolved M1”: the fix now treated exit status 128 as a failure of the call, though a measurement can return it. A second fix round resolved it, and rounds 3 and 4 passed. Each round's report and triage is <a href={issue(193)}>on the Issue</a>.</p>
+      <p>Source files changed by <a href={pull(199)}>PR #199</a>: {changed[199].map((path, i) => (<>{i > 0 && ", "}<a href={repoFile(path)}><code>{path}</code></a></>))}.</p>
+    </details>
   </Section>
 
-  <Section id="analysis" title="Codeyard's analysis of its own runs">
+  <Section id="short" title="When one round is enough" level={3}>
+    <Fragment slot="note">Source: <a href={pull(205)}>PR #205</a> and <a href={pull(213)}>PR #213</a>, 28 October 2026.</Fragment>
+    <p class="lede">Most features do not need several rounds. These two had a clear problem and a clear request, and the first review passed.</p>
+    <h4>When the reviewer saw untouched records as deleted</h4>
+    <p>The reviewer was shown the workflow's own approval records as deleted, though the change never touched them. The change hides from the reviewer the paths that the content fingerprint leaves out. One implementation session, one review, nothing found. Source: <a href={issue(204)}>Issue #204</a>.</p>
+    <details class="proof">
+      <summary>Records of #204: figures and the changed files</summary>
+      <CaseSummary>
+        <Fragment slot="changed">The reviewer is shown no change in the paths that the fingerprint, the hash that identifies the reviewed content, leaves out.</Fragment>
+        <Fragment slot="rounds">1, passed.</Fragment>
+        <Fragment slot="found">Nothing.</Fragment>
+        <Fragment slot="result"><a href={pull(205)}>PR #205</a>, merged by the owner with the required approval, 28 October, 08:09 UTC.</Fragment>
+      </CaseSummary>
+      <dl class="facts">
+        <dt>tokens</dt><dd>about 290,000 in all, about 90,000 of them for review. Source: the run record.</dd>
+        <dt>interventions</dt><dd>none recorded. Source: the run record.</dd>
+        <dt>active run time</dt><dd>38 min, from the start of the run to the pull request. Source: the run record.</dd>
+        <dt>waiting time</dt><dd>About 1 h 52 min, before the run started and until the merge together.</dd>
+        <dt>total lead time</dt><dd>2 h 30 min, from the opening of the Issue, 05:38 UTC, to the merge. Source: the timestamps on GitHub.</dd>
+      </dl>
+      <p><a href={issue(204)}>#204</a>: the reviewer was shown the workflow's own approval records as deleted, though the change never touched them. It ran from <code>run-feature.sh</code> to the pull request in 38 minutes: one implementation session, one verification of 909 seconds reused twice, one review that passed.</p>
+      <p>Source files changed by #204 in <a href={pull(205)}>PR #205</a>: {changed[205].map((path, i) => (<>{i > 0 && ", "}<a href={repoFile(path)}><code>{path}</code></a></>))}.</p>
+    </details>
+    <h4>When an agent could build before the owner decided</h4>
+    <p>An agent could start building while a decision that only the owner can make was still open. The change adds the clarification step: the agent stops and asks instead. The request waited six weeks in the backlog; the run itself was short, and its single review passed. Source: <a href={issue(16)}>Issue #16</a>.</p>
+    <details class="proof">
+      <summary>Records of #16: figures and the changed files</summary>
+      <CaseSummary>
+        <Fragment slot="changed">The clarification gate: an agent stops and asks before it builds while a decision that only the owner can make is open.</Fragment>
+        <Fragment slot="rounds">1, passed.</Fragment>
+        <Fragment slot="found">Nothing.</Fragment>
+        <Fragment slot="result"><a href={pull(213)}>PR #213</a>, merged by the owner with the required approval, 28 October, 16:34 UTC.</Fragment>
+      </CaseSummary>
+      <dl class="facts">
+        <dt>tokens</dt><dd>about 390,000 in all, about 70,000 of them for review. Source: the run record.</dd>
+        <dt>interventions</dt><dd>none recorded. Source: the run record.</dd>
+        <dt>active run time</dt><dd>26 min, from the start of the run to the pull request. Source: the run record.</dd>
+        <dt>waiting time</dt><dd>About 43 days, almost all of it in the backlog before the run.</dd>
+        <dt>total lead time</dt><dd>43 days, from the opening of the Issue on 15 September to the merge. Source: the timestamps on GitHub.</dd>
+      </dl>
+      <p><a href={issue(16)}>#16</a> waited in the backlog for six weeks. The run took 26 minutes: the implementer received the owner's two comments with the Issue, which settled the design, and the single review passed.</p>
+      <p>Source files changed by #16 in <a href={pull(213)}>PR #213</a>: {changed[213].map((path, i) => (<>{i > 0 && ", "}<a href={repoFile(path)}><code>{path}</code></a></>))}.</p>
+    </details>
+  </Section>
+
+  <Section id="analysis" title="What 41 recorded runs showed" level={3}>
     <Fragment slot="note">With <code>analyze-runs.sh</code>, 28 October 2026. <a href={href("features/#learn")}>Learning from your runs</a>.</Fragment>
-    <p class="lede">Codeyard ran its read-only analyst on its own run records: 41 runs of 19 features. The proposals that held up became Issues of this repository.</p>
-    <p>Among the findings: in five runs the reviewer raised a fixed finding again as unresolved; six of seven failed runs recorded no reason for the stop; the self-test suite had grown from 463 s to 915 s in two days. Five proposals became Issues, all merged:</p>
-    <Table>
-      <thead><tr><th scope="col">issue</th><th scope="col">change</th><th scope="col">result</th></tr></thead>
-      <tbody>
-        {proposals.map((proposal) => (
-          <tr>
-            <th scope="row"><a href={issue(proposal.issue)}>#{proposal.issue}</a></th>
-            <td data-col="change">{proposal.change}</td>
-            <td data-col="result"><a href={pull(proposal.pull)}>PR #{proposal.pull}</a></td>
-          </tr>
-        ))}
-      </tbody>
-    </Table>
-    <p>#217 is the feature <a href="#memory">followed end to end</a> on this page.</p>
+    <p>Codeyard ran its read-only analyst on its own run records: 41 runs of 19 features. Among its findings: in five runs the reviewer raised a fixed finding again, and six of seven failed runs recorded no reason for the stop. Five proposals became Issues, all merged; one of them is <a href="#memory">the reviewer case</a> above.</p>
+    <details class="proof">
+      <summary>Records: the findings and the five Issues</summary>
+      <p>A further finding: the self-test suite had grown from 463 s to 915 s in two days. The five proposals that became Issues:</p>
+      <Table>
+        <thead><tr><th scope="col">issue</th><th scope="col">change</th><th scope="col">result</th></tr></thead>
+        <tbody>
+          {proposals.map((proposal) => (
+            <tr>
+              <th scope="row"><a href={issue(proposal.issue)}>#{proposal.issue}</a></th>
+              <td data-col="change">{proposal.change}</td>
+              <td data-col="result"><a href={pull(proposal.pull)}>PR #{proposal.pull}</a></td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </details>
   </Section>
 
-  <Section id="levels" title="The examples by risk">
-    <Fragment slot="note">The levels as each run recorded them. <a href={href("features/#risk")}>Risk-proportionate workflow</a>.</Fragment>
-    <p class="lede">The risk level of a feature decides which model writes it and what the review rounds require. This repository runs the shipped risk policy, without a <code>profile</code> line, so every feature is medium or high.</p>
-    <Table>
-      <caption>From the risk lines of each pull request description and the run records. Run: from the start of <code>run-feature.sh</code> to the pull request.</caption>
-      <thead><tr><th scope="col">level</th><th scope="col">example</th><th scope="col">why this level</th><th scope="col" class="num">rounds</th><th scope="col">run</th><th scope="col">merge approval</th></tr></thead>
-      <tbody>
-        <tr><th scope="row"><span class="lvl high">high</span></th><td data-col="example"><a href="#memory">#217</a>, <a href={pull(222)}>PR #222</a></td><td data-col="why this level">It changes the reviewer's contract, the review schema and gate scripts</td><td data-col="rounds" class="num">5</td><td data-col="run">1 h 30 min</td><td data-col="merge approval">required</td></tr>
-        <tr><th scope="row"><span class="lvl medium">medium</span></th><td data-col="example"><a href="#story">#241</a>, <a href={pull(249)}>PR #249</a></td><td data-col="why this level">Website pages that no class of the policy names: the default</td><td data-col="rounds" class="num">3</td><td data-col="run">13 min</td><td data-col="merge approval">not required</td></tr>
-        <tr><th scope="row"><span class="lvl">low</span></th><td data-col="example" class="off">–</td><td data-col="why this level">Exists only under <code>profile: light</code>, which this repository does not use</td><td data-col="rounds" class="num off">–</td><td data-col="run" class="off">–</td><td data-col="merge approval" class="off">–</td></tr>
-      </tbody>
-    </Table>
-    <p>Under the shipped policy, medium and high run the same rounds: full verification, full review and full triage. What the level changed between these two runs is the model of the fixes and the owner's approval of the merge. Physics by Construction is not in this table: it names its levels 1 to 3 in its own policy, and <a href="#application">its case</a> shows them as it recorded them.</p>
+  <Section id="levels" title="What each risk level changed" level={3}>
+    <Fragment slot="note">The levels as each run recorded them. <a href={href("docs/risk-policy/")}>Risk policy</a>.</Fragment>
+    <p>The risk level of a feature decides which model writes its fixes and whether the merge needs the owner's approval. This repository's risk policy has no low class, no low default and no profile line, so every feature here is medium or high.</p>
+    <details class="proof">
+      <summary>Records: the examples by level</summary>
+      <Table>
+        <caption>From the risk lines of each pull request description and the run records. Active run time: from the start of <code>run-feature.sh</code> to the pull request.</caption>
+        <thead><tr><th scope="col">level</th><th scope="col">example</th><th scope="col">why this level</th><th scope="col" class="num">rounds</th><th scope="col">active run time</th><th scope="col">merge approval</th></tr></thead>
+        <tbody>
+          <tr><th scope="row"><span class="lvl high">high</span></th><td data-col="example"><a href="#memory">#217</a>, <a href={pull(222)}>PR #222</a></td><td data-col="why this level">It changes the reviewer's contract, the review schema and gate scripts</td><td data-col="rounds" class="num">5</td><td data-col="active run time">1 h 30 min</td><td data-col="merge approval">required</td></tr>
+          <tr><th scope="row"><span class="lvl medium">medium</span></th><td data-col="example"><a href="#story">#241</a>, <a href={pull(249)}>PR #249</a></td><td data-col="why this level">Website pages that no class of the policy names: the default</td><td data-col="rounds" class="num">3</td><td data-col="active run time">13 min</td><td data-col="merge approval">not required</td></tr>
+          <tr><th scope="row"><span class="lvl">low</span></th><td data-col="example" class="off">–</td><td data-col="why this level">Only where the risk policy makes the changed paths low: a <code>low:</code> class, <code>default: low</code> or <code>profile: light</code>. This repository has none</td><td data-col="rounds" class="num off">–</td><td data-col="active run time" class="off">–</td><td data-col="merge approval" class="off">–</td></tr>
+        </tbody>
+      </Table>
+      <p>Under the shipped policy, medium and high get the same rounds: the full verification, a review of the changes only when a round can build on the one before, and the full triage. What the level changed between these two runs is the model of the fixes and the owner's approval of the merge. Physics by Construction is not in this table: it names its levels 1 to 3 in its own policy, and <a href="#application">its case</a> shows them as it recorded them.</p>
+    </details>
   </Section>
 
-  <Section id="absent" title="What is not shown">
-    <Fragment slot="note"><a href={repoFile(".agents/policies/risk.conf")}><code>risk.conf</code></a> of this repository; <a href={issue(170)}>Issue #170</a>.</Fragment>
+  <section id="figures" class="group" aria-labelledby="figures-h">
+    <div class="wrap">
+      <h2 id="figures-h">About the figures</h2>
+      <p class="lede">What this page leaves out, and where each figure comes from.</p>
+    </div>
+  </section>
+
+  <Section id="absent" title="What is not shown" level={3}>
+    <Fragment slot="note"><a href={repoFile(".agents/policies/risk.conf")}><code>risk.conf</code></a> of this repository; <a href={href("docs/risk-policy/")}>Risk policy</a>; <a href={issue(170)}>Issue #170</a>.</Fragment>
     <ul class="rules">
-      <li><b>A low-risk run.</b> A low level exists only under <code>profile: light</code>, or with a <code>low:</code> class in <code>risk.conf</code>. This repository has neither, so none of its features was low, and this page does not invent one. Under the light profile a low feature may be committed without a review; the commit and the pull request say so, and the merge then needs your approval.</li>
-      <li><b>The run record of the application.</b> The run records of Physics by Construction stay on the owner's machine, so its case shows no tokens, interventions or verification times; it shows what the project published on GitHub.</li>
+      <li><b>A low-risk run.</b> A feature is low risk only when the project's risk policy makes every path it changes low, by a <code>low:</code> class, by <code>default: low</code>, or by <code>profile: light</code>, which adds a low class for documentation and process files; and nothing raises the level. This repository has none of these, so none of its features was low, and this page does not invent one. Under the shipped rules a low feature is still reviewed. With <code>low: review: none</code> or <code>profile: light</code> it is committed without a review; the commit and the pull request say so, and the merge then needs your approval.</li>
+      <li><b>The records of FightAnalytics.</b> Its repository is private, so this page shows no run, review, figure or pull request of it, and no claim about which of its functions were built with Codeyard.</li>
+      <li><b>The run record of Physics by Construction.</b> Its run records stay on the owner's machine, so its case shows no tokens, interventions, verification times or active run time; it shows what the project published on GitHub.</li>
       <li><b>A cost in money.</b> The run records count tokens but no prices, and a price depends on the plan or the account. This page gives no amount.</li>
-      <li><b>Onboarding an existing repository.</b> An existing repository can adopt the workflow (<a href={href("docs/adopting/")}>Adopting</a>), but it is tested only on synthetic fixtures so far; a pilot on a real repository follows, so there is no run of it to show.</li>
+      <li><b>Onboarding an existing repository.</b> An existing repository can adopt the workflow (<a href={href("docs/adopting/")}>Adopting</a>). A pilot on a private, existing application ran on 6 November 2026; <a href={issue(170)}>its report on Issue #170</a> describes it in general terms, and the fixes it led to were <a href={issue(299)}>#299</a>, <a href={issue(300)}>#300</a> and <a href={issue(306)}>#306</a>. Its records are private, so there is no run of it to show.</li>
     </ul>
   </Section>
 
-  <Section id="sources" title="Where the figures come from">
+  <Section id="sources" title="Where the figures come from" level={3}>
     <p>Each figure on this page has one of three sources:</p>
     <Table>
       <thead><tr><th scope="col">source</th><th scope="col">what it holds</th><th scope="col">where</th></tr></thead>
@@ -559,7 +697,13 @@ Risk: medium
         <tr><th scope="row">Run record</th><td data-col="what it holds">Times, agents, models and levels, tokens per agent call, verification seconds and reuses, interventions, comments passed on</td><td data-col="where" class="k">.agents/records/feature-&lt;n&gt;.jsonl, on the maintainer's machine</td></tr>
       </tbody>
     </Table>
-    <p>The lead time of each case runs from the opening of the Issue to the merge of its pull request, both timestamps on GitHub. The case of Physics by Construction uses only the first two sources: its run record stays on the owner's machine, so the figures that only a run record gives, tokens, verification seconds and interventions, are left out for it.</p>
+    <p>Times are given in three parts, where the sources have them:</p>
+    <dl class="facts">
+      <dt>active run time</dt><dd>From the start of <code>run-feature.sh</code> to the pull request, from the run record: the agents' sessions, the checks and the review rounds.</dd>
+      <dt>waiting time</dt><dd>The rest of the lead time: before the run started, while the request waited, and after the pull request opened, until the owner merged it.</dd>
+      <dt>total lead time</dt><dd>From the opening of the Issue to the merge of its pull request, both timestamps on GitHub. It is the waiting time and the active run time together.</dd>
+    </dl>
+    <p>The case of Physics by Construction uses only the first two sources: its run record stays on the owner's machine, so the figures that only a run record gives, tokens, verification seconds, interventions and the active run time, are left out for it.</p>
     <p class="needs">The run records are local by design and not published; the figures from them are copied here as recorded, through <code>report-runs.sh</code>. Durations and tokens depend on the machine, the models and the size of the test suite, and are not benchmarks. No figure here is a price: the records hold no prices.</p>
   </Section>
 </Base>

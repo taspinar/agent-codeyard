@@ -1,0 +1,16 @@
+---
+// The seven parts of a product case on the Projects page (#332), in order:
+// the users' problem and the working result, the change, one question settled
+// before building, the agreed approach and its check, what the review found,
+// the owner's decision and the result, and where the sources are. Each part is
+// a named slot, so it can carry links.
+---
+<dl class="facts case">
+  <dt>the problem</dt><dd><slot name="problem" /></dd>
+  <dt>the change</dt><dd><slot name="change" /></dd>
+  <dt>settled first</dt><dd><slot name="settled" /></dd>
+  <dt>approach and check</dt><dd><slot name="check" /></dd>
+  <dt>the review found</dt><dd><slot name="found" /></dd>
+  <dt>decision and result</dt><dd><slot name="result" /></dd>
+  <dt>sources</dt><dd><slot name="sources" /></dd>
+</dl>
