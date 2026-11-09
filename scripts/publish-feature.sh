@@ -154,12 +154,27 @@ echo
 # lists (lib/exceptions.sh). Each record is read again and its SHA-256
 # recomputed: a record that is missing, differs from the one the commit
 # names, or is no longer valid for the latest, current review is reported
-# and never shown as the owner's decision; nothing is pushed.
-git -C "$root" log -1 --format=%B "$finish_commit" >"$scratch/finish-message"
+# and never shown as the owner's decision; nothing is pushed. The review
+# and the exceptions are judged against the content of the finish commit,
+# so a merge of the base after it changes nothing of them. A commit after
+# the finish that stands in the way (finish_blocked) may change what they
+# covered: the exceptions of the last finish commit are refused with it.
+exceptions_commit="$finish_commit"
+if [[ -n "$finish_blocked" ]]; then
+  if [[ -n "$base_ref" ]]; then
+    exceptions_commit="$(git -C "$root" log -1 --format=%H --grep='^Completion: ' "$base_ref..HEAD")"
+  else
+    exceptions_commit="$(git -C "$root" log -1 --format=%H --grep='^Completion: ' HEAD)"
+  fi
+fi
+: >"$scratch/finish-message"
+[[ -z "$exceptions_commit" ]] || git -C "$root" log -1 --format=%B "$exceptions_commit" >"$scratch/finish-message"
 exceptions_section=""
 committed_exceptions="$(exception_committed_records "$scratch/finish-message")"
 if [[ -n "$committed_exceptions" ]]; then
   exception_problems=""
+  [[ -z "$finish_blocked" ]] ||
+    exception_problems+="the finish commit $(git -C "$root" rev-parse --short "$exceptions_commit") lists them, but $finish_blocked"$'\n'
   grep -Fqx -- "- required from the project owner, for exactly this commit" "$scratch/finish-message" ||
     exception_problems+="the finish commit lists exceptions, but its merge approval does not require the owner"$'\n'
   while IFS=$'\t' read -r record_relative record_sha; do
@@ -177,7 +192,7 @@ if [[ -n "$committed_exceptions" ]]; then
       exception_problems+="$record_relative names a review that does not exist: ${record_review:-none}"$'\n'
       continue
     fi
-    record_errors="$(exception_errors "$root" "$record" "$root/$record_review"; exception_review_errors "$root" "$scratch" "$root/$record_review")"
+    record_errors="$(exception_errors "$root" "$record" "$root/$record_review"; exception_review_errors "$root" "$scratch" "$root/$record_review" "$exceptions_commit")"
     if [[ -n "$record_errors" ]]; then
       exception_problems+="$record_relative is not valid now: ${record_errors//$'\n'/; }"$'\n'
       continue

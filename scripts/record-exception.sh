@@ -109,7 +109,9 @@ trap 'rm -rf "$tmp_work"' EXIT
 cp "$review_path" "$tmp_work/review.json"
 review_sha256="$(exception_sha256 "$tmp_work/review.json")"
 
-errors="$(review_artifact_errors "$tmp_work/review.json")"
+# The copy is validated; the earlier rounds that a finding with a
+# predecessor continues are next to the original.
+errors="$(review_artifact_errors "$tmp_work/review.json" "$review_path")"
 [[ -z "$errors" ]] || fail "invalid review artifact: ${errors//$'\n'/; }"
 [[ "$(jq -r '.kind // "feature"' "$tmp_work/review.json")" == "feature" ]] ||
   fail "only a finding of a feature review can be excepted."

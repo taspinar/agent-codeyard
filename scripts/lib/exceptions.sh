@@ -63,10 +63,11 @@ exception_blocking_findings() {
   jq -r '.findings[] | select(.severity == "critical" or .severity == "major") | .id' "$1"
 }
 
-# exception_review_errors <root> <scratch-dir> <review-json>
+# exception_review_errors <root> <scratch-dir> <review-json> [<commit>]
 # Prints why no exception to a finding of the review can count: the review
-# is not the latest round, or it is not current for the content. Prints
-# nothing when it can.
+# is not the latest round, or it is not current for the content: the working
+# tree, or the content of <commit> when given, such as the finish commit of
+# a branch that merged its base afterwards. Prints nothing when it can.
 exception_review_errors() {
   local latest
   local status=0
@@ -74,11 +75,11 @@ exception_review_errors() {
   latest="$(exception_latest_review "$3")"
   [[ "$latest" == "$3" ]] ||
     echo "${3#"$1"/} is not the latest review: ${latest#"$1"/} is newer"
-  review_is_current "$1" "$2" "$3" || status=$?
+  review_is_current "$1" "$2" "$3" ${4:+"$4"} || status=$?
   case "$status" in
     0) ;;
     1) echo "${3#"$1"/} is stale: the content changed after the review" ;;
-    *) echo "the fingerprint of the working tree could not be computed" ;;
+    *) echo "the fingerprint of the reviewed content could not be computed" ;;
   esac
 }
 

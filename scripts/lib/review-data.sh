@@ -278,9 +278,11 @@ review_earlier_decisions() {
   done | jq -cs '{rounds: (map(.round) | unique), findings: (sort_by(.round) | map(.findings[]))}'
 }
 
-# review_artifact_errors <review-json>: rules for a stored review artifact.
-# A finding that names an earlier finding (previous) is checked against the
-# earlier rounds of the feature and their approved triages.
+# review_artifact_errors <review-json> [<stored-as>]: rules for a stored
+# review artifact. A finding that names an earlier finding (previous) is
+# checked against the earlier rounds of the feature and their approved
+# triages: those next to <stored-as>, the path of the stored review when
+# <review-json> is a copy of it, or next to <review-json> itself.
 review_artifact_errors() {
   local earlier='{"rounds": [], "findings": []}'
 
@@ -289,7 +291,7 @@ review_artifact_errors() {
     return 0
   }
   if jq -e 'any(.findings[]? | objects; (.previous | type) == "object")' "$1" >/dev/null 2>&1; then
-    earlier="$(review_earlier_decisions "$1" "$(jq -r '.issue' "$1")" "$(jq -r '.round' "$1")")"
+    earlier="$(review_earlier_decisions "${2:-$1}" "$(jq -r '.issue' "$1")" "$(jq -r '.round' "$1")")"
   fi
 
   jq -r --argjson earlier "$earlier" "$_review_data_rules"'

@@ -252,12 +252,58 @@ fingerprint_review() {
   fi
 }
 
-# review_is_current <root> <scratch-dir> <review-json>
-# Succeeds when the reviewed content is unchanged since the review.
+# fingerprint_review_at <root> <scratch-dir> <review-json> <commit>
+# Prints the fingerprint of what the review covers as the commit has it:
+# fingerprint_review with the commit's files in place of the working tree.
+# The implementer's claims about a feature, which Git ignores and no commit
+# holds, come from the working tree as there.
+fingerprint_review_at() {
+  local root="$1"
+  local index="$2/fingerprint-review-at.index"
+  local review="$3"
+  local commit="$4"
+  local paths=()
+  local forced=()
+  local path
+  local issue
+
+  rm -f "$index"
+  if jq -e '(.reviewed_paths | type) == "array"' "$review" >/dev/null; then
+    while IFS= read -r path; do
+      paths+=("$path")
+    done < <(jq -r '.reviewed_paths[]' "$review")
+    GIT_INDEX_FILE="$index" git -C "$root" read-tree --empty || return 1
+    if [[ "${#paths[@]}" -gt 0 ]]; then
+      git -C "$root" ls-tree -r --full-tree "$commit" -- "${paths[@]}" |
+        GIT_INDEX_FILE="$index" git -C "$root" update-index --index-info || return 1
+    fi
+  else
+    GIT_INDEX_FILE="$index" git -C "$root" read-tree "$commit^{tree}" || return 1
+    issue="$(jq -r 'if (.kind // "feature") == "feature" and (.issue | type) == "number" then (.issue | tostring) else "" end' "$review")"
+    if [[ "$issue" =~ ^[0-9]+$ ]]; then
+      while IFS= read -r path; do
+        if [[ -e "$root/$path" || -L "$root/$path" ]]; then
+          forced+=("$path")
+        fi
+      done < <(fingerprint_feature_claims "$issue")
+    fi
+  fi
+  GIT_INDEX_FILE="$index" git -C "$root" rm -r -q -f --cached --ignore-unmatch -- "${FINGERPRINT_EXCLUDES[@]}" >/dev/null &&
+    { [[ "${#forced[@]}" -eq 0 ]] || GIT_INDEX_FILE="$index" git -C "$root" add -f -- "${forced[@]}" >/dev/null; } &&
+    GIT_INDEX_FILE="$index" git -C "$root" write-tree
+}
+
+# review_is_current <root> <scratch-dir> <review-json> [<commit>]
+# Succeeds when the reviewed content is unchanged since the review: in the
+# working tree, or in <commit> when given (fingerprint_review_at).
 review_is_current() {
   local current
 
-  current="$(fingerprint_review "$1" "$2" "$3")" || return 2
+  if [[ -n "${4:-}" ]]; then
+    current="$(fingerprint_review_at "$1" "$2" "$3" "$4")" || return 2
+  else
+    current="$(fingerprint_review "$1" "$2" "$3")" || return 2
+  fi
   [[ "$current" == "$(jq -r '.reviewed_tree' "$3")" ]]
 }
 
