@@ -270,6 +270,20 @@ record_reviewed_tree "$repo" "$review"
 printf 'Other.\n' >"$repo/.agents/handoffs/2.md"
 printf '{"changed": true}\n' >"$repo/.agents/reviews/x-review-01.json"
 (cd "$repo" && ./scripts/check-review.sh "$review" >/dev/null) || fail "the claims of another Issue, or a review artifact, made the review stale"
+# Judged at a commit (fingerprint_review_at): the files of the commit, with
+# the claims from the working tree. For the commit made from the reviewed
+# working tree it is the reviewed tree; a later change of the working tree
+# does not change it, a changed claim does.
+git -C "$repo" add -A
+git -C "$repo" commit -qm "Reviewed content"
+[[ "$(fingerprint_review_at "$repo" "$tmp" "$review" HEAD)" == "$(jq -r .reviewed_tree "$review")" ]] ||
+  fail "the reviewed content at the commit made from it is not the reviewed tree"
+printf 'merged later\n' >"$repo/later.txt"
+if review_is_current "$repo" "$tmp" "$review"; then fail "a new file did not make the review stale in the working tree"; fi
+review_is_current "$repo" "$tmp" "$review" HEAD || fail "a change after the commit made the review stale at the commit"
+printf 'Remaining: more.\n' >>"$repo/.agents/handoffs/1.md"
+if review_is_current "$repo" "$tmp" "$review" HEAD; then fail "a changed claim did not make the review stale at the commit"; fi
+rm "$repo/later.txt"
 rm -rf "$repo/.agents/completion" "$repo/.agents/handoffs/1.md" "$repo/.agents/handoffs/2.md"
 record_reviewed_tree "$repo" "$review"
 
@@ -278,6 +292,10 @@ mv "$review.tmp" "$review"
 printf 'five\n' >>"$repo/a.txt"
 (cd "$repo" && ./scripts/check-review.sh "$review" >/dev/null) ||
   fail "a change outside the reviewed paths made the review stale"
+git -C "$repo" add -A
+git -C "$repo" commit -qm "Outside the reviewed paths"
+[[ "$(fingerprint_review_at "$repo" "$tmp" "$review" HEAD)" == "$(files)" ]] ||
+  fail "the reviewed paths at a commit are not the reviewed paths of its working tree"
 printf 'revised\n' >>"$repo/docs/plan.md"
 status=0
 (cd "$repo" && ./scripts/check-review.sh "$review" >/dev/null 2>"$tmp/stale.err") || status=$?

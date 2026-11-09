@@ -1,0 +1,21 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "9b6be8bcb27a1cbb7d013f57bbf54f3bdf79be64",
+  "commit": {
+    "branch": "feature/323-record-exception-sh-refuses",
+    "parent": "fc0257da97f0d8a40dd3ee850a45592abe4bae00",
+    "base": "fc0257da97f0d8a40dd3ee850a45592abe4bae00"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/lib/fingerprint.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/review-data.sh: the file defines or carries out the workflow and its gate",
+    "scripts/publish-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The change extends shared review fingerprinting and publication gates in scripts/lib/fingerprint.sh, scripts/lib/review-data.sh, and scripts/publish-feature.sh. The implementation stays within the repository’s existing workflow architecture, but changes behavior used by other feature workflows and protected approval gates. "
+  ],
+  "explanation": "Issue #323: record-exception.sh refuses every finding that continues an earlier round. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

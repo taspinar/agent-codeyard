@@ -391,6 +391,100 @@ rm "$repo/$record_c1"
 if run_publish "$repo"; then fail "a feature with a missing exception was published"; fi
 grep -Fq "$record_c1 is missing" "$repo.publish" || fail "the missing exception was not reported"
 
+# ------------------------------------- a finding that continues an earlier one
+# The round-2 review re-raises M1 of round 1, which the triage left to fix:
+# the copy that record-exception.sh validates finds round 1 next to the
+# stored review.
+findings_round1="$findings"
+findings="$(jq '(.[] | select(.id == "M1")) += {previous: {round: 1, id: "M1", relation: "unresolved", reason: "Still wrong."}}' <<<"$findings_round1")"
+repo="$(setup_repo continued)"
+write_review "$repo" "$review2" 2
+record "$repo" y "$review2" "${not_applicable[@]}" || {
+  cat "$repo.out" >&2
+  fail "recording an exception to a finding that continues an earlier round failed"
+}
+record_continued=".agents/exceptions/feature-12-marker-review-02-M1.json"
+[[ -f "$repo/$record_continued" ]] || fail "the exception was not stored as $record_continued"
+jq -e --arg sha "$(sha256sum "$repo/$review2" | cut -c1-64)" '
+  (keys == (["account", "directed_at", "evidence", "finding_id", "finding_severity", "finding_title", "merge_base",
+             "reason", "review", "review_sha256", "reviewed_tree", "round", "schema", "type"]))
+  and .review == ".agents/reviews/feature-12-marker-review-02.json" and .review_sha256 == $sha
+  and .round == 2 and .finding_id == "M1" and .finding_title == "Wrong result"
+' "$repo/$record_continued" >/dev/null || fail "the exception to a continued finding differs in form: $(cat "$repo/$record_continued")"
+jq -r .body "$repo.gh.comments" >"$repo.comment"
+[[ "$(head -n 1 "$repo.comment")" == "<!-- workflow-report: owner-exception -->" ]] || fail "the comment on a continued finding lacks its marker"
+grep -Fqx "## Owner exception — round 2, finding M1" "$repo.comment" || fail "the comment on a continued finding differs in form"
+grep -Fq "SHA-256 \`$(sha256sum "$repo/$record_continued" | cut -c1-64)\`" "$repo.comment" ||
+  fail "the comment on a continued finding lacks the SHA-256 of the record"
+
+# A predecessor whose round does not exist is still refused, with the same
+# message.
+repo="$(setup_repo no-predecessor)"
+rm "$repo/$review" "$repo/$triage"
+write_review "$repo" "$review2" 2
+expect_refused "$repo" "a predecessor of a round without a review" \
+  "invalid review artifact: finding M1 names round 1 as its predecessor, but the feature has no review of that round" \
+  "$review2" "${not_applicable[@]}"
+findings="$findings_round1"
+
+# ------------------------------------------ the base merged after the finish
+# finished_with_exceptions <label>: a feature committed by finish-feature.sh
+# with an exception to each blocking finding, whose base then moved: main
+# has a commit that the feature does not.
+finished_with_exceptions() {
+  repo="$(setup_repo "$1")"
+  record "$repo" y "$review" "${not_applicable[@]}" || fail "$1: recording M1 failed"
+  record "$repo" y "$review" "${risk_accepted[@]}" || fail "$1: recording C1 failed"
+  run_finish "$repo" 12 "Add the marker" || {
+    cat "$repo.finish" >&2
+    fail "$1: finishing failed"
+  }
+  git -C "$repo" switch -q main
+  printf 'moved on\n' >"$repo/base.txt"
+  git -C "$repo" add base.txt
+  git -C "$repo" commit -qm "Base moves on"
+  git -C "$repo" push -q origin main
+  git -C "$repo" switch -q feature/12-marker
+}
+
+# Merging the base changes the working tree, but not what the review and
+# the exceptions covered: they are judged against the finish commit.
+finished_with_exceptions merged-base
+git -C "$repo" merge -q --no-edit origin/main
+run_publish "$repo" || {
+  cat "$repo.publish" >&2
+  fail "a feature with exceptions was refused after a merge of its base"
+}
+grep -Fq "The branch merged its base after the feature was finished" "$repo.publish" || fail "the merge of the base was not noticed"
+grep -Fqx "### Finding M1 (major), review round 1: Wrong result" "$repo.gh.body" ||
+  fail "the pull request after a merge of the base does not show the exception"
+pushed "$repo" || fail "the feature with exceptions was not pushed after a merge of the base"
+
+# A commit after the finish that changes what the review covered makes the
+# exceptions invalid, after a merge of the base and without one.
+finished_with_exceptions changed-after-merge
+git -C "$repo" merge -q --no-edit origin/main
+printf 'changed after the finish\n' >>"$repo/feature.txt"
+git -C "$repo" commit -qam "Change the feature after the finish"
+if run_publish "$repo"; then fail "exceptions were published although the feature changed after the finish"; fi
+grep -Fq "cannot be shown as the owner's decision" "$repo.publish" || {
+  cat "$repo.publish" >&2
+  fail "the exceptions of a feature changed after the merge were not refused"
+}
+grep -Fq "lists them, but the commit $(git -C "$repo" rev-parse --short HEAD) (Change the feature after the finish)" "$repo.publish" ||
+  fail "the refusal does not name the change after the merge"
+pushed "$repo" && fail "a feature changed after the finish was pushed with its exceptions"
+
+finished_with_exceptions changed-after-finish
+printf 'changed after the finish\n' >>"$repo/feature.txt"
+git -C "$repo" commit -qam "Change the feature after the finish"
+if run_publish "$repo"; then fail "exceptions were published although the feature changed after the finish"; fi
+grep -Fq "cannot be shown as the owner's decision" "$repo.publish" || {
+  cat "$repo.publish" >&2
+  fail "the exceptions of a feature changed after the finish were not refused"
+}
+pushed "$repo" && fail "a feature changed after the finish was pushed with its exceptions"
+
 # ----------------------------------------- invalid exceptions at the finish
 # expect_invalid <label> <message> <change>: records both exceptions, applies
 # the change, and expects finish-feature.sh to refuse with the message.

@@ -1824,10 +1824,12 @@ each record with its SHA-256. An exception can only require your approval,
 never grant it. A commit whose message, after the editor, no longer lists a
 record with its SHA-256, or whose record changed meanwhile, is undone.
 `publish-feature.sh` recomputes the SHA-256 of each record the finish commit
-lists and checks it against the latest review again; a missing, changed, or
-invalid record is reported and nothing is pushed, so it is never shown as
-your decision. Otherwise the pull request description starts with each
-original finding and your exception. The run record notes the exception as
+lists and checks it against the latest review again, judging the review
+against the content of the finish commit: a merge of the base afterwards
+leaves the exception valid, while a commit after the finish that changes the
+feature refuses it. A missing, changed, or invalid record is reported and
+nothing is pushed, so it is never shown as your decision. Otherwise the pull
+request description starts with each original finding and your exception. The run record notes the exception as
 an intervention.
 
 `run-feature.sh` never records, proposes, or confirms an exception. It reads
@@ -2119,7 +2121,10 @@ no approval request (it names the content of exactly that commit). Any other
 commit after the finish has no statement, and the pull request becomes a
 draft until the feature is finished again; its description names the commit
 that stands in the way and what to do: undo it into the working tree, review
-it, and finish again. Run `./scripts/verify.sh --all`
+it, and finish again. The owner's exceptions of the finish commit are
+judged against its content too, so they survive the merge of the base; with
+any other commit after the finish they are refused and nothing is pushed.
+Run `./scripts/verify.sh --all`
 after the merge; a review that was done before it covered the feature, not
 the merge.
 
