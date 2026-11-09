@@ -22,7 +22,14 @@ test("the detail keeps every fact of its steps, each in exactly one field, in th
       const order = tab.rows.map((row) => fields.findIndex(([, label]) => label === row.label));
       assert.deepEqual(order, [...order].sort((a, b) => a - b), `${key} ${tab.id}`);
     }
-    assert.deepEqual(detail.summaries, steps.map((step) => step.text), key);
+    assert.deepEqual(detail.summaries, steps.map((step) => step.summary), key);
+  }
+});
+
+test("the panel shortens a step to one sentence; the full text is the reference's", () => {
+  for (const step of [...planning, ...feature]) {
+    assert.equal(step.summary.match(/[.!?](?=\s|$)/g)?.length, 1, step.id);
+    assert.ok(step.summary.length < step.text.length, `${step.id}: the summary is shorter than the text`);
   }
 });
 

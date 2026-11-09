@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { agent, describe, example, follow, guide, guidedSummary, initial, parseAgents, route, routes, stateOf, switches, type State } from "./workflow.ts";
+import { agent, describe, example, follow, guide, initial, parseAgents, route, routes, stateOf, switches, type State } from "./workflow.ts";
 
 const models = parseAgents(readFileSync(new URL("../../../.agents/agents.conf", import.meta.url), "utf8"));
 const view = (change: Partial<State>) => describe({ ...initial, ...change }, models);
@@ -143,7 +143,7 @@ test("the walkthrough pauses at the owner's decisions, and at the triage only st
   assert.deepEqual(paused({ situation: "unclear", part: "feature" }), ["f-answer", "f-findings", "f-merge"]);
 });
 
-test("the guided route follows #241 along the route the switches draw for its state, and says who acts at every step", () => {
+test("the real case follows #241 along the route the switches draw for its state, and says who acts at every step", () => {
   const steps = guide(models);
   const route241 = describe(example, models).walk;
   assert.deepEqual(steps.map((step) => [step.key, step.lights]), route241.map((step) => [step.key, step.lights]));
@@ -155,28 +155,30 @@ test("the guided route follows #241 along the route the switches draw for its st
   assert.deepEqual(example, { part: "feature", run: "unattended", risk: "medium", profile: "standard", situation: "findings" }, "#241: one unattended run, medium risk, one major finding");
 });
 
-test("the guided routes are #241 first, then one exception each, step by step, and every step names who acts", () => {
-  assert.equal(routes[0].id, "example");
-  assert.deepEqual(follow("example", models).walk, guide(models));
-  assert.deepEqual(follow("unknown", models).walk, guide(models), "an unknown route is the guided one");
-  // The guided summary is one short line; the first step, shown under it, explains its terms.
-  assert.equal(follow("example", models).summary, guidedSummary);
-  assert.deepEqual(guidedSummary, ["Issue #241", "medium risk", "unattended"]);
-  const first = guide(models)[0].text;
-  assert.match(first, /unattended, without stopping for you, up to the pull request/);
-  assert.match(first, /Its risk is medium: risk is a policy level set by the files a change touches, and medium, the project's default, requires a review/);
+test("the routes of the map are one exception each, step by step, and every step names who acts; #241 is not one of them", () => {
+  assert.deepEqual(routes.map((r) => r.id), ["repair", "unclear", "findings", "high"]);
+  assert.deepEqual(follow("unknown", models).walk, follow("repair", models).walk, "an unknown route is the first one");
   const situation = (id: string) => routes.find((r) => r.id === id)!.state;
   assert.equal(situation("repair").situation, "repair");
   assert.equal(situation("unclear").situation, "unclear");
   assert.equal(situation("findings").situation, "findings");
   assert.equal(situation("high").risk, "high");
-  for (const r of routes.slice(1)) {
+  for (const r of routes) {
     assert.equal(r.state.run, "steps", r.id);
     const walk = follow(r.id, models).walk;
     assert.deepEqual(walk, describe(r.state, models).walk, r.id);
     for (const step of walk) assert.ok(step.who, `${r.id}: ${step.key}`);
   }
   assert.ok(follow("findings", models).walk.some((step) => step.key === "f-findings" && step.you), "step by step you approve the triage");
+});
+
+test("every step text of the tour of #241 is at most 40 words and has no risk, unattended, acceptance criteria or script name", () => {
+  const words = (text: string) => text.trim().split(/\s+/).length;
+  for (const step of guide(models)) {
+    assert.ok(words(step.text) <= 40, `${step.key}: ${words(step.text)} words`);
+    for (const text of [step.text, step.who]) assert.doesNotMatch(text, /\brisk|unattended|acceptance criteri|\.sh\b/i, `${step.key}: ${text}`);
+  }
+  assert.equal(words(" One two,  three. "), 3);
 });
 
 test("every walkthrough step is at most three sentences; the reference entry tells the rest", () => {

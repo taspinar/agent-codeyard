@@ -505,7 +505,7 @@ html:not(.js) .map-actions { display: none; }
 .page-head.tight { padding-bottom: 0; }
 .page-head.tight + .wrap .route { margin-top: var(--s-5); }
 .workflow .route-head { display: block; }
-.workflow .route-head h2 { margin-bottom: var(--s-3); }
+.workflow .route-head h3 { font-size: var(--t-lg); margin-bottom: var(--s-3); }
 .scenario { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--s-2) var(--s-5); border-top: 2px solid var(--ink); border-bottom: 1px solid var(--rule); padding: var(--s-3) 0; margin-bottom: var(--s-4); }
 .scenario p { margin: 0; max-width: var(--measure-wide); font-size: var(--t-sm); color: var(--ink-2); }
 .scenario strong { color: var(--ink); display: block; font-size: var(--t-md); }
@@ -517,7 +517,7 @@ html:not(.js) .reset { display: none; }
 .switch-row { display: flex; flex-wrap: wrap; gap: var(--s-3) var(--s-6); }
 .switch-row.minor { padding-top: var(--s-3); border-top: 1px solid var(--rule); }
 .switch-row.minor .switch span { font-size: var(--t-xs); }
-.hint, .tour-note { font-size: var(--t-sm); color: var(--ink-2); margin: var(--s-3) 0 0; max-width: var(--measure-wide); }
+.hint { font-size: var(--t-sm); color: var(--ink-2); margin: var(--s-3) 0 0; max-width: var(--measure-wide); }
 html:not(.js) .hint { display: none; }
 .map g.station { cursor: pointer; }
 .map g.station:focus { outline: none; }
@@ -658,26 +658,63 @@ main section.group { border-top: 2px solid var(--ink); padding-bottom: 0; }
   .trail li::before { top: 0.2rem; left: calc(-1 * var(--s-4) - 0.5 * var(--stroke) - 0.55rem); }
 }
 
-/* The guided routes and the advanced controls (/workflow): the explorer opens
-   on the walkthrough of one real feature; a row of routes follows it or one
-   exception, and the switches sit under a disclosure. Without JavaScript the
-   guided route is a timeline in words, and neither row is shown. */
+/* The routes and the switches (/workflow): a row of routes follows one
+   exception each, and the switches follow under a hairline. Without
+   JavaScript neither is shown. */
 .scenario [data-caption="who"] { color: var(--ink); }
-html.js .guide-static { display: none; }
-.guide-static h3 { font-size: var(--t-md); margin: 0 0 var(--s-3); }
 .routes { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-2) var(--s-3); margin-top: var(--s-4); }
 .routes-label { font: var(--w-semibold) var(--t-sm) var(--sans); color: var(--ink-3); }
 .routes button { font: var(--w-semibold) var(--t-sm) var(--sans); padding: var(--s-chip); border: 1px solid var(--rule); background: none; color: var(--ink-2); border-radius: 2px; cursor: pointer; }
 .routes button:hover { border-color: var(--rule-strong); color: var(--ink); }
 .routes button[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
 .advanced { margin-top: var(--s-4); border-top: 1px solid var(--rule); padding-top: var(--s-3); }
-.advanced > summary { font: var(--w-semibold) var(--t-sm) var(--sans); color: var(--ink); cursor: pointer; width: fit-content; }
-.advanced[open] > summary { margin-bottom: var(--s-3); }
 .advanced-note { font-size: var(--t-sm); color: var(--ink-2); max-width: var(--measure-wide); margin: 0 0 var(--s-3); }
 .advanced .reset { margin-top: var(--s-3); }
 html:not(.js) .routes, html:not(.js) .advanced { display: none; }
-/* The guided map: the feature's route only, without script and model names. */
-.workflow.guided :is(.plan-part, .map .trunk.plan, .map .sub.k, .map [data-key="n-unattended"], .words small.k) { display: none; }
+
+/* The four-step overview (/workflow, #330): the shared scenario in four
+   steps, two per phase. The planning phase sits under the ink line of the
+   map, the phase of each function under its green line. Every step is a
+   column of the same rows (its title, the four answers, the example, the
+   reference line), aligned across the columns by subgrids; the reading order
+   stays step by step. Two columns below 1100px, one below 760px. */
+main section.overview-sec { padding: var(--s-6) 0 var(--s-8); border-top: 0; }
+:is(.overview-sec, .technical-sec) h2 { font-size: var(--t-xl); }
+.example-label { margin: var(--s-2) 0 var(--s-5); color: var(--ink-2); max-width: var(--measure-wide); }
+.example-label b { color: var(--ink); }
+.overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: var(--s-5); }
+.overview .phase { grid-column: span 2; display: grid; grid-template-columns: subgrid; grid-template-rows: subgrid; grid-row: span var(--rows); }
+.overview .phase > header { grid-column: 1 / -1; border-top: var(--stroke) solid var(--ink); padding-top: var(--s-3); }
+.overview .phase.each > header { border-top-color: var(--line); }
+.overview .phase > header h3 { font-size: var(--t-md); }
+.overview .phase > header p { margin: var(--s-1) 0 0; font-size: var(--t-sm); color: var(--ink-2); }
+.overview ol { display: contents; }
+.overview ol > li { display: grid; grid-template-rows: subgrid; grid-row: span var(--step-rows); }
+.overview h4 { font-size: var(--t-lg); font-weight: var(--w-bold); letter-spacing: var(--track-snug); line-height: var(--lh-heading); margin: var(--s-4) 0 var(--s-2); }
+.overview h4 .n { font: var(--w-semibold) var(--t-sm) var(--mono); color: var(--ink-3); margin-right: var(--s-2); }
+.overview .said { display: contents; }
+.overview .eg { margin: 0; border-top: 1px solid var(--rule); }
+.overview :is(.said, .eg) > div { border-top: 1px solid var(--rule); padding: var(--s-2) 0; }
+.overview .eg > div:first-child { border-top: 0; }
+.overview dt { font: var(--w-bold) var(--t-xs) var(--sans); color: var(--ink-3); }
+.overview dd { margin: var(--s-1) 0 0; font-size: var(--t-sm); }
+.overview .eg { color: var(--ink-2); }
+.overview .eg ul { margin: 0; padding-left: var(--s-indent); }
+.overview .ref-link { margin: 0; padding-top: var(--s-2); border-top: 1px solid var(--rule); font-size: var(--t-sm); color: var(--ink-2); }
+@media (max-width: 1100px) {
+  .overview { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: var(--s-6); }
+}
+@media (max-width: 760px) {
+  .overview, .overview .phase, .overview ol > li { display: block; }
+  .overview ol { display: block; list-style: none; margin: 0; padding: 0; }
+  .overview .phase + .phase { margin-top: var(--s-6); }
+  .overview .said { display: block; margin: 0; }
+}
+/* The technical layer: the explorer under one named disclosure. */
+.technical-lede { margin: var(--s-2) 0 var(--s-4); color: var(--ink-2); max-width: var(--measure-wide); }
+.explore > summary { font: var(--w-bold) var(--t-md) var(--sans); color: var(--ink); cursor: pointer; width: fit-content; }
+.explore .route { margin-top: var(--s-4); }
+.ways-h { font-size: var(--t-md); margin-top: var(--s-6); }
 
 /* The home page (#317): the hero answers three questions in a definition
    list; the comparison keeps each row opposite its counterpart (a subgrid of

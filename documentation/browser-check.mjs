@@ -102,46 +102,47 @@ try {
       await page.keyboard.press('Enter');
       assert.equal(await page.locator('html').getAttribute('data-theme'), theme === 'light' ? 'dark' : 'light');
       await page.keyboard.press('Enter');
-      // The explorer opens on the guided route of #241 at its first step,
-      // with who acts; the routes of the exceptions follow from their first step.
-      // The summary is one short line; the first step explains its terms.
-      assert.match(await page.locator('[data-summary]').innerText(), /^Issue #241\s*·\s*medium risk\s*·\s*unattended$/);
-      assert.match(await page.locator('[data-caption="text"]').innerText(), /unattended, without stopping for you.*Its risk is medium: risk is a policy level/s);
-      assert.match(await page.locator('[data-caption="lead"]').innerText(), /^Step 1 of 12\.$/);
-      assert.equal(await page.locator('[data-caption="who"]').innerText(), 'You:');
-      assert(await page.locator('[data-workflow]').evaluate(e => e.classList.contains('walking')));
-      assert(!await page.locator('.advanced form').isVisible(), 'The switches start under the closed advanced controls');
-      // The guided map: the feature's route first, no planning line, no script or model names.
-      const guidedMap = async () => page.evaluate(() => ({
-        planning: getComputedStyle(document.querySelector('.workflow .map [data-key="p-plan"]')).display !== 'none',
-        names: [...document.querySelectorAll('.workflow .map .sub.k')].some(e => getComputedStyle(e).display !== 'none'),
-        box: document.querySelector('.workflow .map').getAttribute('viewBox'),
-      }));
-      assert.deepEqual(await guidedMap(), { planning: false, names: false, box: '-30 215 1260 267' }, 'The guided map shows the feature only, without script and model names');
-      // One guided tour first: at 1440 px the first screen of the explorer is
-      // the summary, the map and at most three buttons (Play, Previous, Next);
-      // the routes, the complete workflow, the list and the switches are below.
+      // The first layer: the four-step overview of the gym scenario, labelled
+      // as an illustration; at 1440 x 900 it is on the first screen, and no
+      // map with risk levels or profiles is shown before it.
+      assert.equal(await page.locator('#overview .phase li[id]').count(), 4);
+      assert.match(await page.locator('.example-label').innerText(), /^Illustrative example\. A gym's member application\./);
+      assert(!await page.locator('#workflow').isVisible(), 'The technical map starts closed');
       if (width === 1440) {
         const first = await page.evaluate(() => {
-          const shown = e => { const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0 && b.top < innerHeight; };
-          const figure = document.querySelector('[data-workflow]');
-          return {
-            summary: shown(figure.querySelector('[data-summary]')),
-            map: figure.querySelector('.map').getBoundingClientRect().bottom <= innerHeight,
-            buttons: [...figure.querySelectorAll('button, summary, input')].filter(shown).map(e => e.dataset.action ?? e.textContent.trim()),
-          };
+          const steps = [...document.querySelectorAll('#overview .phase li[id] h4')].map(e => e.getBoundingClientRect().bottom <= innerHeight);
+          const answers = [...document.querySelectorAll('#overview .said dd')].every(e => e.getBoundingClientRect().bottom <= innerHeight);
+          return { steps, answers, label: document.querySelector('.example-label').getBoundingClientRect().bottom <= innerHeight };
         });
-        // Under reduced motion Play hides while a walkthrough is shown.
-        assert(first.summary && first.map, 'The first screen of the explorer shows the summary and the map');
-        assert(first.buttons.length <= 3 && first.buttons.includes('next') && first.buttons.every(b => ['play', 'previous', 'next'].includes(b)), `The first screen of the explorer has only the walkthrough buttons: ${first.buttons}`);
+        assert.deepEqual(first, { steps: [true, true, true, true], answers: true, label: true }, 'The first screen shows the four steps with their answers');
       }
+      // The technical layer opens from its named control, by keyboard, on the
+      // complete drawing; nothing walks until the reader asks.
+      await tabTo('#explore > summary');
+      await page.keyboard.press('Enter');
+      assert(await page.locator('#workflow').isVisible());
+      assert.match(await page.locator('[data-summary]').innerText(), /^Medium risk\s*·\s*standard profile\s*·\s*step by step$/);
+      assert(!await page.locator('[data-workflow]').evaluate(e => e.classList.contains('walking')));
+      assert(await page.locator('.workflow form').isVisible(), 'The switches are shown with the map');
+      assert.equal(await page.locator('.workflow .map').getAttribute('viewBox'), '-30 0 1260 482');
+      assert.equal(await page.locator('[data-route="example"], .guide-static, .tour-note').count(), 0, 'The case of #241 is not part of the map');
+      await tabTo('[data-action="start"]');
+      await page.keyboard.press('Enter');
+      assert(await page.locator('[data-workflow]').evaluate(e => e.classList.contains('walking')));
+      assert.match(await page.locator('[data-caption="lead"]').innerText(), /^Step 1 of \d+\.$/);
+      assert.equal(await page.locator('[data-caption="who"]').innerText(), 'You:');
+      // #241 follows the scenario and the technical map.
+      assert(await page.evaluate(() => {
+        const after = (a, b) => document.querySelector(a).compareDocumentPosition(document.querySelector(b)) & Node.DOCUMENT_POSITION_FOLLOWING;
+        return after('#overview', '#case') && after('#explore', '#case') && !document.querySelector('#overview').textContent.includes('#241');
+      }), '#241 comes after the overview and the map');
       // A step text is at most three sentences; the reference entry of the step tells the rest.
-      assert.equal(await page.locator('[data-caption="ref"] a').innerText(), 'Create a feature Issue');
-      assert.match(await page.locator('[data-caption="ref"] a').getAttribute('href'), /docs\/reference\/workflow\/#create-a-feature-issue$/);
+      assert.equal(await page.locator('[data-caption="ref"] a').innerText(), 'Describe the idea');
+      assert.match(await page.locator('[data-caption="ref"] a').getAttribute('href'), /docs\/reference\/workflow\/#describe-the-idea$/);
       const html = await page.content();
       assert(!html.includes('Nothing in the reference') && !html.includes('Moved to the documentation'));
       assert.equal(await page.locator('[data-key="n-bypass"]').textContent(), 'low risk: no review if the project allows it; then you approve the merge');
-      assert.equal(await page.locator('.map [data-label="f-findings.sub"]').textContent(), 'a decision per finding');
+      assert.equal(await page.locator('.map [data-label="f-findings.sub"]').textContent(), 'you approve each decision');
       await tabTo('[data-route="repair"]');
       await page.keyboard.press('Enter');
       assert.equal(await page.locator('[data-route="repair"]').getAttribute('aria-pressed'), 'true');
@@ -150,12 +151,6 @@ try {
       await tabTo('[data-action="next"]');
       await page.keyboard.press('Enter');
       assert.match(await page.locator('[data-caption="who"]').innerText(), /implementer/);
-      await tabTo('.advanced summary');
-      await page.keyboard.press('Enter');
-      assert(await page.locator('.advanced form').isVisible());
-      // The disclosure's toggle event is queued: wait for the redraw it starts.
-      await page.waitForFunction(() => !document.querySelector('.workflow').classList.contains('guided'));
-      assert.deepEqual(await guidedMap(), { planning: true, names: true, box: '-30 0 1260 482' }, 'Under the advanced controls the map shows the planning line and the script and model names');
       await tabTo('[data-action="reset"]');
       await page.keyboard.press('Enter');
       assert.equal(await page.locator('[data-route="repair"]').getAttribute('aria-pressed'), 'false');
@@ -228,7 +223,7 @@ try {
         }
         await page.locator('[data-action="reset"]').click();
       }
-      await tabTo('[data-action="play"]');
+      await tabTo('[data-action="start"]');
       await page.keyboard.press('Enter');
       assert(await page.locator('[data-workflow]').evaluate(e => e.classList.contains('walking')));
       await tabTo('[data-action="next"]');
@@ -308,12 +303,13 @@ try {
         assert(!await nav.isVisible(), `No-JS desktop content did not close: ${selector}`);
       }
       await p.goto(origin + base + 'workflow/');
-      assert(await p.locator('#workflow-words').isVisible());
-      assert(await p.locator('.guide-static').isVisible(), 'Without JavaScript the guided route of #241 is a timeline in words');
-      assert.equal(await p.locator('.guide-static li').count(), await p.locator('.guide-static li a[href*="reference/workflow/#"]').count(), 'Without JavaScript every step of the timeline links to its reference entry');
-      assert(await p.locator('.tour-note').isVisible(), 'Without JavaScript the page says why the tour follows #241');
-      assert.match(await p.locator('[data-summary]').innerText(), /^Issue #241\s*·\s*medium risk\s*·\s*unattended$/, 'Without JavaScript the summary is that of the #241 timeline');
-      assert(!await p.locator('[data-key="w-planning"]').isVisible() && await p.locator('[data-key="w-feature"]').isVisible(), 'Without JavaScript the words list is that of one feature, as #241 ran');
+      assert(await p.locator('#overview').isVisible() && await p.locator('.example-label').isVisible(), 'Without JavaScript the overview is the first layer');
+      assert(await p.locator('#case .words.timeline').isVisible(), 'Without JavaScript the case of #241 is a timeline in words');
+      assert.equal(await p.locator('#case li').count(), await p.locator('#case li a[href*="reference/workflow/#"]').count(), 'Every step of the case links to its reference entry');
+      await p.locator('#explore > summary').press('Enter');
+      assert(await p.locator('#workflow-words').isVisible(), 'Without JavaScript the disclosure opens on the words list');
+      assert.match(await p.locator('[data-summary]').innerText(), /^Medium risk\s*·\s*standard profile\s*·\s*step by step$/, 'Without JavaScript the summary is that of the complete drawing');
+      assert(await p.locator('[data-key="w-planning"]').isVisible() && await p.locator('[data-key="w-feature"]').isVisible(), 'Without JavaScript the words list is the complete workflow');
       assert(!await p.locator('.routes').isVisible() && !await p.locator('.advanced').isVisible());
       for (const actions of await p.locator('.map-actions').all()) assert(!await actions.isVisible());
       assert(!await p.locator('.hint').isVisible() && !await p.locator('.reset').isVisible());
@@ -326,6 +322,11 @@ try {
   {
     const wide = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
     const p = await wide.newPage();
+    await p.goto(origin + base + 'workflow/#workflow-words');
+    assert(await p.locator('#explore').evaluate(e => e.open), 'A link into the technical workflow opens its disclosure');
+    await p.locator('[data-action="start"]').click();
+    await p.waitForTimeout(3000);
+    assert.match(await p.locator('[data-caption="lead"]').innerText(), /^Step 1 of/, 'Without reduced motion, too, nothing advances by itself');
     await p.goto(origin + base + 'workflow/#review-the-code');
     await p.waitForURL(origin + base + 'docs/reference/workflow/#review-the-code');
     assert(await p.locator('#review-the-code').isVisible());

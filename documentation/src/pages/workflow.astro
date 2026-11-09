@@ -1,50 +1,114 @@
 ---
-// The workflow: the explorer (the line map, opening on the guided route of
-// one real feature, with its states, walkthrough and step detail), the two
-// ways of running a feature, and where every step is described in detail:
-// the workflow reference (/docs/reference/workflow/, from src/lib/steps.ts).
-// The anchors of the steps that were on this page stay here and lead there.
-// The facts are those of docs/development.md.
+// The workflow in two layers. First the four-step overview of the shared gym
+// scenario (src/lib/overview.ts), an illustration: planning once at the
+// start, then one function after another built, checked and decided on.
+// Then the technical layer: the explorer (the line map with its switches,
+// routes, walkthrough and step detail) under the "Explore the technical
+// workflow" disclosure, the two ways of running a feature by what they mean
+// for you, the real case of #241, and where every step is described in
+// detail: the workflow reference (/docs/reference/workflow/, from
+// src/lib/steps.ts). The anchors of the steps that were on this page stay
+// here and lead there. The facts are those of docs/development.md.
+import agentsConf from "../../../.agents/agents.conf?raw";
 import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Section from "../components/Section.astro";
 import WorkflowMap from "../components/WorkflowMap.astro";
-import { href, repoFile } from "../lib/links";
-import { stages } from "../lib/steps";
+import { href, issue, pull, repoFile } from "../lib/links";
+import { entry, feature, planning, stages } from "../lib/steps";
+import { guide, parseAgents } from "../lib/workflow";
+import { answers, label, phases, scenario } from "../lib/overview";
 
-const guide = repoFile("docs/development.md");
+const development = repoFile("docs/development.md");
 const reference = href("docs/reference/workflow/");
+const titleOf = (id: string) => [...planning, ...feature].find((step) => step.id === id)!.title;
+// The steps are numbered across both phases.
+const numbered = phases.map((phase, p) => ({ ...phase, first: phases.slice(0, p).reduce((n, q) => n + q.steps.length, 1) }));
+// The rows of a step: its title, the answers, the example and the reference line; a phase adds its head.
+const stepRows = 1 + answers.length + 2;
+// The real case: #241 as it ran, each step linked to its reference entry.
+const ran = guide(parseAgents(agentsConf)).map((step) => ({ ...step, ref: entry(step.key)! }));
 ---
-<Base title="Workflow" description="How the Agent Codeyard workflow runs: a project is planned once, then each feature goes from its Issue to the merge, step by step or unattended, by risk level and profile.">
-  <PageHead tight title="From idea to reviewed pull request." lede="With Agent Codeyard, a project is planned once. Each feature then moves through its own implementation, verification, review and approval path. Agents do the work, checks provide the evidence, and you keep the decisions and the merge." />
+<Base title="Workflow" description="How an idea becomes a change you decide on with Agent Codeyard: describe and clarify, plan, then build, check and decide for one function after another. The technical workflow follows.">
+  <PageHead tight title="From your idea to a change you decide on." lede="You describe what you need and answer a few questions. AI agents plan, build and check the work. You decide what becomes part of your project." />
 
-  <div class="wrap">
-    <WorkflowMap />
-  </div>
+  <section id="overview" class="overview-sec" aria-labelledby="overview-h">
+    <div class="wrap">
+      <h2 id="overview-h">Four steps, in one example</h2>
+      <p class="example-label"><b>{label}.</b> {scenario.product} {scenario.function}</p>
+      <div class="overview" style={`--rows: ${stepRows + 1}; --step-rows: ${stepRows}`}>
+        {numbered.map((phase) => (
+          <div class:list={["phase", phase.id]}>
+            <header><h3>{phase.title}</h3><p>{phase.note}</p></header>
+            <ol role="list">
+              {phase.steps.map((step, i) => (
+                <li id={step.id}>
+                  <h4><span class="n">{phase.first + i}</span>{step.title}</h4>
+                  <dl class="said">
+                    {answers.map(([key, name]) => <div><dt>{name}</dt><dd>{step.text[key]}</dd></div>)}
+                  </dl>
+                  <dl class="eg">
+                    {step.example.map((e) => (
+                      <div><dt>{e.label}</dt><dd>{e.items.length > 1 ? <ul>{e.items.map((item) => <li>{item}</li>)}</ul> : e.items[0]}</dd></div>
+                    ))}
+                  </dl>
+                  <p class="ref-link">In the reference: {step.reference.map((id, j) => <>{j > 0 && " · "}<a href={`${reference}#${id}`}>{titleOf(id)}</a></>)}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section id="technical" class="technical-sec" aria-labelledby="technical-h">
+    <div class="wrap">
+      <h2 id="technical-h">The technical workflow</h2>
+      <p class="technical-lede">Behind the four steps: every script and agent, the loops for a question, a failed check and review findings, where the run stops for you, and how risk levels and profiles change the route.</p>
+      <details class="explore" id="explore">
+        <summary>Explore the technical workflow</summary>
+        <WorkflowMap />
+      </details>
+    </div>
+  </section>
 
   <Section id="ways" title="Step by step or unattended">
-    <Fragment slot="note">From <a href={`${guide}#running-a-feature-with-one-command`}><code>docs/development.md</code></a>.</Fragment>
-    <p>The steps are the same. What differs is who decides about the review findings, and where the run can stop. Neither way merges: the merge is always yours.</p>
+    <Fragment slot="note">From <a href={`${development}#running-a-feature-with-one-command`}><code>docs/development.md</code></a> and <a href={href("docs/configuration-and-security/#profiles")}>Configuration and security</a>.</Fragment>
+    <p>The steps are the same. What changes for you is what you are asked, and where the work stops. Neither way merges: the merge is always yours.</p>
     <div class="compare">
       <div class="col">
         <h3>Step by step</h3>
         <dl>
-          <dt>Review findings</dt><dd>You approve the proposed decisions.</dd>
-          <dt>Stepping in</dt><dd>Between any two steps.</dd>
-          <dt>A question</dt><dd>The session ends with its questions in the handoff note.</dd>
-          <dt>Result</dt><dd>You move through the steps yourself.</dd>
+          <dt>What you do</dt><dd>You start each step yourself and can stop between any two.</dd>
+          <dt>Review findings</dt><dd>You approve what happens to each finding before anything is fixed.</dd>
+          <dt>Permissions</dt><dd>The agent asks you before it runs a command that its permissions do not allow.</dd>
+          <dt>A question for you</dt><dd>The session ends with its question in the handoff note; you answer and resume.</dd>
         </dl>
       </div>
       <div class="col">
         <h3>Unattended <code>run-feature.sh</code></h3>
         <dl>
-          <dt>Review findings</dt><dd>The triage agent decides and records; you read the decisions afterwards.</dd>
-          <dt>Stepping in</dt><dd>It retries a temporary failure, has the implementer repair a failing check, and stops when it cannot safely go on.</dd>
-          <dt>A question</dt><dd>The run stops with status 3 and names the handoff note.</dd>
-          <dt>Result</dt><dd>An open pull request, or why the run stopped. Never a merge.</dd>
+          <dt>What you do</dt><dd>You start one command; it goes from the implementation to an open pull request without asking you.</dd>
+          <dt>Review findings</dt><dd>The triage agent decides on each finding and records the decision on the Issue; you read it afterwards.</dd>
+          <dt>Permissions</dt><dd>Nothing is asked: what would need your permission is refused.</dd>
+          <dt>A question for you</dt><dd>A decision that only you can take stops the run with status 3; it names the handoff note with the question.</dd>
         </dl>
       </div>
     </div>
+    <h3 class="ways-h">When a run ends early</h3>
+    <p>Both ways can also end with an error or a reached limit: an agent that fails, a usage limit of the provider, or, in an unattended run, its limits of four implementer sessions, three repairs of a failed check and five review rounds. Nothing is merged, and the work so far stays in the feature's worktree.</p>
+    <p>Read the reason the script printed, and the handoff note <code>.agents/handoffs/&lt;issue&gt;.md</code>. Then resume: <code>./scripts/start-feature.sh &lt;issue&gt; --resume</code> step by step, or run <code>./scripts/run-feature.sh &lt;issue&gt;</code> again, which continues where the feature stands. If the reason is not clear, find it in <a href={href("docs/troubleshooting/#stopped-or-interrupted-runs")}>Troubleshooting</a>.</p>
+  </Section>
+
+  <Section id="case" title="How these pages were built">
+    <Fragment slot="note">A real run: <a href={issue(241)}>Issue #241</a>, <a href={pull(249)}>PR #249</a>, 30 October 2026. Its figures and records are on <a href={href("examples/#story")}>/examples/</a>.</Fragment>
+    <p>The gym above is an illustration. This is a real feature of this project: the run that wrote the first pages of this site, one unattended run of <code>run-feature.sh 241</code> at medium risk from the Issue to the pull request, with one major review finding fixed in between. Each step below links to its reference entry, which names the script and the rules it applies.</p>
+    <ol class="words timeline">
+      {ran.map((step) => (
+        <li class:list={{ you: step.you }}><b>{step.ref.title}</b><small>{step.who}</small><p>{step.text} In the reference: <a href={`${reference}#${step.ref.id}`}>{step.ref.title}</a>.</p></li>
+      ))}
+    </ol>
   </Section>
 
   <Section id="steps" title="Every step in detail">
@@ -56,7 +120,18 @@ const reference = href("docs/reference/workflow/");
 </Base>
 
 <script>
-  // An old link to a step of this page goes on to the step in the reference.
-  const moved = location.hash && document.querySelector<HTMLAnchorElement>(`#steps a[id="${CSS.escape(location.hash.slice(1))}"]`);
-  if (moved) location.replace(moved.href);
+  // An old link to a step of this page goes on to the step in the reference;
+  // a link into the technical workflow opens its disclosure.
+  function arrive() {
+    const target = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (!target) return;
+    if (target instanceof HTMLAnchorElement && target.closest("#steps")) return location.replace(target.href);
+    const explore = document.querySelector<HTMLDetailsElement>("#explore");
+    if (explore && explore !== target && explore.contains(target)) {
+      explore.open = true;
+      target.scrollIntoView();
+    }
+  }
+  arrive();
+  addEventListener("hashchange", arrive);
 </script>

@@ -1,11 +1,10 @@
 ---
 // The workflow as one line map (DESIGN.md, "Route map with switches" and
-// "Workflow explorer"). With JavaScript it opens on the guided route: the
-// walkthrough of one real feature, #241, step by step with who acts, then the
-// routes of its exceptions; the switches are under "Advanced controls". Directly
-// under the map only Play, Previous and Next; the routes, the complete workflow
-// and the list follow under the hint.
-// project planning on the ink line, feature execution on the green line,
+// "Workflow explorer"), the technical layer of /workflow, under its
+// "Explore the technical workflow" disclosure. It opens on the complete
+// drawing; a walkthrough moves only when the reader asks (Previous, Next),
+// and a row of routes follows one exception each. Nothing advances by itself.
+// Project planning on the ink line, feature execution on the green line,
 // with the switches that redraw it for a part of the workflow, the way of
 // running a feature, a risk level, a profile and a situation, and a
 // walkthrough that follows the route of the current state. Every station
@@ -13,26 +12,23 @@
 // detail" (src/lib/steps.ts); its templates are rendered here, and the script
 // makes the stations buttons, so without JavaScript nothing pretends to be one.
 //
-// The build renders the guided route of #241 (follow("example") of
-// src/lib/workflow.ts), so without JavaScript the summary and the map are
-// those of the timeline beside them; the script below renders every other
-// state from the same function. Every element whose look changes carries
+// The build renders the initial state (describe(initial) of
+// src/lib/workflow.ts), as the switches show it; the script below renders
+// every other state from the same function. Every element whose look changes carries
 // data-key, every text that changes data-label. The words list is the map's
 // text alternative and its form on narrow screens.
 import agentsConf from "../../../.agents/agents.conf?raw";
-import { switches, follow, classesOf, parseAgents, guide, routes, example, route } from "../lib/workflow";
+import { switches, describe, initial, classesOf, parseAgents, routes, route } from "../lib/workflow";
 import { details, entry, parts, stations as detailed, tabs } from "../lib/steps";
 import { href } from "../lib/links";
 
 // The agents of the roles, as .agents/agents.conf of the repository sets them.
 const models = parseAgents(agentsConf);
-const view = follow("example", models);
+const view = describe(initial, models);
 const c = (key: string) => classesOf(view, key);
 const label = (key: string) => view.labels[key];
 const panels = Object.keys(detailed).map((key) => ({ key, ...details(key)! }));
 const rows = [switches.filter((s) => !("minor" in s)), switches.filter((s) => "minor" in s)];
-// The guided route in words, for a reader without JavaScript.
-const guided = guide(models);
 // The reference entry of each element a walkthrough reaches: a step's text is
 // at most three sentences, the entry tells the rest.
 const refOf = (key: string) => {
@@ -40,11 +36,7 @@ const refOf = (key: string) => {
   return step && { href: href(`docs/reference/workflow/#${step.id}`), title: step.title };
 };
 const refs = Object.fromEntries(route.flatMap((key) => { const ref = refOf(key); return ref ? [[key, ref]] : []; }));
-// The guided map shows the feature's route first: without the planning line
-// (the full box draws it) and without script and model names, which the
-// advanced controls and the step detail panel keep.
-const fullBox = "-30 0 1260 482";
-const guidedBox = "-30 215 1260 267";
+const box = "-30 0 1260 482";
 
 // Stations: x on their row, the shape, the name and the sub-label (mono when
 // it is a value), and an optional second sub-label.
@@ -112,11 +104,10 @@ const featureWords: Word[] = [
   { key: "f-pr", name: "Open the pull request", sub: "publish-feature.sh", k: true, cond: "Pushes the branch and opens the pull request with the verification, the review, the risk level and whether the merge needs your approval; CI runs the checks again. Unfinished work becomes a draft that leaves the Issue open." },
   { key: "f-merge", name: "Merge", sub: "f-merge.sub", you: true, cond: "w-f-merge.cond" },
 ];
-const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((s) => s.key === key)?.name ?? key;
 ---
-<figure class="route workflow guided" id="workflow" aria-labelledby="workflow-title" data-workflow data-models={JSON.stringify(models)} data-boxes={JSON.stringify([fullBox, guidedBox])} data-refs={JSON.stringify(refs)}>
+<figure class="route workflow" id="workflow" aria-labelledby="workflow-title" data-workflow data-models={JSON.stringify(models)} data-refs={JSON.stringify(refs)}>
   <div class="route-head">
-    <h2 id="workflow-title">The route of your change</h2>
+    <h3 id="workflow-title">The route of a change, as a map</h3>
     <div class="scenario">
       <p aria-live="polite">
         <strong data-summary>{view.summary.map((bit, i) => <>{i > 0 && <span class="sep" aria-hidden="true">·</span>}{bit}</>)}</strong>
@@ -124,17 +115,9 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
         <span data-caption="ref" hidden>{" "}In the reference: <a></a>.</span>
       </p>
     </div>
-    <div class="guide-static">
-      <h3>One real feature: Issue #241, as it ran</h3>
-      <ol class="words timeline">
-        {guided.map((step) => (
-          <li class:list={{ you: step.you }}><b>{stationName(step.key)}</b><small>{step.who}</small><p>{step.text}{refs[step.key] && <> In the reference: <a href={refs[step.key].href}>{refs[step.key].title}</a>.</>}</p></li>
-        ))}
-      </ol>
-    </div>
   </div>
 
-  <svg class="map" viewBox={guidedBox} role="img" aria-labelledby="workflow-map-title" aria-describedby="workflow-words">
+  <svg class="map" viewBox={box} role="img" aria-labelledby="workflow-map-title" aria-describedby="workflow-words">
     <title id="workflow-map-title">The workflow as a line map: project planning on one line, from the idea to the merged plan, then each feature on a second line from its Issue to the merge, with the owner's decisions, the loops for a clarification, a failed check and review findings, and the review bypass of low risk under a policy without review for it.</title>
     <text class:list={["stage", "plan-part", c("t-planning")]} data-key="t-planning" x="-20" y="28">Plan the project: once, and for each change of the plan</text>
     <text class:list={["stage", c("t-feature")]} data-key="t-feature" x="80" y="240">Build each feature: in its own branch and worktree</text>
@@ -181,7 +164,7 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
   </svg>
 
   <div class="map-actions" role="group" aria-label="Walkthrough">
-    <button type="button" data-action="play">Play walkthrough</button>
+    <button type="button" data-action="start">Walk through the steps</button>
     <button type="button" data-action="previous" hidden>Previous step</button>
     <button type="button" data-action="next" hidden>Next step</button>
   </div>
@@ -197,7 +180,6 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
   </ul>
 
   <p class="hint">Select a step on the map for what happens, who acts, the command and what can go wrong.</p>
-  <p class="tour-note">The tour follows <a href={href("examples/#story")}>#241</a> because its run wrote the first pages of this site; the home page follows <a href={href("examples/#memory")}>#217</a>, a high-risk change to the workflow itself, from its Issue to its merge.</p>
   <section class="step-panel" id="step-panel" aria-labelledby="step-panel-h" hidden>
     <div class="step-panel-head">
       <h3 id="step-panel-h" tabindex="-1"></h3>
@@ -238,7 +220,7 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
   <div class="routes" role="group" aria-labelledby="routes-label">
     <span class="routes-label" id="routes-label">Follow</span>
     {routes.map((r) => (
-      <button type="button" data-route={r.id} aria-pressed={String(r.id === "example")}>{r.name}</button>
+      <button type="button" data-route={r.id} aria-pressed="false">{r.name}</button>
     ))}
   </div>
 
@@ -247,8 +229,7 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
     <button type="button" class="list-toggle" data-action="list" aria-expanded="false" aria-controls="workflow-words">Show the steps as a list</button>
   </div>
 
-  <details class="advanced">
-    <summary>Advanced controls</summary>
+  <div class="advanced">
     <p class="advanced-note">Every switch redraws the map, and the walkthrough follows the new route. <b>Risk</b> is how much evidence a change needs, from the files it touches; <b>profile</b> is how strict the project's policy is; <b>run</b> is whether you start each step or one command runs them all; <b>part</b> is the planning, the feature, or both; <b>situation</b> takes one exception. A <i>protected path</i> is a file whose change only you may approve.</p>
     <form class="switches grouped" aria-label="Show the workflow for">
       {rows.map((row, i) => (
@@ -257,7 +238,7 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
             <fieldset class="switch">
               <legend>{s.legend}</legend>
               {s.options.map(([value, name]) => (
-                <label><input type="radio" name={s.name} value={value} checked={example[s.name] === value} /><span>{name}</span></label>
+                <label><input type="radio" name={s.name} value={value} checked={initial[s.name] === value} /><span>{name}</span></label>
               ))}
             </fieldset>
           ))}
@@ -265,7 +246,7 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
       ))}
     </form>
     <button type="button" class="reset" data-action="reset">Reset the switches</button>
-  </details>
+  </div>
 
   <div class="words-set" id="workflow-words">
     <div class:list={c("w-planning")} data-key="w-planning">
@@ -294,16 +275,13 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
 </figure>
 
 <script>
-  // Redraws the map for the state of the switches and plays the walkthrough
-  // of that state: one step at a time, as a change of stroke colour only,
-  // pausing at each of your decisions. With prefers-reduced-motion: reduce,
-  // nothing advances by itself; the reader moves with Previous and Next.
+  // Redraws the map for the state of the switches and shows the walkthrough
+  // of that state one step at a time, as a change of stroke colour only.
+  // Nothing advances by itself: the reader moves with Previous and Next.
   // Every station, and every item of the words list, opens the step detail
-  // panel with the content of its template. It opens on the guided route of
-  // #241 at its first step; a route button follows that route from its first
-  // step, and a switch leaves the guided routes for the complete drawing of
-  // its state. While a guided route is followed and the advanced controls are
-  // closed, the map leaves out the planning line and the script and model names.
+  // panel with the content of its template. It opens on the complete drawing
+  // of the initial state; a route button follows that route from its first
+  // step, and a switch leaves the routes for the complete drawing of its state.
   import { describe, follow, initial, routes, stateOf, classesOf, type Models, type View } from "../lib/workflow";
 
   const figure = document.querySelector<HTMLElement>("[data-workflow]");
@@ -319,19 +297,11 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
     const ref = figure.querySelector<HTMLElement>('[data-caption="ref"]')!;
     const refs = JSON.parse(figure.dataset.refs ?? "{}") as Record<string, { href: string; title: string }>;
     const routeButtons = Array.from(figure.querySelectorAll<HTMLButtonElement>("[data-route]"));
-    const advanced = figure.querySelector<HTMLDetailsElement>(".advanced")!;
-    const map = figure.querySelector<SVGSVGElement>(".map")!;
-    const [fullBox, guidedBox] = JSON.parse(figure.dataset.boxes!) as [string, string];
     const button = (action: string) => figure.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!;
-    const play = button("play"), previous = button("previous"), next = button("next"), finish = button("finish"), list = button("list");
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
-    const pace = 2200;
+    const start = button("start"), previous = button("previous"), next = button("next"), finish = button("finish"), list = button("list");
 
     let view: View = describe(stateOf({}), models);
     let at = -1; // the step of the walkthrough, -1 for the complete drawing
-    let guided = true; // a guided route is followed, not a state of the switches
-    let playing = false;
-    let timer = 0;
 
     const values = () => Object.fromEntries(Array.from(new FormData(form).entries(), ([name, value]) => [name, String(value)]));
 
@@ -360,9 +330,6 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
         dot.textContent = "·";
         return [dot, bit];
       }));
-      const plain = guided && !advanced.open;
-      figure.classList.toggle("guided", plain);
-      map.setAttribute("viewBox", plain ? guidedBox : fullBox);
       lead.textContent = current ? `Step ${at + 1} of ${view.walk.length}.` : "";
       who.textContent = current?.who ? `${current.who}:` : "";
       caption.textContent = current ? current.text : view.caption;
@@ -372,32 +339,13 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
       const walking = at >= 0;
       figure.classList.toggle("walking", walking);
       const last = at === view.walk.length - 1;
-      play.hidden = reduced.matches && walking;
-      play.textContent = playing ? "Pause" : !walking || at === 0 ? (reduced.matches ? "Walk through the steps" : "Play walkthrough") : last ? "Play again" : "Resume";
+      start.hidden = walking;
       previous.hidden = next.hidden = finish.hidden = !walking;
       previous.setAttribute("aria-disabled", String(at <= 0));
       next.setAttribute("aria-disabled", String(last));
     }
 
-    function stop() {
-      playing = false;
-      window.clearTimeout(timer);
-    }
-    function advance() {
-      window.clearTimeout(timer);
-      if (!playing) return;
-      timer = window.setTimeout(() => {
-        if (at < view.walk.length - 1) {
-          at += 1;
-          // The walkthrough waits at the end and at each of your decisions.
-          if (at === view.walk.length - 1 || view.walk[at].you) playing = false;
-          render();
-          advance();
-        }
-      }, pace);
-    }
-
-    // A guided route: the switches show its state, and the walkthrough waits at its first step.
+    // A route: the switches show its state, and the walkthrough waits at its first step.
     function choose(id: string) {
       const chosen = routes.find((r) => r.id === id) ?? routes[0];
       for (const [name, value] of Object.entries(chosen.state)) {
@@ -405,62 +353,45 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
         if (radio) radio.checked = true;
       }
       for (const b of routeButtons) b.setAttribute("aria-pressed", String(b.dataset.route === chosen.id));
-      stop();
       at = 0;
-      guided = true;
       view = follow(chosen.id, models);
       render();
     }
     for (const b of routeButtons) b.addEventListener("click", () => choose(b.dataset.route!));
 
-    advanced.addEventListener("toggle", render);
     form.addEventListener("change", () => {
-      stop();
       at = -1;
-      guided = false;
       for (const b of routeButtons) b.setAttribute("aria-pressed", "false");
       view = describe(stateOf(values()), models);
       render();
     });
-    button("reset").addEventListener("click", () => {
+    function reset() {
       for (const [name, value] of Object.entries(initial)) {
-        const radio = form.querySelector<HTMLInputElement>(`input[name="${name}"][value="${value}"]`);
+        const radio = form!.querySelector<HTMLInputElement>(`input[name="${name}"][value="${value}"]`);
         if (radio) radio.checked = true;
       }
-      form.dispatchEvent(new Event("change"));
-    });
-    play.addEventListener("click", () => {
-      if (playing) {
-        stop();
-      } else {
-        if (at < 0 || at === view.walk.length - 1) at = 0;
-        playing = !reduced.matches;
-        advance();
-      }
+      form!.dispatchEvent(new Event("change"));
+    }
+    button("reset").addEventListener("click", reset);
+    start.addEventListener("click", () => {
+      at = 0;
       render();
-      if (play.hidden) next.focus();
+      next.focus();
     });
     previous.addEventListener("click", () => {
       if (at <= 0) return;
-      stop();
       at = Math.max(0, at - 1);
       render();
     });
     next.addEventListener("click", () => {
       if (at >= view.walk.length - 1) return;
-      stop();
       at = Math.min(view.walk.length - 1, at + 1);
       render();
     });
     finish.addEventListener("click", () => {
-      stop();
       at = -1;
       render();
-      play.focus();
-    });
-    reduced.addEventListener("change", () => {
-      if (reduced.matches) stop();
-      render();
+      start.focus();
     });
 
     // The step detail panel: under the map, or inside the item of the words
@@ -553,7 +484,7 @@ const stationName = (key: string) => key === "b-fix" ? "Fix" : featureRow.find((
       if (!shown && panel.closest(".words")) home.after(panel);
     });
 
-    // Every visit starts on the guided route, whatever switches a reload restores.
-    choose("example");
+    // Every visit starts on the complete drawing of the initial state, whatever switches a reload restores.
+    reset();
   }
 </script>
