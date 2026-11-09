@@ -24,12 +24,16 @@ list (retain `/`), its usage comment and this guide. Keep
 configuration; CI uses them through `check.sh --build`.
 
 `browser-check.mjs` walks the skip link, site navigation, theme toggle,
-workflow radio groups, the workflow's step detail panel (from a station of the
+the four-step overview of `/workflow` (on the first screen at 1440 px, before
+the technical map) and the disclosure that opens the map, the workflow radio
+groups, the workflow's step detail panel (from a station of the
 map and from the words list: its tabs, its close button and where the focus
 returns, with axe on the open panel), walkthrough and desktop text-list toggle
 by keyboard, checking focus outlines; a station of the map shows its focus as
 the 6px line-coloured stroke of its symbol. It checks the documentation disclosures at 760 px,
-the desktop navigation at 768 px, and the no-JavaScript fallback. On the
+the desktop navigation at 768 px, and the no-JavaScript fallback. On `/workflow`
+it checks that a link into the map opens its disclosure and that nothing
+advances by itself without reduced motion either; on the
 workflow reference it checks that an old step anchor of `/workflow` leads to
 its step and that "On this page" stays beside the text at 1440 px; on a docs
 page, that the copy button of a code block copies the code. On the Projects

@@ -1,13 +1,15 @@
 // Every step of the workflow: what happens, then its facts in order. The
 // workflow reference (/docs/reference/workflow/) shows every step with its
-// facts in the five fields (reference), and the step detail panel of the map
-// takes its content from the same steps (details), so the panel and the
-// reference cannot say different things. Text in backticks is a value (a
+// full text and its facts in the five fields (reference), and the step detail
+// panel of the map takes its content from the same steps (details): the
+// one-sentence summary instead of the full text, which the panel links to,
+// and the same facts, so the panel and the reference cannot say different
+// things. Text in backticks is a value (a
 // command, a path, a policy line) and set as code (parts).
 //
 // The facts are those of docs/development.md.
 
-export type Step = { id: string; title: string; text: string; facts: [string, string][] };
+export type Step = { id: string; title: string; summary: string; text: string; facts: [string, string][] };
 
 /** Text split at its backticks: every second part is a value. */
 export const parts = (text: string) => text.split("`").map((part, index) => ({ part, code: index % 2 === 1 }));
@@ -16,6 +18,7 @@ export const planning: Step[] = [
   {
     id: "describe-the-idea",
     title: "Describe the idea",
+    summary: "You describe the project in your own words; the next step asks about what the description leaves open.",
     text: "Start with a short description of the project in your own words. It does not need every detail: the next step asks about what it leaves open.",
     facts: [
       ["who", "You"],
@@ -26,6 +29,7 @@ export const planning: Step[] = [
   {
     id: "clarify-the-requirements",
     title: "Clarify the requirements",
+    summary: "Project Grill asks the questions that matter and drafts the requirements, which count only after you approve them.",
     text: "Project Grill asks only the questions that materially affect the product or the technical direction: the goals, the users, the scope, the constraints. It writes the requirements as a draft; the script shows them and records them as approved only after you confirm.",
     facts: [
       ["who", "You and Project Grill, in the planning worktree"],
@@ -37,6 +41,7 @@ export const planning: Step[] = [
   {
     id: "create-the-plan",
     title: "Create the plan",
+    summary: "A fresh planning session proposes the architecture, a roadmap of features and the ADRs the decisions need.",
     text: "A fresh planning session reads the approved requirements and proposes the architecture, a roadmap of features with IDs and dependencies, and an ADR for each technical decision that needs one.",
     facts: [
       ["who", "Planning agent"],
@@ -48,6 +53,7 @@ export const planning: Step[] = [
   {
     id: "review-the-plan",
     title: "Review the plan",
+    summary: "A read-only agent checks the plan for gaps, contradictions and risks, and records its findings.",
     text: "An agent that cannot edit files checks the plan for missing requirements, inconsistent decisions and risks, and records its findings in a form the scripts validate.",
     facts: [
       ["who", "Planning reviewer, read-only"],
@@ -59,6 +65,7 @@ export const planning: Step[] = [
   {
     id: "address-the-findings",
     title: "Address the review findings",
+    summary: "The planning agent proposes a decision per finding, you approve them, and a changed plan is reviewed again.",
     text: "The planning agent proposes a decision per finding: adopt, reject, defer or escalate to you. You approve the decisions, and a changed plan is reviewed again.",
     facts: [
       ["who", "You and the planning agent"],
@@ -70,6 +77,7 @@ export const planning: Step[] = [
   {
     id: "approve-the-plan",
     title: "Approve the plan",
+    summary: "Your approval is recorded with a fingerprint, so a later change to the requirements or the roadmap makes it stale.",
     text: "The approval is recorded with a fingerprint of the requirements and the roadmap. When either changes later, the approval is stale, and no feature Issue is created from it.",
     facts: [
       ["who", "You"],
@@ -81,6 +89,7 @@ export const planning: Step[] = [
   {
     id: "merge-the-plan",
     title: "Merge the planning pull request",
+    summary: "The approved planning is merged into main, and features start from it.",
     text: "The approved planning is merged into main; features start from that version of the plan.",
     facts: [
       ["who", "You, or a maintainer by your repository's rules"],
@@ -90,6 +99,7 @@ export const planning: Step[] = [
   {
     id: "change-the-plan",
     title: "Change an approved plan",
+    summary: "A change of direction is written down, applied by the planning agent, and reviewed and approved again.",
     text: "When the requirements or the direction change, write the change down in a short file. The planning agent updates the documents it touches, and the change goes through the review and your approval again. A small change to the architecture or an ADR has a lighter route.",
     facts: [
       ["who", "You and the planning agents"],
@@ -103,6 +113,7 @@ export const feature: Step[] = [
   {
     id: "create-a-feature-issue",
     title: "Create a feature Issue",
+    summary: "A roadmap feature becomes a GitHub Issue when you are ready to build it.",
     text: "Create the GitHub Issue of a roadmap feature when you are ready to build it, so that it matches the current requirements and architecture.",
     facts: [
       ["who", "Script, started by you"],
@@ -114,6 +125,7 @@ export const feature: Step[] = [
   {
     id: "implement-the-feature",
     title: "Implement the feature",
+    summary: "The implementer checks that the Issue is clear, or stops with its questions, then writes the code and the tests and records how far the Issue is done.",
     text: "The implementer works in its own branch and worktree. Its first session decides whether the feature is clear: when the Issue with your comments, the requirements, the architecture, the accepted ADRs and the code settle every decision that matters, it implements; when they do not, it changes nothing, writes its questions in the handoff note with options and a recommendation, and stops. It writes the code and the tests, runs the checks itself, and records how far the Issue is done, with evidence per acceptance criterion.",
     facts: [
       ["who", "Implementer agent; the model follows the risk level"],
@@ -128,6 +140,7 @@ export const feature: Step[] = [
   {
     id: "run-the-checks",
     title: "Run the checks",
+    summary: "The project's tests, linters and builds run, and the pass is recorded for exactly that content.",
     text: "The tests, linters and builds of `scripts/verify.conf`. A pass is recorded for exactly the content it checked and reused while that content does not change.",
     facts: [
       ["who", "Verification script"],
@@ -141,6 +154,7 @@ export const feature: Step[] = [
   {
     id: "review-the-code",
     title: "Review the code",
+    summary: "An agent of another provider, which cannot edit files, checks the change against every acceptance criterion and reports problems by severity.",
     text: "An agent of another provider than the implementer, which cannot edit files, checks every acceptance criterion against the code and the tests, reports problems with their severity, and rates the impact on the architecture. The completion record is a claim; the reviewer reports one that the code does not support. Under the shipped risk policy every feature is reviewed; a project can let low-risk features skip it with `low: review: none`, which the light profile sets, and such a feature is committed as not reviewed.",
     facts: [
       ["who", "Reviewer agent, read-only"],
@@ -155,6 +169,7 @@ export const feature: Step[] = [
   {
     id: "decide-on-the-findings",
     title: "Decide on the findings",
+    summary: "Each finding is fixed now, deferred to a follow-up Issue or accepted with a reason; critical and major ones are fixed unless you record an exception.",
     text: "Each finding gets a recorded decision: fix it now, defer it to a follow-up Issue, or accept it with a reason. Critical and major findings are always fix now; only the owner can record an exception for one of them (`record-exception.sh`). For a low- or medium-risk feature the policy can ask for the light triage, which prefers to defer or accept a suggestion or a minor finding over a fix round; a high-risk feature always gets the full triage.",
     facts: [
       ["who", "The triage agent proposes; step by step you approve, unattended it decides"],
@@ -167,6 +182,7 @@ export const feature: Step[] = [
   {
     id: "apply-the-fixes",
     title: "Fix and review again",
+    summary: "The implementer fixes the findings decided as fix now, the checks run again, and the change is reviewed again.",
     text: "The implementer fixes only the findings decided as fix now, and the checks run again. The content changed, so it is reviewed again: the changes, then the complete feature.",
     facts: [
       ["who", "Implementer agent"],
@@ -178,6 +194,7 @@ export const feature: Step[] = [
   {
     id: "commit-the-feature",
     title: "Commit the feature",
+    summary: "The commit records the completion, the verification, the review and the risk level; it does not push or merge.",
     text: "The commit records the completion with its evidence, the verification, the review and its triage, and the risk level with its reasons. When the merge needs your approval, the commit carries an approval request that names the content tree that was verified and reviewed; it asks and records, it grants nothing.",
     facts: [
       ["who", "Script"],
@@ -191,6 +208,7 @@ export const feature: Step[] = [
   {
     id: "open-the-pull-request",
     title: "Open the pull request",
+    summary: "The branch is pushed and the pull request opened with its evidence; CI runs the checks again.",
     text: "The branch is pushed and the pull request opened with the evidence, the risk level and whether the merge needs your approval. CI runs the checks again. Unfinished work becomes a draft that leaves the Issue open; evidence that exists only after the merge is recorded later with `./scripts/record-post-merge.sh`.",
     facts: [
       ["who", "Script"],
@@ -201,6 +219,7 @@ export const feature: Step[] = [
   {
     id: "merge",
     title: "Review and merge",
+    summary: "You read the pull request, its checks and the published triage, and merge it; no script merges.",
     text: "Read the pull request, its checks and the published triage before you merge. Your approval is needed when the change touches a protected path, when the reviewer rated the impact on the architecture major or breaking, or when nobody rated it, as for a feature without a review. Codeyard states and checks this; GitHub enforces it only with the rulesets and code owners you configure.",
     facts: [
       ["who", "You, or a maintainer by your repository's rules; no script merges"],
@@ -211,6 +230,7 @@ export const feature: Step[] = [
   {
     id: "run-unattended",
     title: "Run a feature unattended",
+    summary: "One command runs a feature from the implementation to the pull request and stops when it needs you; it never merges.",
     text: "One command runs the implementation, the checks, the review rounds with their triage and fixes, the commit and the pull request. It retries a temporary failure, and stops when an agent needs you or it cannot safely go on, with the reason and the command that resolves it.",
     facts: [
       ["who", "Script that coordinates the agents"],
@@ -308,7 +328,7 @@ function rows(facts: [string, string][], keys: readonly Field[]): Row[] {
 /** A step of the reference: its facts in all five fields. */
 export const reference = (step: Step): Row[] => rows(step.facts, fields.map(([field]) => field));
 
-/** The detail of a station: its title, the summaries of its steps, its rows per tab, and its steps. */
+/** The detail of a station: its title, the summaries of its steps (the reference has the full text), its rows per tab, and its steps. */
 export function details(key: string) {
   const steps = (stations[key] ?? []).map((id) => {
     const step = [...planning, ...feature].find((s) => s.id === id);
@@ -319,7 +339,7 @@ export function details(key: string) {
   const facts = steps.flatMap((step) => step.facts);
   return {
     title: steps[0].title,
-    summaries: steps.map((step) => step.text),
+    summaries: steps.map((step) => step.summary),
     tabs: tabs.map((tab) => ({ ...tab, rows: rows(facts, tab.fields) })),
     steps: steps.map(({ id, title }) => ({ id, title })),
   };
