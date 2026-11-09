@@ -1,77 +1,42 @@
 ---
-// Why Agent Codeyard exists, who makes it, where it stands and how to take
-// part, in short sentences (#333). Every statement of history has a source on
-// the site: the reason and the problem from the earlier About (#319), the
-// start and the growth from /docs/history/, the maker's own projects from
-// /examples/. The design decisions moved to /docs/history/#decisions; what
-// Codeyard does is one paragraph with links to /features/; the possible
-// improvements are the open Issues, statuses as GitHub shows them on
-// 8 November 2026. Old anchors stay: #why, #limits, #decisions, #history,
-// #research, #improvements, #contribute.
+// Who makes Agent Codeyard, what it does in short, how to take part, and its
+// source, in short sentences (#333, #344). The maker's own projects are on
+// /examples/; history, the design decisions and the research are on
+// /docs/history/, linked once; the possible improvements are the open Issues.
+// Old anchors stay: #why, #decisions, #history, #research and #improvements
+// lead to the paragraph that links to History and research.
 import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Section from "../components/Section.astro";
 import { site } from "../../site.config";
-import { href, issue, repoFile } from "../lib/links";
-
-// Possible improvements: each an open Issue, none of them built yet.
-const improvements = [
-  { name: "Agent identity", what: "A GitHub account with limited rights, so an agent cannot approve its own change.", ref: 99 },
-  { name: "A second reviewer", what: "One review of the behaviour, one of the engineering quality.", ref: 66 },
-  { name: "Run analysis on a schedule", what: "Today you start the analysis of past runs yourself.", ref: 131 },
-  { name: "Complexity creep", what: "Notice across several runs when the workflow itself grows too complex.", ref: 157 },
-  { name: "Parallel helpers", what: "An experiment with agents that split one feature between them.", ref: 159 },
-];
+import { href, repoFile } from "../lib/links";
 ---
-<Base title="About" description="Why Agent Codeyard exists, who makes it, how it relates to JIDAI, where the project stands, how to contribute, and the open improvements.">
-  <PageHead title="About" lede="Why Agent Codeyard exists, who makes it, where it stands, and how to take part.">
+<Base title="About" description="Who makes Agent Codeyard, how it relates to JIDAI, what it does in short, and how to contribute.">
+  <PageHead title="About" lede="Who makes Agent Codeyard, what it does, and how to take part.">
     <ol class="contents">
-      <li><a href="#why">Why it exists</a></li>
       <li><a href="#maker">The maker, JIDAI and the project</a></li>
-      <li><a href="#contribute">Where it stands, and how to take part</a></li>
       <li><a href="#limits">What it does, in short</a></li>
-      <li><a href="#improvements">Possible improvements</a></li>
-      <li><a href="#history">History and research</a></li>
+      <li><a href="#contribute">Ready to use, open to contributions</a></li>
       <li><a href="#source">Source and licence</a></li>
     </ol>
   </PageHead>
 
-  <Section id="why" title="Why it exists">
-    <p class="lede">Agent Codeyard grew out of the maker's own work with coding agents.</p>
-    <p>Claude Code and Codex could plan, build, test and review a feature. But they did not show whether the review and the tests saw the code that was merged. And the decisions that mattered did not always stay with the owner of the project.</p>
-    <p>On 10 September 2026 it began as a manual routine. A feature was planned in an Issue, built in its own working folder, and read by a second agent. The steps that proved useful and repeatable became scripts. Since then, most changes answer something that went wrong in real use.</p>
-  </Section>
-
   <Section id="maker" title="The maker, JIDAI and the project">
     <p>Agent Codeyard is an open-source project by Ahmet Taspinar, founder of <a href="https://jidai.nl/">JIDAI</a>. Ahmet maintains it and merges its pull requests. The projects on <a href={href("examples/")}>Examples</a> are the maker's own: this repository and Physics by Construction, a course project.</p>
-  </Section>
-
-  <Section id="contribute" title="Where it stands, and how to take part">
-    <p>The project is young: work started on 10 September 2026, and it changes often. There are no numbered releases yet. A project takes later changes over as <a href={href("docs/updating/")}>Updating</a> describes. Adoption into an existing repository is so far tested on example repositories only.</p>
-    <ul class="rules">
-      <li><b>Report a problem or an idea</b> as a GitHub Issue, with what you ran and what happened.</li>
-      <li><b>Propose a change</b> from an Issue, on its own branch, following the repository's agent instructions.</li>
-      <li><b>Keep a pull request focused</b>, and include the evidence of its checks.</li>
-      <li><b>Report a security problem privately</b>, not in a public Issue.</li>
-    </ul>
+    <p id="history"><span id="why"></span><span id="decisions"></span><span id="research"></span><span id="improvements"></span>How it began, the design decisions and the research behind it: <a href={href("docs/history/")}>History and research</a>.</p>
   </Section>
 
   <Section id="limits" title="What it does, in short">
-    <p>Codeyard writes no code; as shipped, Claude Code writes it and Codex reviews it. Around them it adds a round of questions, a plan you approve, checks and a review per change. The merge stays with you. It is no security boundary: the agents run on your machine, with your rights. <a href={href("features/")}>Why Codeyard</a> explains each part; the <a href={href("faq/")}>FAQ</a> answers the first questions.</p>
+    <p>Codeyard writes no code; the AI coding tools do. Around them it adds a round of questions, a plan you approve, checks and a review by a different model per change. The merge stays with you. It is no security boundary: the agents run on your machine, with your rights. <a href={href("features/")}>Why Codeyard</a> explains each part; the <a href={href("faq/")}>FAQ</a> answers the first questions.</p>
   </Section>
 
-  <Section id="improvements" title="Possible improvements">
-    <Fragment slot="note">Not a committed roadmap. All open work: the <a href={`${site.repository}/issues`}>Issues</a>.</Fragment>
+  <Section id="contribute" title="Ready to use, open to contributions">
+    <p>Agent Codeyard is ready to use. Create a project from the template, or bring the workflow into a repository you already have, and from the first feature on every change is planned with you, built against agreed requirements, reviewed by a second model and verified before you decide.</p>
     <ul class="rules">
-      {improvements.map((row) => (
-        <li><b>{row.name}.</b> {row.what} Open: <a href={issue(row.ref)}>#{row.ref}</a>.</li>
-      ))}
+      <li><b>Report a problem or an idea</b> as a GitHub Issue, with what you ran and what happened: <a href={`${site.repository}/issues`}>Open Issues</a>.</li>
+      <li><b>Propose a change</b> from an Issue, on its own branch.</li>
+      <li><b>Report a security problem privately</b>, not in a public Issue.</li>
     </ul>
-    <p class="needs">Ideas without an Issue yet: a database and services per task, browser checks, and a run's cost in money.</p>
-  </Section>
-
-  <Section id="history" title="History and research">
-    <p>Until 31 October 2026 the project was called {site.formerName}. <a href={href("docs/history/")}>History and research</a> follows each period with its pull requests. It also holds the <a id="decisions" href={href("docs/history/#decisions")}>design decisions</a> and the <a id="research" href={href("docs/history/#research")}>frameworks and talks</a> it learned from.</p>
   </Section>
 
   <Section id="source" title="Source and licence">

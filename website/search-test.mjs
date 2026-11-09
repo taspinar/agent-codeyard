@@ -34,7 +34,7 @@ if (process.argv[2]) {
   const [output, base] = process.argv.slice(2);
   const pages = JSON.parse(await readFile(join(output, 'search-index.json'), 'utf8'));
   const docs = pages.filter(p => p.url.startsWith(`${base}docs/`));
-  assert.equal(docs.length, 15);
+  assert.equal(docs.length, 16);
   for (const [query, slug] of [['Troubleshooting', 'troubleshooting'], ['GitHub setup', 'github-setup']]) {
     const results = searchPages(docs, query);
     assert(results.some(p => p.url === `${base}docs/${slug}/`));
@@ -63,6 +63,18 @@ if (process.argv[2]) {
   assert(searchPages(pages, 'LICENSE').some(p => p.url === `${base}docs/getting-started/`));
   // History and research moved from About to the docs (#319).
   assert(searchPages(docs, 'Physics by Construction').some(p => p.url === `${base}docs/history/`));
+  // The engineering case studies moved from Projects to Engineering records (#344).
+  assert(sitemap.includes(`${base}docs/engineering-records/</loc>`), 'Engineering records is missing from the sitemap');
+  for (const query of ['41 recorded runs', '#217']) {
+    assert(searchPages(pages, query).some(p => p.url === `${base}docs/engineering-records/`), `Engineering records not found for "${query}"`);
+  }
+  const records = await readFile(join(output, 'docs/engineering-records/index.html'), 'utf8');
+  const projects = await readFile(join(output, 'examples/index.html'), 'utf8');
+  for (const id of ['memory', 'story', 'tradeoff', 'features', 'owner', 'repair', 'short', 'analysis', 'levels']) {
+    assert(records.includes(`<h2 id="${id}">`), `Not in Engineering records: ${id}`);
+    assert(projects.includes(`<p id="${id}" class="moved-case">This case moved to <a href="${base}docs/engineering-records/#${id}">Engineering records</a>.</p>`), `Old anchor lost: /examples/#${id}`);
+  }
+  assert(!/When the reviewer did not know|What 41 recorded runs/.test(projects), 'An engineering case is still on Projects');
   assert(searchPages(pages, 'owner-directed').some(p => p.url === `${base}docs/detailed-workflow/`));
   // Every step is in the workflow reference, and its old anchor on /workflow leads there.
   const reference = await readFile(join(output, 'docs/reference/workflow/index.html'), 'utf8');

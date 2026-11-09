@@ -1,6 +1,6 @@
 // sitemap.xml: every page of the site, with its full address. The FAQ is
 // linked from the pages and the footer, not from the navigation; the workflow
-// reference and History are pages of their own, outside the docs collection.
+// reference, Engineering records and History are pages of their own, outside the docs collection.
 // The docs pages of the navigation (Docs, Get started) come from the collection.
 import type { APIRoute } from "astro";
 import { getCollection } from "astro:content";
@@ -14,6 +14,7 @@ export const GET: APIRoute = async ({ site }) => {
     "faq/",
     ...docs.map((page) => (page.id === "index" ? "docs/" : `docs/${page.id}/`)),
     "docs/reference/workflow/",
+    "docs/engineering-records/",
     "docs/history/",
   ];
   const urls = paths.map((path) => `  <url><loc>${new URL(href(path), site).href}</loc></url>`);

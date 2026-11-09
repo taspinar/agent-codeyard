@@ -13,3 +13,8 @@ test("the four entries of the docs index are in the first two groups", () => {
   const early = groups.slice(0, 2).flatMap((group) => group.pages.map((page) => page.id));
   for (const id of ["new-to-agentic-coding", "getting-started", "adopting", "troubleshooting"]) assert.ok(early.includes(id), id);
 });
+
+test("Engineering records is a page of the Reference group (#344)", () => {
+  const reference = groups.find((group) => group.label === "Reference")!;
+  assert.ok(reference.pages.some((page) => page.id === "engineering-records" && page.title === "Engineering records"));
+});

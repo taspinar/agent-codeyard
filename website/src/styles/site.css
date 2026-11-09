@@ -454,6 +454,10 @@ html:not(.js) .docs-search { display: none; }
 .ref .ref-step h3 { margin-top: 0; }
 .ref .what { margin-bottom: var(--s-2); }
 .moved-note { font-size: var(--t-sm); color: var(--ink-2); }
+/* An old anchor of a case that moved (/examples/, #344): its one line shows
+   only when a visitor lands on it. */
+.moved-case { display: none; font-size: var(--t-sm); color: var(--ink-2); }
+.moved-case:target { display: block; }
 /* The copy button of a code block, on the terminal ground. */
 .code-block { position: relative; }
 .copy { position: absolute; top: var(--s-2); right: var(--s-2); font: var(--w-semibold) var(--t-xs) var(--sans); padding: var(--s-chip); border: 1px solid var(--terminal-comment); background: var(--terminal-ground); color: var(--terminal-ink); border-radius: 2px; cursor: pointer; }
