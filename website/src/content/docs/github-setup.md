@@ -35,7 +35,7 @@ A repository created from the template does not inherit these settings: GitHub d
      gh api 'repos/{owner}/{repo}/rules/branches/main' --jq '.[].type'
      ```
 
-4. **Require the `verify` check.** GitHub offers a check only after it ran once, so open a first pull request, let CI run, then add `verify` under "Require status checks to pass" in the same ruleset. Do not require a check that no workflow produces: it blocks every merge.
+4. **Require the `verify` check.** Without a required check, a pull request can be merged while CI fails. GitHub knows a check only by the name a CI job reported, and it offers only names that it has seen on the repository, so open a first pull request, let CI run, then add `verify` under "Require status checks to pass" in the same ruleset. Do not require a check that no workflow produces: GitHub waits for it forever, and that blocks every merge.
    - Where: the ruleset of step 3.
    - Check: `./scripts/doctor.sh` no longer warns that `main` has no required check, and the rules of step 3 now include `required_status_checks`.
 5. **Name yourself as code owner.** Replace `@YOUR_GITHUB_USERNAME` in `.github/CODEOWNERS` with your account or team, through a pull request.
@@ -46,9 +46,11 @@ A repository created from the template does not inherit these settings: GitHub d
      grep YOUR_GITHUB_USERNAME .github/CODEOWNERS
      ```
 
-6. **Decide on code owner reviews.** In a team, require a review from code owners in the ruleset. Alone, leave it off: GitHub does not let you approve your own pull request, so rely on the merge approval statement of the workflow.
-   - Where: the ruleset of step 3.
-   - Check: the ruleset shows "Require review from Code Owners" as you chose.
+6. **Decide on reviews: alone or in a team.** This is the one step where the answer depends on who works in the repository.
+   - **Alone:** leave required approvals at 0 and "Require review from Code Owners" off. GitHub does not let you approve your own pull request, so requiring a review would block your own merges. You rely on the workflow's merge approval statement, which names the pull requests that need you, and you merge them yourself.
+   - **In a team:** require at least one approval and turn on "Require review from Code Owners", so that a change to a protected path needs the review of a code owner who did not open it.
+   - Where: the ruleset of step 3, under "Require a pull request before merging".
+   - Check: the ruleset shows the required approvals and "Require review from Code Owners" as you chose.
 7. **Decide on bypass rights.** A repository administrator can usually bypass a ruleset. Decide whether that should apply to you.
    - Where: the ruleset's **Bypass list**.
    - Check: the bypass list holds only who you chose.
@@ -80,36 +82,29 @@ The complete list of settings is the [repository setup checklist](https://github
 
 **One identity:** an agent runs with the GitHub permissions of the account that started it. If that account may merge, so may the agent, and no script can prevent it. A separate GitHub identity with limited permissions for agents is not built yet ([Issue 99](https://github.com/taspinar/agent-codeyard/issues/99)).
 
-## Keeping the template website
+<a id="keeping-the-template-website"></a>
 
-Projects normally delete `website/` and its Pages workflow. If you keep
-it, keep its marker `website/.codeyard-site` too: the verification and the CI
-check only the site that has it, and leave a `website/` of your own alone. Then configure the name, repository URL, site origin and default base path in
-`website/site.config.ts`. Validation defaults in
-`website/check.sh` are separate. After a repository
-rename, update `site.config.ts`, use `BASE_PATH=/new-repository-name/`, and update the site
-and repository links in `README.md` and literal source links in the content.
-In `website/check.sh`, replace the project path (currently
-`/agent-codeyard/`) in the `for base in … /` list with the new project base path, retaining `/`. Keep
-`default_site_url` in sync with the site origin in `site.config.ts`, updating
-it if the owner or domain changes. Update the path in the check's usage
-comment and `website/validation.md` too. Run
-`website/check.sh --build` to build, link-check and browser-test the
-new project path and `/` in the same way as CI.
+## Advanced: publishing this website
 
-For a custom domain, build with `SITE_URL=https://docs.example.org` and
-`BASE_PATH=/`. Set the domain in **Settings → Pages** (source: **GitHub
-Actions**), verify ownership, and configure DNS: a subdomain's DNS `CNAME`
-points to `<owner>.github.io`, while an apex uses GitHub's documented DNS
-records. Enable HTTPS once the certificate is ready. Keep the Actions
-variable `PUBLISH_DOCUMENTATION=true`; the publishing workflow takes its
-origin and base path from the Pages configuration.
+This section is only for a project that keeps the template's own website. Projects normally delete `website/` and its Pages workflow, `.github/workflows/pages.yml`, and skip it.
 
-A repository `CNAME` file is ignored by this Actions-based publication; it
-does not replace the Pages setting or DNS. Branch-based publication would
-need it in the published root (Astro could copy `public/CNAME`). Follow the
-[repository setup guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/repository-setup.md#13-template-website-a-rename-or-custom-domain)
-and [GitHub's current domain instructions](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site)
-when you change the name or the address. The template's own site took these
-steps once: its repository is `taspinar/agent-codeyard`, and it is served from
-`https://agentcodeyard.com/`.
+**Keep the marker.** If you keep `website/`, keep its marker `website/.codeyard-site` too: the verification and the CI check only the site that has it, and leave a `website/` of your own alone.
+
+**Name and address.** Configure the name, repository URL, site origin and default base path in `website/site.config.ts`. Validation defaults in `website/check.sh` are separate.
+
+**After a repository rename:**
+
+1. Update `site.config.ts`, use `BASE_PATH=/new-repository-name/`, and update the site and repository links in `README.md` and literal source links in the content.
+2. In `website/check.sh`, replace the project path (currently `/agent-codeyard/`) in the `for base in … /` list with the new project base path, retaining `/`. Keep `default_site_url` in sync with the site origin in `site.config.ts`, updating it if the owner or domain changes.
+3. Update the path in the check's usage comment and `website/validation.md` too.
+4. Run `website/check.sh --build` to build, link-check and browser-test the new project path and `/` in the same way as CI.
+
+**A custom domain:**
+
+1. Build with `SITE_URL=https://docs.example.org` and `BASE_PATH=/`.
+2. Set the domain in **Settings → Pages** (source: **GitHub Actions**) and verify ownership.
+3. Configure DNS: a subdomain's DNS `CNAME` points to `<owner>.github.io`, while an apex uses GitHub's documented DNS records.
+4. Enable HTTPS once the certificate is ready.
+5. Keep the Actions variable `PUBLISH_DOCUMENTATION=true`; the publishing workflow takes its origin and base path from the Pages configuration.
+
+A repository `CNAME` file is ignored by this Actions-based publication; it does not replace the Pages setting or DNS. Branch-based publication would need it in the published root (Astro could copy `public/CNAME`). Follow the [repository setup guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/repository-setup.md#13-template-website-a-rename-or-custom-domain) and [GitHub's current domain instructions](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site) when you change the name or the address. The template's own site took these steps once: its repository is `taspinar/agent-codeyard`, and it is served from `https://agentcodeyard.com/`.

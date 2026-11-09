@@ -83,9 +83,9 @@ const moved = ["memory", "story", "tradeoff", "features", "owner", "repair", "sh
     <p><strong>Illustrative example.</strong> The gym example of this site is modelled on FightAnalytics. Its questions, check and review finding are made up to show the steps; it does not say how FightAnalytics was built.</p>
     <ProductCase>
       <Fragment slot="problem">Trainers want to record attendance for their classes. Members want to see their own training history.</Fragment>
-      <Fragment slot="change">One function: trainers record attendance, members see their own history. Planned in order: users and roles, then classes and attendance, then the member's history view.</Fragment>
-      <Fragment slot="settled">May members see other members' data? Agreed: no, a member sees only their own history. Also agreed: trainers record and correct attendance for their own classes, and a correction keeps the original entry visible, marked as corrected.</Fragment>
-      <Fragment slot="check">A check that runs with the feature: a member who asks for another member's history is refused.</Fragment>
+      <Fragment slot="change">One function: trainers record attendance for their classes; members see their own training history. Planned in order: users and roles, then classes and attendance, then the member's history view.</Fragment>
+      <Fragment slot="settled">May members see other members' data? Agreed: no, a member sees only their own history. Also agreed: trainers record and correct attendance for their own classes, and a correction keeps the original entry visible as corrected.</Fragment>
+      <Fragment slot="check">A member who requests another member's history is refused; the check runs with the feature.</Fragment>
       <Fragment slot="found">The first version let every signed-in user open the history view. The reviewer reported it, and the fix was checked.</Fragment>
       <Fragment slot="result">A proposed change, with the checks that ran and the review's remarks. The owner decides whether it becomes part of the application.</Fragment>
       <Fragment slot="sources">None: this part is an illustration. The records of FightAnalytics are private, so this page shows none of them.</Fragment>
@@ -248,6 +248,7 @@ triage published on #388
 
   <div class="wrap">
     <p class="needs">The engineering case studies, the records of Codeyard's own features, are in the docs: <a href={href("docs/engineering-records/")}>Engineering records</a>.</p>
+    <p id="engineering" class="moved-case">The engineering case studies moved to <a href={href("docs/engineering-records/")}>Engineering records</a>.</p>
     {moved.map((id) => <p id={id} class="moved-case">This case moved to <a href={href(`docs/engineering-records/#${id}`)}>Engineering records</a>.</p>)}
   </div>
 </Base>

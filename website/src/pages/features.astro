@@ -128,7 +128,7 @@ const roles = [
     <dl class="pitch">
       <dt>The problem</dt><dd>Features built side by side each make their own design choices, and after a few weeks the code no longer follows one design.</dd>
       <dt>What you get</dt><dd>Every feature starts from one approved plan; changing the plan is a decision you approve, not a side effect.</dd>
-      <dt>Illustrative example</dt><dd>The plan builds users and roles first, then attendance, then the history view. Both later features use the same roles instead of inventing their own.</dd>
+      <dt>Illustrative example</dt><dd>The plan builds users and roles first, then classes and attendance, then the member's history view. Both later features use the same roles instead of inventing their own.</dd>
     </dl>
     <details class="proof">
       <summary>How the plan is reviewed and approved: files and settings</summary>
@@ -228,7 +228,7 @@ const roles = [
     <dl class="pitch">
       <dt>The problem</dt><dd>When an AI tool reports that it is done, that is its own judgment. It reports completion, not coverage: which requirements were tested, which were skipped, and what the evidence is.</dd>
       <dt>What you get</dt><dd>Each change lists every requirement with what shows it is met, and checks that ran on exactly that version. A check proves what it examines, no more.</dd>
-      <dt>Illustrative example</dt><dd>The attendance change lists “a member sees only their own history: met”, with the check that refuses a request for another member's history.</dd>
+      <dt>Illustrative example</dt><dd>The attendance change lists “a member sees only their own history: met”, with the check “a member who requests another member's history is refused”.</dd>
     </dl>
     <details class="proof">
       <summary>How the evidence is recorded: files and settings</summary>
@@ -281,7 +281,7 @@ const roles = [
     <dl class="pitch">
       <dt>The problem</dt><dd>A tool that reviews its own code tends to miss again what it missed while writing.</dd>
       <dt>What you get</dt><dd>An AI of another provider, which cannot edit the change, reads it, and every finding gets a written decision: a second judgment, not a guarantee that every error is found.</dd>
-      <dt>Illustrative example</dt><dd>The first history view let every signed-in user open it. The reviewer reported it, and the fix was checked again.</dd>
+      <dt>Illustrative example</dt><dd>The first version let every signed-in user open the history view. The reviewer reported it, and the fix was checked.</dd>
     </dl>
     <details class="proof">
       <summary>How the second review works: files and settings</summary>
@@ -407,13 +407,13 @@ const roles = [
     <Fragment slot="note"><strong>Your choice</strong> per feature; the limits are set by default. <a href={href("docs/detailed-workflow/#run-a-feature-unattended")}>Run a feature unattended</a> in the docs.</Fragment>
     <dl class="pitch">
       <dt>The problem</dt><dd>A tool running while you are away has nobody to answer its questions or to stop it going round in circles.</dd>
-      <dt>What you get</dt><dd>You start several features in the evening; in the morning there are pull requests with their checks and reviews, and features with a question waiting for you. In between, the agents decided on findings within fixed limits, and anything that needed your permission was refused rather than assumed.</dd>
+      <dt>What you get</dt><dd>You start several features in the evening; in the morning there are pull requests with their checks and reviews, and features with a question waiting for you. In between, the agents decided on findings within fixed limits; what would have needed your answer was decided by the tool's own sandbox or permission check, or refused, never assumed.</dd>
       <dt>Illustrative example</dt><dd>You start the history view in the evening. In the morning there is a proposed change with its checks and review, or one question for you.</dd>
     </dl>
     <details class="proof">
       <summary>How an unattended run is limited: files and settings</summary>
       <div class="layer">
-        <p><b>What Codeyard does.</b> One command, <code>run-feature.sh</code>, takes a feature from its Issue to an open pull request without asking you anything, inside fixed limits: anything that would need your permission is denied, sessions, repairs and review rounds are capped, and an agent that needs your decision stops the run instead of guessing.</p>
+        <p><b>What Codeyard does.</b> One command, <code>run-feature.sh</code>, takes a feature from its Issue to an open pull request without asking you anything, inside fixed limits: what it would have asked you is decided by the tool's own sandbox or permission check, and whatever would still need a question is denied; sessions, repairs and review rounds are capped; and an agent that needs your decision stops the run instead of guessing.</p>
         <figure class="plain">
           <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="unattended-t" aria-describedby="unattended-words">
             <title id="unattended-t">An unattended run: run-feature.sh starts the implementer under the unattended profile, verifies, and runs the review rounds, with the fixes of each round, until an open pull request; there the run ends, and you merge. An agent that needs your decision stops the run with status 3.</title>
@@ -437,7 +437,7 @@ const roles = [
           </ol>
         </figure>
         <ul class="rules">
-          <li><b>Bounded permissions.</b> A writing agent runs under the <code>unattended</code> profile: anything that would ask is denied, and it gets no MCP servers (Model Context Protocol servers, programs that give an agent extra tools) or apps, the extra tools of your own agent configuration. Reviewers and triage run <code>read-only</code>.</li>
+          <li><b>Bounded permissions.</b> A writing agent runs under the <code>unattended</code> profile: Codex is refused what leaves its sandbox, Claude Code's own permission check allows or denies each action and denies whatever would still ask, and it gets no MCP servers (Model Context Protocol servers, programs that give an agent extra tools) or apps, the extra tools of your own agent configuration. Reviewers and triage run <code>read-only</code>.</li>
           <li><b>Bounded effort.</b> At most 5 review rounds in a run, and by default 4 implementer sessions, 3 retries of a failing agent call and 3 repairs of a failing verification.</li>
           <li><b>Stops instead of guesses.</b> An agent that needs your decision ends with a <code>BLOCKED:</code> line and the run exits with status 3. Running the same command again continues where the feature stands.</li>
           <li><b>Never merges.</b> The run ends at an open pull request and never removes a worktree.</li>

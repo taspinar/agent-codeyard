@@ -29,7 +29,7 @@ const stepRows = 1 + answers.length + 2;
 // The real case: #241 as it ran, each step linked to its reference entry.
 const ran = guide(parseAgents(agentsConf)).map((step) => ({ ...step, ref: entry(step.key)! }));
 ---
-<Base title="Workflow" description="How an idea becomes a change you decide on with Agent Codeyard: describe and clarify, plan, then build, check and decide for one function after another. The technical workflow follows.">
+<Base title="How it works" description="How an idea becomes a change you decide on with Agent Codeyard: describe and clarify, plan, then build, check and decide for one function after another. The technical workflow follows.">
   <PageHead tight title="From your idea to a change you decide on." lede="You describe what you need and answer a few questions. AI agents plan, build and check the work. You decide what becomes part of your project." />
 
   <section id="overview" class="overview-sec" aria-labelledby="overview-h">
@@ -91,7 +91,7 @@ const ran = guide(parseAgents(agentsConf)).map((step) => ({ ...step, ref: entry(
         <dl>
           <dt>What you do</dt><dd>You start one command; it goes from the implementation to an open pull request without asking you.</dd>
           <dt>Review findings</dt><dd>The triage agent decides on each finding and records the decision on the Issue; you read it afterwards.</dd>
-          <dt>Permissions</dt><dd>Nothing is asked: what would need your permission is refused.</dd>
+          <dt>Permissions</dt><dd>Nothing is asked: the tool's own sandbox or permission check decides, and what would still need your answer is refused.</dd>
           <dt>A question for you</dt><dd>A decision that only you can take stops the run with status 3; it names the handoff note with the question.</dd>
         </dl>
       </div>
@@ -102,7 +102,7 @@ const ran = guide(parseAgents(agentsConf)).map((step) => ({ ...step, ref: entry(
   </Section>
 
   <Section id="case" title="How these pages were built">
-    <Fragment slot="note">A real run: <a href={issue(241)}>Issue #241</a>, <a href={pull(249)}>PR #249</a>, 30 October 2026. Its figures and records are on <a href={href("examples/#story")}>/examples/</a>.</Fragment>
+    <Fragment slot="note">A real run: <a href={issue(241)}>Issue #241</a>, <a href={pull(249)}>PR #249</a>, 30 October 2026. Its figures and records are in <a href={href("docs/engineering-records/#story")}>Engineering records</a>.</Fragment>
     <p>The gym above is an illustration. This is a real feature of this project: the run that wrote the first pages of this site, one unattended run of <code>run-feature.sh 241</code> at medium risk from the Issue to the pull request, with one major review finding fixed in between. Each step below links to its reference entry, which names the script and the rules it applies.</p>
     <ol class="words timeline">
       {ran.map((step) => (

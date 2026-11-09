@@ -1,12 +1,12 @@
 ---
 title: "Risk policy and workflow profiles"
-description: "How risk is computed and how profiles change the requirements."
+description: "What the risk level of a feature changes, what the template ships, and how a project configures its own levels and profile."
 order: 5
 ---
 
 ## A typo and a change to authentication
 
-A typo fixed in the user guide and a change to how users log in should not get the same treatment. The risk policy says which paths of your project are which, in one file. With these two lines, which a project could write for itself:
+A typo fixed in the user guide and a change to how users log in should not get the same treatment. The risk policy is one file that says which paths of your project are which, and from it the workflow computes a risk level for every feature: low, medium or high. **Example, not the shipped policy:** with these two lines, which a project could write for itself,
 
 ```text
 low: docs :(glob)**/*.md
@@ -16,17 +16,64 @@ high: src/auth
 - **The typo** changes only a Markdown file under `docs`, so the feature is **low** risk. Under the shipped rules it is still reviewed. A project that also writes `low: review: none`, or `profile: light`, commits it without a review; nobody assessed its impact, so its merge then needs your approval.
 - **The change to authentication** touches `src/auth`, so the feature is **high** risk. It gets the stronger implementer model of `implementer@high`, a review of the complete feature before the commit, and the full triage of every finding, under every profile. Nothing a feature writes can lower that level.
 
-The template itself ships neither line: it has `default: medium` and no `low` class, so until you add classes both changes are **medium** and both are reviewed. For example, the change of the template's own About page in [pull request 266](https://github.com/taspinar/agent-codeyard/pull/266) was recorded as "Risk: medium", each file with "no class of .agents/policies/risk.conf names it; the default is medium".
+**What the template actually does:** it ships neither line. It has `default: medium` and no `low` class, so until you add classes both changes are **medium** and both are reviewed. For example, the change of the template's own About page in [pull request 266](https://github.com/taspinar/agent-codeyard/pull/266) was recorded as "Risk: medium", each file with "no class of .agents/policies/risk.conf names it; the default is medium".
 
-The rules follow.
+<a id="in-practice"></a>
+
+## What a level changes in practice
+
+| The level decides | Under the shipped configuration |
+| --- | --- |
+| **The model** of the implementer and the fixer, by the lines of <a href="../agent-roles/#risk-levels">`.agents/agents.conf`</a> | `opus` at low and medium, `fable` at high |
+| **What the review rounds require**: the verification, whether a later round may review only the changes, and the triage, by the lines of the risk policy | The same at every level: every check, a review of the changes when a round can build on the one before, and the full triage |
+| **Whether a review may be skipped**: only at low, only when the policy says so | Not by the policy: every feature is reviewed. You can still finish a low-risk change without a review, with `--no-review "<reason>"`, and the commit records it |
+
+What a level does not change: under every level and profile the implementer, the full verification before the commit, the pull request, CI and your merge stay. The merge approval follows its own rules (<a href="../configuration-and-security/#gate">changes that need the owner</a>): a protected path needs you at any level.
+
+<a id="three-settings"></a>
+
+### Three settings with similar names
+
+| Setting | What it is | Where |
+| --- | --- | --- |
+| **Risk level** | Low, medium or high, computed per feature from the paths it changes | <a href="#risk">The risk level of a feature</a> |
+| **Workflow profile** | One line, `profile: light` or `profile: standard`, that fills in the rules the risk policy does not write | <a href="#workflow-profiles">Workflow profiles</a> |
+| **Permission profile** | Write, unattended or read-only: what an agent may do in a step. Unrelated to risk | <a href="../configuration-and-security/#profiles">Configuration and security</a> |
+
+<a id="risk"></a>
+
+## The risk level of a feature
+
+Every feature has a risk level: low, medium, or high. The workflow computes it; you can raise it with the label `risk: high` or `risk: medium`, or `--risk`. Nobody can lower it. It is the highest of three things:
+
+- **The paths the feature changes**, by the classes of the risk policy. A path that no class names gets the default.
+- **Fixed escalations to high** that no policy turns off, such as a removed or changed line of an existing test, a changed or removed line of the verification configuration, a change to an existing file under `.agents/policies/`, `.agents/prompts/`, or `.agents/schemas/`, or a change to an existing project skill. An added file does not escalate by itself; protected paths remain high by their class. Any change to shared test fixtures, including an added line, escalates. The <a href="#escalations">fixed escalations</a> list them all.
+- **What the agents say**: the implementer can record a higher level, and a reviewer who rates the impact on the architecture as major or breaking makes the feature high.
+
+The level can be raised, never lowered: a lower claim is ignored and reported. The rules are read from the base branch, so a feature cannot relax the rules it is classified by. The scripts print the level with its reasons, the commit and the pull request record it, and `./scripts/check-risk.sh` shows it for the current worktree.
+
+A new feature has no changes yet, so its first session runs at the default level. When you know that a feature is risky, say so before that session: label the issue `risk: high` (or `risk: medium`), or pass `--risk high` to `start-feature.sh` or `run-feature.sh`. A label counts for the whole feature; the option for one run. Either one only raises the level.
+
+## Shipped configuration
+
+The template ships `default: medium`, the paths of the workflow and its gate as `high`, and no `low` class and no `profile:` line. Every feature of a new project is therefore medium or high, and every feature is reviewed, until you add classes for your project. The active lines of [.agents/policies/risk.conf](https://github.com/taspinar/agent-codeyard/blob/main/.agents/policies/risk.conf):
+
+```text
+default: medium
+high: docs/decisions .github/workflows .github/CODEOWNERS .agents/policies .agents/prompts/reviewer.md .agents/schemas .agents/agents.conf scripts/check-guardrails.sh scripts/lib/guardrails.sh scripts/check-risk.sh scripts/lib/risk.sh scripts/lib/agent.sh scripts/lib/review-data.sh scripts/lib/review-run.sh scripts/lib/fingerprint.sh scripts/review-feature.sh scripts/finish-feature.sh scripts/publish-feature.sh scripts/run-feature.sh scripts/verify.conf scripts/verify-workflow.conf
+tests: tests test
+test-fixtures: tests/lib-fakes.sh
+```
 
 <a id="policy-settings"></a>
 
 ## The risk policy
 
-The <a href="../risk-policy/#risk">risk level of a feature</a> is computed from the policy file, [`.agents/policies/risk.conf`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/policies/risk.conf), one `<key>: <value>` per line with paths. Like the rules of the gate, it is always read from the base branch, so a feature that changes it is classified by the old one, and is high risk because it changed a policy.
+The policy file, [`.agents/policies/risk.conf`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/policies/risk.conf), has one `<key>: <value>` per line with paths. Like the rules of the gate, it is always read from the base branch, so a feature that changes it is classified by the old one, and is high risk because it changed a policy.
 
-Example classes for an application (not the shipped policy):
+### Classes of paths
+
+**Example classes for an application, not the shipped policy:**
 
 ```text
 default: medium
@@ -34,20 +81,11 @@ low: docs :(glob)**/*.md
 high: src/auth db/migrations deploy
 ```
 
-The classes `low`, `medium`, and `high` name paths; a path in two classes gets the higher one, and a path in none gets the `default`. The template ships `default: medium`, the paths of the workflow and its gate as `high`, and no `low` class: every feature is medium or high until you add classes for your project.
+The classes `low`, `medium`, and `high` name paths; a path in two classes gets the higher one, and a path in none gets the `default`.
 
-Some changes make a feature high whatever the classes say:
+### What each level requires
 
-| Kind of change | Examples | What happens |
-| --- | --- | --- |
-| **A weakened test** | A removed or changed line of an existing test file, or a removed test file | High. A diff that only adds lines to a test file does not escalate: a new test weakens nothing |
-| **Shared test fixtures** | Any change to the libraries many tests load (`test-fixtures`), also an added line or a new file | High, since such a file can change every test |
-| **The verification configuration** | A changed or removed line in `scripts/verify.conf` or `scripts/verify-workflow.conf` | High |
-| **Policies, prompts, schemas** | A change to an existing file under `.agents/policies/`, `.agents/prompts/`, or `.agents/schemas/` | High |
-| **Project skills** | A change to an existing file of a skill under `.agents/project-skills/` (<a href="../agent-roles/#skills">project skills</a>) | High |
-| **Manifests** | A change to an existing dependency or toolchain file that the policy names under `manifests` | High |
-
-**What each level requires.** The policy can also say, per level, what the review rounds of `run-feature.sh` need, one `<level>: <kind>: <value>` per line:
+The policy can also say, per level, what the review rounds of `run-feature.sh` need, one `<level>: <kind>: <value>` per line:
 
 | Line | What it means |
 | --- | --- |
@@ -57,21 +95,7 @@ Some changes make a feature high whatever the classes say:
 
 The template writes no such line, so every level gets the full verification, reviews of the changes when a round can build on the one before, and the full triage: what the workflow always did. A value that is not allowed counts as the strictest one, and `check-risk.sh` reports it as refused.
 
-**Profiles.** One line, `profile: light` or `profile: standard`, fills in the rules the file does not write (<a href="../risk-policy/#workflow-profiles">workflow profiles</a>). `light` makes documentation and process files low risk, commits a low-risk feature without a review, and gives low- and medium-risk features the light triage. No profile changes what a high-risk feature gets. The template ships no `profile:` line; to switch, change that one line and merge it.
-
-<a id="risk"></a>
-
-### The risk level of a feature
-
-Every feature has a risk level: low, medium, or high. The workflow computes it; you can raise it with the label `risk: high` or `risk: medium`, or `--risk`. Nobody can lower it. It is the highest of three things:
-
-- **The paths the feature changes**, by the classes of the risk policy. A path that no class names gets the default.
-- **Fixed escalations to high** that no policy turns off, such as a removed or changed line of an existing test, a changed or removed line of the verification configuration, a change to an existing file under `.agents/policies/`, `.agents/prompts/`, or `.agents/schemas/`, or a change to an existing project skill. An added file does not escalate by itself; protected paths remain high by their class. Any change to shared test fixtures, including an added line, escalates.
-- **What the agents say**: the implementer can record a higher level, and a reviewer who rates the impact on the architecture as major or breaking makes the feature high.
-
-The level can be raised, never lowered: a lower claim is ignored and reported. The rules are read from the base branch, so a feature cannot relax the rules it is classified by. The level decides which model an agent uses (<a href="../agent-roles/#roles">agent roles and models</a>) and what the review rounds require (<a href="#policy-settings">the risk policy</a>). It does not replace the merge approval: a protected path still needs you. The scripts print the level with its reasons, the commit and the pull request record it, and `./scripts/check-risk.sh` shows it for the current worktree.
-
-A new feature has no changes yet, so its first session runs at the default level. When you know that a feature is risky, say so before that session: label the issue `risk: high` (or `risk: medium`), or pass `--risk high` to `start-feature.sh` or `run-feature.sh`. A label counts for the whole feature; the option for one run. Either one only raises the level.
+**Profiles.** One line, `profile: light` or `profile: standard`, fills in the rules the file does not write (<a href="#workflow-profiles">workflow profiles</a>). `light` makes documentation and process files low risk, commits a low-risk feature without a review, and gives low- and medium-risk features the light triage. No profile changes what a high-risk feature gets. The template ships no `profile:` line; to switch, change that one line and merge it.
 
 ### Workflow profiles
 
@@ -85,13 +109,17 @@ A workflow profile is one line in the risk policy, `profile: light` or `profile:
 
 A profile never changes what a high-risk feature gets: under every profile it has the full workflow. It does not select the level, and it is unrelated to the permission profiles of the agents. Under every profile the implementer, the full verification before the commit, the pull request, CI, and the merge approval stay. A feature that changes the profile line is classified by the profile of the base branch, and is high risk, because it changes the policy.
 
-## Shipped configuration
+<a id="escalations"></a>
 
-The active lines of [.agents/policies/risk.conf](https://github.com/taspinar/agent-codeyard/blob/main/.agents/policies/risk.conf):
+### Fixed escalations
 
-```text
-default: medium
-high: docs/decisions .github/workflows .github/CODEOWNERS .agents/policies .agents/prompts/reviewer.md .agents/schemas .agents/agents.conf scripts/check-guardrails.sh scripts/lib/guardrails.sh scripts/check-risk.sh scripts/lib/risk.sh scripts/lib/agent.sh scripts/lib/review-data.sh scripts/lib/review-run.sh scripts/lib/fingerprint.sh scripts/review-feature.sh scripts/finish-feature.sh scripts/publish-feature.sh scripts/run-feature.sh scripts/verify.conf scripts/verify-workflow.conf
-tests: tests test
-test-fixtures: tests/lib-fakes.sh
-```
+Some changes make a feature high whatever the classes say:
+
+| Kind of change | Examples | What happens |
+| --- | --- | --- |
+| **A weakened test** | A removed or changed line of an existing test file, or a removed test file | High. A diff that only adds lines to a test file does not escalate: a new test weakens nothing |
+| **Shared test fixtures** | Any change to the libraries many tests load (`test-fixtures`), also an added line or a new file | High, since such a file can change every test |
+| **The verification configuration** | A changed or removed line in `scripts/verify.conf` or `scripts/verify-workflow.conf` | High |
+| **Policies, prompts, schemas** | A change to an existing file under `.agents/policies/`, `.agents/prompts/`, or `.agents/schemas/` | High |
+| **Project skills** | A change to an existing file of a skill under `.agents/project-skills/` (<a href="../agent-roles/#skills">project skills</a>) | High |
+| **Manifests** | A change to an existing dependency or toolchain file that the policy names under `manifests` | High |

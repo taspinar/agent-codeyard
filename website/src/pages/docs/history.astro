@@ -1,7 +1,8 @@
 ---
 // The history of Agent Codeyard, the principles it taught, and the research
 // behind it: moved from About (#319), which keeps one paragraph and a link;
-// the design decisions followed (#333).
+// the design decisions followed (#333). A few phases with their cause and
+// effect come first; the periods with their pull requests follow (#335).
 // Each period links to the pull requests that built it, by their merge dates.
 import DocsPage from "../../components/DocsPage.astro";
 import Table from "../../components/Table.astro";
@@ -39,6 +40,23 @@ const history = [
     text: "After the owner's editorial audit of 3 November (#269), the homepage, Features, Examples and the docs were rewritten for a developer who has not heard of Codeyard: the value first, the technical proof as the deeper layer." },
 ];
 
+// The phases in short: what caused each and what it changed. Each names the
+// periods of the history below that it sums up.
+const phases = [
+  { title: "From a routine to scripts", when: "September 2026",
+    cause: "The same steps were done by hand for every feature: plan in an Issue, build in a worktree, have a second agent read it.",
+    effect: "Scripts took over what was the same every time, and a planning process came before the first feature." },
+  { title: "From the agent's word to records", when: "October 2026",
+    cause: "Whether the tests passed or a review covered the current code rested on what an agent reported.",
+    effect: "Checks, reviews and decisions became records a script can verify, tied to the content they saw. That made it possible to run a feature unattended, with the scripts, not an agent, deciding whether a step succeeded." },
+  { title: "Effort that follows risk", when: "Late October 2026",
+    cause: "A documentation fix and a change to the workflow's own checks got the same treatment, and Physics by Construction, which tried a risk detector first, needed several corrections of it within a week.",
+    effect: "Every feature gets a computed risk level that only rises, workflow profiles make low-risk work lighter, and an added file never escalates by itself." },
+  { title: "A site for people new to it", when: "From 30 October 2026",
+    cause: "The first website explained the workflow accurately, but asked visitors to know agentic coding already, as the owner's audits of 3 and 8 November found.",
+    effect: "The site was rewritten in two reading layers: what you get first, with one illustrative example, and the technical detail behind it." },
+];
+
 // The design decisions, each with the pull request that made it: moved from
 // About (#333).
 const decisions = [
@@ -63,15 +81,29 @@ const frameworks = [
 ];
 
 const toc = [
+  { slug: "phases", text: "In short" },
   { slug: "history", text: "History" },
   { slug: "principles", text: "Engineering principles" },
   { slug: "decisions", text: "Design decisions" },
   { slug: "research", text: "Research" },
 ];
 ---
-<DocsPage id="history" title="History and research" description="How Agent Codeyard evolved from the first pull request on 10 September 2026, period by period with the pull requests that built it, the principles that history taught, the design decisions with their sources, and the frameworks and talks it learned from." toc={toc} class="history">
+<DocsPage id="history" title="History and research" description="How Agent Codeyard evolved from the first pull request on 10 September 2026: four phases with their cause and effect, then period by period with the pull requests that built it, the principles that history taught, the design decisions with their sources, and the frameworks and talks it learned from." toc={toc} class="history">
+  <h2 id="phases">In short</h2>
+  <p>The ideas behind the workflow are not new: it combines established engineering practice with coding agents, inside a development process on GitHub. It started manual and automated the steps that proved useful and repeatable. Four phases, each with what caused it and what it changed:</p>
+  <ol class="words timeline">
+    {phases.map((phase) => (
+      <li>
+        <b>{phase.title}</b><small class="k">{phase.when}</small>
+        <p><strong>Cause:</strong> {phase.cause}</p>
+        <p><strong>Effect:</strong> {phase.effect}</p>
+      </li>
+    ))}
+  </ol>
+  <p>From Physics by Construction, the maker's physics course that runs this workflow: its corrections of the risk detector became the rule that an added file never escalates by itself (<a href={`${issue(189)}#issuecomment-6443105170`}>Issue #189</a>), and a fix of its planning approval came back to the template in <a href={pull(179)}>PR #179</a>.</p>
+
   <h2 id="history">History</h2>
-  <p>The ideas behind the workflow are not new: it combines established engineering practice with coding agents, inside a development process on GitHub. It started manual and automated the steps that proved useful and repeatable. Several lessons came from <a href={`${issue(189)}#issuecomment-6443105170`}>Physics by Construction</a>, a project that uses this workflow and where parts of its design were tried first; a fix found there came back in <a href={pull(179)}>PR #179</a>.</p>
+  <p>Period by period, with the pull requests that built it. Pages are named as they were called then: Features is now Why Codeyard, Examples is Projects, and Workflow is How it works.</p>
   <ol class="words timeline">
     {history.map((period) => (
       <li>

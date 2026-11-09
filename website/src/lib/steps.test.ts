@@ -3,7 +3,7 @@
 //   node --test "src/**/*.test.ts"  (in website/)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { details, entry, feature, fields, planning, reference, stages, stations, tabs } from "./steps.ts";
+import { details, entry, feature, fields, parameters, placeholders, planning, reference, stages, stations, tabs } from "./steps.ts";
 import { feature as featureLine, planning as planningLine, route } from "./workflow.ts";
 
 test("every station of the map opens a detail, and every step it names exists", () => {
@@ -41,7 +41,7 @@ test("the tabs: who acts and the decision; the command and what goes in and out;
   assert.deepEqual(rows("technical").map((row) => row.label), ["Command", "Inputs and outputs"]);
   assert.deepEqual(rows("failure").map((row) => row.label), ["Stops, retries and exceptions"]);
   assert.deepEqual(rows("failure")[0].facts.map((fact) => fact.label), ["refused if", "refused if", "changes only", "earlier rounds"]);
-  assert.equal(rows("technical")[0].facts[0].shown, false, "a single command needs no sub-label");
+  assert.deepEqual(rows("technical")[0].facts.map((fact) => [fact.label, fact.shown]), [["script", false], ["where", true]], "the command needs no sub-label; where it runs keeps its own");
   assert.equal(rows("technical")[1].facts[0].shown, true, "inputs and outputs keep their label");
 });
 
@@ -81,4 +81,18 @@ test("every element a walkthrough reaches links to its entry in the reference", 
   assert.equal(entry("b-fix")!.id, "apply-the-fixes");
   assert.equal(entry("f-findings")!.id, "decide-on-the-findings", "a station links to its first step");
   assert.equal(entry("s-f-review"), undefined, "a segment is not a step");
+});
+
+test("every step with a command says where it runs, and every placeholder of a command is explained", () => {
+  for (const step of [...planning, ...feature]) {
+    const terms = step.facts.map(([term]) => term);
+    const script = step.facts.find(([term]) => term === "script")?.[1] ?? "";
+    if (script.includes("./scripts/")) assert.ok(terms.includes("where"), `${step.id}: no working directory`);
+  }
+  const explained = parameters.map(([name]) => name);
+  assert.equal(new Set(explained).size, explained.length, "each parameter once");
+  const used = [...planning, ...feature].flatMap((step) => step.facts.flatMap(([, value]) => placeholders(value)));
+  for (const name of new Set(used)) assert.ok(explained.includes(name), `not explained: ${name}`);
+  for (const name of explained) assert.ok(used.includes(name), `explained but not used: ${name}`);
+  assert.deepEqual(placeholders("`start-feature.sh <issue> [slug]`"), ["<issue>", "<slug>"]);
 });

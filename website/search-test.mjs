@@ -60,6 +60,23 @@ if (process.argv[2]) {
   // The sitemap lists the pages outside the docs collection too.
   const sitemap = await readFile(join(output, 'sitemap.xml'), 'utf8');
   assert(sitemap.includes(`${base}docs/reference/workflow/</loc>`), 'The workflow reference is missing from the sitemap');
+  // The sitemap and the search index list exactly the routes of the live site
+  // before #335: the 21 its Issue names and Engineering records (#344), 22 in
+  // all. Every anchor of those pages still resolves.
+  const legacy = JSON.parse(await readFile(new URL('./legacy-anchors.json', import.meta.url), 'utf8')).pages;
+  const routes = Object.keys(legacy).sort();
+  assert.equal(routes.length, 22);
+  const located = [...sitemap.matchAll(/<loc>[^<]*?\/\/[^/<]+([^<]*)<\/loc>/g)].map(m => m[1].slice(base.length)).sort();
+  assert.deepEqual(located, routes, 'The sitemap lists other routes than the live site before #335');
+  assert.deepEqual(pages.map(p => p.url.slice(base.length)).sort(), routes, 'The search index lists other routes than the live site before #335');
+  for (const [route, ids] of Object.entries(legacy)) {
+    const html = await readFile(join(output, route, 'index.html'), 'utf8');
+    for (const id of ids) assert(html.includes(`id="${id}"`), `Old anchor lost: /${route}#${id}`);
+  }
+  // Anchors dropped by earlier steps of #328 and restored as pointers (#335).
+  for (const [route, id] of [['', 'projects'], ['examples/', 'engineering']]) {
+    assert((await readFile(join(output, route, 'index.html'), 'utf8')).includes(`id="${id}"`), `Old anchor lost: /${route}#${id}`);
+  }
   assert(searchPages(pages, 'LICENSE').some(p => p.url === `${base}docs/getting-started/`));
   // History and research moved from About to the docs (#319).
   assert(searchPages(docs, 'Physics by Construction').some(p => p.url === `${base}docs/history/`));
@@ -84,6 +101,42 @@ if (process.argv[2]) {
     assert(reference.includes(`<section class="ref-step" id="${id}"`), `Not in the reference: ${id}`);
     assert(workflow.includes(`<a id="${id}" href="${base}docs/reference/workflow/#${id}">`), `Old anchor lost: /workflow/#${id}`);
   }
+  // The gym scenario of #328 says the same on every page that uses it (#335).
+  const gym = [
+    [/members see their own(?! training history)/i, 'the function: "members see their own training history"'],
+    [/member who (?!requests another member's history is refused)\w+ (for )?another member's history/i, 'the check: "a member who requests another member\'s history is refused"'],
+    [/correction keeps the original entry visible(?! as corrected)/i, 'the agreement: "a correction keeps the original entry visible as corrected"'],
+    [/users and roles(,| first,) then (?!classes and attendance, then the member's history view)/i, 'the plan: "users and roles, then classes and attendance, then the member\'s history view"'],
+    [/let every signed-in user open (?!the history view)/i, 'the finding: "the first version let every signed-in user open the history view"'],
+  ];
+  // The canonical parts, and the routes that use each of them: a part removed
+  // or reworded on one of these pages fails.
+  const parts = {
+    function: /trainers record attendance for their classes(;|,? and) members see their own training history/i,
+    check: /a member who requests another member's history is refused/i,
+    agreement: /a correction keeps the original entry visible as corrected/i,
+    plan: /users and roles\b[^.]*?\bclasses and attendance\b[^.]*?\bthe member's history view/i,
+    finding: /the first version let every signed-in user open the history view/i,
+  };
+  const uses = {
+    '': ['function', 'agreement', 'finding'],
+    'workflow/': Object.keys(parts),
+    'features/': ['plan', 'check', 'finding'],
+    'faq/': ['function'],
+    'examples/': Object.keys(parts),
+    'docs/getting-started/': ['function'],
+    'docs/new-to-agentic-coding/': Object.keys(parts),
+    'docs/verification-and-completion/': ['function', 'check'],
+  };
+  const scenario = [];
+  for (const page of pages) {
+    const route = page.url.slice(base.length);
+    const text = plainText(await readFile(join(output, route, 'index.html'), 'utf8')).replace(/[‘’]/g, "'").replace(/\s+/g, ' ');
+    for (const [variant, canonical] of gym) assert(!variant.test(text), `${page.url}: the gym scenario differs from ${canonical}`);
+    if (/\battendance\b/i.test(text)) scenario.push(route);
+    for (const part of uses[route] ?? []) assert(parts[part].test(text), `${page.url}: the ${part} of the gym scenario is missing or reworded`);
+  }
+  assert.deepEqual(scenario.sort(), Object.keys(uses).sort(), 'Other pages use the gym scenario than search-test.mjs checks');
   for (const page of pages) {
     assert(page.url.startsWith(base));
     const html = await readFile(join(output, page.url.slice(base.length), 'index.html'), 'utf8');
