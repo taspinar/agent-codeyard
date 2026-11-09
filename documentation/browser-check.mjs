@@ -410,6 +410,21 @@ try {
           const inlineJS = [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].reduce((sum, m) => sum + Buffer.byteLength(m[1]), 0);
           report.pages.push({ path, javascriptBytes: inlineJS + resources.filter(r => r.kind === 'script').reduce((s, r) => s + r.bytes, 0), pageBytes: Buffer.byteLength(html) + resources.reduce((s, r) => s + r.bytes, 0), resources });
         }
+        // Why Codeyard (#331): with the disclosures closed, at most 1300 visible
+        // words in <main> and at most 6000 px high at 1440 px.
+        if (path === base + 'features/' && width === 1440) {
+          const length = await page.evaluate(() => ({
+            open: document.querySelectorAll('main details[open]').length,
+            words: document.querySelector('main').innerText.split(/\s+/).filter(Boolean).length,
+            height: document.documentElement.scrollHeight,
+          }));
+          report.features ??= [];
+          report.features.push({ theme, ...length });
+          console.log(`  ${path} ${theme} 1440 px, disclosures closed: ${length.words} words, ${length.height} px high.`);
+          assert.equal(length.open, 0, `Disclosures open on ${path}`);
+          assert(length.words <= 1300, `${path} shows ${length.words} words, more than 1300`);
+          assert(length.height <= 6000, `${path} is ${length.height} px high at 1440 px, more than 6000`);
+        }
       }
     }
     console.log(`  Checked ${path} in both themes at all three widths.`);
