@@ -2,14 +2,13 @@
 // The home page, built from the approved design (design/DESIGN.md) and the
 // order of #329: the concrete result and what AI and Codeyard each do, the
 // coding tools and the fact line, why the open decisions come first, the
-// gym scenario of #328 in four steps, who does what, one real case with its
-// product figure (#332), who it is for, and the ways on. The first layer uses
+// gym scenario of #328 in four steps, who does what, who it is for, and the
+// ways on; the real case is on the Projects page (#343). The first layer uses
 // plain words; a technical term follows its plain name. The full route with
 // its risk levels and profiles is on the workflow page; script names and the
 // terminal start are in the docs.
 import Base from "../layouts/Base.astro";
 import Section from "../components/Section.astro";
-import Figure from "../components/Figure.astro";
 import { site } from "../../site.config";
 import { href } from "../lib/links";
 
@@ -21,8 +20,8 @@ const second = rest.join(" ");
 const compare = [
   { topic: "Open decisions", without: "The tool fills a decision you left open with a choice of its own.", with: "You answer a few questions first, and the answers are written down as agreements." },
   { topic: "Long work", without: "A new session does not know what was agreed or done before.", with: "The plan and the progress are files that the next session reads." },
-  { topic: "Checking", without: "The tool that wrote a change is the one that judges it.", with: `By default, a tool of another provider <a href="${href("features/#review")}">reviews it</a>, and the checks run first.` },
-  { topic: "Is it done?", without: "A change can look finished while part of it is missing.", with: "Each agreement counts as met only with what shows it." },
+  { topic: "Checking", without: "The tool checks its own work, and tends to confirm what it just did.", with: `A different AI model that did not write the code <a href="${href("features/#review")}">reviews it</a>, once the checks pass.` },
+  { topic: "Is it done?", without: "A change can look finished while part of it is missing.", with: "No agreement is ticked off without the check or record that proves it." },
 ];
 ---
 <Base description={site.description}>
@@ -63,7 +62,7 @@ const compare = [
         <b>1. Clarify what you need</b>
         <dl class="facts">
           <dt>you do</dt><dd>Describe the idea in a few sentences, then answer questions, a few at a time.</dd>
-          <dt>what happens</dt><dd>An AI tool asks what your description leaves open:
+          <dt>what happens</dt><dd><strong>Project Grill</strong>, the first step of Codeyard, asks what your description leaves open:
             <ul class="asked">
               <li>Who may record or correct attendance?</li>
               <li>May members see other members' data?</li>
@@ -71,15 +70,15 @@ const compare = [
             </ul>
           </dd>
           <dt>what comes out</dt><dd>The agreements: trainers record and correct attendance for their own classes; a member sees only their own history; a correction keeps the original entry visible, marked as corrected.</dd>
-          <dt>why it helps</dt><dd>You make these decisions before the code exists, instead of finding a guess in it later. Technically, this round is the Project Grill, and the agreements become the requirements.</dd>
+          <dt>why it helps</dt><dd>You make these decisions before the code exists, instead of finding a guess in it later. The agreements become the requirements of the project.</dd>
         </dl>
       </li>
       <li>
         <b>2. Plan the work</b>
         <dl class="facts">
           <dt>you do</dt><dd>Read the plan and approve it.</dd>
-          <dt>what happens</dt><dd>The work is put in order: users and roles first, then classes and attendance, then the member's history view.</dd>
-          <dt>what comes out</dt><dd>Small features, each with the agreements it must meet.</dd>
+          <dt>what happens</dt><dd>Planning gets the strongest model: it writes the architecture and the roadmap from your agreements. Another model reviews the plan, usually in a few rounds of review and revision, until every finding is resolved and you approve.</dd>
+          <dt>what comes out</dt><dd>A project plan: the architecture, the main design decisions, and a roadmap of small features, each with the agreements it must meet.</dd>
           <dt>why it helps</dt><dd>Each part builds on the one before and can be checked on its own.</dd>
         </dl>
       </li>
@@ -87,8 +86,8 @@ const compare = [
         <b>3. Build and check</b>
         <dl class="facts">
           <dt>you do</dt><dd>Start a feature, and answer if a tool stops to ask.</dd>
-          <dt>what happens</dt><dd>Claude Code builds the attendance part and its tests. A check confirms that a member who asks for another member's history is refused. By default, Codex then reads the change without editing it: here it finds that the first version let every signed-in user open the history view, and the fix is checked again.</dd>
-          <dt>what comes out</dt><dd>A proposed change, with the checks that ran and the review's remarks.</dd>
+          <dt>what happens</dt><dd>Each feature of the roadmap is built in its own working copy, so several can run in parallel. For every feature the agents go through rounds of building, checks, review and fixes until the review passes. You decide only at the end. In the example, the review finds that the first version let every signed-in user open the history view, and the fix is checked again.</dd>
+          <dt>what comes out</dt><dd>A proposed change per feature, with the checks that ran and what the review found and fixed.</dd>
           <dt>why it helps</dt><dd>The change is checked against what you agreed before you look at it.</dd>
         </dl>
       </li>
@@ -113,27 +112,10 @@ const compare = [
     </div>
   </Section>
 
-  <Section id="projects" title="A real project">
-    <Fragment slot="note">The whole case, with its sources: <a href={href("examples/#application")}>Projects</a>.</Fragment>
-    <Figure>
-      <img src={href("images/physics-by-construction-home.png")} width="1280" height="800" loading="lazy" alt="The home page of Physics by Construction: a headline about exploring physics with computation and AI, a Start learning button, and a map of its subjects, from classical mechanics to quantum physics and scientific agents." />
-      <Fragment slot="caption">Physics by Construction, a free physics course, <a href="https://taspinar.github.io/physics-by-construction/">taspinar.github.io/physics-by-construction</a>; screenshot of its home page, 9 November 2026.</Fragment>
-    </Figure>
-    <ol class="story">
-      <li><b>The project.</b> Physics by Construction, a course by the maintainer, runs this workflow.</li>
-      <li><b>The problem.</b> Its tests started hundreds of processes to read the lessons, and one of them crashed now and then.</li>
-      <li><b>The change.</b> One agreed request: read the lessons another way, with six conditions for when it is done.</li>
-      <li><b>The review.</b> Four rounds. One finding: a new test could skip itself, so the change needed the owner's approval.</li>
-      <li><b>The decision.</b> The owner accepted the change the same day. <a href={href("examples/#application")}>The case</a></li>
-    </ol>
-    <p class="needs">The other projects are features of Codeyard itself, built with its own workflow, such as <a href={href("examples/#memory")}>the reviewer who did not know what was decided</a> and <a href={href("examples/#story")}>how these pages were built</a>.</p>
-  </Section>
-
   <Section id="who" title="Who it is for">
     <Fragment slot="note">Skills, cost and when it pays off: the <a href={href("faq/")}>FAQ</a>.</Fragment>
-    <p>Understanding Codeyard takes no programming. Using it does: you work in a terminal, with Git and a GitHub account. It is not a no-code tool. <a href={href("faq/#who")}>What you need to know</a></p>
-    <p>You need Claude Code and Codex, each with its own subscription or paid API use: as shipped, Claude Code builds and Codex reviews. Codeyard itself is free and open source. <a href={href("faq/#cost")}>What it costs</a></p>
-    <p>The questions, the plan, the checks and the reviews take time and model use. That is worth it for software that will be extended and maintained; for a small experiment, a coding tool on its own is quicker. <a href={href("faq/#too-heavy")}>When it is too much</a></p>
+    <p>Codeyard is for anyone who builds software with AI coding tools and wants more grip on the result: a plan that was agreed, checks that ran, and the last word on every change. You run it from the command line in a Git repository on GitHub; if you have done that once, you can use Codeyard. <a href={href("faq/#who")}>What you need to know</a></p>
+    <p>Codeyard itself is free and open source; the AI tools you plug in bring their own cost. <a href={href("faq/#cost")}>What it costs</a></p>
   </Section>
 
   <Section id="start" title="Start, or read further">

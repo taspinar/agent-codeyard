@@ -1,24 +1,20 @@
 ---
 // What this way of working adds to using Claude Code or Codex directly, in
-// three groups (#331). The page opens with that answer; what Codeyard is not
-// follows in two sentences. Each feature shows, in plain words, the problem,
-// what you get and one example: the illustrative gym scenario of #328, or a
-// real record with its link. The note beside the heading says whether the
+// three groups and one optional feature (#331, #343). The page opens with that
+// answer; what Codeyard is not follows in two sentences. Each feature shows,
+// in plain words, the problem, what you get and one illustrative example of
+// the gym scenario of #328. The note beside the heading says whether the
 // feature is on by default or needs configuration. Behind the "How ..."
 // disclosure, closed by default, follow what Codeyard does, the mechanism,
-// one real artifact (an excerpt of a file of this repository, a published
-// review, a pull request or a run record), the files and the docs page with
-// the detail: file names, configuration and JSON appear only there. The facts
-// follow the scripts and policy files on main; every figure names its Issue,
-// pull request or run record.
+// the files and the docs page with the detail: file names and configuration
+// appear only there, and the disclosure ends with one "Source:" link to the
+// script or policy file on main. The visible layer names no coding tool or
+// provider.
 import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Section from "../components/Section.astro";
 import Table from "../components/Table.astro";
-import { href, issue, pull, repoFile } from "../lib/links";
-
-const comment = (number: number, id: string) => `${issue(number)}#issuecomment-${id}`;
-const bare = (url: string) => url.replace(/^https:\/\//, "");
+import { href, issue, repoFile } from "../lib/links";
 
 const groups = [
   { id: "planning", title: "Before coding starts", features: [
@@ -29,60 +25,32 @@ const groups = [
   { id: "quality", title: "Before a change reaches you", features: [
     { id: "evidence", title: "See what was checked against your requirements" },
     { id: "review", title: "Give each change a second review" },
-    { id: "risk", title: "Adjust the checks to the kind of change" },
+    { id: "risk", title: "Risk-based checks: more scrutiny where a change can do harm" },
   ] },
-  { id: "control", title: "Between your decisions", features: [
-    { id: "unattended", title: "Let the workflow run between your decisions" },
-    { id: "authority", title: "Decide which changes become part of your project" },
+  { id: "control", title: "Autonomy with limits", features: [
+    { id: "unattended", title: "Let AI agents work while you are away, and stop where you are needed" },
+    { id: "authority", title: "You hold the last word on every change" },
   ] },
 ];
 const feature = Object.fromEntries(groups.flatMap((group) => group.features).map((item) => [item.id, item.title]));
+const learn = "A self-improving process that learns from its own runs";
 const group = Object.fromEntries(groups.map((item) => [item.id, item.title]));
 
-// The shipped .agents/agents.conf, with the permission profile each role runs under.
+// The roles of the shipped .agents/agents.conf, with the permission profile each runs under;
+// the providers and models are named in the docs, not on this page (#343).
 const roles = [
-  { role: "implementer", agent: "claude opus", access: "writes; unattended in a run" },
-  { role: "implementer@high", agent: "claude fable", access: "writes; unattended in a run" },
-  { role: "reviewer", agent: "codex gpt-6-luna", access: "read-only" },
-  { role: "triage", agent: "claude sonnet", access: "read-only" },
-  { role: "triage-implementer", agent: "claude opus", access: "writes; unattended in a run" },
-  { role: "triage-implementer@high", agent: "claude fable", access: "writes; unattended in a run" },
+  { role: "implementer", access: "writes; unattended in a run" },
+  { role: "implementer@high", access: "writes; unattended in a run" },
+  { role: "reviewer", access: "read-only" },
+  { role: "triage", access: "read-only" },
+  { role: "triage-implementer", access: "writes; unattended in a run" },
+  { role: "triage-implementer@high", access: "writes; unattended in a run" },
 ];
 
-// Four lines of .agents/records/feature-241.jsonl, the run of PR #249, shortened
-// where marked: the fields run, epoch and id are left out.
-const record = `{"schema":"run-record/v1",[...]"time":"2026-10-30T19:27:28Z",
- "type":"agent-start","role":"implementer","profile":"unattended",
- "agent":"claude","model":"opus","level":"medium",[...]}
-{"schema":"run-record/v1",[...]"time":"2026-10-30T19:37:53Z",
- "type":"verification","status":0,"seconds":14,"reused":false,[...]}
-{"schema":"run-record/v1",[...]"time":"2026-10-30T19:38:09Z",
- "type":"completion-gate","check":1,"sessions":1,[...]"status":"complete",[...]}
-{"schema":"run-record/v1",[...]"time":"2026-10-30T19:38:12Z",
- "type":"agent-start","role":"reviewer","profile":"read-only",
- "agent":"codex","model":"gpt-6-luna","level":"medium",[...]}`;
-// Proposal 5 of the run analysis of 28 October 2026
-// (.agents/analysis/20261028T181115Z-6036a8954003/report.md), shortened where
-// marked, and its closing line; the proposal became Issue #217.
-const analysis = `5. **Keep accepted and deferred findings from being re-raised, and make
-   'unresolved' re-raises cite the earlier id**, place: template (an Issue
-   in the template repository)
-   - Re-raised findings caused extra triage and repair rounds in five runs,
-     and in feature 195 the reviewer ignored two ACCEPT decisions although
-     the prompt forbids it. A structural check is more reliable than prompt
-     wording.
-   - follows from: C1, C2, C17
-   - enforceable check: check-review.sh: in a review of changes only, a
-     finding that names an earlier id with decision ACCEPT or DEFER is
-     rejected unless it states that the change made it worse; [...]
-[...]
-Nothing was changed. A proposal goes through the review and approval that
-apply to its place.`;
 ---
 <Base title="Why Codeyard" description="What Agent Codeyard adds to using Claude Code or Codex directly: agree on what to build first, one project plan, changes kept apart, checks against your requirements, a second review, checks that fit the change, runs between your decisions, and the final say over every change.">
-  <PageHead title="Why Codeyard" lede="Claude Code and Codex write the code. Codeyard adds the way of working around them: you agree on what to build first, every change is checked against that and read by a second AI, and nothing joins your project until you accept it.">
-    <p>Codeyard writes no code itself and is not a hosted service. It runs on your machine or server, and the coding tools send what they work on to their own providers.</p>
-    <p>The examples follow the <a href={href("#example")}>illustrative example of the home page</a>: a gym's member application, in which trainers record attendance for their classes and members see their own training history.</p>
+  <PageHead title="Why Codeyard" lede="AI coding tools write the code; Codeyard governs how. It turns a request into agreed requirements and a plan, has every change verified and reviewed by another model, and keeps the final decision yours.">
+    <p>Codeyard writes no code and is not a hosted service. It runs on your machine or server; the coding tools you use talk to their own providers.</p>
     <p class="needs">Who it is for, what it costs and whether it works with an existing repository: the <a href={href("faq/")}>FAQ</a>.</p>
     <ol class="contents grouped">
       {groups.map((group) => (
@@ -90,7 +58,7 @@ apply to its place.`;
           <ol>{group.features.map((item) => <li><a href={`#${item.id}`}>{item.title}</a></li>)}</ol>
         </li>
       ))}
-      <li><a href="#learn">Use past runs to improve the process</a></li>
+      <li><a href="#learn">{learn}</a></li>
     </ol>
   </PageHead>
 
@@ -104,58 +72,54 @@ apply to its place.`;
   <Section id="requirements" title={feature.requirements} level={3}>
     <Fragment slot="note"><strong>Default</strong> for every feature. <a href={href("docs/detailed-workflow/")}>Every step</a> in the docs.</Fragment>
     <dl class="pitch">
-      <dt>The problem</dt><dd>An AI tool fills a gap in your description with a guess, and the review then checks the code against the guess, not against what you wanted.</dd>
+      <dt>The problem</dt><dd>Most projects start with a description of what to build. It can be a vague wish or a technical brief, with or without instructions such as test-driven development. Even the best one leaves questions open, and an AI tool normally answers them with a guess that ends up in the code. Project Grill asks those questions first; planning starts only when they are answered.</dd>
       <dt>What you get</dt><dd>Questions that change what is built reach you before any code exists. You decide; the tool does not guess.</dd>
       <dt>Illustrative example</dt><dd>Before attendance is built, you are asked whether members may see each other's data. You answer: only their own history. The change is later checked against that.</dd>
     </dl>
     <details class="proof">
-      <summary>How the questions work: files, settings and a real record</summary>
-      <p><b>What Codeyard does.</b> Once per project, a requirements interview, the Project Grill, writes the requirements down with you. For each feature, the agent that writes the code first decides whether the Issue is clear; when a decision is open, it changes nothing and asks you.</p>
-      <figure class="plain">
-        <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="requirements-t" aria-describedby="requirements-words">
-          <title id="requirements-t">Requirements before the code: the Project Grill agrees the project's requirements with you once; per feature the implementer reads the Issue and its context and decides whether it is clear. When it needs clarification the run stops, you answer, and it reads again; when it is clear it implements.</title>
-          <path class="branch" d="M760 90 L720 50 H560 L520 90"/>
-          <rect class="gate-o" x="630" y="40" width="20" height="20" transform="rotate(45 640 50)"/>
-          <text class="note" x="640" y="24" text-anchor="middle">needs clarification: the run stops, you answer, it reads again</text>
-          <path class="l1" d="M80 90 H290"/>
-          <path class="l2" d="M290 90 H1010"/>
-          <circle class="dot" cx="80" cy="90" r="10"/><text class="st" x="80" y="127" text-anchor="middle">Project Grill</text><text class="sub k" x="80" y="147" text-anchor="middle">start-planning.sh</text>
-          <circle class="dot" cx="290" cy="90" r="10"/><text class="st" x="290" y="127" text-anchor="middle">Requirements</text><text class="sub k" x="290" y="147" text-anchor="middle">PROJECT_REQUIREMENTS.md</text>
-          <circle class="dot" cx="520" cy="90" r="10"/><text class="st" x="520" y="127" text-anchor="middle">Read the Issue</text><text class="sub" x="520" y="147" text-anchor="middle">comments, requirements, ADRs</text>
-          <circle class="dot" cx="760" cy="90" r="10"/><text class="st" x="760" y="127" text-anchor="middle">Decide</text><text class="sub" x="760" y="147" text-anchor="middle">clear or needs clarification</text>
-          <circle class="dot" cx="1010" cy="90" r="10"/><text class="st" x="1010" y="127" text-anchor="middle">Implement</text><text class="sub k" x="1010" y="147" text-anchor="middle">clear</text>
-        </svg>
-        <ol class="words" id="requirements-words">
-          <li><b>Project Grill</b><small class="k">start-planning.sh</small><p class="cond">Questions you about goals, users and scope, once per project.</p></li>
-          <li><b>Requirements</b><small class="k">docs/PROJECT_REQUIREMENTS.md</small><p class="cond">An Issue cannot override them silently.</p></li>
-          <li><b>Read the Issue</b><small>with your comments, the requirements, the architecture, the ADRs and the code</small></li>
-          <li><b>Decide</b><small>clear or needs clarification</small><p class="cond">Needs clarification: nothing changes, the questions go into the handoff note, and the run stops with status 3.</p></li>
-          <li class="ask"><b>You answer</b><small>only when asked</small><p class="cond">In the handoff note or on the Issue; the next session reads again.</p></li>
-          <li><b>Implement</b><small class="k">Clarification: clear</small></li>
-        </ol>
-      </figure>
-      <div class="split">
-        <div><h5>Once per project</h5><ul>
-          <li><code>start-planning.sh</code>: the Project Grill questions you about goals, users and scope until the requirements are agreed, and writes <code>docs/PROJECT_REQUIREMENTS.md</code>.</li>
-          <li>An Issue cannot override them silently: where it would, the conflict is a question for you, with a proposed ADR or an update of the requirements as one option.</li>
-        </ul></div>
-        <div><h5>Once per feature</h5><ul>
-          <li>The implementer reads the Issue, your comments on it, the requirements, the architecture, the ADRs and the code, and decides: clear, or needs clarification.</li>
-          <li>Needs clarification: it changes nothing, writes its questions with options and a recommendation, and the run stops with status 3. You answer in the handoff note or on the Issue.</li>
-        </ul></div>
+      <summary>How the questions work: files and settings</summary>
+      <div class="layer">
+        <p><b>What Codeyard does.</b> Once per project, a requirements interview, the Project Grill, writes the requirements down with you. For each feature, the agent that writes the code first decides whether the Issue is clear; when a decision is open, it changes nothing and asks you.</p>
+        <figure class="plain">
+          <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="requirements-t" aria-describedby="requirements-words">
+            <title id="requirements-t">Requirements before the code: the Project Grill agrees the project's requirements with you once; per feature the implementer reads the Issue and its context and decides whether it is clear. When it needs clarification the run stops, you answer, and it reads again; when it is clear it implements.</title>
+            <path class="branch" d="M760 90 L720 50 H560 L520 90"/>
+            <rect class="gate-o" x="630" y="40" width="20" height="20" transform="rotate(45 640 50)"/>
+            <text class="note" x="640" y="24" text-anchor="middle">needs clarification: the run stops, you answer, it reads again</text>
+            <path class="l1" d="M80 90 H290"/>
+            <path class="l2" d="M290 90 H1010"/>
+            <circle class="dot" cx="80" cy="90" r="10"/><text class="st" x="80" y="127" text-anchor="middle">Project Grill</text><text class="sub k" x="80" y="147" text-anchor="middle">start-planning.sh</text>
+            <circle class="dot" cx="290" cy="90" r="10"/><text class="st" x="290" y="127" text-anchor="middle">Requirements</text><text class="sub k" x="290" y="147" text-anchor="middle">PROJECT_REQUIREMENTS.md</text>
+            <circle class="dot" cx="520" cy="90" r="10"/><text class="st" x="520" y="127" text-anchor="middle">Read the Issue</text><text class="sub" x="520" y="147" text-anchor="middle">comments, requirements, ADRs</text>
+            <circle class="dot" cx="760" cy="90" r="10"/><text class="st" x="760" y="127" text-anchor="middle">Decide</text><text class="sub" x="760" y="147" text-anchor="middle">clear or needs clarification</text>
+            <circle class="dot" cx="1010" cy="90" r="10"/><text class="st" x="1010" y="127" text-anchor="middle">Implement</text><text class="sub k" x="1010" y="147" text-anchor="middle">clear</text>
+          </svg>
+          <ol class="words" id="requirements-words">
+            <li><b>Project Grill</b><small class="k">start-planning.sh</small><p class="cond">Questions you about goals, users and scope, once per project.</p></li>
+            <li><b>Requirements</b><small class="k">docs/PROJECT_REQUIREMENTS.md</small><p class="cond">An Issue cannot override them silently.</p></li>
+            <li><b>Read the Issue</b><small>with your comments, the requirements, the architecture, the ADRs and the code</small></li>
+            <li><b>Decide</b><small>clear or needs clarification</small><p class="cond">Needs clarification: nothing changes, the questions go into the handoff note, and the run stops with status 3.</p></li>
+            <li class="ask"><b>You answer</b><small>only when asked</small><p class="cond">In the handoff note or on the Issue; the next session reads again.</p></li>
+            <li><b>Implement</b><small class="k">Clarification: clear</small></li>
+          </ol>
+        </figure>
+        <div class="split">
+          <div><h5>Once per project</h5><ul>
+            <li><code>start-planning.sh</code>: the Project Grill questions you about goals, users and scope until the requirements are agreed, and writes <code>docs/PROJECT_REQUIREMENTS.md</code>.</li>
+            <li>An Issue cannot override them silently: where it would, the conflict is a question for you, with a proposed ADR or an update of the requirements as one option.</li>
+          </ul></div>
+          <div><h5>Once per feature</h5><ul>
+            <li>The implementer reads the Issue, your comments on it, the requirements, the architecture, the ADRs and the code, and decides: clear, or needs clarification.</li>
+            <li>Needs clarification: it changes nothing, writes its questions with options and a recommendation, and the run stops with status 3. You answer in the handoff note or on the Issue.</li>
+          </ul></div>
+        </div>
+        <p>Names, private helpers and other choices the agent can make itself are not questions for you; it records them in the handoff note. Only comments of the owner, members and collaborators reach the agents.</p>
+        <dl class="facts">
+          <dt>files</dt><dd><a href={repoFile(".agents/prompts/implementer.md")}><code>implementer.md</code></a>, <a href={repoFile(".agents/prompts/project-grill.md")}><code>project-grill.md</code></a></dd>
+          <dt>docs</dt><dd><a href={href("docs/detailed-workflow/#clarify-the-requirements-project-grill")}>Clarify the requirements</a>, <a href={href("docs/detailed-workflow/#implement-the-feature")}>Implement the feature</a></dd>
+        </dl>
+        <p>Source: <a href={repoFile(".agents/prompts/project-grill.md")}><code>.agents/prompts/project-grill.md</code></a></p>
       </div>
-      <pre role="region" class="excerpt" aria-label="Excerpt of the implementer contract"><span class="src">.agents/prompts/implementer.md · Clarification, excerpt</span>- **Clear:** implement. Write `**Clarification:** clear` into the handoff
-  note, with one line on why, so that the record shows the step was taken.
-- **Needs clarification:** change nothing in the repository. Write each
-  question under "Open questions" in the handoff note, with the decision it
-  settles and, where you can, the options and your recommendation. [...]
-  Nothing is reviewed or committed until the owner answers.</pre>
-      <p>Names, private helpers and other choices the agent can make itself are not questions for you; it records them in the handoff note. Only comments of the owner, members and collaborators reach the agents. On <a href={issue(16)}>#16</a>, the clarification gate itself, the owner's two comments settled the design and the run took 26 minutes from start to pull request (<a href={pull(213)}>PR #213</a>).</p>
-      <dl class="facts">
-        <dt>files</dt><dd><a href={repoFile(".agents/prompts/implementer.md")}><code>implementer.md</code></a>, <a href={repoFile(".agents/prompts/project-grill.md")}><code>project-grill.md</code></a></dd>
-        <dt>docs</dt><dd><a href={href("docs/detailed-workflow/#clarify-the-requirements-project-grill")}>Clarify the requirements</a>, <a href={href("docs/detailed-workflow/#implement-the-feature")}>Implement the feature</a></dd>
-        <dt>built in</dt><dd><a href={pull(22)}>PR #22</a> (planning), <a href={pull(213)}>#213</a> (clarification), <a href={pull(185)}>#185</a> (your comments)</dd>
-      </dl>
     </details>
   </Section>
 
@@ -167,95 +131,88 @@ apply to its place.`;
       <dt>Illustrative example</dt><dd>The plan builds users and roles first, then attendance, then the history view. Both later features use the same roles instead of inventing their own.</dd>
     </dl>
     <details class="proof">
-      <summary>How the plan is reviewed and approved: files, settings and a real record</summary>
-      <p><b>What Codeyard does.</b> The architecture, the roadmap and the first ADRs (architecture decision records: short files that each record one design decision) are reviewed by an agent of another AI provider and approved by you before the first feature starts. Every feature session reads them first, and an accepted ADR outranks the Issue.</p>
-      <figure class="plain">
-        <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="planning-t" aria-describedby="planning-words">
-          <title id="planning-t">The planning line: plan, independent review of the plan, a decision per finding, your approval. A later change goes back through the review and your approval. Then the features start, and every feature session reads the approved documents first.</title>
-          <path class="branch" d="M780 80 L740 40 H340 L300 80"/>
-          <text class="note" x="540" y="28" text-anchor="middle">a later change: review and approval again</text>
-          <path class="l1" d="M90 80 H780"/>
-          <path class="l2" d="M780 80 H1040"/>
-          <circle class="dot" cx="90" cy="80" r="10"/><text class="st" x="90" y="117" text-anchor="middle">Plan</text><text class="sub k" x="90" y="137" text-anchor="middle">start-planning.sh</text>
-          <circle class="dot" cx="300" cy="80" r="10"/><text class="st" x="300" y="117" text-anchor="middle">Plan review</text><text class="sub k" x="300" y="137" text-anchor="middle">review-planning.sh</text>
-          <circle class="dot" cx="540" cy="80" r="10"/><text class="st" x="540" y="117" text-anchor="middle">A decision per finding</text><text class="sub k" x="540" y="137" text-anchor="middle">revise-planning.sh</text>
-          <rect class="gate" x="770" y="70" width="20" height="20" transform="rotate(45 780 80)"/><text class="st" x="780" y="117" text-anchor="middle">Your approval</text><text class="sub k" x="780" y="137" text-anchor="middle">finish-planning.sh</text>
-          <circle class="dot" cx="1040" cy="80" r="10"/><text class="st" x="1040" y="117" text-anchor="middle">Features</text><text class="sub" x="1040" y="137" text-anchor="middle">read it first</text>
-        </svg>
-      </figure>
-      <ol class="words timeline" id="planning-words">
-        <li><b>Plan</b><small class="k">start-planning.sh</small><p>The planner writes <code>docs/architecture.md</code>, the first ADRs and <code>docs/roadmap.md</code> from the agreed requirements.</p></li>
-        <li><b>Independent review of the plan</b><small class="k">review-planning.sh</small><p>An agent of another provider reviews it, read-only.</p></li>
-        <li><b>A decision per finding</b><small class="k">revise-planning.sh</small><p>Every finding of the plan review gets a recorded decision.</p></li>
-        <li class="you"><b>Your approval</b><small class="k">finish-planning.sh</small><p>Tied to the version of the documents you approved. A later change goes through review and approval again.</p></li>
-        <li><b>Features</b><p>Built in parallel, each session reads the approved architecture, ADRs and roadmap first.</p></li>
-      </ol>
-      <pre role="region" class="excerpt" aria-label="Excerpt of AGENTS.md"><span class="src">AGENTS.md · Source precedence</span>1. Explicit current human instruction
-2. Accepted ADRs
-3. Current GitHub issue acceptance criteria
-4. AGENTS.md
-5. Current architecture documentation
-6. Active feature plan
-7. Handoff documents
-8. Previous agent assumptions
-
-If a material conflict remains, stop and report it.</pre>
-      <p>An accepted ADR outranks the Issue, so a feature cannot quietly change the design: an implementer that would have to stops and reports the conflict, a new ADR enters as <code>Proposed</code>, and a pull request that adds, changes or removes an ADR is marked as needing your approval before the merge. The reviewer classifies each feature's impact on the architecture; major or breaking makes the feature high risk and needs you too.</p>
-      <dl class="facts">
-        <dt>rules</dt><dd><a href={repoFile("AGENTS.md")}><code>AGENTS.md</code></a> and the planning scripts</dd>
-        <dt>files</dt><dd><a href={repoFile("docs/architecture.md")}><code>docs/architecture.md</code></a>, <a href={repoFile("docs/decisions/README.md")}><code>docs/decisions/</code></a>, <a href={repoFile("docs/roadmap.md")}><code>docs/roadmap.md</code></a></dd>
-        <dt>docs</dt><dd><a href={href("docs/detailed-workflow/#create-the-project-plan")}>Create the project plan</a>, <a href={href("docs/detailed-workflow/#approve-the-plan")}>Approve the plan</a></dd>
-        <dt>built in</dt><dd><a href={pull(22)}>PR #22</a> (planning), <a href={pull(100)}>#100</a> (the merge approval gate)</dd>
-      </dl>
+      <summary>How the plan is reviewed and approved: files and settings</summary>
+      <div class="layer">
+        <p><b>What Codeyard does.</b> The planner writes the plan, a second model reviews it, you approve it. From then on every feature follows the same architecture and the same recorded decisions.</p>
+        <figure class="plain">
+          <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="planning-t" aria-describedby="planning-words">
+            <title id="planning-t">The planning line: plan, independent review of the plan, a decision per finding, your approval. A later change goes back through the review and your approval. Then the features start, and every feature session reads the approved documents first.</title>
+            <path class="branch" d="M780 80 L740 40 H340 L300 80"/>
+            <text class="note" x="540" y="28" text-anchor="middle">a later change: review and approval again</text>
+            <path class="l1" d="M90 80 H780"/>
+            <path class="l2" d="M780 80 H1040"/>
+            <circle class="dot" cx="90" cy="80" r="10"/><text class="st" x="90" y="117" text-anchor="middle">Plan</text><text class="sub k" x="90" y="137" text-anchor="middle">start-planning.sh</text>
+            <circle class="dot" cx="300" cy="80" r="10"/><text class="st" x="300" y="117" text-anchor="middle">Plan review</text><text class="sub k" x="300" y="137" text-anchor="middle">review-planning.sh</text>
+            <circle class="dot" cx="540" cy="80" r="10"/><text class="st" x="540" y="117" text-anchor="middle">A decision per finding</text><text class="sub k" x="540" y="137" text-anchor="middle">revise-planning.sh</text>
+            <rect class="gate" x="770" y="70" width="20" height="20" transform="rotate(45 780 80)"/><text class="st" x="780" y="117" text-anchor="middle">Your approval</text><text class="sub k" x="780" y="137" text-anchor="middle">finish-planning.sh</text>
+            <circle class="dot" cx="1040" cy="80" r="10"/><text class="st" x="1040" y="117" text-anchor="middle">Features</text><text class="sub" x="1040" y="137" text-anchor="middle">read it first</text>
+          </svg>
+        </figure>
+        <ol class="words timeline" id="planning-words">
+          <li><b>Plan</b><small class="k">start-planning.sh</small><p>The planner writes <code>docs/architecture.md</code>, the first ADRs and <code>docs/roadmap.md</code> from the agreed requirements.</p></li>
+          <li><b>Independent review of the plan</b><small class="k">review-planning.sh</small><p>An agent of another provider reviews it, read-only.</p></li>
+          <li><b>A decision per finding</b><small class="k">revise-planning.sh</small><p>Every finding of the plan review gets a recorded decision.</p></li>
+          <li class="you"><b>Your approval</b><small class="k">finish-planning.sh</small><p>Tied to the version of the documents you approved. A later change goes through review and approval again.</p></li>
+          <li><b>Features</b><p>Built in parallel, each session reads the approved architecture, ADRs and roadmap first.</p></li>
+        </ol>
+        <p>An accepted ADR outranks the Issue, so a feature cannot quietly change the design: an implementer that would have to stops and reports the conflict, a new ADR enters as <code>Proposed</code>, and a pull request that adds, changes or removes an ADR is marked as needing your approval before the merge. The reviewer classifies each feature's impact on the architecture; major or breaking makes the feature high risk and needs you too.</p>
+        <dl class="facts">
+          <dt>rules</dt><dd><a href={repoFile("AGENTS.md")}><code>AGENTS.md</code></a> and the planning scripts</dd>
+          <dt>files</dt><dd><a href={repoFile("docs/architecture.md")}><code>docs/architecture.md</code></a>, <a href={repoFile("docs/decisions/README.md")}><code>docs/decisions/</code></a>, <a href={repoFile("docs/roadmap.md")}><code>docs/roadmap.md</code></a></dd>
+          <dt>docs</dt><dd><a href={href("docs/detailed-workflow/#create-the-project-plan")}>Create the project plan</a>, <a href={href("docs/detailed-workflow/#approve-the-plan")}>Approve the plan</a></dd>
+        </dl>
+        <p>Source: <a href={repoFile("AGENTS.md")}><code>AGENTS.md</code></a></p>
+      </div>
     </details>
   </Section>
 
   <Section id="isolation" title={feature.isolation} level={3}>
     <Fragment slot="note"><strong>Default</strong> for every feature. <a href={href("docs/technical-reference/#working-directories")}>Working directories</a> in the docs.</Fragment>
     <dl class="pitch">
-      <dt>The problem</dt><dd>Two AI tools writing in the same folder overwrite each other's files.</dd>
-      <dt>What you get</dt><dd>Features are built side by side, can stop and continue, and each reaches you as its own change. Separate folders keep files apart, not databases or services.</dd>
+      <dt>The problem</dt><dd>Working on several features at once invites mistakes, even on separate branches: a half-finished change of one feature ends up in another. Codeyard gives every feature its own worktree, a separate copy of the project, so features cannot touch each other.</dd>
+      <dt>What you get</dt><dd>Features are built side by side, can stop and continue, and each reaches you as its own change.</dd>
       <dt>Illustrative example</dt><dd>Attendance is built in its own folder while your main copy stays untouched. If the session stops halfway, the next one continues from a short progress note.</dd>
     </dl>
     <details class="proof">
-      <summary>How a feature gets its own folder: files, settings and a real record</summary>
-      <p><b>What Codeyard does.</b> Every feature gets its own branch and its own worktree, a second working folder of the same Git repository, and one agent writes in it. A new session continues from the feature's handoff note, a short file that says what is done and what remains.</p>
-      <pre role="region" tabindex="0" class="term" aria-label="Terminal commands"><span class="c"># a branch feature/&lt;issue&gt;-&lt;slug&gt; and a worktree beside the main checkout</span>
+      <summary>How a feature gets its own folder: files and settings</summary>
+      <div class="layer">
+        <p><b>What Codeyard does.</b> Every feature gets its own branch and its own worktree, a second working folder of the same Git repository, and one agent writes in it. A new session continues from the feature's handoff note, a short file that says what is done and what remains.</p>
+        <pre role="region" tabindex="0" class="term" aria-label="Terminal commands"><span class="c"># a branch feature/&lt;issue&gt;-&lt;slug&gt; and a worktree beside the main checkout</span>
 <span class="p">$ </span>./scripts/start-feature.sh 241
 <span class="c"># a new session continues from the handoff note, not the earlier conversation</span>
 <span class="p">$ </span>./scripts/start-feature.sh 241 --resume
 <span class="c"># after the merge, from the primary checkout</span>
 <span class="p">$ </span>./scripts/cleanup-worktree.sh 241</pre>
-      <figure class="plain">
-        <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="isolation-t" aria-describedby="isolation-words">
-          <title id="isolation-t">The line of one feature: start creates its branch and worktree; the work happens there, with one writer, and a new session resumes from the handoff note; you merge; cleanup removes the merged worktree and branch.</title>
-          <path class="branch" d="M320 80 L360 40 H440 L480 80"/>
-          <text class="note" x="400" y="28" text-anchor="middle">a new session: --resume, from the handoff note</text>
-          <path class="l2" d="M80 80 H990"/>
-          <circle class="dot" cx="80" cy="80" r="10"/><text class="st" x="80" y="117" text-anchor="middle">Start</text><text class="sub k" x="80" y="137" text-anchor="middle">start-feature.sh</text>
-          <circle class="dot" cx="400" cy="80" r="10"/><text class="st" x="400" y="117" text-anchor="middle">Work in the worktree</text><text class="sub" x="400" y="137" text-anchor="middle">one writer</text>
-          <rect class="gate" x="710" y="70" width="20" height="20" transform="rotate(45 720 80)"/><text class="st" x="720" y="117" text-anchor="middle">Merge</text><text class="sub" x="720" y="137" text-anchor="middle">by you</text>
-          <circle class="dot" cx="990" cy="80" r="10"/><text class="st" x="990" y="117" text-anchor="middle">Cleanup</text><text class="sub k" x="990" y="137" text-anchor="middle">cleanup-worktree.sh</text>
-        </svg>
-        <ol class="words lines-words" id="isolation-words">
-          <li><b>Start</b><small class="k">start-feature.sh</small><p class="cond">A branch feature/&lt;issue&gt;-&lt;slug&gt; and a worktree beside the main checkout.</p></li>
-          <li><b>Work in the worktree</b><small>one writer</small><p class="cond">A new session continues with --resume, from the handoff note.</p></li>
-          <li class="you"><b>Merge</b><small>by you</small></li>
-          <li><b>Cleanup</b><small class="k">cleanup-worktree.sh</small><p class="cond">Removes the merged worktree and branch, after it copied their run records.</p></li>
-        </ol>
-      </figure>
-      <ul class="rules">
-        <li><b>One writer per worktree.</b> Parallel agents need separate worktrees and branches.</li>
-        <li><b>Resumable.</b> The handoff note, <code>.agents/handoffs/&lt;issue&gt;.md</code>, says what is done, in progress, remaining and rejected; the files are the truth, the note the summary.</li>
-        <li><b>Prepared.</b> An optional setup script copies ignored files, such as installed dependencies, into a new worktree.</li>
-        <li><b>Cleaned up.</b> <code>cleanup-worktree.sh</code> removes merged worktrees and branches, after it copied their run records.</li>
-      </ul>
-      <p>A worktree separates working files; it is not a sandbox for databases, services or credentials. <a href={pull(249)}>PR #249</a>, for example, came from the branch <code>feature/241-write-the-features-examples</code>.</p>
-      <dl class="facts">
-        <dt>rules</dt><dd><a href={repoFile("AGENTS.md")}><code>AGENTS.md</code></a></dd>
-        <dt>scripts</dt><dd><a href={repoFile("scripts/start-feature.sh")}><code>start-feature.sh</code></a>, <a href={repoFile("scripts/cleanup-worktree.sh")}><code>cleanup-worktree.sh</code></a></dd>
-        <dt>built in</dt><dd><a href={pull(57)}>PR #57</a> (cleanup), <a href={pull(71)}>#71</a> (setup script), <a href={pull(77)}>#77</a> (resume)</dd>
-      </dl>
+        <figure class="plain">
+          <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="isolation-t" aria-describedby="isolation-words">
+            <title id="isolation-t">The line of one feature: start creates its branch and worktree; the work happens there, with one writer, and a new session resumes from the handoff note; you merge; cleanup removes the merged worktree and branch.</title>
+            <path class="branch" d="M320 80 L360 40 H440 L480 80"/>
+            <text class="note" x="400" y="28" text-anchor="middle">a new session: --resume, from the handoff note</text>
+            <path class="l2" d="M80 80 H990"/>
+            <circle class="dot" cx="80" cy="80" r="10"/><text class="st" x="80" y="117" text-anchor="middle">Start</text><text class="sub k" x="80" y="137" text-anchor="middle">start-feature.sh</text>
+            <circle class="dot" cx="400" cy="80" r="10"/><text class="st" x="400" y="117" text-anchor="middle">Work in the worktree</text><text class="sub" x="400" y="137" text-anchor="middle">one writer</text>
+            <rect class="gate" x="710" y="70" width="20" height="20" transform="rotate(45 720 80)"/><text class="st" x="720" y="117" text-anchor="middle">Merge</text><text class="sub" x="720" y="137" text-anchor="middle">by you</text>
+            <circle class="dot" cx="990" cy="80" r="10"/><text class="st" x="990" y="117" text-anchor="middle">Cleanup</text><text class="sub k" x="990" y="137" text-anchor="middle">cleanup-worktree.sh</text>
+          </svg>
+          <ol class="words lines-words" id="isolation-words">
+            <li><b>Start</b><small class="k">start-feature.sh</small><p class="cond">A branch feature/&lt;issue&gt;-&lt;slug&gt; and a worktree beside the main checkout.</p></li>
+            <li><b>Work in the worktree</b><small>one writer</small><p class="cond">A new session continues with --resume, from the handoff note.</p></li>
+            <li class="you"><b>Merge</b><small>by you</small></li>
+            <li><b>Cleanup</b><small class="k">cleanup-worktree.sh</small><p class="cond">Removes the merged worktree and branch, after it copied their run records.</p></li>
+          </ol>
+        </figure>
+        <ul class="rules">
+          <li><b>One writer per worktree.</b> Parallel agents need separate worktrees and branches.</li>
+          <li><b>Resumable.</b> The handoff note, <code>.agents/handoffs/&lt;issue&gt;.md</code>, says what is done, in progress, remaining and rejected; the files are the truth, the note the summary.</li>
+          <li><b>Prepared.</b> An optional setup script copies ignored files, such as installed dependencies, into a new worktree.</li>
+          <li><b>Cleaned up.</b> <code>cleanup-worktree.sh</code> removes merged worktrees and branches, after it copied their run records.</li>
+        </ul>
+        <dl class="facts">
+          <dt>rules</dt><dd><a href={repoFile("AGENTS.md")}><code>AGENTS.md</code></a></dd>
+          <dt>scripts</dt><dd><a href={repoFile("scripts/start-feature.sh")}><code>start-feature.sh</code></a>, <a href={repoFile("scripts/cleanup-worktree.sh")}><code>cleanup-worktree.sh</code></a></dd>
+        </dl>
+        <p>Source: <a href={repoFile("scripts/start-feature.sh")}><code>scripts/start-feature.sh</code></a></p>
+      </div>
     </details>
   </Section>
 
@@ -269,58 +226,53 @@ If a material conflict remains, stop and report it.</pre>
   <Section id="evidence" title={feature.evidence} level={3}>
     <Fragment slot="note"><strong>Default</strong>; the checks are the ones your project sets up. <a href={href("docs/verification-and-completion/")}>Verification and completion</a> in the docs.</Fragment>
     <dl class="pitch">
-      <dt>The problem</dt><dd>An AI tool that says it is done tells you its session ended, not which requirements are met.</dd>
+      <dt>The problem</dt><dd>When an AI tool reports that it is done, that is its own judgment. It reports completion, not coverage: which requirements were tested, which were skipped, and what the evidence is.</dd>
       <dt>What you get</dt><dd>Each change lists every requirement with what shows it is met, and checks that ran on exactly that version. A check proves what it examines, no more.</dd>
       <dt>Illustrative example</dt><dd>The attendance change lists “a member sees only their own history: met”, with the check that refuses a request for another member's history.</dd>
     </dl>
     <details class="proof">
-      <summary>How the evidence is recorded: files, settings and a real record</summary>
-      <p><b>What Codeyard does.</b> The agent writes a completion record: for each criterion, met or not, and what shows it. One command runs every check of the project and records the content they passed for by its fingerprint, a short code computed from the files; unfinished work goes back to the agent before anything is reviewed.</p>
-      <figure class="plain">
-        <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="evidence-t" aria-describedby="evidence-words">
-          <title id="evidence-t">Evidence before review: the implementer writes the completion record, verify.sh records a pass for the content, and the completion gate reads the record. Partial starts the implementer again; blocked stops the run until you answer; complete or awaiting_evidence goes on to the review.</title>
-          <path class="branch" d="M680 90 L640 50 H120 L80 90"/>
-          <text class="note" x="380" y="38" text-anchor="middle">partial: the implementer is started again</text>
-          <path class="branch" d="M680 90 L720 50 H800"/>
-          <rect class="gate-o" x="804" y="40" width="20" height="20" transform="rotate(45 814 50)"/>
-          <text class="note" x="814" y="24" text-anchor="middle">blocked: the run stops, you answer</text>
-          <path class="l2" d="M80 90 H1010"/>
-          <circle class="dot" cx="80" cy="90" r="10"/><text class="st" x="80" y="127" text-anchor="middle">Implement</text><text class="sub k" x="80" y="147" text-anchor="middle">completion/&lt;n&gt;.json</text>
-          <circle class="dot" cx="360" cy="90" r="10"/><text class="st" x="360" y="127" text-anchor="middle">Verify</text><text class="sub k" x="360" y="147" text-anchor="middle">verify.sh</text>
-          <circle class="dot" cx="680" cy="90" r="10"/><text class="st" x="680" y="127" text-anchor="middle">Completion gate</text><text class="sub k" x="680" y="147" text-anchor="middle">complete | awaiting_evidence</text>
-          <circle class="dot" cx="1010" cy="90" r="10"/><text class="st" x="1010" y="127" text-anchor="middle">Review</text><text class="sub" x="1010" y="147" text-anchor="middle">claims against the diff</text>
-        </svg>
-        <ol class="words" id="evidence-words">
-          <li><b>Implement</b><small class="k">.agents/completion/&lt;issue&gt;.json</small><p class="cond">Per acceptance criterion: met or not, and what shows it.</p></li>
-          <li><b>Verify</b><small class="k">verify.sh</small><p class="cond">Every check of verify.conf; the pass is bound to the content fingerprint.</p></li>
-          <li><b>Completion gate</b><small class="k">complete | awaiting_evidence</small><p class="cond">Partial: the implementer is started again.</p></li>
-          <li class="ask"><b>You answer</b><small>blocked</small><p class="cond">The run stops with the question.</p></li>
-          <li><b>Review</b><small>each claimed criterion against the diff</small></li>
-        </ol>
-      </figure>
-      <pre role="region" class="excerpt" aria-label="Excerpt of the description of pull request 249"><span class="src">{bare(pull(249))} · excerpt</span>Completion: complete
-- met: Every statement links to or matches its source; no invented figure or testimonial. (website/src/pages/{"{"}features,examples,about{"}"}.astro: each feature section names its file and key with repoFile links and the PRs that built it; [...])
-[...]
-- met: ./scripts/verify.sh passes. (./scripts/verify.sh run as the last step of the session; result in the final message.)
-
-Verification:
-- ./scripts/verify.sh passed</pre>
-      <Table>
-        <caption>The statuses of the completion record <code>.agents/completion/&lt;issue&gt;.json</code> and what the scripts do with them, from <code>.agents/prompts/implementer.md</code>.</caption>
-        <thead><tr><th scope="col">status</th><th scope="col">meaning</th><th scope="col">next</th></tr></thead>
-        <tbody>
-          <tr><th scope="row" class="k">complete</th><td data-col="meaning">Every criterion met or not applicable, nothing remains</td><td data-col="next">review, commit, pull request</td></tr>
-          <tr><th scope="row" class="k">awaiting_evidence</th><td data-col="meaning">Everything that can be shown now is shown; a criterion waits for CI, your approval or the merge</td><td data-col="next">pull request; the Issue closes when the evidence exists</td></tr>
-          <tr><th scope="row" class="k">partial</th><td data-col="meaning">Work remains, whatever the reason</td><td data-col="next">the implementer is started again</td></tr>
-          <tr><th scope="row" class="k">blocked</th><td data-col="meaning">A decision only you can make</td><td data-col="next">the run stops with the question</td></tr>
-        </tbody>
-      </Table>
-      <p><code>verify.sh</code> runs every check of <code>scripts/verify.conf</code>, and its pass is bound to a content fingerprint and reused while nothing changes. Every commit needs the full verification; a partial run of some groups, which a repair round may use, is never a verification and cannot be cited. The reviewer holds each claimed criterion against the diff, and an unsupported claim comes back as a finding.</p>
-      <dl class="facts">
-        <dt>checks</dt><dd><code>&lt;name&gt; [&lt;group&gt;]: &lt;command&gt;</code> in <a href={repoFile("scripts/verify.conf")}><code>scripts/verify.conf</code></a></dd>
-        <dt>fingerprint</dt><dd><a href={repoFile("scripts/lib/fingerprint.sh")}><code>scripts/lib/fingerprint.sh</code></a></dd>
-        <dt>built in</dt><dd><a href={pull(74)}>PR #74</a> (recorded verification), <a href={pull(126)}>#126</a> (completion gate), <a href={pull(168)}>#168</a> (evidence that cannot exist yet)</dd>
-      </dl>
+      <summary>How the evidence is recorded: files and settings</summary>
+      <div class="layer">
+        <p><b>What Codeyard does.</b> All checks run on every change. Each requirement gets a short note of what proves it is met; the reviewer reads those notes next to the code and rejects a claim without proof.</p>
+        <figure class="plain">
+          <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="evidence-t" aria-describedby="evidence-words">
+            <title id="evidence-t">Evidence before review: the implementer writes the completion record, verify.sh records a pass for the content, and the completion gate reads the record. Partial starts the implementer again; blocked stops the run until you answer; complete or awaiting_evidence goes on to the review.</title>
+            <path class="branch" d="M680 90 L640 50 H120 L80 90"/>
+            <text class="note" x="380" y="38" text-anchor="middle">partial: the implementer is started again</text>
+            <path class="branch" d="M680 90 L720 50 H800"/>
+            <rect class="gate-o" x="804" y="40" width="20" height="20" transform="rotate(45 814 50)"/>
+            <text class="note" x="814" y="24" text-anchor="middle">blocked: the run stops, you answer</text>
+            <path class="l2" d="M80 90 H1010"/>
+            <circle class="dot" cx="80" cy="90" r="10"/><text class="st" x="80" y="127" text-anchor="middle">Implement</text><text class="sub k" x="80" y="147" text-anchor="middle">completion/&lt;n&gt;.json</text>
+            <circle class="dot" cx="360" cy="90" r="10"/><text class="st" x="360" y="127" text-anchor="middle">Verify</text><text class="sub k" x="360" y="147" text-anchor="middle">verify.sh</text>
+            <circle class="dot" cx="680" cy="90" r="10"/><text class="st" x="680" y="127" text-anchor="middle">Completion gate</text><text class="sub k" x="680" y="147" text-anchor="middle">complete | awaiting_evidence</text>
+            <circle class="dot" cx="1010" cy="90" r="10"/><text class="st" x="1010" y="127" text-anchor="middle">Review</text><text class="sub" x="1010" y="147" text-anchor="middle">claims against the diff</text>
+          </svg>
+          <ol class="words" id="evidence-words">
+            <li><b>Implement</b><small class="k">.agents/completion/&lt;issue&gt;.json</small><p class="cond">Per acceptance criterion: met or not, and what shows it.</p></li>
+            <li><b>Verify</b><small class="k">verify.sh</small><p class="cond">Every check of verify.conf; the pass is bound to the content fingerprint.</p></li>
+            <li><b>Completion gate</b><small class="k">complete | awaiting_evidence</small><p class="cond">Partial: the implementer is started again.</p></li>
+            <li class="ask"><b>You answer</b><small>blocked</small><p class="cond">The run stops with the question.</p></li>
+            <li><b>Review</b><small>each claimed criterion against the diff</small></li>
+          </ol>
+        </figure>
+        <Table>
+          <caption>The statuses of the completion record <code>.agents/completion/&lt;issue&gt;.json</code> and what the scripts do with them, from <code>.agents/prompts/implementer.md</code>.</caption>
+          <thead><tr><th scope="col">status</th><th scope="col">meaning</th><th scope="col">next</th></tr></thead>
+          <tbody>
+            <tr><th scope="row" class="k">complete</th><td data-col="meaning">Every criterion met or not applicable, nothing remains</td><td data-col="next">review, commit, pull request</td></tr>
+            <tr><th scope="row" class="k">awaiting_evidence</th><td data-col="meaning">Everything that can be shown now is shown; a criterion waits for CI, your approval or the merge</td><td data-col="next">pull request; the Issue closes when the evidence exists</td></tr>
+            <tr><th scope="row" class="k">partial</th><td data-col="meaning">Work remains, whatever the reason</td><td data-col="next">the implementer is started again</td></tr>
+            <tr><th scope="row" class="k">blocked</th><td data-col="meaning">A decision only you can make</td><td data-col="next">the run stops with the question</td></tr>
+          </tbody>
+        </Table>
+        <p><code>verify.sh</code> runs every check of <code>scripts/verify.conf</code>, and its pass is bound to a content fingerprint and reused while nothing changes. Every commit needs the full verification; a partial run of some groups, which a repair round may use, is never a verification and cannot be cited. The reviewer holds each claimed criterion against the diff, and an unsupported claim comes back as a finding.</p>
+        <dl class="facts">
+          <dt>checks</dt><dd><code>&lt;name&gt; [&lt;group&gt;]: &lt;command&gt;</code> in <a href={repoFile("scripts/verify.conf")}><code>scripts/verify.conf</code></a></dd>
+          <dt>fingerprint</dt><dd><a href={repoFile("scripts/lib/fingerprint.sh")}><code>scripts/lib/fingerprint.sh</code></a></dd>
+        </dl>
+        <p>Source: <a href={repoFile("scripts/verify.sh")}><code>scripts/verify.sh</code></a></p>
+      </div>
     </details>
   </Section>
 
@@ -332,58 +284,47 @@ Verification:
       <dt>Illustrative example</dt><dd>The first history view let every signed-in user open it. The reviewer reported it, and the fix was checked again.</dd>
     </dl>
     <details class="proof">
-      <summary>How the second review works: files, settings and a real record</summary>
-      <p><b>What Codeyard does.</b> A reviewer of another AI provider reads the change and cannot edit it: the script refuses one of the implementer's own provider, and as shipped Codex reviews what Claude wrote. In the triage each finding is fixed now, deferred to a new Issue, or accepted with a reason. A critical or major finding is fixed by default; the only other route is <a href={href("docs/detailed-workflow/#owner-exception")}>your exception</a> for that one finding, after which the merge needs you.</p>
-      <figure class="plain">
-        <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="review-t" aria-describedby="review-words">
-          <title id="review-t">The review loop: the verified content is reviewed read-only by another provider, the triage proposes a decision per finding, and you approve the triage, or an unattended run approves it without asking. FIX_NOW findings are fixed, verified and reviewed in a new round; then the feature is committed.</title>
-          <path class="branch" d="M760 90 L720 50 H120 L80 90"/>
-          <text class="note" x="420" y="38" text-anchor="middle">FIX_NOW: the fixes, verified, then a new round</text>
-          <path class="l2" d="M80 90 H1010"/>
-          <circle class="dot" cx="80" cy="90" r="10"/><text class="st" x="80" y="127" text-anchor="middle">Verify</text><text class="sub k" x="80" y="147" text-anchor="middle">verify.sh</text>
-          <circle class="dot" cx="320" cy="90" r="10"/><text class="st" x="320" y="127" text-anchor="middle">Review</text><text class="sub" x="320" y="147" text-anchor="middle">another provider, read-only</text>
-          <circle class="dot" cx="560" cy="90" r="10"/><text class="st" x="560" y="127" text-anchor="middle">Triage</text><text class="sub k" x="560" y="147" text-anchor="middle">FIX_NOW · DEFER · ACCEPT</text>
-          <rect class="gate" x="750" y="80" width="20" height="20" transform="rotate(45 760 90)"/><text class="st" x="760" y="127" text-anchor="middle">Approve the triage</text><text class="sub" x="760" y="147" text-anchor="middle">by you; a run, without asking</text>
-          <circle class="dot" cx="1010" cy="90" r="10"/><text class="st" x="1010" y="127" text-anchor="middle">Commit</text><text class="sub k" x="1010" y="147" text-anchor="middle">finish-feature.sh</text>
-        </svg>
-        <ol class="words" id="review-words">
-          <li><b>Verify</b><small class="k">verify.sh</small></li>
-          <li><b>Review</b><small>another provider than the implementer, read-only</small><p class="cond">Exactly the content the verification passed for.</p></li>
-          <li><b>Triage</b><small class="k">FIX_NOW · DEFER · ACCEPT</small><p class="cond">Critical and major findings are always FIX_NOW, unless the owner records an exception; DEFER needs a follow-up Issue, ACCEPT a rationale.</p></li>
-          <li class="you"><b>Approve the triage</b><small>by you; an unattended run approves it without asking</small><p class="cond">FIX_NOW: apply-triage.sh hands the fixes to an implementer, the result is verified and reviewed in a new round.</p></li>
-          <li><b>Commit</b><small class="k">finish-feature.sh</small></li>
-        </ol>
-      </figure>
-      <pre role="region" class="excerpt" aria-label="Excerpt of the review of round 1 of issue 241"><span class="src">{bare(comment(241, "6531925164"))} · round 1, excerpt</span>Reviewed tree: b619ba7025060eef51cd7cb7c53eb3513cc1161a
-
-Verification: passed for the reviewed tree at 2026-10-30T19:37:53Z
-Reviewer: codex (gpt-6-luna), read-only
-
-[...]
-### M1. Examples do not link each candidate to its source files
-[...]
-## Verdict
-
-CHANGES REQUIRED</pre>
-      <p><code>review-feature.sh</code> refuses a review by the implementer's own provider; as shipped, Claude implements and Codex reviews. A triage agent proposes one decision per finding: <code>FIX_NOW</code>, <code>DEFER</code> with a follow-up Issue, or <code>ACCEPT</code> with a rationale. Critical and major findings are always <code>FIX_NOW</code> and block the commit until they are fixed, unless you record <a href={href("docs/detailed-workflow/#owner-exception")}>an owner exception</a> for one of them. The decisions are published on the Issue, and every later round receives them: a finding raised again must name the one it continues, and the script refuses one that would lower an earlier severity or reopen an accepted finding as unresolved.</p>
-      <Table>
-        <caption>The roles of a feature in the shipped <code>.agents/agents.conf</code>. The <code>--agent</code> and <code>--model</code> options of a script override it for one run.</caption>
-        <thead><tr><th scope="col">role</th><th scope="col">provider and model</th><th scope="col">access</th></tr></thead>
-        <tbody>
-          {roles.map((row) => (
-            <tr>
-              <th scope="row" class="k">{row.role}</th>
-              <td data-col="provider and model" class="k">{row.agent}</td>
-              <td data-col="access">{row.access}</td>
-            </tr>
-          ))}
-        </tbody>
-      </Table>
-      <dl class="facts">
-        <dt>enforced by</dt><dd><a href={repoFile("scripts/review-feature.sh")}><code>review-feature.sh</code></a> (provider independence), <a href={repoFile("scripts/lib/review-data.sh")}><code>scripts/lib/review-data.sh</code></a> (findings across rounds)</dd>
-        <dt>docs</dt><dd><a href={href("docs/detailed-workflow/#review-the-implementation")}>Review the implementation</a>, <a href={href("docs/detailed-workflow/#decide-what-to-do-with-review-findings")}>Decide what to do with review findings</a></dd>
-        <dt>built in</dt><dd><a href={pull(12)}>PR #12</a> and <a href={pull(14)}>#14</a> (triage), <a href={pull(164)}>#164</a> (your decisions), <a href={pull(222)}>#222</a> (earlier rounds)</dd>
-      </dl>
+      <summary>How the second review works: files and settings</summary>
+      <div class="layer">
+        <p><b>What Codeyard does.</b> Every change is read by a reviewer that runs on a different model than the one that wrote it. Its findings go through a triage: a finding is fixed now, deferred to a new Issue, or accepted with a reason. Critical and major findings are always fixed before the commit. The decisions are published on the Issue, and every later review round builds on them.</p>
+        <figure class="plain">
+          <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="review-t" aria-describedby="review-words">
+            <title id="review-t">The review loop: the verified content is reviewed read-only by another provider, the triage proposes a decision per finding, and you approve the triage, or an unattended run approves it without asking. FIX_NOW findings are fixed, verified and reviewed in a new round; then the feature is committed.</title>
+            <path class="branch" d="M760 90 L720 50 H120 L80 90"/>
+            <text class="note" x="420" y="38" text-anchor="middle">FIX_NOW: the fixes, verified, then a new round</text>
+            <path class="l2" d="M80 90 H1010"/>
+            <circle class="dot" cx="80" cy="90" r="10"/><text class="st" x="80" y="127" text-anchor="middle">Verify</text><text class="sub k" x="80" y="147" text-anchor="middle">verify.sh</text>
+            <circle class="dot" cx="320" cy="90" r="10"/><text class="st" x="320" y="127" text-anchor="middle">Review</text><text class="sub" x="320" y="147" text-anchor="middle">another provider, read-only</text>
+            <circle class="dot" cx="560" cy="90" r="10"/><text class="st" x="560" y="127" text-anchor="middle">Triage</text><text class="sub k" x="560" y="147" text-anchor="middle">FIX_NOW · DEFER · ACCEPT</text>
+            <rect class="gate" x="750" y="80" width="20" height="20" transform="rotate(45 760 90)"/><text class="st" x="760" y="127" text-anchor="middle">Approve the triage</text><text class="sub" x="760" y="147" text-anchor="middle">by you; a run, without asking</text>
+            <circle class="dot" cx="1010" cy="90" r="10"/><text class="st" x="1010" y="127" text-anchor="middle">Commit</text><text class="sub k" x="1010" y="147" text-anchor="middle">finish-feature.sh</text>
+          </svg>
+          <ol class="words" id="review-words">
+            <li><b>Verify</b><small class="k">verify.sh</small></li>
+            <li><b>Review</b><small>another provider than the implementer, read-only</small><p class="cond">Exactly the content the verification passed for.</p></li>
+            <li><b>Triage</b><small class="k">FIX_NOW · DEFER · ACCEPT</small><p class="cond">Critical and major findings are always FIX_NOW; DEFER needs a follow-up Issue, ACCEPT a rationale.</p></li>
+            <li class="you"><b>Approve the triage</b><small>by you; an unattended run approves it without asking</small><p class="cond">FIX_NOW: apply-triage.sh hands the fixes to an implementer, the result is verified and reviewed in a new round.</p></li>
+            <li><b>Commit</b><small class="k">finish-feature.sh</small></li>
+          </ol>
+        </figure>
+        <Table>
+          <caption>The roles of a feature in the shipped <code>.agents/agents.conf</code>, which names the provider and model of each. The <code>--agent</code> and <code>--model</code> options of a script override it for one run.</caption>
+          <thead><tr><th scope="col">role</th><th scope="col">access</th></tr></thead>
+          <tbody>
+            {roles.map((row) => (
+              <tr>
+                <th scope="row" class="k">{row.role}</th>
+                <td data-col="access">{row.access}</td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+        <dl class="facts">
+          <dt>enforced by</dt><dd><a href={repoFile("scripts/review-feature.sh")}><code>review-feature.sh</code></a> (provider independence), <a href={repoFile("scripts/lib/review-data.sh")}><code>scripts/lib/review-data.sh</code></a> (findings across rounds)</dd>
+          <dt>docs</dt><dd><a href={href("docs/detailed-workflow/#review-the-implementation")}>Review the implementation</a>, <a href={href("docs/detailed-workflow/#decide-what-to-do-with-review-findings")}>Decide what to do with review findings</a></dd>
+        </dl>
+        <p>Source: <a href={repoFile("scripts/review-feature.sh")}><code>scripts/review-feature.sh</code></a></p>
+      </div>
     </details>
   </Section>
 
@@ -391,71 +332,67 @@ CHANGES REQUIRED</pre>
     <Fragment slot="note"><strong>Default</strong>: every change gets a level from the files it changes. A lighter process for low risk needs configuration. <a href={href("docs/risk-policy/")}>Risk policy</a> in the docs.</Fragment>
     <dl class="pitch">
       <dt>The problem</dt><dd>If a typo fix and a change to your project's rules get the same process, one gets too much and the other too little.</dd>
-      <dt>What you get</dt><dd>Effort goes where the risk is. You can raise a level, no AI tool lowers it, and high risk always keeps the full review.</dd>
+      <dt>What you get</dt><dd>Not every change deserves the same scrutiny: a typo in the docs does not need the same amount of verification as a change to infrastructure. Codeyard rates each change low, medium or high based on what it touches, and spends review rounds and checks accordingly. This way small, low-risk changes can be implemented with fewer steps.</dd>
       <dt>Illustrative example</dt><dd>With the lighter process, a fix in the documentation can skip review and then asks for your approval. Changing an existing attendance test makes a change high risk.</dd>
     </dl>
     <details class="proof">
-      <summary>How the risk level is set: files, settings and a real record</summary>
-      <p><b>What Codeyard does.</b> A script gives every feature a risk level, low, medium or high, from the files it changes; you can raise it, and no agent lowers it. The level picks the model and how strict the review rounds are. Under <code>profile: light</code>, or with <code>low: review: none</code>, a low-risk change can go without review; its merge then needs your approval.</p>
-      <figure class="plain">
-        <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="risk-t" aria-describedby="risk-words">
-          <title id="risk-t">How the level is set: the classes of the changed paths, the escalations and your hint each give a level; the highest counts and nothing lowers it. The review can raise it again: an impact on the architecture classified as major or breaking makes the feature high.</title>
-          <path class="branch" d="M1000 80 L960 40 H800 L760 80"/>
-          <text class="note" x="880" y="28" text-anchor="middle">major or breaking impact: high</text>
-          <path class="l2" d="M80 80 H1000"/>
-          <circle class="dot" cx="80" cy="80" r="10"/><text class="st" x="80" y="117" text-anchor="middle">Changed paths</text><text class="sub k" x="80" y="137" text-anchor="middle">risk.conf</text>
-          <circle class="dot" cx="300" cy="80" r="10"/><text class="st" x="300" y="117" text-anchor="middle">Escalations</text><text class="sub" x="300" y="137" text-anchor="middle">tests, check lists, policies</text>
-          <circle class="dot" cx="530" cy="80" r="10"/><text class="st" x="530" y="117" text-anchor="middle">Your hint</text><text class="sub k" x="530" y="137" text-anchor="middle">risk: high | --risk</text>
-          <circle class="dot" cx="760" cy="80" r="10"/><text class="st" x="760" y="117" text-anchor="middle">Level</text><text class="sub" x="760" y="137" text-anchor="middle">the highest; never lowered</text>
-          <circle class="dot" cx="1000" cy="80" r="10"/><text class="st" x="1000" y="117" text-anchor="middle">Review</text><text class="sub" x="1000" y="137" text-anchor="middle">impact on the architecture</text>
-        </svg>
-        <ol class="words" id="risk-words">
-          <li><b>Changed paths</b><small class="k">.agents/policies/risk.conf</small><p class="cond">The highest class of any changed path; a path no class names gets the default.</p></li>
-          <li><b>Escalations</b><small>tests, check lists, fixtures, manifests, policies, prompts, schemas</small><p class="cond">A changed existing one makes the feature high.</p></li>
-          <li><b>Your hint</b><small class="k">risk: high | risk: medium | --risk</small><p class="cond">Before the first session.</p></li>
-          <li><b>Level</b><small>the highest counts; nothing lowers it</small><p class="cond">It picks the model of each writing role and what the review rounds require.</p></li>
-          <li><b>Review</b><small>classifies the impact on the architecture</small><p class="cond">Major or breaking makes the feature high.</p></li>
-        </ol>
-      </figure>
-      <pre role="region" class="excerpt" aria-label="Excerpt of the description of pull request 249"><span class="src">{bare(pull(249))} · excerpt</span>Risk: medium
-- website/src/pages/about.astro: no class of .agents/policies/risk.conf names it; the default is medium
-[...]
-- profile: none
-
-Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'medium: triage:' line)</pre>
-      <Table>
-        <caption>The sources of the level; the highest one counts. From <code>scripts/lib/risk.sh</code> and the header of <code>risk.conf</code>, read from the base branch, so a feature cannot relax the rules it is classified by.</caption>
-        <thead><tr><th scope="col">source</th><th scope="col">what raises the level</th></tr></thead>
-        <tbody>
-          <tr><th scope="row">Paths</th><td data-col="what raises the level">The highest class of any changed path; a path no class names gets the default. As shipped: default medium, the workflow's own gate files high, no low class.</td></tr>
-          <tr><th scope="row">Escalations</th><td data-col="what raises the level">Always high: a changed or removed line of an existing test or of the check lists, any change to a shared test fixture, a changed existing manifest, and a changed existing file under <code>.agents/policies/</code>, <code>.agents/prompts/</code> or <code>.agents/schemas/</code>.</td></tr>
-          <tr><th scope="row">The reviewer</th><td data-col="what raises the level">An impact on the architecture classified as major or breaking.</td></tr>
-          <tr><th scope="row">You</th><td data-col="what raises the level">The Issue label <code>risk: high</code> or <code>risk: medium</code>, or <code>--risk</code>, before the first session.</td></tr>
-        </tbody>
-      </Table>
-      <p>Any source can raise the level; nothing lowers it. The level, the workflow profile and the agents' permissions are three separate settings: the level describes the change, the profile how much process the project wants for low and medium risk, and the permissions follow the role (implementers write, reviewers only read, unattended sessions ask nothing).</p>
-      <Table matrix>
-        <caption>What each level gets under each profile. Under both profiles every commit needs the full verification and no script merges. The light column shows what changes from standard; a project without a profile line keeps the policy it has.</caption>
-        <thead><tr><th scope="col">level</th><th scope="col">standard</th><th scope="col">light</th></tr></thead>
-        <tbody>
-          <tr><th scope="row"><span class="lvl low">low</span></th>
-            <td data-col="standard"><p>Reviewed by another provider; full triage.</p><p>As shipped there is no low class: changes start at medium.</p></td>
-            <td data-col="light" class="changed"><p><span class="chg">changed</span> Documentation and process files are low. No review: the commit and the pull request say so, and ask for your approval of the merge.</p></td></tr>
-          <tr><th scope="row"><span class="lvl medium">medium</span></th>
-            <td data-col="standard"><p>Reviewed; full triage.</p><p>Implementer: Claude opus.</p></td>
-            <td data-col="light" class="changed"><p><span class="chg">changed</span> Reviewed; light triage: minor findings and suggestions can be accepted or deferred without a fix round.</p></td></tr>
-          <tr><th scope="row"><span class="lvl high">high</span></th>
-            <td data-col="standard"><p>Reviewed; full triage.</p><p>Implementer: Claude fable.</p></td>
-            <td data-col="light"><p>Unchanged: reviewed, full triage, the stronger model. No profile can remove these.</p></td></tr>
-        </tbody>
-      </Table>
-      <p>Without a profile, a project can set the same exceptions one by one in <code>risk.conf</code>: a <code>low:</code> class of its own paths, and <code>low: review: none</code>, which lets a low feature go without review; its pull request then asks for your approval of the merge. High always keeps every control.</p>
-      <dl class="facts">
-        <dt>key</dt><dd><code>profile: light | standard</code>; per level, <code>&lt;level&gt;: verification | review | triage: &lt;value&gt;</code></dd>
-        <dt>model per level</dt><dd><code>implementer@high: claude fable</code> in <a href={repoFile(".agents/agents.conf")}><code>agents.conf</code></a></dd>
-        <dt>try it</dt><dd><code>./scripts/check-risk.sh</code> in a feature worktree prints the level and its reasons</dd>
-        <dt>built in</dt><dd><a href={pull(194)}>PR #194</a> (the level), <a href={pull(202)}>#202</a> and <a href={pull(211)}>#211</a> (models per level), <a href={pull(214)}>#214</a> (profiles), <a href={pull(229)}>#229</a> (your hint)</dd>
-      </dl>
+      <summary>How the risk level is set: files and settings</summary>
+      <div class="layer">
+        <p><b>What Codeyard does.</b> A script gives every feature a risk level, low, medium or high, from the files it changes; you can raise it, and no agent lowers it. The level picks the model and how strict the review rounds are. Under <code>profile: light</code>, or with <code>low: review: none</code>, a low-risk change can go without review; its merge then needs your approval.</p>
+        <figure class="plain">
+          <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="risk-t" aria-describedby="risk-words">
+            <title id="risk-t">How the level is set: the classes of the changed paths, the escalations and your hint each give a level; the highest counts and nothing lowers it. The review can raise it again: an impact on the architecture classified as major or breaking makes the feature high.</title>
+            <path class="branch" d="M1000 80 L960 40 H800 L760 80"/>
+            <text class="note" x="880" y="28" text-anchor="middle">major or breaking impact: high</text>
+            <path class="l2" d="M80 80 H1000"/>
+            <circle class="dot" cx="80" cy="80" r="10"/><text class="st" x="80" y="117" text-anchor="middle">Changed paths</text><text class="sub k" x="80" y="137" text-anchor="middle">risk.conf</text>
+            <circle class="dot" cx="300" cy="80" r="10"/><text class="st" x="300" y="117" text-anchor="middle">Escalations</text><text class="sub" x="300" y="137" text-anchor="middle">tests, check lists, policies</text>
+            <circle class="dot" cx="530" cy="80" r="10"/><text class="st" x="530" y="117" text-anchor="middle">Your hint</text><text class="sub k" x="530" y="137" text-anchor="middle">risk: high | --risk</text>
+            <circle class="dot" cx="760" cy="80" r="10"/><text class="st" x="760" y="117" text-anchor="middle">Level</text><text class="sub" x="760" y="137" text-anchor="middle">the highest; never lowered</text>
+            <circle class="dot" cx="1000" cy="80" r="10"/><text class="st" x="1000" y="117" text-anchor="middle">Review</text><text class="sub" x="1000" y="137" text-anchor="middle">impact on the architecture</text>
+          </svg>
+          <ol class="words" id="risk-words">
+            <li><b>Changed paths</b><small class="k">.agents/policies/risk.conf</small><p class="cond">The highest class of any changed path; a path no class names gets the default.</p></li>
+            <li><b>Escalations</b><small>tests, check lists, fixtures, manifests, policies, prompts, schemas</small><p class="cond">A changed existing one makes the feature high.</p></li>
+            <li><b>Your hint</b><small class="k">risk: high | risk: medium | --risk</small><p class="cond">Before the first session.</p></li>
+            <li><b>Level</b><small>the highest counts; nothing lowers it</small><p class="cond">It picks the model of each writing role and what the review rounds require.</p></li>
+            <li><b>Review</b><small>classifies the impact on the architecture</small><p class="cond">Major or breaking makes the feature high.</p></li>
+          </ol>
+        </figure>
+        <Table>
+          <caption>The sources of the level; the highest one counts. From <code>scripts/lib/risk.sh</code> and the header of <code>risk.conf</code>, read from the base branch, so a feature cannot relax the rules it is classified by.</caption>
+          <thead><tr><th scope="col">source</th><th scope="col">what raises the level</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Paths</th><td data-col="what raises the level">The highest class of any changed path; a path no class names gets the default. As shipped: default medium, the workflow's own gate files high, no low class.</td></tr>
+            <tr><th scope="row">Escalations</th><td data-col="what raises the level">Always high: a changed or removed line of an existing test or of the check lists, any change to a shared test fixture, a changed existing manifest, and a changed existing file under <code>.agents/policies/</code>, <code>.agents/prompts/</code> or <code>.agents/schemas/</code>.</td></tr>
+            <tr><th scope="row">The reviewer</th><td data-col="what raises the level">An impact on the architecture classified as major or breaking.</td></tr>
+            <tr><th scope="row">You</th><td data-col="what raises the level">The Issue label <code>risk: high</code> or <code>risk: medium</code>, or <code>--risk</code>, before the first session.</td></tr>
+          </tbody>
+        </Table>
+        <p>Any source can raise the level; nothing lowers it. The level, the workflow profile and the agents' permissions are three separate settings: the level describes the change, the profile how much process the project wants for low and medium risk, and the permissions follow the role (implementers write, reviewers only read, unattended sessions ask nothing).</p>
+        <Table matrix>
+          <caption>What each level gets under each profile. Under both profiles every commit needs the full verification and no script merges. The light column shows what changes from standard; a project without a profile line keeps the policy it has.</caption>
+          <thead><tr><th scope="col">level</th><th scope="col">standard</th><th scope="col">light</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><span class="lvl low">low</span></th>
+              <td data-col="standard"><p>Reviewed by another provider; full triage.</p><p>As shipped there is no low class: changes start at medium.</p></td>
+              <td data-col="light" class="changed"><p><span class="chg">changed</span> Documentation and process files are low. No review: the commit and the pull request say so, and ask for your approval of the merge.</p></td></tr>
+            <tr><th scope="row"><span class="lvl medium">medium</span></th>
+              <td data-col="standard"><p>Reviewed; full triage.</p><p>Implementer: the default model.</p></td>
+              <td data-col="light" class="changed"><p><span class="chg">changed</span> Reviewed; light triage: minor findings and suggestions can be accepted or deferred without a fix round.</p></td></tr>
+            <tr><th scope="row"><span class="lvl high">high</span></th>
+              <td data-col="standard"><p>Reviewed; full triage.</p><p>Implementer: the stronger model.</p></td>
+              <td data-col="light"><p>Unchanged: reviewed, full triage, the stronger model. No profile can remove these.</p></td></tr>
+          </tbody>
+        </Table>
+        <p>Without a profile, a project can set the same exceptions one by one in <code>risk.conf</code>: a <code>low:</code> class of its own paths, and <code>low: review: none</code>, which lets a low feature go without review; its pull request then asks for your approval of the merge. High always keeps every control.</p>
+        <dl class="facts">
+          <dt>key</dt><dd><code>profile: light | standard</code>; per level, <code>&lt;level&gt;: verification | review | triage: &lt;value&gt;</code></dd>
+          <dt>model per level</dt><dd><code>implementer@high: &lt;agent&gt; &lt;model&gt;</code> in <a href={repoFile(".agents/agents.conf")}><code>agents.conf</code></a></dd>
+          <dt>try it</dt><dd><code>./scripts/check-risk.sh</code> in a feature worktree prints the level and its reasons</dd>
+        </dl>
+        <p>Source: <a href={repoFile(".agents/policies/risk.conf")}><code>.agents/policies/risk.conf</code></a></p>
+      </div>
     </details>
   </Section>
 
@@ -470,48 +407,49 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
     <Fragment slot="note"><strong>Your choice</strong> per feature; the limits are set by default. <a href={href("docs/detailed-workflow/#run-a-feature-unattended")}>Run a feature unattended</a> in the docs.</Fragment>
     <dl class="pitch">
       <dt>The problem</dt><dd>A tool running while you are away has nobody to answer its questions or to stop it going round in circles.</dd>
-      <dt>What you get</dt><dd>The run asks you nothing, and what would need your permission is not granted. It records its decision on each review finding, stops for your decision, a limit or a failure, and never accepts its own change.</dd>
+      <dt>What you get</dt><dd>You start several features in the evening; in the morning there are pull requests with their checks and reviews, and features with a question waiting for you. In between, the agents decided on findings within fixed limits, and anything that needed your permission was refused rather than assumed.</dd>
       <dt>Illustrative example</dt><dd>You start the history view in the evening. In the morning there is a proposed change with its checks and review, or one question for you.</dd>
     </dl>
     <details class="proof">
-      <summary>How an unattended run is limited: files, settings and a real record</summary>
-      <p><b>What Codeyard does.</b> One command, <code>run-feature.sh</code>, takes a feature from its Issue to an open pull request without asking you anything, inside fixed limits: anything that would need your permission is denied, sessions, repairs and review rounds are capped, and an agent that needs your decision stops the run instead of guessing.</p>
-      <figure class="plain">
-        <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="unattended-t" aria-describedby="unattended-words">
-          <title id="unattended-t">An unattended run: run-feature.sh starts the implementer under the unattended profile, verifies, and runs the review rounds, with the fixes of each round, until an open pull request; there the run ends, and you merge. An agent that needs your decision stops the run with status 3.</title>
-          <path class="branch" d="M680 80 L640 40 H320 L280 80"/>
-          <text class="note" x="480" y="28" text-anchor="middle">FIX_NOW: the fixes, then the next round</text>
-          <path class="l2" d="M80 80 H1040"/>
-          <circle class="dot" cx="80" cy="80" r="10"/><text class="st" x="80" y="117" text-anchor="middle">Start</text><text class="sub k" x="80" y="137" text-anchor="middle">run-feature.sh</text>
-          <circle class="dot" cx="280" cy="80" r="10"/><text class="st" x="280" y="117" text-anchor="middle">Implement</text><text class="sub" x="280" y="137" text-anchor="middle">at most 4 sessions</text>
-          <circle class="dot" cx="480" cy="80" r="10"/><text class="st" x="480" y="117" text-anchor="middle">Verify</text><text class="sub" x="480" y="137" text-anchor="middle">at most 3 repairs</text>
-          <circle class="dot" cx="680" cy="80" r="10"/><text class="st" x="680" y="117" text-anchor="middle">Review</text><text class="sub" x="680" y="137" text-anchor="middle">at most 5 rounds</text>
-          <circle class="dot" cx="880" cy="80" r="10"/><text class="st" x="880" y="117" text-anchor="middle">Pull request</text><text class="sub" x="880" y="137" text-anchor="middle">the run ends</text>
-          <rect class="gate" x="1030" y="70" width="20" height="20" transform="rotate(45 1040 80)"/><text class="st" x="1040" y="117" text-anchor="middle">Merge</text><text class="sub" x="1040" y="137" text-anchor="middle">by you</text>
-        </svg>
-        <ol class="words" id="unattended-words">
-          <li><b>Start</b><small class="k">run-feature.sh</small></li>
-          <li><b>Implement</b><small>unattended profile; by default at most 4 sessions</small><p class="cond">BLOCKED: the run exits with status 3; the same command continues after your answer.</p></li>
-          <li><b>Verify</b><small>by default at most 3 repairs of a failing verification</small></li>
-          <li><b>Review</b><small>read-only; at most 5 rounds</small><p class="cond">FIX_NOW: the fixes, then the next round.</p></li>
-          <li><b>Pull request</b><small>open; the run ends here and never removes a worktree</small></li>
-          <li class="you"><b>Merge</b><small>by you</small></li>
-        </ol>
-      </figure>
-      <ul class="rules">
-        <li><b>Bounded permissions.</b> A writing agent runs under the <code>unattended</code> profile: anything that would ask is denied, and it gets no MCP servers (Model Context Protocol servers, programs that give an agent extra tools) or apps, the extra tools of your own agent configuration. Reviewers and triage run <code>read-only</code>.</li>
-        <li><b>Bounded effort.</b> At most 5 review rounds in a run, and by default 4 implementer sessions, 3 retries of a failing agent call and 3 repairs of a failing verification.</li>
-        <li><b>Stops instead of guesses.</b> An agent that needs your decision ends with a <code>BLOCKED:</code> line and the run exits with status 3. Running the same command again continues where the feature stands.</li>
-        <li><b>Never merges.</b> The run ends at an open pull request and never removes a worktree.</li>
-      </ul>
-      <pre role="region" class="excerpt" aria-label="Excerpt of the run record of feature 241"><span class="src">.agents/records/feature-241.jsonl · run of PR #249, excerpt</span>{record}</pre>
-      <p>Every run leaves such a record on your machine: each step and its duration, the agent, model and level, the verification seconds, the findings and why a run stopped. <code>report-runs.sh</code> summarises it per feature and <code>analyze-runs.sh</code> lets a read-only analyst propose changes; <a href={href("examples/#analysis")}>the analysis of 28 October 2026</a> is how Codeyard found what to change in itself.</p>
-      <dl class="facts">
-        <dt>limits</dt><dd><a href={repoFile("scripts/run-feature.sh")}><code>run-feature.sh</code></a>; profiles in <a href={repoFile("scripts/lib/agent.sh")}><code>scripts/lib/agent.sh</code></a></dd>
-        <dt>records</dt><dd><code>.agents/records/feature-&lt;issue&gt;.jsonl</code> in the primary checkout, ignored by Git, format <code>run-record/v1</code> (<a href={`${repoFile("docs/development.md")}#run-records`}><code>docs/development.md</code></a>)</dd>
-        <dt>docs</dt><dd><a href={href("docs/technical-reference/#what-is-recorded-on-your-machine")}>What is recorded on your machine</a></dd>
-        <dt>built in</dt><dd><a href={pull(136)}>PR #136</a> to <a href={pull(140)}>#140</a> (records), <a href={pull(223)}>#223</a> (stops)</dd>
-      </dl>
+      <summary>How an unattended run is limited: files and settings</summary>
+      <div class="layer">
+        <p><b>What Codeyard does.</b> One command, <code>run-feature.sh</code>, takes a feature from its Issue to an open pull request without asking you anything, inside fixed limits: anything that would need your permission is denied, sessions, repairs and review rounds are capped, and an agent that needs your decision stops the run instead of guessing.</p>
+        <figure class="plain">
+          <svg class="lines" viewBox="0 0 1100 160" role="img" aria-labelledby="unattended-t" aria-describedby="unattended-words">
+            <title id="unattended-t">An unattended run: run-feature.sh starts the implementer under the unattended profile, verifies, and runs the review rounds, with the fixes of each round, until an open pull request; there the run ends, and you merge. An agent that needs your decision stops the run with status 3.</title>
+            <path class="branch" d="M680 80 L640 40 H320 L280 80"/>
+            <text class="note" x="480" y="28" text-anchor="middle">FIX_NOW: the fixes, then the next round</text>
+            <path class="l2" d="M80 80 H1040"/>
+            <circle class="dot" cx="80" cy="80" r="10"/><text class="st" x="80" y="117" text-anchor="middle">Start</text><text class="sub k" x="80" y="137" text-anchor="middle">run-feature.sh</text>
+            <circle class="dot" cx="280" cy="80" r="10"/><text class="st" x="280" y="117" text-anchor="middle">Implement</text><text class="sub" x="280" y="137" text-anchor="middle">at most 4 sessions</text>
+            <circle class="dot" cx="480" cy="80" r="10"/><text class="st" x="480" y="117" text-anchor="middle">Verify</text><text class="sub" x="480" y="137" text-anchor="middle">at most 3 repairs</text>
+            <circle class="dot" cx="680" cy="80" r="10"/><text class="st" x="680" y="117" text-anchor="middle">Review</text><text class="sub" x="680" y="137" text-anchor="middle">at most 5 rounds</text>
+            <circle class="dot" cx="880" cy="80" r="10"/><text class="st" x="880" y="117" text-anchor="middle">Pull request</text><text class="sub" x="880" y="137" text-anchor="middle">the run ends</text>
+            <rect class="gate" x="1030" y="70" width="20" height="20" transform="rotate(45 1040 80)"/><text class="st" x="1040" y="117" text-anchor="middle">Merge</text><text class="sub" x="1040" y="137" text-anchor="middle">by you</text>
+          </svg>
+          <ol class="words" id="unattended-words">
+            <li><b>Start</b><small class="k">run-feature.sh</small></li>
+            <li><b>Implement</b><small>unattended profile; by default at most 4 sessions</small><p class="cond">BLOCKED: the run exits with status 3; the same command continues after your answer.</p></li>
+            <li><b>Verify</b><small>by default at most 3 repairs of a failing verification</small></li>
+            <li><b>Review</b><small>read-only; at most 5 rounds</small><p class="cond">FIX_NOW: the fixes, then the next round.</p></li>
+            <li><b>Pull request</b><small>open; the run ends here and never removes a worktree</small></li>
+            <li class="you"><b>Merge</b><small>by you</small></li>
+          </ol>
+        </figure>
+        <ul class="rules">
+          <li><b>Bounded permissions.</b> A writing agent runs under the <code>unattended</code> profile: anything that would ask is denied, and it gets no MCP servers (Model Context Protocol servers, programs that give an agent extra tools) or apps, the extra tools of your own agent configuration. Reviewers and triage run <code>read-only</code>.</li>
+          <li><b>Bounded effort.</b> At most 5 review rounds in a run, and by default 4 implementer sessions, 3 retries of a failing agent call and 3 repairs of a failing verification.</li>
+          <li><b>Stops instead of guesses.</b> An agent that needs your decision ends with a <code>BLOCKED:</code> line and the run exits with status 3. Running the same command again continues where the feature stands.</li>
+          <li><b>Never merges.</b> The run ends at an open pull request and never removes a worktree.</li>
+        </ul>
+        <p>Every run leaves a record on your machine: each step and its duration, the agent, model and level, the verification seconds, the findings and why a run stopped. <code>report-runs.sh</code> summarises it per feature and <code>analyze-runs.sh</code> lets a read-only analyst <a href="#learn">propose changes</a>.</p>
+        <dl class="facts">
+          <dt>limits</dt><dd><a href={repoFile("scripts/run-feature.sh")}><code>run-feature.sh</code></a>; profiles in <a href={repoFile("scripts/lib/agent.sh")}><code>scripts/lib/agent.sh</code></a></dd>
+          <dt>records</dt><dd><code>.agents/records/feature-&lt;issue&gt;.jsonl</code> in the primary checkout, ignored by Git, format <code>run-record/v1</code> (<a href={`${repoFile("docs/development.md")}#run-records`}><code>docs/development.md</code></a>)</dd>
+          <dt>docs</dt><dd><a href={href("docs/technical-reference/#what-is-recorded-on-your-machine")}>What is recorded on your machine</a></dd>
+        </dl>
+        <p>Source: <a href={repoFile("scripts/run-feature.sh")}><code>scripts/run-feature.sh</code></a></p>
+      </div>
     </details>
   </Section>
 
@@ -519,111 +457,107 @@ Triage mode: full (the default; .agents/policies/risk.conf of the base has no 'm
     <Fragment slot="note"><strong>Default</strong>: no script accepts a change. GitHub enforces your approval only with your repository settings. <a href={href("docs/configuration-and-security/#changes-that-need-the-owner")}>Changes that need the owner</a> in the docs.</Fragment>
     <dl class="pitch">
       <dt>The problem</dt><dd>With AI tools doing the work, it is unclear which decisions are still yours.</dd>
-      <dt>What you get</dt><dd>You agree the requirements, approve the plan and accept each change. A change to the project's rules or design says it needs your approval.</dd>
+      <dt>What you get</dt><dd>No script merges. You agree the requirements, approve the plan and accept each change. A change to the project's own rules, design decisions or workflow is flagged as needing your explicit approval.</dd>
       <dt>Illustrative example</dt><dd>Attendance becomes part of the gym's application only when you accept its change; until then your project stays as it was.</dd>
     </dl>
     <details class="proof">
-      <summary>How your approval is marked: files, settings and a real record</summary>
-      <p><b>What Codeyard does.</b> No script merges: you agree the requirements, approve the plan, answer the questions, and merge. A pull request that changes a protected file, such as an ADR, a CI workflow or the workflow's own gate, is marked as needing your approval; GitHub refuses a merge only as far as the settings of <a href={href("docs/github-setup/")}>GitHub setup</a> make it. Until agents get a GitHub identity of their own (<a href={issue(99)}>#99</a>), an agent has the GitHub rights of the account that started it.</p>
-      <figure class="plain">
-        <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="authority-t" aria-describedby="authority-words">
-          <title id="authority-t">Your decisions: you agree the requirements and approve the plan; a feature asks you only when it needs a decision; a pull request that changes a protected path, has a major or breaking impact or no review is marked as needing your approval of exactly its commit; and the merge is left to you, no script merges.</title>
-          <path class="branch" d="M780 90 L820 50 H970 L1010 90"/>
-          <rect class="gate" x="885" y="40" width="20" height="20" transform="rotate(45 895 50)"/>
-          <text class="note" x="895" y="24" text-anchor="middle">protected path, major impact or no review</text>
-          <path class="l1" d="M80 90 H300"/>
-          <path class="l2" d="M300 90 H1010"/>
-          <rect class="gate" x="70" y="80" width="20" height="20" transform="rotate(45 80 90)"/><text class="st" x="80" y="127" text-anchor="middle">Requirements</text><text class="sub" x="80" y="147" text-anchor="middle">you agree them</text>
-          <rect class="gate" x="290" y="80" width="20" height="20" transform="rotate(45 300 90)"/><text class="st" x="300" y="127" text-anchor="middle">Plan</text><text class="sub k" x="300" y="147" text-anchor="middle">finish-planning.sh</text>
-          <rect class="gate-o" x="530" y="80" width="20" height="20" transform="rotate(45 540 90)"/><text class="st" x="540" y="127" text-anchor="middle">Questions</text><text class="sub" x="540" y="147" text-anchor="middle">you answer, when asked</text>
-          <circle class="dot" cx="780" cy="90" r="10"/><text class="st" x="780" y="127" text-anchor="middle">Pull request</text><text class="sub" x="780" y="147" text-anchor="middle">rules from the base branch</text>
-          <rect class="gate" x="1000" y="80" width="20" height="20" transform="rotate(45 1010 90)"/><text class="st" x="1010" y="127" text-anchor="middle">Merge</text><text class="sub" x="1010" y="147" text-anchor="middle">by you</text>
-        </svg>
-        <ol class="words" id="authority-words">
-          <li class="you"><b>Requirements</b><small>you agree them with the Project Grill</small></li>
-          <li class="you"><b>Plan</b><small class="k">finish-planning.sh</small></li>
-          <li class="ask"><b>Questions</b><small>you answer, only when a feature asks</small></li>
-          <li><b>Pull request</b><small>the rules are read from the base branch</small><p class="cond">A protected path, a major or breaking impact, or no review: your approval of exactly this commit.</p></li>
-          <li class="you"><b>Merge</b><small>by you; no script merges</small></li>
-        </ol>
-      </figure>
-      <p>A pull request is marked as needing your approval when a feature changes a protected path, when the reviewer classifies its impact on the architecture as major or breaking, or when there is no review. Always protected: every ADR, the CI workflows, the files that carry out the gate, and a changed or removed line of the check lists. The rules are read from the base branch, so a feature cannot loosen its own gate. The mark is a statement, not a lock: only the repository settings make GitHub enforce it.</p>
-      <pre role="region" class="excerpt" aria-label="Excerpt of the description of pull request 222"><span class="src">{bare(pull(222))} · excerpt</span>Merge approval:
-- required from the project owner, for exactly this commit
-[...]
-- scripts/review-feature.sh: the file defines or carries out the workflow and its gate
-- the independent review classified the impact on the architecture as major: [...]</pre>
-      <div class="split">
-        <div><h5>Codeyard enforces</h5><ul>
-          <li>The risk level, and that no agent lowers it</li>
-          <li>A reviewer of another provider, read-only</li>
-          <li>Verification before review and before commit</li>
-          <li>The completion gate and the triage rules</li>
-          <li>Rules read from the base branch</li>
-        </ul></div>
-        <div><h5>Your GitHub settings enforce</h5><ul>
-          <li>A ruleset on <code>main</code>, a GitHub setting that requires a pull request and the CI check (the checks GitHub runs on every pull request); <code>doctor.sh</code> warns when it is missing</li>
-          <li>Code-owner review, once you replace the placeholder in <a href={repoFile(".github/CODEOWNERS")}><code>CODEOWNERS</code></a></li>
-          <li>An approval the agent cannot give itself: needs a separate agent identity, <a href={issue(99)}>not built yet</a></li>
-        </ul></div>
+      <summary>How your approval is marked: files and settings</summary>
+      <div class="layer">
+        <p><b>What Codeyard does.</b> No script merges: you agree the requirements, approve the plan, answer the questions, and merge. A pull request that changes a protected file, such as an ADR, a CI workflow or the workflow's own gate, is marked as needing your approval; GitHub refuses a merge only as far as the settings of <a href={href("docs/github-setup/")}>GitHub setup</a> make it. Until agents get a GitHub identity of their own (<a href={issue(99)}>#99</a>), an agent has the GitHub rights of the account that started it.</p>
+        <figure class="plain">
+          <svg class="lines" viewBox="0 0 1100 170" role="img" aria-labelledby="authority-t" aria-describedby="authority-words">
+            <title id="authority-t">Your decisions: you agree the requirements and approve the plan; a feature asks you only when it needs a decision; a pull request that changes a protected path, has a major or breaking impact or no review is marked as needing your approval of exactly its commit; and the merge is left to you, no script merges.</title>
+            <path class="branch" d="M780 90 L820 50 H970 L1010 90"/>
+            <rect class="gate" x="885" y="40" width="20" height="20" transform="rotate(45 895 50)"/>
+            <text class="note" x="895" y="24" text-anchor="middle">protected path, major impact or no review</text>
+            <path class="l1" d="M80 90 H300"/>
+            <path class="l2" d="M300 90 H1010"/>
+            <rect class="gate" x="70" y="80" width="20" height="20" transform="rotate(45 80 90)"/><text class="st" x="80" y="127" text-anchor="middle">Requirements</text><text class="sub" x="80" y="147" text-anchor="middle">you agree them</text>
+            <rect class="gate" x="290" y="80" width="20" height="20" transform="rotate(45 300 90)"/><text class="st" x="300" y="127" text-anchor="middle">Plan</text><text class="sub k" x="300" y="147" text-anchor="middle">finish-planning.sh</text>
+            <rect class="gate-o" x="530" y="80" width="20" height="20" transform="rotate(45 540 90)"/><text class="st" x="540" y="127" text-anchor="middle">Questions</text><text class="sub" x="540" y="147" text-anchor="middle">you answer, when asked</text>
+            <circle class="dot" cx="780" cy="90" r="10"/><text class="st" x="780" y="127" text-anchor="middle">Pull request</text><text class="sub" x="780" y="147" text-anchor="middle">rules from the base branch</text>
+            <rect class="gate" x="1000" y="80" width="20" height="20" transform="rotate(45 1010 90)"/><text class="st" x="1010" y="127" text-anchor="middle">Merge</text><text class="sub" x="1010" y="147" text-anchor="middle">by you</text>
+          </svg>
+          <ol class="words" id="authority-words">
+            <li class="you"><b>Requirements</b><small>you agree them with the Project Grill</small></li>
+            <li class="you"><b>Plan</b><small class="k">finish-planning.sh</small></li>
+            <li class="ask"><b>Questions</b><small>you answer, only when a feature asks</small></li>
+            <li><b>Pull request</b><small>the rules are read from the base branch</small><p class="cond">A protected path, a major or breaking impact, or no review: your approval of exactly this commit.</p></li>
+            <li class="you"><b>Merge</b><small>by you; no script merges</small></li>
+          </ol>
+        </figure>
+        <p>A pull request is marked as needing your approval when a feature changes a protected path, when the reviewer classifies its impact on the architecture as major or breaking, or when there is no review. Always protected: every ADR, the CI workflows, the files that carry out the gate, and a changed or removed line of the check lists. The rules are read from the base branch, so a feature cannot loosen its own gate. The mark is a statement, not a lock: only the repository settings make GitHub enforce it.</p>
+        <div class="split">
+          <div><h5>Codeyard enforces</h5><ul>
+            <li>The risk level, and that no agent lowers it</li>
+            <li>A reviewer of another provider, read-only</li>
+            <li>Verification before review and before commit</li>
+            <li>The completion gate and the triage rules</li>
+            <li>Rules read from the base branch</li>
+          </ul></div>
+          <div><h5>Your GitHub settings enforce</h5><ul>
+            <li>A ruleset on <code>main</code>, a GitHub setting that requires a pull request and the CI check (the checks GitHub runs on every pull request); <code>doctor.sh</code> warns when it is missing</li>
+            <li>Code-owner review, once you replace the placeholder in <a href={repoFile(".github/CODEOWNERS")}><code>CODEOWNERS</code></a></li>
+            <li>An approval the agent cannot give itself: needs a separate agent identity, <a href={issue(99)}>not built yet</a></li>
+          </ul></div>
+        </div>
+        <dl class="facts">
+          <dt>checks</dt><dd><a href={repoFile("scripts/check-guardrails.sh")}><code>check-guardrails.sh</code></a> locally, and the Guardrails job of <a href={repoFile(".github/workflows/guardrails.yml")}><code>guardrails.yml</code></a> on every pull request</dd>
+          <dt>settings</dt><dd><a href={href("docs/github-setup/")}>GitHub setup</a> in the docs</dd>
+        </dl>
+        <p>Source: <a href={repoFile(".agents/policies/guardrails.conf")}><code>.agents/policies/guardrails.conf</code></a></p>
       </div>
-      <dl class="facts">
-        <dt>checks</dt><dd><a href={repoFile("scripts/check-guardrails.sh")}><code>check-guardrails.sh</code></a> locally, and the Guardrails job of <a href={repoFile(".github/workflows/guardrails.yml")}><code>guardrails.yml</code></a> on every pull request</dd>
-        <dt>settings</dt><dd><a href={href("docs/github-setup/")}>GitHub setup</a> in the docs</dd>
-        <dt>built in</dt><dd><a href={pull(100)}>PR #100</a> (the gate), <a href={pull(200)}>#200</a> (approval requests and the content tree)</dd>
-      </dl>
     </details>
   </Section>
 
-  <Section id="learn" title="Use past runs to improve the process">
+  <Section id="learn" title={learn}>
     <Fragment slot="note"><strong>Optional</strong>: records are kept by default; the analysis runs when you start it. <a href={`${repoFile("docs/development.md")}#run-records`}>The records in detail</a>.</Fragment>
     <dl class="pitch">
-      <dt>The problem</dt><dd>The same problem can cost review rounds in feature after feature without anyone noticing.</dd>
-      <dt>What you get</dt><dd>When you start it, a read-only AI reads the records of many runs and proposes changes to your process, each citing its runs. Nothing changes until you decide.</dd>
-      <dt>Real example</dt><dd>The analysis of 28 October 2026 found that findings raised again after being settled cost extra triage and repair rounds in five runs. Its proposal became <a href={issue(217)}>Issue #217</a>, carried out in <a href={pull(222)}>PR #222</a>.</dd>
+      <dt>The problem</dt><dd>A small recurring problem costs extra time or review rounds in every feature, and over time those rounds add up. Rules and design decisions that fitted a young project can start to get in the way once it has grown. That is why it pays to run an analysis over the last features now and then.</dd>
+      <dt>What you get</dt><dd>Run the analysis every so often, for example after the last twenty features. It reads their records and proposes improvements to your rules, prompts or checks, with the evidence per proposal. You decide what to adopt.</dd>
     </dl>
     <details class="proof">
-      <summary>How the analysis works: files, settings and a real record</summary>
-      <p><b>What Codeyard does.</b> Every run leaves a record on your machine: the review rounds and their findings, what the triage decided, the checks that failed, why a run stopped, and the time and tokens of each step. When you start it, a read-only analyst reads the records of many features and proposes what to change.</p>
-      <figure class="plain">
-        <svg class="lines learn" viewBox="0 0 1240 236" role="img" aria-labelledby="learn-t" aria-describedby="learn-words">
-          <title id="learn-t">The run records of several features run into one analysis. Its proposals pass your decision, and each goes to its own place with the review that applies there.</title>
-          <text class="note" x="110" y="14" text-anchor="middle">the last n features</text>
-          <path class="l2" d="M40 30 H200 L280 110"/>
-          <path class="l2" d="M40 70 H200 L240 110"/>
-          <path class="l2" d="M40 110 H500"/>
-          <path class="l2" d="M40 150 H200 L240 110"/>
-          <path class="l2" d="M40 190 H200 L280 110"/>
-          <circle class="dot" cx="200" cy="30" r="8"/><circle class="dot" cx="200" cy="70" r="8"/><circle class="dot" cx="200" cy="110" r="8"/><circle class="dot" cx="200" cy="150" r="8"/><circle class="dot" cx="200" cy="190" r="8"/>
-          <text class="sub" x="200" y="226" text-anchor="middle">run records</text>
-          <path class="l1" d="M500 110 H620 L680 50 H900 M620 110 H900 M620 110 L680 170 H900"/>
-          <circle class="dot" cx="400" cy="110" r="10"/><text class="st" x="400" y="86" text-anchor="middle">Analysis</text><text class="sub k" x="400" y="142" text-anchor="middle">analyze-runs.sh</text><text class="sub" x="400" y="162" text-anchor="middle">read-only</text>
-          <rect class="gate" x="510" y="100" width="20" height="20" transform="rotate(45 520 110)"/><text class="st" x="520" y="86" text-anchor="middle">You decide</text>
-          <circle class="dot" cx="900" cy="50" r="8"/><text class="sub" x="918" y="55">ADR, instruction, skill, docs</text>
-          <circle class="dot" cx="900" cy="110" r="8"/><text class="sub" x="918" y="115">a check in a script</text>
-          <circle class="dot" cx="900" cy="170" r="8"/><text class="sub" x="918" y="175">an Issue, here or in Codeyard</text>
-          <text class="note" x="760" y="226" text-anchor="middle">each with the review that applies there</text>
-        </svg>
-        <ol class="words lines-words" id="learn-words">
-          <li><b>Run records</b><small>of the last n features: rounds, findings, triage, stops, time and tokens</small></li>
-          <li><b>Analysis</b><small class="k">analyze-runs.sh --last 10</small><p class="cond">A read-only agent; it changes nothing.</p></li>
-          <li class="you"><b>You decide</b></li>
-          <li><b>Each proposal in its place</b><small>an ADR, an agent instruction, a skill, the documentation, a check in a script, or an Issue, here or in Codeyard's repository</small><p class="cond">with the review that applies there</p></li>
-        </ol>
-      </figure>
-      <ul class="rules">
-        <li><b>A finding needs two runs.</b> One observation stays a hypothesis, and “not enough evidence” is a valid outcome.</li>
-        <li><b>Every conclusion cites its records,</b> and says which differences in task size, model and workflow version it considered.</li>
-        <li><b>Nothing changes by itself.</b> Each proposal names its place, and you take it through the review and approval there.</li>
-        <li><b>Repeatable, and nothing counted twice.</b> Each analysis keeps its input and sources; evidence an earlier analysis used is marked as such.</li>
-      </ul>
-      <pre role="region" class="excerpt" aria-label="Excerpt of the run analysis of 28 October 2026"><span class="src">.agents/analysis/20261028T181115Z-6036a8954003/report.md · proposal 5, excerpt</span>{analysis}</pre>
-      <p>C1, C2 and C17 are conclusions of the same report, each with the runs it rests on. The proposal became <a href={issue(217)}>Issue #217</a> and was merged with <a href={pull(222)}>PR #222</a>.</p>
-      <p class="needs">You start an analysis by hand; running it periodically is an open Issue (<a href={issue(131)}>#131</a>).</p>
-      <dl class="facts">
-        <dt>scripts</dt><dd><a href={repoFile("scripts/analyze-runs.sh")}><code>analyze-runs.sh</code></a>, <a href={repoFile("scripts/report-runs.sh")}><code>report-runs.sh</code></a>, <a href={repoFile("scripts/show-experience.sh")}><code>show-experience.sh</code></a></dd>
-        <dt>example</dt><dd><a href={href("examples/#analysis")}>The analysis of 28 October 2026</a>: 41 runs, five Issues</dd>
-      </dl>
+      <summary>How the analysis works: files and settings</summary>
+      <div class="layer">
+        <p><b>What Codeyard does.</b> Every run leaves a record on your machine: the review rounds and their findings, what the triage decided, the checks that failed, why a run stopped, and the time and tokens of each step. When you start it, a read-only analyst reads the records of many features and proposes what to change.</p>
+        <figure class="plain">
+          <svg class="lines learn" viewBox="0 0 1240 236" role="img" aria-labelledby="learn-t" aria-describedby="learn-words">
+            <title id="learn-t">The run records of several features run into one analysis. Its proposals pass your decision, and each goes to its own place with the review that applies there.</title>
+            <text class="note" x="110" y="14" text-anchor="middle">the last n features</text>
+            <path class="l2" d="M40 30 H200 L280 110"/>
+            <path class="l2" d="M40 70 H200 L240 110"/>
+            <path class="l2" d="M40 110 H500"/>
+            <path class="l2" d="M40 150 H200 L240 110"/>
+            <path class="l2" d="M40 190 H200 L280 110"/>
+            <circle class="dot" cx="200" cy="30" r="8"/><circle class="dot" cx="200" cy="70" r="8"/><circle class="dot" cx="200" cy="110" r="8"/><circle class="dot" cx="200" cy="150" r="8"/><circle class="dot" cx="200" cy="190" r="8"/>
+            <text class="sub" x="200" y="226" text-anchor="middle">run records</text>
+            <path class="l1" d="M500 110 H620 L680 50 H900 M620 110 H900 M620 110 L680 170 H900"/>
+            <circle class="dot" cx="400" cy="110" r="10"/><text class="st" x="400" y="86" text-anchor="middle">Analysis</text><text class="sub k" x="400" y="142" text-anchor="middle">analyze-runs.sh</text><text class="sub" x="400" y="162" text-anchor="middle">read-only</text>
+            <rect class="gate" x="510" y="100" width="20" height="20" transform="rotate(45 520 110)"/><text class="st" x="520" y="86" text-anchor="middle">You decide</text>
+            <circle class="dot" cx="900" cy="50" r="8"/><text class="sub" x="918" y="55">ADR, instruction, skill, docs</text>
+            <circle class="dot" cx="900" cy="110" r="8"/><text class="sub" x="918" y="115">a check in a script</text>
+            <circle class="dot" cx="900" cy="170" r="8"/><text class="sub" x="918" y="175">an Issue, here or in Codeyard</text>
+            <text class="note" x="760" y="226" text-anchor="middle">each with the review that applies there</text>
+          </svg>
+          <ol class="words lines-words" id="learn-words">
+            <li><b>Run records</b><small>of the last n features: rounds, findings, triage, stops, time and tokens</small></li>
+            <li><b>Analysis</b><small class="k">analyze-runs.sh --last 10</small><p class="cond">A read-only agent; it changes nothing.</p></li>
+            <li class="you"><b>You decide</b></li>
+            <li><b>Each proposal in its place</b><small>an ADR, an agent instruction, a skill, the documentation, a check in a script, or an Issue, here or in Codeyard's repository</small><p class="cond">with the review that applies there</p></li>
+          </ol>
+        </figure>
+        <ul class="rules">
+          <li><b>A finding needs two runs.</b> One observation stays a hypothesis, and “not enough evidence” is a valid outcome.</li>
+          <li><b>Every conclusion cites its records,</b> and says which differences in task size, model and workflow version it considered.</li>
+          <li><b>Nothing changes by itself.</b> Each proposal names its place, and you take it through the review and approval there.</li>
+          <li><b>Repeatable, and nothing counted twice.</b> Each analysis keeps its input and sources; evidence an earlier analysis used is marked as such.</li>
+        </ul>
+        <p class="needs">You start an analysis by hand; running it periodically is an open Issue (<a href={issue(131)}>#131</a>).</p>
+        <dl class="facts">
+          <dt>scripts</dt><dd><a href={repoFile("scripts/analyze-runs.sh")}><code>analyze-runs.sh</code></a>, <a href={repoFile("scripts/report-runs.sh")}><code>report-runs.sh</code></a>, <a href={repoFile("scripts/show-experience.sh")}><code>show-experience.sh</code></a></dd>
+        </dl>
+        <p>Source: <a href={repoFile("scripts/analyze-runs.sh")}><code>scripts/analyze-runs.sh</code></a></p>
+      </div>
     </details>
   </Section>
 </Base>
