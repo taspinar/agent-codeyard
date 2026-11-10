@@ -149,7 +149,18 @@ case "${1:-} ${2:-}" in
       *) printf 'Title: F02 — Feature file\n\nThe feature file exists.\n' ;;
     esac
     ;;
-  "issue comment" | "issue list" | "pr edit") ;;
+  "issue comment")
+    # The bodies, as GitHub would return them: an owner exception is read
+    # back from the comments of the Issue (MOCK_ISSUE_COMMENTS).
+    args=("$@")
+    for ((i = 0; i < ${#args[@]}; i++)); do
+      if [[ "${args[$i]}" == "--body-file" ]]; then
+        jq -n --rawfile body "${args[$((i + 1))]}" '{body: $body}' >>"$RUN_CONTROL/issue-comments.jsonl"
+      fi
+    done
+    ;;
+  "issue list" | "pr edit") ;;
+  "api user") echo "project-owner" ;;
   "issue create") echo "https://github.com/example/project/issues/123" ;;
   "pr list") ;;
   "pr create")
@@ -1206,6 +1217,101 @@ printf '%s\n' 'reply="Nothing to do."' >"$repo.control/fixes.sh"
 run_feature "$repo" 2 thing
 expect_stopped "$repo" 1 "the fixes for round 1 changed nothing"
 expect_sessions "$repo" 1 1 1 1
+
+# refuted <id> <value>: a fixing agent that changes no code and records its
+# check of a finding under the heading of the triage, with its evidence.
+refuted() {
+  printf '%s\n' 't="$(ls .agents/triage/*.json | tail -1)"; mkdir -p .agents/handoffs
+printf "\n## Triage %s\n\n- '"$1"': '"$2"' — \`grep -c feature feature.txt\` prints 1: the content is right\n" "$(basename "$t")" >>".agents/handoffs/$RUN_ISSUE.md"
+reply="'"$1"' is '"$2"'."'
+}
+# A reviewer that reports M1 of the round before again, as unresolved.
+unresolved='reply="{\"architecture_impact\": {\"level\": \"minor\", \"rationale\": \"Stays within the accepted architecture.\", \"checked_against\": []}, \"verdict\": \"CHANGES_REQUIRED\", \"limitations\": \"\", \"findings\": [
+  {\"severity\": \"major\", \"title\": \"Wrong content, unresolved\", \"evidence\": \"feature.txt:1\", \"impact\": \"Bug.\", \"recommendation\": \"Fix.\", \"previous\": {\"round\": $((count - 1)), \"id\": \"M1\", \"relation\": \"unresolved\", \"reason\": null}}
+]}"'
+
+# A major finding that the implementer refuted with evidence, changing no
+# code, and that the reviewer, given the refutation, still reports: no agent
+# may accept it, so the run stops for the owner with status 3, on a review of
+# the complete feature, and names the finding, the evidence, and the ways on.
+# The owner's exception to it lets the next run finish the feature.
+repo="$(setup_repo fixes-refuted)"
+printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
+printf '%s\n' "$unresolved" >"$repo.control/reviewer.sh"
+printf '%s\n' "$fix_major" >"$repo.control/triage.sh"
+refuted M1 refuted >"$repo.control/fixes.sh"
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 3 "the implementer refuted every finding left to fix in round 3 with evidence"
+expect_sessions "$repo" 1 3 3 1
+grep -Fq "review of the complete feature, round 3" "$repo.out" || fail "the owner's decision is not asked on a review of the complete feature"
+grep -Fq -- "- M1 (major): Wrong content, unresolved — refuted in round 1 (M1): \`grep -c feature feature.txt\` prints 1: the content is right" "$repo.out" ||
+  fail "the stop does not name the refuted finding and its evidence"
+grep -Fq "./scripts/record-exception.sh .agents/reviews/feature-2-thing-review-03.json --finding M1 --type not-applicable" "$repo.out" ||
+  fail "the stop does not give the owner's exception"
+grep -Fq "./scripts/start-feature.sh 2 --resume    # or the fix after all" "$repo.out" || fail "the stop does not give the fix after all"
+grep -Fq "| triage of round 3 | refuted | " <<<"$(log_of "$repo")" || fail "the refuted finding is not in the log of the feature"
+# The stop leaves the review current, so that an exception can bind to it.
+(cd "$repo-2-thing" && ./scripts/check-review.sh .agents/reviews/feature-2-thing-review-03.json >/dev/null) ||
+  fail "the stop made the review it asks about stale"
+# Without the owner's decision, the next run stops in the same way, without
+# another agent.
+run_feature "$repo" 2
+expect_stopped "$repo" 3 "the implementer refuted every finding left to fix in round 3"
+expect_sessions "$repo" 1 3 3 1
+(
+  cd "$repo-2-thing"
+  command="PATH=$(printf '%q' "$tmp/bin:/usr/bin:/bin") RUN_CONTROL=$(printf '%q' "$repo.control") ./scripts/record-exception.sh .agents/reviews/feature-2-thing-review-03.json --finding M1 --type not-applicable --evidence .agents/handoffs/2.md --reason 'The content is right.'"
+  if script --version 2>/dev/null | grep -q util-linux; then
+    printf 'y\n' | script -qec "$command" /dev/null
+  else
+    printf 'y\n' | script -q /dev/null sh -c "$command"
+  fi
+) >"$repo.exception" 2>&1 || {
+  cat "$repo.exception" >&2
+  fail "the owner's exception to the refuted finding was not recorded"
+}
+jq -s . "$repo.control/issue-comments.jsonl" >"$repo.control/issue-comments.json"
+MOCK_ISSUE_COMMENTS="$repo.control/issue-comments.json" run_feature "$repo" 2
+expect_published "$repo"
+expect_sessions "$repo" 1 3 3 1
+grep -Fq "blocking findings open with the owner's exception: M1" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" ||
+  fail "the commit does not record the owner's exception to the refuted finding"
+
+# A round with a fixed and a refuted finding goes on with the fixed one; the
+# refuted major finding that remains stops the run.
+two_majors='reply="{\"architecture_impact\": {\"level\": \"minor\", \"rationale\": \"Stays within the accepted architecture.\", \"checked_against\": []}, \"verdict\": \"CHANGES_REQUIRED\", \"limitations\": \"\", \"findings\": [
+  {\"severity\": \"major\", \"title\": \"Wrong content\", \"evidence\": \"feature.txt:1\", \"impact\": \"Bug.\", \"recommendation\": \"Fix.\"},
+  {\"severity\": \"major\", \"title\": \"Missing line\", \"evidence\": \"feature.txt:1\", \"impact\": \"Bug.\", \"recommendation\": \"Add.\"}
+]}"'
+repo="$(setup_repo fixes-mixed)"
+printf '%s\n' "$two_majors" >"$repo.control/reviewer-1.sh"
+printf '%s\n' "$unresolved" >"$repo.control/reviewer.sh"
+printf '%s\n' 'reply="{\"decisions\": [{\"finding_id\": \"M1\", \"decision\": \"FIX_NOW\", \"rationale\": \"It is wrong.\", \"followup\": null}, {\"finding_id\": \"M2\", \"decision\": \"FIX_NOW\", \"rationale\": \"It is missing.\", \"followup\": null}]}"' >"$repo.control/triage-1.sh"
+printf '%s\n' "$fix_major" >"$repo.control/triage.sh"
+{
+  printf '%s\n' 'printf "line\n" >>feature.txt'
+  refuted M1 refuted
+  printf '%s\n' 'printf -- "- M2: fixed — feature.txt has the line\n" >>".agents/handoffs/$RUN_ISSUE.md"'
+} >"$repo.control/fixes-1.sh"
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 3 "the implementer refuted every finding left to fix in round 3"
+expect_sessions "$repo" 1 3 3 1
+grep -Fq -- "- M1 (major): Wrong content, unresolved — refuted in round 1 (M1): " "$repo.out" || fail "the remaining refuted finding is not named"
+if grep -Fq "M2 (major)" "$repo.out"; then fail "the fixed finding is named as refuted"; fi
+
+# A finding that was not reproduced, or that cannot be run here, proves
+# nothing either way: the next round fixes it as before, without the owner.
+for value in not_reproduced not_executable; do
+  repo="$(setup_repo "fixes-$value")"
+  printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
+  printf '%s\n' "$unresolved" >"$repo.control/reviewer-2.sh"
+  printf '%s\n' "$fix_major" >"$repo.control/triage.sh"
+  refuted M1 "$value" >"$repo.control/fixes-1.sh"
+  run_feature "$repo" 2 thing
+  expect_published "$repo"
+  expect_sessions "$repo" 1 4 2 2
+  if grep -Fq "refuted every finding" "$repo.out"; then fail "a $value finding stopped the run for the owner"; fi
+done
 
 # When the base of the branch changed between two rounds, the next round
 # reviews the complete feature instead of being refused.

@@ -142,6 +142,14 @@ Each finding gets one recorded decision: fix it now (`FIX_NOW`), defer it to a f
 
 **Exception:** if you judge a critical or major finding wrong, or accept its risk, you can <a href="../detailed-workflow/#owner-exception">record an exception</a> for it.
 
+### "the implementer refuted every finding left to fix in round …"
+
+- **First fix:** read each finding the run names, with the implementer's evidence in the handoff note. When you agree that a critical or major finding does not hold, run the `./scripts/record-exception.sh` command the run printed for it. For a minor finding, give your own triage that accepts it. When the reviewer is right, write your instruction into the handoff note and run `./scripts/start-feature.sh <issue> --resume`.
+- **Recovered when:** `./scripts/run-feature.sh <issue>` goes on to the commit, or reviews the fix.
+- **Output:** the output of `run-feature.sh` and `.agents/run/<issue>-log`; the evidence in `.agents/handoffs/<issue>.md`, under `## Triage …`.
+
+An unattended run stops with status 3 when the implementer showed, with a reproduction, that every finding left to fix does not hold and changed no code for it, and a later review still reports it. No agent may accept a critical or major finding, so another fix session would only refute it again. Your decision lets the same command continue.
+
 ## Planning
 
 ### "the planning has not been approved", or "a planning document changed after the planning was approved"

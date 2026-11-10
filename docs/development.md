@@ -1764,7 +1764,33 @@ the triage agent in a section of its own, both as the implementer's statement
 and not as evidence, so the existing triage, with its approval, decides again:
 a `refuted` minor finding can become `ACCEPT` with its rationale. The lines
 are not remaining work for the completion gate, and the triage schema has no
-new category. `scripts/lib/completion.sh` reads them (`handoff_finding_checks`).
+new category.
+
+A `refuted` critical or major finding cannot become `ACCEPT` without you.
+When the reviewer, given the refutation, reports it again as `unresolved`
+(its `previous`), and every `FIX_NOW` finding of that round without your
+exception was refuted that way, one of them critical or major,
+`run-feature.sh` starts no fix session: the implementer would refute it
+again. It stops with status 3 and names each finding with the round and the
+evidence of its refutation. A review of changes only goes on to the review of
+the complete feature first, since an exception binds only to the latest
+review. The run writes nothing into the handoff note then, so that review
+stays current. Your ways on, printed with the stop:
+
+- you agree that the finding does not hold: record an exception with
+  `./scripts/record-exception.sh <review-json> --finding <id> --type
+  not-applicable --evidence ".agents/handoffs/<issue>.md" --reason "<why>"`
+  (below);
+- a minor finding or a suggestion among them: an owner-directed triage that
+  accepts it (`triage-review.sh <review-json> --decisions <file> --reason
+  "<why>"`, above);
+- the reviewer is right: write your instruction into the handoff note and
+  resume the implementer with `./scripts/start-feature.sh <issue> --resume`.
+
+Then run `./scripts/run-feature.sh <issue>` again: with your exception it
+goes on to the commit, after a fix it reviews again, and without a decision it
+stops in the same way. A `not_reproduced` or `not_executable` finding proves
+nothing either way and is fixed in the next round as before. `scripts/lib/completion.sh` reads them (`handoff_finding_checks`).
 Whether this makes fix rounds cheaper is a follow-up evaluation over later
 features; its baseline and measures are in `docs/evaluation.md` ("Measuring
 the fix rounds").
@@ -2387,6 +2413,7 @@ The run stops with a non-zero status, and keeps the worktree, when:
 | Five rounds are used and the last one still has a finding that must be fixed, or was an intermediate round (only the changes, or partially checked content) | 1 |
 | The implementer ended four sessions without completing the Issue | 1 |
 | The completion record says `blocked` | 3 |
+| The implementer refuted every finding left to fix, one of them critical or major, with evidence, and the review of the complete feature still reports it; the findings and the ways on are named | 3 |
 | The fixes changed nothing, the commit is refused, or the pull request cannot be opened after the retries | 1 |
 
 It then says why it stopped and which command resolves it. After that, run
