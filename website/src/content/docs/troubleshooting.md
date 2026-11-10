@@ -88,7 +88,7 @@ The implementer does not start without your comments on the Issue, since it woul
 - **Recovered when:** `./scripts/verify.sh` passes.
 - **Output:** the output of `verify.sh`; in an unattended run also `.agents/run/<issue>-verify.log` in the feature worktree.
 
-A feature cannot be reviewed or committed until the checks pass. An unattended run repairs a failed verification itself, at most three times, before it stops.
+A feature cannot be reviewed or committed until the checks pass. An unattended run repairs a failed verification itself, at most three times, before it stops. When the base branch moved since the feature started and merges cleanly, it first merges the base and verifies again, without a repair session; see <a href="#the-base-branch-moved-after-the-feature-was-finished">the base branch moved</a>.
 
 **Exception:** to have the feature reviewed anyway, `review-feature.sh <issue> --unverified "<reason>"` records the reason; it is an exception, not a pass, and the commit still needs every check.
 
@@ -170,10 +170,46 @@ A planning document changed after the review.
 
 ### The base branch moved after the feature was finished
 
-- **First fix:** merge the base branch into the feature branch and publish again: `git merge origin/main` (or `origin/<base>` for a feature of another base), then `./scripts/publish-feature.sh <issue>`.
-- **Recovered when:** `publish-feature.sh` pushes and updates the pull request.
-- **Output:** the output of `publish-feature.sh`.
+- **First fix:** run `./scripts/update-feature.sh <issue>` in the feature worktree.
+- **Recovered when:** the script verifies the merged branch, pushes it, and updates the pull request.
+- **Output:** the output of `update-feature.sh`.
 
-The pull request is still described by the commit of the finished feature and still closes the Issue. So does a commit after the merge that fixes only what the merge brought in, without touching the files of the feature, a protected path, or a feature that needs the owner's approval. Your exceptions to blocking review findings stay valid through the merge, since they are judged against the finished feature. Once the base was merged in, a later review has to cover the complete feature, not only the recent changes.
+Update the branch when the pull request shows a conflict or is behind its base, or when a check fails on something that a later merge into the base repaired. The script fetches the base, merges it, runs `./scripts/verify.sh --all --reuse`, and publishes again. Nothing is pushed when a step fails, and running it again continues where it stopped. GitHub's "Re-run" of a failed check does not help here: it runs the check again on the same merge with the old base.
+
+The pull request is still described by the commit of the finished feature and still closes the Issue. So does a commit after the merge that fixes only what the merge brought in, without touching the files of the feature, a protected path, or a feature that needs the owner's approval. When the feature needs your approval, the pull request still says that the approval was decided for the finish commit and names its content: a merge of the base changes nothing of what was reviewed, so no new approval request is made, and you approve the pull request as before. Your exceptions to blocking review findings stay valid through the merge, since they are judged against the finished feature. Once the base was merged in, a later review has to cover the complete feature, not only the recent changes.
 
 Any other commit after the finish needs a new finish first; the pull request names that commit and what to do. For a feature with your exceptions, such a commit makes publishing stop instead and name it, since the exceptions may no longer fit what changed; a merge of the base alone leaves them valid.
+
+### "Merging origin/… conflicts with the feature in: …"
+
+- **First fix:** merge by hand and resolve the files it names: `git merge origin/main` (or `origin/<base>`), fix the conflicts, `git add` them and `git commit --no-edit`, then run `./scripts/update-feature.sh <issue>` again.
+- **Recovered when:** `update-feature.sh` reports the branch as up to date and publishes.
+- **Output:** the output of `update-feature.sh`.
+
+The script stops before it changes anything, so the branch is as it was. In an unattended run the same stop reads "merging origin/… conflicts with the feature in: …": the run had found that the base moved while the verification failed. Its work is not committed yet, so the commands it prints first put that work aside with `git stash push --include-untracked`, and take it back with `git stash pop` after the merge. Then run `./scripts/run-feature.sh <issue>` again.
+
+A run whose base merges cleanly handles it itself: it merges the base, notes `base merged` in its log, and verifies again. Only a check that still fails goes to the implementer.
+
+### "Left behind by a merge of the base"
+
+- **First fix:** check the paths it lists, and remove each with the command next to it, such as `rm -rf -- old-site/`.
+- **Recovered when:** the script runs past the check; `git status` no longer lists the paths.
+- **Output:** the output of `update-feature.sh`, `publish-feature.sh`, or `run-feature.sh`.
+
+Git ignored these files on the feature branch, for example the build directory of a site that the base renamed, and the merged base no longer ignores them. They are not work of the feature, so they are not taken for uncommitted changes, and nothing deletes them for you. `publish-feature.sh` reports them and publishes; `update-feature.sh` and an unattended run stop until they are gone, since the verification would count them as content of the feature.
+
+### "… would write over … untracked files …"
+
+- **First fix:** check the paths it names, then move each out of the worktree, or remove it once you know it is not needed, and run the command again.
+- **Recovered when:** the merge goes through, and the base's version of each path is in the worktree.
+- **Output:** the output of `update-feature.sh` or `run-feature.sh`.
+
+The base adds a file at a path where your worktree has an untracked one, often one that Git ignores, such as a cache or a build output. Git would replace an ignored file during the merge without asking, so the script stops before it merges and leaves the file as it is.
+
+### "The index holds staged changes"
+
+- **First fix:** look at them with `git diff --cached`. Unstage them with `git restore --staged <path>` when the file on disk holds what you want, or commit them, then run the command again.
+- **Recovered when:** `git diff --cached` shows nothing and the merge goes through.
+- **Output:** the output of `update-feature.sh` or `run-feature.sh`.
+
+Git refuses to merge while changes are staged, and unstaging them for you could lose a staged version that differs from the file on disk. The script stops before the merge and leaves the index as it is.

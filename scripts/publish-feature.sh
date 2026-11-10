@@ -17,7 +17,10 @@ usage() {
   echo "without changing what the review covered, and the manual steps; an open pull request"
   echo "gets it again, replacing its description. The risk level in it is computed"
   echo "here again from the diff and the rules of the base, never copied from the"
-  echo "commit. It never merges."
+  echo "commit. It never merges. ./scripts/update-feature.sh merges the base, verifies,"
+  echo "and runs this script in one step. Untracked paths that a merge of the base left"
+  echo "behind, which Git ignored at the finish commit and does not ignore now, are"
+  echo "reported with the command that removes them, not taken for uncommitted changes."
   echo
   echo "The pull request closes the Issue only when the feature is complete: the"
   echo "commit carries 'Completion: complete' of finish-feature.sh and the"
@@ -88,8 +91,6 @@ root="$(git rev-parse --show-toplevel)"
 branch="$(git branch --show-current)"
 [[ "$branch" == feature/${issue}-* ]] ||
   fail "publish-feature.sh must run on feature/${issue}-*. Current branch: $branch"
-[[ -z "$(git -C "$root" status --porcelain)" ]] ||
-  fail "there are uncommitted changes. Commit the feature first: ./scripts/finish-feature.sh $issue \"<commit summary>\""
 
 # The steps the implementer recorded for the human; finish-feature.sh put the
 # same steps in the commit message.
@@ -129,12 +130,28 @@ if [[ "$finish_commit" != "$(git -C "$root" rev-parse HEAD)" ]]; then
   fi
 fi
 
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/publish-feature.XXXXXX")"
+trap 'rm -rf "$scratch"' EXIT
+# Uncommitted work is not published. What a merge of the base left behind is
+# no work: an untracked path that the branch ignored at its finish commit and
+# that the merged base no longer ignores, such as the build directory of a
+# renamed site (lib/base.sh). It is reported with the command that removes
+# it, and nothing is deleted.
+uncommitted="$(base_uncommitted_work "$root" "$finish_commit" "$scratch")" ||
+  fail "could not determine whether the worktree has uncommitted changes."
+[[ -z "$uncommitted" ]] ||
+  fail "there are uncommitted changes. Commit the feature first: ./scripts/finish-feature.sh $issue \"<commit summary>\""
+leftovers="$(base_leftovers "$root" "$finish_commit" "$scratch")" || leftovers=""
+if [[ -n "$leftovers" ]]; then
+  echo "Left behind by a merge of the base: Git ignored these untracked paths at the finish commit and does not ignore them now. They are not part of any commit and are not published; nothing was deleted:"
+  base_leftover_report "$leftovers"
+  echo
+fi
+
 # The content tree of the finish commit (lib/fingerprint.sh): its content
 # without the workflow's metadata, the value finish-feature.sh printed, what
 # an approval request names, and what check-guardrails.sh recomputes. It is
 # computed here again from the commit, never copied from the message.
-scratch="$(mktemp -d "${TMPDIR:-/tmp}/publish-feature.XXXXXX")"
-trap 'rm -rf "$scratch"' EXIT
 content_tree="$(fingerprint_commit "$root" "$scratch" "$finish_commit")" ||
   fail "could not compute the content tree of the finish commit $finish_commit."
 echo "Finish commit: $finish_commit"
