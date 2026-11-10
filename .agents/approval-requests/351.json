@@ -1,0 +1,20 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "25f2d60acf2682fca174cf39528f0740f7253782",
+  "commit": {
+    "branch": "feature/351-bring-a-feature-branch",
+    "parent": "9efee7d205986fefc84e301f5db205d4731bbd7c",
+    "base": "9efee7d205986fefc84e301f5db205d4731bbd7c"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS WITH MINOR FINDINGS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/publish-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The feature adds shared workflow behavior and a new update command, and changes the run and publish gates, shared base helpers, and verification workflow registration. These changes affect how features are verified, merged, and published across the repository. "
+  ],
+  "explanation": "Issue #351: Bring a feature branch up to date with its base, during a run and after the pull request (from #114). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

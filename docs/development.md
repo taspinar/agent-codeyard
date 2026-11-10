@@ -2101,16 +2101,43 @@ refuses to push while a commit of the branch carries an agent's
 attribution text such as "Generated with Claude Code"; each is reported
 on its own, with where to remove it. See "Configuring attribution".
 
-**Bringing a finished feature up to date with its base.** When the base
-branch moved on after `finish-feature.sh`, for example because a conflict has
-to be resolved, merge the base into the feature branch and publish again:
+**Bringing a finished feature up to date with its base.** Update the branch
+when the base branch moved on after `finish-feature.sh` and the pull request
+shows a conflict or is behind its base, or when a check of the pull request
+fails on something that a later merge into the base repaired. One command
+does it:
 
 ```bash
-git merge origin/main    # or origin/<base>, the base of the feature
-./scripts/publish-feature.sh 12
+./scripts/update-feature.sh 12    # --wait to stay for the checks of the pull request
 ```
 
-The script takes the statement, the description, and the title from the
+It fetches the base of the feature (`origin/<base>`, as `start-feature.sh`
+recorded it) and merges it into the branch when the branch does not contain
+it yet. A merge that conflicts stops before anything changed: the script
+names the conflicting files and the commands that continue, which are to
+merge by hand (`git merge origin/main`), resolve the files, commit the
+merge, and run the script again; a merge left in progress is refused until it
+is committed. Then it runs the full verification, `./scripts/verify.sh --all
+--reuse`, since a review that was done before the merge covered the feature,
+not the merge; on a rerun the pass of the same content is reused. Last, it
+publishes again with `publish-feature.sh`. Nothing is pushed when a step
+fails, and running the command again continues where it stopped. The same
+steps by hand are `git merge origin/main`, `./scripts/verify.sh --all`, and
+`./scripts/publish-feature.sh 12`.
+
+A merge of the base can leave untracked files behind: a directory that Git
+ignored on the branch, such as the build directory of a site that the base
+renamed, is no longer ignored once the base's `.gitignore` arrives. Such a
+path is no work of the feature. Both scripts recognize it, as an untracked
+path that the ignore rules of the finish commit ignored and that Git does
+not ignore now, and report it with its path and the command that removes it
+(`rm -rf -- <path>`); nothing deletes it for you. `publish-feature.sh` does
+not count it as uncommitted work and publishes. `update-feature.sh` stops
+until it is removed, because the verification would count it as content of
+the feature. Any other untracked or changed file is uncommitted work, and
+both refuse it.
+
+`publish-feature.sh` takes the statement, the description, and the title from the
 commit that `finish-feature.sh` made: merge commits of the base after it are
 passed over, since they change nothing of the feature itself. So is a commit
 after such a merge that fixes what the merge broke, such as a link to a page
@@ -2124,9 +2151,36 @@ that stands in the way and what to do: undo it into the working tree, review
 it, and finish again. The owner's exceptions of the finish commit are
 judged against its content too, so they survive the merge of the base; with
 any other commit after the finish they are refused and nothing is pushed.
-Run `./scripts/verify.sh --all`
-after the merge; a review that was done before it covered the feature, not
-the merge.
+
+What the owner's approval of a protected change means after a merge of the
+base: the description still says that the merge approval was decided for the
+finish commit, and names its content tree and the approval request it
+carries. The content the review and the approval request cover is unchanged;
+the merge commit is passed over, so a pure merge of the base needs no new
+finish and no new approval request. The owner approves the pull request on
+GitHub as before, after the update, and the checks of the pull request run
+on the merged branch.
+
+GitHub's "Re-run" of a failed check on the pull request runs it again on the
+same merge of the branch with its base that the first run used: a fix that
+was merged into the base since then is not in it. Update the branch instead,
+and the checks run on the new head.
+
+**During an unattended run.** `run-feature.sh` asks the same question before
+it hands a failing verification to the implementer. When checks failed in two
+verification runs and the base moved since the feature started, it fetches
+the base and merges it into the branch when that merges cleanly, with the
+commits of the branch and with the uncommitted work of the feature, notes
+`base merged` in the log of the feature, and does the step again on the
+merged content; only a check that still fails goes to the implementer. A
+merge into a branch whose work is not committed yet first unstages the
+index, since Git refuses a merge with staged changes; the commit takes every
+change of the working tree anyway. A merge that would conflict stops the run
+before anything changed, with the conflicting files and the commands that
+continue: put the uncommitted work aside (`git stash push
+--include-untracked`), merge, resolve and commit, take the work back (`git
+stash pop`), and run again. A merge that leaves untracked paths behind, as
+above, stops the run with their paths and removal commands too.
 
 The script ends once the pull request is open and prints its address. Follow
 the checks there and merge after they passed. Local verification during a
@@ -2295,7 +2349,8 @@ only together with what it recorded:
 | Completed | The step exits 0 | Goes on |
 | Temporary | An agent or a connection fails: a usage limit, a timeout, the network | Tries the step again, three times, with a wait that doubles from two minutes. A fix session that had already changed the content is taken up with `apply-triage.sh <triage-json> --continue`: the same findings, contract, and protections, for the session of this triage that was left unfinished, and for nothing else |
 | Unstable check | The verification is repeated once, and no check failed in both runs | Records the checks and goes on, at most three times in a run |
-| Failed verification | A check failed in both runs | Resumes the implementer with those checks in the handoff note, at most three times (`AGENTS.md`); a review follows. A repair session is retried like any other |
+| Base moved | A check failed in both runs, and the base moved since the feature started and merges cleanly | Merges the base into the branch, notes `base merged`, and does the step again on the merged content, without a session of the implementer; see "Bringing a finished feature up to date with its base" |
+| Failed verification | A check failed in both runs, and the base did not move | Resumes the implementer with those checks in the handoff note, at most three times (`AGENTS.md`); a review follows. A repair session is retried like any other |
 | Budget exceeded | The verification passed, and a budget check (`<name> [<group>] budget: <command>`, see "Budgets") exceeded its target | Goes on: no repair session, whatever the measurement. Writes the measurement to the handoff note, with the note that it is not a repair order, and to the log and the run record, once per result and only where a note cannot make a review stale (before a review round, after the verification of an unreviewed `low` feature, after the commit). The reviewer's context, the commit message, and the pull request get it from the verification record |
 | Blocked | An agent ends with `BLOCKED:` and the handoff note holds a question under "Open questions", or the completion record says `blocked` | Stops with status 3. Without such a question there is nothing to answer: the line is ignored and the run goes on |
 | Not complete | The implementer ended normally, but the completion gate does not pass: no record, an invalid one, `partial`, remaining work in the handoff note, or no summary of the changes | Resumes the implementer with the reasons in the handoff note, at most four sessions in a run. Nothing is reviewed or committed before the gate passes |
@@ -2315,6 +2370,7 @@ The run stops with a non-zero status, and keeps the worktree, when:
 | An agent needs a decision of yours, or reports a conflict with the Issue's scope, the architecture, or an ADR. Its question is in the handoff note | 3 |
 | An agent or a connection keeps failing after the retries | 1 |
 | The verification still fails after three repairs, or checks are unstable more than three times | 1 |
+| The verification fails, the base moved, and its merge conflicts with the branch or the uncommitted work of the feature, or leaves untracked paths behind that the branch ignored; the files are named | 1 |
 | The proposed triage is invalid, for example because it defers a critical or major finding | 1 |
 | Five rounds are used and the last one still has a finding that must be fixed, or was an intermediate round (only the changes, or partially checked content) | 1 |
 | The implementer ended four sessions without completing the Issue | 1 |
