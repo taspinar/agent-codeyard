@@ -90,6 +90,7 @@ the website describes the current template.
 | `scripts/analyze-runs.sh` | Analyses several feature runs with a read-only agent and proposes improvements, each with its place; changes nothing |
 | `scripts/report-runs.sh` | Reports on the run records of features and planning cycles, in Markdown or JSON, without the network |
 | `scripts/check-guardrails.sh` | The merge approval gate: reports which changes of a feature need the owner's approval, by the rules of its base; recomputes the content tree of the commit with the exclusion list of the base and refuses an approval request that names another one or has a field its schema does not name |
+| `scripts/gate-pull-request.sh` | The decision of the merge approval gate for a pull request, as the check `guardrails` shows it in CI: success, `action_required` ("Owner approval required") for any pull request with an accepted approval request, or failure for a missing or refused request |
 | `scripts/check-risk.sh` | The risk level of a feature, `low`, `medium`, or `high`, with every reason and what the level requires of the review rounds, by the risk policy of its base; exits 0, 1, or 2 for the level |
 | `scripts/check-review.sh` | Reports whether a review still matches what it covers |
 | `scripts/check-skills.sh` | Checks the metadata of the project skills, the skills a plan selects (`--issue`, which prints their files), and prints the digest of a skill (`--digest`); reads and hashes files only. A project without skills passes |
