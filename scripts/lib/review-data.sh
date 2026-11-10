@@ -72,14 +72,32 @@ _review_data_rules='
        else empty end)
     end;
 
+  # The acceptance criteria the reviewer could not confirm, each named by
+  # its text or number and with the reason. Input: the value of
+  # unverified_criteria.
+  def unverified_criteria_rules:
+    if type != "array" then
+      "unverified_criteria must be an array of {criterion, reason}"
+    else
+      (to_entries[] | (.key + 1) as $n | .value as $u |
+        if ($u | type) != "object" then
+          "unverified criterion \($n) is not an object"
+        else
+          ($u | unexpected(["criterion", "reason"]; "unverified criterion \($n)")),
+          (if ($u.criterion | nonempty) then empty else "unverified criterion \($n) has an empty criterion" end),
+          (if ($u.reason | nonempty) then empty else "unverified criterion \($n) has an empty reason" end)
+        end)
+    end;
+
   # Input: {verdict, findings, limitations}, and for a feature review
-  # architecture_impact.
+  # architecture_impact and unverified_criteria (absent: none).
   def review_result_rules:
     if type != "object" then
       "the result is not a JSON object"
     else
-      unexpected(["architecture_impact", "findings", "limitations", "verdict"]; "the result"),
+      unexpected(["architecture_impact", "findings", "limitations", "unverified_criteria", "verdict"]; "the result"),
       (if has("architecture_impact") then (.architecture_impact | architecture_impact_rules) else empty end),
+      (if has("unverified_criteria") then (.unverified_criteria | unverified_criteria_rules) else empty end),
       (if (.verdict | IN("PASS", "PASS_WITH_MINOR_FINDINGS", "CHANGES_REQUIRED")) then empty
        else "verdict must be PASS, PASS_WITH_MINOR_FINDINGS, or CHANGES_REQUIRED" end),
       (if (.limitations | type) == "string" then empty
@@ -233,6 +251,7 @@ review_result_with_ids() {
         ) | .out
       )
     } + (if has("architecture_impact") then {architecture_impact} else {} end)
+      + (if has("unverified_criteria") then {unverified_criteria: [.unverified_criteria[] | {criterion, reason}]} else {} end)
   ' "$1"
 }
 
@@ -300,7 +319,7 @@ review_artifact_errors() {
     else
       unexpected(["architecture_impact", "base", "branch", "created_at", "findings", "guardrails", "head",
                   "issue", "kind", "limitations", "merge_approval", "merge_base", "reviewed_paths", "reviewed_tree", "reviewer",
-                  "risk", "round", "schema", "scope", "verdict", "verification"]; "the review"),
+                  "risk", "round", "schema", "scope", "unverified_criteria", "verdict", "verification"]; "the review"),
       (if has("architecture_impact") then (.architecture_impact | architecture_impact_rules) else empty end),
       (if has("guardrails") | not then empty
        elif (.guardrails | type) == "object" and (.guardrails.level | IN("none", "sensitive", "protected"))
@@ -376,7 +395,8 @@ review_artifact_errors() {
         findings: (if (.findings | type) == "array"
                    then (.findings | map(if type == "object" then del(.id) else . end))
                    else .findings end)
-      } | review_result_rules)
+      } + (if has("unverified_criteria") then {unverified_criteria} else {} end)
+      | review_result_rules)
     end
   ' "$1"
 }
@@ -423,7 +443,11 @@ review_render_markdown() {
     section("minor"; "Minor") + "\n" +
     section("suggestion"; "Suggestions") + "\n" +
     "## Verdict\n\n\(.verdict | gsub("_"; " "))\n" +
-    (if (.limitations | test("\\S")) then "\n## Limitations\n\n\(.limitations)\n" else "" end)
+    (if (.limitations | test("\\S")) then "\n## Limitations\n\n\(.limitations)\n" else "" end) +
+    (if ((.unverified_criteria // []) | length) > 0
+     then "\n## Criteria the review could not confirm\n\n"
+          + (.unverified_criteria | map("- \(.criterion): \(.reason)\n") | join(""))
+     else "" end)
   ' "$1"
 }
 

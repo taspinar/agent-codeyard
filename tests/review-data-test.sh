@@ -204,4 +204,33 @@ review="$(write_review 3 "[$(finding major "Name now misleading" '{"round": 1, "
 review_render_markdown "$review" review.json | grep -Fq "**Continues:** MIN1 of round 1, worsened: The rename made it misleading." ||
   fail "the report does not name the predecessor"
 
+# The criteria the reviewer could not confirm: a list of {criterion, reason},
+# kept in the stored review and named in the report. A result without the
+# field (an older review) is valid and stores none.
+jq '.unverified_criteria = [{criterion: "The deployment works", reason: "No access to the staging account."}]' "$result" >"$result.tmp"
+[[ -z "$(review_result_errors "$result.tmp")" ]] || fail "a result with an unverified criterion was refused: $(review_result_errors "$result.tmp")"
+[[ "$(review_result_with_ids "$result.tmp" | jq -c '.unverified_criteria')" == '[{"criterion":"The deployment works","reason":"No access to the staging account."}]' ]] ||
+  fail "the stored result lost the unverified criteria"
+[[ "$(review_result_with_ids "$result" | jq 'has("unverified_criteria")')" == "false" ]] ||
+  fail "a result without unverified criteria was stored with them"
+jq '.unverified_criteria = [{criterion: " ", reason: "Unknown."}]' "$result" >"$result.tmp"
+grep -Fq "unverified criterion 1 has an empty criterion" <<<"$(review_result_errors "$result.tmp")" ||
+  fail "an unverified criterion without its text was accepted"
+jq '.unverified_criteria = [{criterion: "The deployment works", reason: ""}]' "$result" >"$result.tmp"
+grep -Fq "unverified criterion 1 has an empty reason" <<<"$(review_result_errors "$result.tmp")" ||
+  fail "an unverified criterion without its reason was accepted"
+jq '.unverified_criteria = "The deployment works"' "$result" >"$result.tmp"
+grep -Fq "unverified_criteria must be an array" <<<"$(review_result_errors "$result.tmp")" ||
+  fail "unverified criteria as free text were accepted"
+review="$(write_review 4 "[]")"
+jq '.unverified_criteria = [{criterion: "The deployment works", reason: "No access to the staging account."}]' "$review" >"$review.tmp"
+mv "$review.tmp" "$review"
+[[ -z "$(review_artifact_errors "$review")" ]] || fail "a stored review with an unverified criterion was refused: $(review_artifact_errors "$review")"
+review_render_markdown "$review" review.json | grep -Fqx -- "- The deployment works: No access to the staging account." ||
+  fail "the report does not name the criterion the review could not confirm"
+jq '.unverified_criteria[0].extra = 1' "$review" >"$review.tmp"
+grep -Fq "unverified criterion 1 has unexpected fields: extra" <<<"$(review_artifact_errors "$review.tmp")" ||
+  fail "a stored unverified criterion with an unexpected field was accepted"
+rm -f "$review" "$review.tmp"
+
 echo "review-data tests passed"

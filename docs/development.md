@@ -1490,7 +1490,9 @@ scripts: CI and the merge approval gate on the pull request already hold the
 merge until it exists, and they are not weakened. A criterion that the record
 leaves pending at the `owner_approval` gate also makes `finish-feature.sh`
 state that the merge needs the owner's approval, whatever the diff and the
-review say: a record can require the owner's approval, never grant it. The pull request of a
+review say: a record can require the owner's approval, never grant it. So
+does a criterion that the record calls met and the review of the complete
+feature could not confirm (see "Review and triage data", `unverified_criteria`). The pull request of a
 feature that awaits only these closes the Issue as usual. A feature that
 awaits `post_merge` evidence is published as ready for review, but without
 a closing keyword: the commit text refers to the Issue with `Refs`, and the
@@ -1913,6 +1915,26 @@ findings: `PASS` without findings, `PASS_WITH_MINOR_FINDINGS` with only minor
 or suggestion findings, and `CHANGES_REQUIRED` with at least one critical or
 major finding. What a reviewer could not verify belongs in `limitations` and
 does not change the verdict.
+
+An acceptance criterion that the reviewer of the feature could not check at
+all goes, in addition, into `unverified_criteria` of the result
+(`feature-review.schema.json`): one entry per criterion, `{criterion,
+reason}`, with the criterion as the Issue words it (or its number), and an
+empty list when the review confirmed every criterion. Such a criterion is
+not confirmed by the review. `finish-feature.sh` names each one in the
+commit message under the heading `Not confirmed by the review:`, right
+before `Merge approval:`, and `publish-feature.sh` carries the block into the
+pull request. When the completion record calls the criterion `met`, the
+merge needs the owner's approval, with the reason `the review could not
+confirm: <criterion>`. The script finds the criterion in the record by its
+text, without regard to case, spacing, a list or checkbox prefix, backticks,
+or a trailing period; an entry it cannot match, such as one named by its
+number, counts as met, since what cannot be matched gives no permission. A
+criterion the record does not call met (`pending` at a later gate, `not
+applicable`) is named but does not need the owner. A review without such
+criteria, or one made before the field existed, changes nothing in the
+commit message or the pull request. A criterion the reviewer checked and
+found unmet is not such an entry but a finding.
 
 The script, not the agent, numbers the findings: `C1` (critical), `M1` (major),
 `MIN1` (minor), and `S1` (suggestion). Triage decisions and follow-up Issues

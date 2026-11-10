@@ -1271,6 +1271,73 @@ grep -Fqx -- "- the completion record leaves a criterion of the owner_approval g
 if grep -Fqx -- "- not required" <<<"$(approval_of "$repo")"; then fail "the commit says both required and not required"; fi
 grep -Fq "no script or agent may merge it" "$repo.out" || fail "the needed approval was not announced"
 
+# An acceptance criterion that the review could not confirm (its
+# unverified_criteria) is named in the commit message under a fixed heading,
+# right before the merge approval. When the record calls it met, the merge
+# needs the owner, with the criterion as the reason; a review without such
+# criteria changes nothing in the message.
+set_unverified() {
+  jq --argjson unverified "$2" '.unverified_criteria = $unverified' "$1/$review" >"$1/$review.tmp" &&
+    mv "$1/$review.tmp" "$1/$review"
+}
+# unconfirmed_of <repo>: the block of the criteria the review could not confirm.
+unconfirmed_of() {
+  message "$1" | sed -n '/^Not confirmed by the review:$/,/^$/p'
+}
+
+repo="$(setup_repo unconfirmed-met PASS "[]")"
+set_impact "$repo" minor
+# Named with other case, spacing, a checkbox, and a period, as copied from the Issue.
+set_unverified "$repo" '[{"criterion": "- [ ] The  marker exists.", "reason": "The marker is written by a service the reviewer cannot reach."}]'
+run_finish "$repo" 12 "Add the marker" || { cat "$repo.out" >&2; fail "a feature with an unconfirmed criterion was refused"; }
+grep -Fqx -- "- - [ ] The marker exists.: The marker is written by a service the reviewer cannot reach." <<<"$(unconfirmed_of "$repo")" ||
+  { message "$repo" >&2; fail "the commit message does not name the unconfirmed criterion under its heading"; }
+[[ "$(message "$repo" | grep -A3 -Fx "Not confirmed by the review:" | sed -n 4p)" == "Merge approval:" ]] ||
+  { message "$repo" >&2; fail "the unconfirmed criteria do not stand right before the merge approval"; }
+grep -Fqx -- "- required from the project owner, for exactly this commit" <<<"$(approval_of "$repo")" ||
+  fail "an unconfirmed criterion that the record calls met did not make the merge need the owner"
+grep -Fqx -- "- the review could not confirm: - [ ] The marker exists." <<<"$(approval_of "$repo")" ||
+  { approval_of "$repo" >&2; fail "the reason of the requirement is not the unconfirmed criterion"; }
+jq -e '.reasons | index("the review could not confirm: - [ ] The marker exists.")' "$repo/$request" >/dev/null ||
+  fail "the approval request does not carry the unconfirmed criterion as its reason"
+grep -Fq "could not confirm these acceptance criteria:" "$repo.out" || fail "the unconfirmed criterion was not shown"
+
+# A criterion named by its number cannot be matched to the record: it gives
+# no permission. One that the record does not call met is named, but does
+# not need the owner.
+repo="$(setup_repo unconfirmed-number PASS "[]")"
+set_impact "$repo" minor
+set_unverified "$repo" '[{"criterion": "2", "reason": "Not checked."}]'
+run_finish "$repo" 12 "Add the marker" || { cat "$repo.out" >&2; fail "a feature with a criterion named by its number was refused"; }
+grep -Fqx -- "- the review could not confirm: 2" <<<"$(approval_of "$repo")" ||
+  fail "an unconfirmed criterion that matches no criterion of the record did not need the owner"
+repo="$(setup_repo unconfirmed-not-met PASS "[]")"
+set_impact "$repo" minor
+jq '.status = "awaiting_evidence" | .criteria[1] |= . + {gate: "pr_ci", status: "pending", evidence: "CI of the pull request"}' \
+  "$repo/.agents/completion/12.json" >"$repo/completion.tmp"
+mv "$repo/completion.tmp" "$repo/.agents/completion/12.json"
+claims_changed "$repo"
+set_unverified "$repo" '[{"criterion": "The marker is documented", "reason": "CI has not run."}]'
+run_finish "$repo" 12 "Add the marker" || { cat "$repo.out" >&2; fail "a feature with an unconfirmed pending criterion was refused"; }
+grep -Fqx -- "- The marker is documented: CI has not run." <<<"$(unconfirmed_of "$repo")" ||
+  fail "an unconfirmed criterion that the record does not call met is not named"
+grep -Fqx -- "- not required" <<<"$(approval_of "$repo")" ||
+  { approval_of "$repo" >&2; fail "an unconfirmed criterion that the record does not call met made the merge need the owner"; }
+
+# Without such criteria, the message is the same as for a review that
+# predates the field.
+repo="$(setup_repo unconfirmed-none PASS "[]")"
+set_impact "$repo" minor
+set_unverified "$repo" '[]'
+run_finish "$repo" 12 "Add the marker" || { cat "$repo.out" >&2; fail "a review with no unconfirmed criteria was refused"; }
+plain="$(setup_repo unconfirmed-absent PASS "[]")"
+set_impact "$plain" minor
+run_finish "$plain" 12 "Add the marker" || { cat "$plain.out" >&2; fail "a review without the field was refused"; }
+[[ "$(message "$repo")" == "$(message "$plain")" ]] ||
+  { diff <(message "$plain") <(message "$repo") >&2 || true; fail "an empty list of unconfirmed criteria changed the commit message"; }
+if grep -Fq "Not confirmed by the review" <<<"$(message "$repo")"; then fail "the heading appears without unconfirmed criteria"; fi
+if grep -Fq "could not confirm" "$repo.out"; then fail "finish-feature.sh reported unconfirmed criteria that do not exist"; fi
+
 # The deadlock of fixing before the triage: round 1 had a finding that was
 # fixed, round 2 is a current review, and round 1 is still untriaged. It is
 # triaged as a historical review, and then the feature can be committed. A

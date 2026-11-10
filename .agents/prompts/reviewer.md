@@ -47,6 +47,12 @@ scripts act on its status without understanding it, so you are the check:
   record, or remaining work in the handoff note is a `major` finding.
 - A test that passes without checking the criterion is not evidence
   (`docs/evaluation.md`, "Meaningful tests").
+- A criterion you could not check at all, for example because its evidence
+  needs a service, an account, or a run you cannot make here, goes into
+  `unverified_criteria` (see "Result"), not only into `limitations`. Such a
+  criterion is not confirmed by your review: when the record calls it `met`,
+  the merge needs the owner's approval, and the pull request names it.
+  A criterion you checked and found unmet is a finding, not an entry there.
 
 A criterion may be `pending` only when its evidence cannot exist yet: its
 `gate` is `pr_ci` (CI of the published pull request), `owner_approval`, or
@@ -180,5 +186,9 @@ Return the review as JSON that matches the schema supplied by the calling script
   - `checked_against`: the ADRs and architecture rules you compared the change with, by name; an empty list only when the project has none.
   - A new ADR must have the status `Proposed`. Say in the rationale which accepted ADR it replaces, amends, or contradicts, also when it does not say so itself. When in doubt between two levels, choose the heavier.
 - `limitations`: anything you could not verify, such as checks you could not run. Use an empty string when there is nothing to report. A limitation is not a finding and does not change the verdict.
+- `unverified_criteria`, in a feature review: one entry per acceptance criterion of the Issue that you could not confirm; an empty array when you confirmed them all, and in a review of changes only, an empty array unless a changed criterion is one you could not check.
+  - `criterion`: the criterion as the Issue words it, copied exactly (the completion record uses the same words), or its number in the Issue's list when the text cannot be copied. The script matches the text against the completion record; an entry it cannot match counts as a criterion the record calls met.
+  - `reason`: why you could not confirm it, in one sentence.
+  - An entry is not a finding and does not change the verdict.
 
 Do not number the findings; the calling script assigns the identifiers that review triage and follow-up Issues use. A result that breaks these rules is rejected.

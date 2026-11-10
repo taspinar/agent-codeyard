@@ -5,6 +5,7 @@
     "verdict",
     "findings",
     "limitations",
+    "unverified_criteria",
     "architecture_impact"
   ],
   "properties": {
@@ -91,6 +92,25 @@
     },
     "limitations": {
       "type": "string"
+    },
+    "unverified_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "criterion",
+          "reason"
+        ],
+        "properties": {
+          "criterion": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
     },
     "architecture_impact": {
       "type": "object",
