@@ -373,3 +373,25 @@ completion_commit_lines() {
     (.remaining[] | "- remaining: \(.)"),
     (.criteria[] | select(.status == "pending" and .gate == "post_merge") | "Post-merge criterion: \(.criterion | tojson)")' "$record"
 }
+
+# completion_unconfirmed <record-file> <review-json>
+# Prints one JSON line {criterion, reason, hold} per acceptance criterion
+# that the review of the complete feature names as one it could not confirm
+# (its unverified_criteria), and nothing for a review without such
+# criteria. 'hold' is true when the owner must approve the merge for it:
+# unless the entry names, by its text, a criterion that the record does not
+# call met. The text is compared without regard to case, spacing, a list or
+# checkbox prefix, backticks, or a trailing period. An entry that matches no
+# criterion of the record, such as one named by its number, holds as well:
+# what cannot be matched gives no permission.
+completion_unconfirmed() {
+  jq -c --slurpfile record "$1" '
+    def norm: ascii_downcase | gsub("`"; "")
+      | sub("^\\s*([-*]\\s+)?(\\[[ xX]\\]\\s*)?"; "") | gsub("\\s+"; " ") | sub("[\\s.]+$"; "");
+    ($record[0].criteria // []) as $criteria
+    | (.unverified_criteria // [])[]
+    | (.criterion | norm) as $name
+    | [$criteria[] | select((.criterion | type) == "string" and (.criterion | norm) == $name)] as $matched
+    | {criterion, reason,
+       hold: (($matched | length) == 0 or any($matched[]; .status == "met"))}' "$2"
+}

@@ -88,6 +88,7 @@ review_store() {
   review_result_with_ids "$result_file" | jq --argjson metadata "$metadata" '
     $metadata + {verdict: .verdict, limitations: .limitations, findings: .findings}
     + (if has("architecture_impact") then {architecture_impact} else {} end)
+    + (if has("unverified_criteria") then {unverified_criteria} else {} end)
   ' >"$out.json"
 
   artifact_errors="$(review_artifact_errors "$out.json")"

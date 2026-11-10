@@ -203,6 +203,18 @@ MOCK_OUTPUT='{"architecture_impact": {"level": "minor", "rationale": "Stays with
 [[ "$(jq -c '[.verdict, (.findings | length)]' "$repo/.agents/reviews/feature-7-marker-review-01.json")" == '["PASS",0]' ]] ||
   fail "a review without findings was not stored as PASS"
 
+# The criteria the reviewer could not confirm are stored in the artifact and
+# named in the report; finish-feature.sh reads them from there.
+repo="$(setup_repo unverified)"
+MOCK_OUTPUT='{"architecture_impact": {"level": "minor", "rationale": "Stays within the accepted architecture.", "checked_against": []}, "verdict": "PASS", "limitations": "No staging account.", "unverified_criteria": [{"criterion": "The marker reaches staging", "reason": "No staging account."}], "findings": []}' run_review "$repo" 7 || {
+  cat "$repo.out" >&2
+  fail "a review with an unverified criterion was rejected"
+}
+[[ "$(jq -c '.unverified_criteria' "$repo/.agents/reviews/feature-7-marker-review-01.json")" == '[{"criterion":"The marker reaches staging","reason":"No staging account."}]' ]] ||
+  fail "the unverified criterion was not stored in the review"
+grep -Fqx -- "- The marker reaches staging: No staging account." "$repo/.agents/reviews/feature-7-marker-review-01.md" ||
+  fail "the report does not name the unverified criterion"
+
 # A reviewer that changes or creates files is detected.
 repo="$(setup_repo modify)"
 MOCK_AGENT_ACTION="printf 'changed by the reviewer\n' >>'$repo/feature.txt'" \

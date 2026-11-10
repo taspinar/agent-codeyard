@@ -57,6 +57,8 @@ Only a criterion of the last three gates may be `pending`, and its evidence says
 
 The complete-feature reviewer checks those claims against the diff and tests. Finish proceeds only on `complete` or `awaiting_evidence`, with no remaining work in the handoff.
 
+A criterion the reviewer could not check at all, such as one that needs a service it cannot reach, is not confirmed by the review. The reviewer names it apart from its findings, and the commit message and the pull request list it under **Not confirmed by the review**, next to the merge approval. When the completion record calls such a criterion `met`, the merge needs your approval, with the reason "the review could not confirm: …". See [the reference](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#review-and-triage-data).
+
 **The exceptions, exactly:**
 
 - `--partial` is an explicit owner choice to commit unfinished work; publication then makes a draft and leaves the Issue open.

@@ -1,0 +1,23 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "3d520003a9d20834c410f3ba1dbcaf10151803a0",
+  "commit": {
+    "branch": "feature/353-hold-the-merge-for",
+    "parent": "60dfa2b9b8073ad6641e7f54e1c82721fdc3e642",
+    "base": "60dfa2b9b8073ad6641e7f54e1c82721fdc3e642"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".agents/prompts/reviewer.md: the file defines or carries out the workflow and its gate",
+    ".agents/schemas/feature-review.schema.json: the file defines or carries out the workflow and its gate",
+    "scripts/finish-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/review-data.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/review-run.sh: the file defines or carries out the workflow and its gate",
+    "the review could not confirm: ./scripts/verify.sh --all passes."
+  ],
+  "explanation": "Issue #353: Hold the merge for a criterion the review could not confirm (from #114). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

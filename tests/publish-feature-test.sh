@@ -626,6 +626,19 @@ grep -Fq "Finish commit: $(git -C "$repo" rev-parse HEAD)" "$repo.out" || fail "
 grep -Fq "Content tree of that commit: $tree (" "$repo.out" || fail "the content tree was not printed next to the finish commit"
 if grep -Fq "approval request" "$repo.gh.body"; then fail "the pull request names a request although the commit has none"; fi
 
+# The acceptance criteria that the review could not confirm, which
+# finish-feature.sh names in the commit message, stand in the description
+# under the same heading, right before the merge approval.
+repo="$(setup_repo unconfirmed)"
+git -C "$repo" commit -q --amend -m "Add the marker" \
+  -m "Not confirmed by the review:"$'\n'"- The marker exists: The reviewer could not reach the service." \
+  -m "Merge approval:"$'\n'"- required from the project owner, for exactly this commit"$'\n'"- the review could not confirm: The marker exists"
+run_publish "$repo" 12 || fail "publishing a feature with an unconfirmed criterion failed"
+[[ "$(grep -A3 -Fx "Not confirmed by the review:" "$repo.gh.body")" == "Not confirmed by the review:"$'\n'"- The marker exists: The reviewer could not reach the service."$'\n\n'"Merge approval:" ]] ||
+  { cat "$repo.gh.body" >&2; fail "the pull request does not name the unconfirmed criterion next to the merge approval"; }
+grep -Fqx -- "- the review could not confirm: The marker exists" "$repo.gh.body" ||
+  fail "the pull request does not give the unconfirmed criterion as the reason for the owner's approval"
+
 # With a committed approval request, the pull request says that it names
 # this content tree and grants nothing, and the request is displayed. No
 # field of the request changes anything else: every field changed, the

@@ -452,6 +452,29 @@ if [[ "${#excepted_ids[@]}" -gt 0 ]]; then
     approval_lines+=$'\n'"the owner recorded an exception ($(jq -r '.type' "${excepted_records[$index]}")) to the blocking finding ${excepted_ids[$index]} of review round $round: ${excepted_records[$index]#"$root"/} sha256 ${excepted_sha256[$index]}"
   done
 fi
+# The acceptance criteria the review could not confirm (unverified_criteria
+# of the latest review) are named in the commit message. One that the record
+# calls met, or that cannot be matched to a criterion of the record, asks
+# for the owner's approval: the review does not confirm the claim.
+unconfirmed_section=""
+if [[ -n "$latest" ]]; then
+  unconfirmed="$(completion_unconfirmed "$completion_file" "$latest")"
+  if [[ -n "$unconfirmed" ]]; then
+    # One line each, whatever the texts contain.
+    unconfirmed="$(jq -c '.criterion |= gsub("\\s+"; " ") | .reason |= gsub("\\s+"; " ")' <<<"$unconfirmed")"
+    unconfirmed_section="Not confirmed by the review:"$'\n'"$(jq -r '"- \(.criterion): \(.reason)"' <<<"$unconfirmed")"$'\n\n'
+    echo "The review of round $round could not confirm these acceptance criteria:"
+    jq -r '"  - \(.criterion): \(.reason)"' <<<"$unconfirmed"
+    echo
+    held="$(jq -r 'select(.hold) | "the review could not confirm: \(.criterion)"' <<<"$unconfirmed")"
+    if [[ -n "$held" ]]; then
+      if [[ "$(printf '%s\n' "$approval_lines" | sed -n 1p)" != "owner" ]]; then
+        approval_lines="owner"
+      fi
+      approval_lines+=$'\n'"$held"
+    fi
+  fi
+fi
 # The approval request (lib/guardrails.sh): when the owner must approve,
 # what they are asked to approve and why is written to
 # .agents/approval-requests/<issue>.json and committed with the feature. It
@@ -534,7 +557,7 @@ $manual_steps
 
 $review_line
 
-Merge approval:
+${unconfirmed_section}Merge approval:
 $merge_approval
 
 $risk_block
