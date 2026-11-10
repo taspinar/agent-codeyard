@@ -865,6 +865,13 @@ latest_review() {
 # owner excepted stays FIX_NOW in its triage, but is not fixed now. The run
 # only reads exceptions: it never records, proposes, or confirms one.
 unexcepted_fix_now() {
+  jq --argjson excepted "$(excepted_findings "$1")" '[.decisions[] | select(.decision == "FIX_NOW" and (.finding_id | IN($excepted[]) | not))] | length' "$2"
+}
+
+# excepted_findings <review>
+# Prints, as a JSON array, the IDs of the findings of <review> that have a
+# valid exception of the owner.
+excepted_findings() {
   local scratch
   local excepted='[]'
 
@@ -872,7 +879,90 @@ unexcepted_fix_now() {
     excepted="$(exception_status "$worktree" "$scratch" "$1" | awk -F '\t' '$1 == "valid" { print $2 }' | jq -R . | jq -s .)" || excepted='[]'
     rm -rf "$scratch"
   fi
-  jq --argjson excepted "$excepted" '[.decisions[] | select(.decision == "FIX_NOW" and (.finding_id | IN($excepted[]) | not))] | length' "$2"
+  printf '%s\n' "$excepted"
+}
+
+# finding_refutation <round> <id>
+# Prints the implementer's refutation of finding <id> of review round
+# <round>: '<round> TAB <id> TAB <evidence>' of the line that refuted it in
+# the handoff note (lib/completion.sh, triage_check_outcomes). A finding with
+# no check in the section of its own triage (no fix session ran for it yet)
+# is refuted when the finding it continues as unresolved (previous) is. Fails
+# when the finding was fixed, not reproduced, not executable, has
+# conflicting checks, or continues no refuted finding.
+finding_refutation() {
+  local round="$1"
+  local id="$2"
+  local review_file
+  local triage_file
+  local outcome=""
+  local previous
+
+  review_file="$worktree/.agents/reviews/$slug-review-$(printf '%02d' "$round").json"
+  [[ -f "$review_file" ]] || return 1
+  triage_file="$(review_latest_triage "$worktree" "$review_file")"
+  if [[ -n "$triage_file" ]]; then
+    outcome="$(triage_check_outcomes "$worktree/.agents/handoffs/$issue.md" "$triage_file" | awk -F '\t' -v id="$id" '$1 == id')"
+  fi
+  case "$(cut -f2 <<<"$outcome")" in
+    refuted)
+      printf '%s\t%s\t%s\n' "$round" "$id" "$(cut -f3- <<<"$outcome")"
+      return 0
+      ;;
+    "" | missing) ;;
+    *) return 1 ;;
+  esac
+  previous="$(jq -r --arg id "$id" '.findings[] | select(.id == $id) | .previous
+    | select(. != null and .relation == "unresolved") | "\(.round)\t\(.id)"' "$review_file")"
+  [[ -n "$previous" && "${previous%%$'\t'*}" -lt "$round" ]] || return 1
+  finding_refutation "${previous%%$'\t'*}" "${previous#*$'\t'}"
+}
+
+# refuted_findings <review> <triage>
+# Succeeds when every FIX_NOW finding of the triage without an owner
+# exception was refuted by the implementer with evidence
+# (finding_refutation), and at least one of them is critical or major: the
+# implementer changed no code for them, and the reviewer still reports them.
+# No agent may accept a critical or major finding, so only the owner can
+# decide. Sets 'refuted' to one line per finding: <id> TAB <severity> TAB
+# <title> TAB <round refuted> TAB <id refuted> TAB <evidence>.
+refuted_findings() {
+  local id
+  local refutation
+
+  refuted=""
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    refutation="$(finding_refutation "$round" "$id")" || return 1
+    refuted+="$(jq -r --arg id "$id" '.findings[] | select(.id == $id) | [.id, .severity, .title] | @tsv' "$1")"$'\t'"$refutation"$'\n'
+  done < <(jq -r --argjson excepted "$(excepted_findings "$1")" \
+    '.decisions[] | select(.decision == "FIX_NOW" and (.finding_id | IN($excepted[]) | not)) | .finding_id' "$2")
+  [[ -n "$refuted" ]] && awk -F '\t' '$2 == "critical" || $2 == "major" { found = 1 } END { exit !found }' <<<"$refuted"
+}
+
+# refuted_stop
+# Stops the run for the owner, with status 3, on the findings that
+# refuted_findings found: each with its evidence, and the ways on. Nothing is
+# written to the handoff note, which the review covers: the review stays
+# current, so the owner's exception can be recorded for it.
+refuted_stop() {
+  local next=("cd \"$worktree\"")
+  local id
+  local severity
+
+  note "triage of round $round" "refuted" "the implementer refuted every finding left to fix ($(cut -f1 <<<"${refuted%$'\n'}" | paste -sd ' ' - | sed 's/ /, /g')) with evidence, and the review still reports them; no agent may accept a critical or major finding" "Stopping for the owner's decision"
+  while IFS=$'\t' read -r id severity _; do
+    [[ -n "$id" ]] || continue
+    if [[ "$severity" == "critical" || "$severity" == "major" ]]; then
+      next+=("./scripts/record-exception.sh $review_relative --finding $id --type not-applicable --evidence \".agents/handoffs/$issue.md\" --reason \"<why>\"    # you agree that $id does not hold")
+    else
+      next+=("./scripts/triage-review.sh $review_relative --decisions <file> --reason \"<why>\"    # an owner-directed triage that accepts $id")
+    fi
+  done <<<"$refuted"
+  next+=("./scripts/start-feature.sh $issue --resume    # or the fix after all: write your instruction into the handoff note first")
+  stop 3 "the implementer refuted every finding left to fix in round $round with evidence and changed no code for it, and the review still reports it; only you can accept a critical or major finding:
+$(awk -F '\t' 'NF { printf "  - %s (%s): %s — refuted in round %s (%s): %s\n", $1, $2, $3, $4, $5, $6 }' <<<"$refuted")
+The evidence is in the handoff note (.agents/handoffs/$issue.md), under '## Triage <triage file>'." "${next[@]}"
 }
 
 # changes_reviewable <review>
@@ -1108,6 +1198,20 @@ if uncommitted; then
       continue
     fi
 
+    # The implementer refuted what is left to fix, and the reviewer, who was
+    # given the refutation, still reports it: another fix session would
+    # refute it again. The owner decides, on a review of the complete feature,
+    # which an exception binds to; an intermediate round goes on to that
+    # review first.
+    if refuted_findings "$review" "$triage"; then
+      if ! intermediate "$review"; then
+        refuted_stop
+      elif [[ "$round" -lt "$MAX_ROUNDS" ]]; then
+        note "triage of round $round" "refuted" "the implementer refuted every finding left to fix with evidence, and this review of changes only still reports them" "Reviewing the complete feature, for the owner's decision"
+        complete_review=1
+        continue
+      fi
+    fi
     if [[ "$round" -ge "$MAX_ROUNDS" ]]; then
       stop 1 "$MAX_ROUNDS review rounds are used and round $round still has findings that must be fixed; see $review_relative. Where the owner disagrees with a critical or major finding, the owner may record an exception to it at a terminal (docs/development.md, 'Owner exceptions to a blocking finding')." \
         "cd \"$worktree\"" \
@@ -1155,6 +1259,9 @@ if uncommitted; then
         "resolve what the output above reports"
     fi
     if (cd "$worktree" && ./scripts/check-review.sh "$review" >/dev/null 2>&1); then
+      if refuted_findings "$review" "$triage" && ! intermediate "$review"; then
+        refuted_stop
+      fi
       stop 1 "the fixes for round $round changed nothing, although the triage has findings to fix." \
         "cd \"$worktree\"" \
         "./scripts/apply-triage.sh $triage_relative"
