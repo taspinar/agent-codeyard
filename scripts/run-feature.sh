@@ -351,9 +351,11 @@ blocked_or_ignored() {
 # again on the merged content and only a check that still fails goes to the
 # implementer. Fails when the base did not move or cannot be read: the
 # implementer repairs as before. Stops the run when the merge conflicts with
-# the commits of the branch or with the uncommitted work of the feature,
-# naming the files, and when it leaves behind untracked paths that the branch
-# ignored before it (lib/base.sh); nothing is deleted.
+# the commits of the branch or with the uncommitted work of the feature, when
+# it would write over an untracked file, ignored or not, and when the index
+# holds staged changes, naming the files, before anything is merged; and when
+# the merge leaves behind untracked paths that the branch ignored before it
+# (lib/base.sh); nothing is deleted.
 base_merges=0
 merge_moved_base() {
   local title="$1"
@@ -365,6 +367,8 @@ merge_moved_base() {
   local status=0
   local scratch
   local leftovers
+  local overwrites
+  local staged
 
   git -C "$worktree" remote get-url origin >/dev/null 2>&1 &&
     git -C "$worktree" fetch -q origin "$base" </dev/null >/dev/null 2>&1 || true
@@ -378,6 +382,20 @@ merge_moved_base() {
   ! git -C "$worktree" merge-base --is-ancestor "$base_ref" HEAD || return 1
   before="$(git -C "$worktree" rev-parse HEAD)"
 
+  # Staged changes first, also where the base changes the same path: a merge
+  # refuses them, and unstaging or stashing them would lose a staged version
+  # that differs from the file on disk. The run stops and leaves the index as
+  # it is.
+  staged="$(git -C "$worktree" -c core.quotePath=false diff --cached --name-only)" || {
+    note "$title" "base not merged" "the base moved since the feature started, but Git could not read the index" "Going on with the repair by the implementer"
+    return 1
+  }
+  if [[ -n "$staged" ]]; then
+    note "$title" "staged changes" "the base moved since the feature started, but the index holds staged changes in: $(printf '%s' "$staged" | tr '\n' ' ')" "Stopping"
+    stop 1 "the verification fails, and the base moved since the feature started; the index holds staged changes, which a merge of $base_ref refuses, in: $(printf '%s' "$staged" | tr '\n' ' ')- nothing was merged, and the index is unchanged." \
+      "cd \"$worktree\"" \
+      "git diff --cached    # the staged changes; unstage them with 'git restore --staged <path>' when the file on disk holds what you want, then run the feature again"
+  fi
   tree="$(base_merge_conflicts "$worktree" "$base_ref")" || status=$?
   if [[ "$status" -eq 0 ]]; then
     # The merge must not touch a file that the feature changed and did not
@@ -401,10 +419,19 @@ merge_moved_base() {
       "git stash pop    # the work again; resolve what meets the base"
   fi
 
-  # A merge refuses changes in the index; the feature is committed with
-  # every change of the working tree anyway (finish-feature.sh).
-  git -C "$worktree" diff --cached --quiet || git -C "$worktree" reset -q
-  if ! git -C "$worktree" merge -q --no-edit "$base_ref" </dev/null >"$worktree/.agents/run/$issue-merge.log" 2>&1; then
+  # Untracked files where the merge writes, ignored ones included: Git would
+  # replace an ignored file without a word (lib/base.sh).
+  overwrites="$(base_merge_overwrites "$worktree" "$tree")" || {
+    note "$title" "base not merged" "the base moved since the feature started, but Git could not tell what its merge writes over" "Going on with the repair by the implementer"
+    return 1
+  }
+  if [[ -n "$overwrites" ]]; then
+    note "$title" "conflict" "the base moved since the feature started, and its merge would write over untracked files of the worktree: $(printf '%s' "$overwrites" | tr '\n' ' ')" "Stopping"
+    stop 1 "the verification fails, and the base moved since the feature started; merging $base_ref would write over untracked files of the worktree, which Git may ignore: $(printf '%s' "$overwrites" | tr '\n' ' ')- nothing was merged or changed." \
+      "cd \"$worktree\"" \
+      "# move each path above out of the worktree, or remove it after checking that it is not needed"
+  fi
+  if ! git -C "$worktree" merge -q --no-edit --no-overwrite-ignore "$base_ref" </dev/null >"$worktree/.agents/run/$issue-merge.log" 2>&1; then
     note "$title" "conflict" "the base moved since the feature started, and Git refused its merge: $(grep -m 1 . "$worktree/.agents/run/$issue-merge.log" || true)" "Stopping"
     stop 1 "the verification fails, and the base moved since the feature started; Git refused the merge of $base_ref (.agents/run/$issue-merge.log)." \
       "cd \"$worktree\"" \

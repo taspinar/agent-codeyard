@@ -936,6 +936,48 @@ if git -C "$repo-2-thing" merge-base --is-ancestor origin/main HEAD; then fail "
 grep -Fqx "# Mine" "$repo-2-thing/AGENTS.md" || fail "the uncommitted work of the feature was changed"
 if grep -Fq "Repair attempt" <<<"$(log_of "$repo")"; then fail "a conflicting base was sent to the implementer"; fi
 
+# A base that adds a path that exists in the worktree as a file Git ignores
+# counts as a conflict: the merge, which would replace the local file without
+# a word also with --no-overwrite-ignore, is not made, and the path is named.
+repo="$(VERIFY_CONF="$base_fix" setup_repo base-ignored)"
+move_base_script "$repo" base-ignored 'mkdir -p .agents/analysis && printf "local\n" >.agents/analysis/cache.txt' \
+  'printf "fixed\n" >base-fix.txt && mkdir -p .agents/analysis && printf "base\n" >.agents/analysis/cache.txt && git add -f .agents/analysis/cache.txt'
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 1 "merging origin/main would write over untracked files of the worktree, which Git may ignore: .agents/analysis/cache.txt"
+expect_sessions "$repo" 1 0 0 0
+grep -Fqx "local" "$repo-2-thing/.agents/analysis/cache.txt" || fail "the ignored local file was changed"
+if git -C "$repo-2-thing" merge-base --is-ancestor origin/main HEAD; then fail "a base that writes over an ignored file was merged"; fi
+if grep -Fq "| base merged |" <<<"$(log_of "$repo")"; then fail "a clean merge was reported before the stop"; fi
+
+# Staged changes stop the run before the merge, with the paths named and the
+# index unchanged: a staged version that differs from the file on disk is
+# not lost.
+repo="$(VERIFY_CONF="$base_fix" setup_repo base-staged)"
+move_base_script "$repo" base-staged 'printf "staged\n" >notes.txt && git add notes.txt && printf "on disk\n" >notes.txt' \
+  'printf "fixed\n" >base-fix.txt'
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 1 "the index holds staged changes, which a merge of origin/main refuses, in: notes.txt"
+expect_sessions "$repo" 1 0 0 0
+[[ "$(git -C "$repo-2-thing" show :notes.txt)" == "staged" ]] || fail "the staged version was lost"
+grep -Fqx "on disk" "$repo-2-thing/notes.txt" || fail "the file on disk was changed"
+[[ "$(git -C "$repo-2-thing" diff --cached --name-only)" == "notes.txt" ]] || fail "the index was changed: $(git -C "$repo-2-thing" diff --cached --name-only)"
+if git -C "$repo-2-thing" merge-base --is-ancestor origin/main HEAD; then fail "the base was merged over staged changes"; fi
+
+# The same when the base changes the staged path too: the stop on staged
+# changes comes before the conflict pre-check, whose commands would stash
+# the index.
+repo="$(VERIFY_CONF="$base_fix" setup_repo base-staged-overlap)"
+move_base_script "$repo" base-staged-overlap 'printf "staged\n" >notes.txt && git add notes.txt && printf "on disk\n" >notes.txt' \
+  'printf "fixed\n" >base-fix.txt && printf "base\n" >notes.txt'
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 1 "the index holds staged changes, which a merge of origin/main refuses, in: notes.txt"
+expect_sessions "$repo" 1 0 0 0
+if grep -Fq "git stash push" "$repo.out"; then fail "the stop on staged changes gave the commands of a conflict"; fi
+[[ "$(git -C "$repo-2-thing" show :notes.txt)" == "staged" ]] || fail "the staged version was lost"
+grep -Fqx "on disk" "$repo-2-thing/notes.txt" || fail "the file on disk was changed"
+[[ "$(git -C "$repo-2-thing" diff --cached --name-only)" == "notes.txt" ]] || fail "the index was changed: $(git -C "$repo-2-thing" diff --cached --name-only)"
+if git -C "$repo-2-thing" merge-base --is-ancestor origin/main HEAD; then fail "the base was merged over staged changes"; fi
+
 # A session that repairs the verification is a session of the implementer
 # too: when it repairs the check but leaves the work partial, the gate is
 # asked again before the review, and the implementer continues.

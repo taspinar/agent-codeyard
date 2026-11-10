@@ -218,6 +218,41 @@ run_update "$repo" 12
 grep -Fq "a merge is in progress with conflicts in: feature.txt" "$repo.out" || { cat "$repo.out" >&2; fail "the merge in progress was not explained"; }
 expect_not_pushed "$repo" "a merge is in progress"
 
+# A base that adds a path that exists in the worktree as a file Git ignores
+# stops before the merge: a merge that is not a fast-forward would replace the
+# local file without a word, also with --no-overwrite-ignore.
+repo="$(setup_repo ignored)"
+finish="$(git -C "$repo" rev-parse HEAD)"
+move_base "$repo" "Commit a build" \
+  'mkdir -p old-site/build/assets && printf "from the base\n" >old-site/build/assets/app.js && git add -f old-site/build/assets/app.js'
+run_update "$repo" 12
+[[ "$status" -eq 1 ]] || { cat "$repo.out" >&2; fail "a merge that writes over an ignored file did not stop ($status)"; }
+grep -Fq "would write over these untracked files" "$repo.out" || { cat "$repo.out" >&2; fail "the ignored file in the way was not reported"; }
+grep -Fqx "  old-site/build/assets/app.js" "$repo.out" || fail "the ignored file in the way was not named"
+grep -Fqx "built" "$repo/old-site/build/assets/app.js" || fail "the ignored local file was changed"
+[[ "$(git -C "$repo" rev-parse HEAD)" == "$finish" ]] || fail "a merge that writes over an ignored file changed the branch"
+if git -C "$repo" rev-parse --verify --quiet MERGE_HEAD >/dev/null; then fail "a merge was left in progress"; fi
+expect_not_pushed "$repo" "the merge writes over an ignored file"
+
+# Staged changes stop before the merge, with the paths named and the index
+# unchanged: a staged version that differs from the file on disk is kept.
+repo="$(setup_repo staged)"
+finish="$(git -C "$repo" rev-parse HEAD)"
+move_base "$repo" "Meanwhile on main" 'printf "meanwhile\n" >other.txt'
+printf 'staged\n' >"$repo/feature.txt"
+git -C "$repo" add feature.txt
+printf 'on disk\n' >"$repo/feature.txt"
+index="$(git -C "$repo" write-tree)"
+run_update "$repo" 12
+[[ "$status" -eq 1 ]] || { cat "$repo.out" >&2; fail "staged changes did not stop the update ($status)"; }
+grep -Fq "the index holds staged changes" "$repo.out" || { cat "$repo.out" >&2; fail "the staged changes were not reported"; }
+grep -Fqx "  feature.txt" "$repo.out" || fail "the staged path was not named"
+[[ "$(git -C "$repo" write-tree)" == "$index" ]] || fail "the index was changed"
+[[ "$(git -C "$repo" show :feature.txt)" == "staged" ]] || fail "the staged version was lost"
+grep -Fqx "on disk" "$repo/feature.txt" || fail "the file on disk was changed"
+[[ "$(git -C "$repo" rev-parse HEAD)" == "$finish" ]] || fail "staged changes did not keep the branch"
+expect_not_pushed "$repo" "the index holds staged changes"
+
 # After the update, a pull request with an approval request still shows the
 # approval as covering the content of the finish commit: the merge of the
 # base needs no new approval.

@@ -66,6 +66,38 @@ base_merge_conflicts() {
   esac
 }
 
+# base_merge_overwrites <root> <tree>
+# Prints the paths in the worktree of <root> that a merge into the merged
+# <tree> of base_merge_conflicts would write over although HEAD does not
+# track them, one per line: a path that <tree> adds and that exists on disk,
+# and a file or link where <tree> adds a directory. Git refuses the merge for
+# an untracked file it does not ignore, but a merge that is not a fast-forward
+# writes over an ignored one, also with --no-overwrite-ignore (seen with Git
+# 2.43), so a caller stops before the merge when this prints anything.
+base_merge_overwrites() {
+  local added
+  local path
+  local prefix
+
+  added="$(git -C "$1" -c core.quotePath=false diff --name-only --no-renames --diff-filter=A HEAD "$2")" || return 1
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    if [[ -e "$1/$path" || -L "$1/$path" ]]; then
+      printf '%s\n' "$path"
+      continue
+    fi
+    prefix="$path"
+    while [[ "$prefix" == */* ]]; do
+      prefix="${prefix%/*}"
+      if [[ -L "$1/$prefix" || (-e "$1/$prefix" && ! -d "$1/$prefix") ]] &&
+        ! git -C "$1" cat-file -e "HEAD:$prefix" 2>/dev/null; then
+        printf '%s\n' "$prefix"
+        break
+      fi
+    done
+  done <<<"$added" | sort -u
+}
+
 # base_ignored_by <root> <commit> <scratch-dir>
 # Prints the untracked files of <root> that Git does not ignore now, but that
 # the .gitignore files of <commit> ignored, one per line. The rules of

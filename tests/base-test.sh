@@ -75,6 +75,26 @@ conflicts="$(base_merge_conflicts "$repo" main)" || status=$?
 [[ "$status" -eq 1 && "$conflicts" == "shared.txt" ]] || fail "the conflicting file was not named: $status $conflicts"
 grep -Fqx "mine" "$repo/shared.txt" || fail "a conflicting merge in memory changed the worktree"
 
+# base_merge_overwrites: the untracked paths, ignored ones included, that a
+# clean merge would write over; merge-tree reports such a merge as clean.
+git -C "$repo" checkout -q main
+printf 'cache.txt\nlink\n' >"$repo/.gitignore"
+printf 'base\n' >"$repo/cache.txt"
+mkdir -p "$repo/link"
+printf 'base\n' >"$repo/link/inside.txt"
+git -C "$repo" add .gitignore
+git -C "$repo" add -f cache.txt link/inside.txt
+git -C "$repo" commit -qm "Base adds ignored paths"
+git -C "$repo" checkout -q -b feature/4-ignored HEAD~1
+rm -rf "$repo/link"
+printf 'local\n' >"$repo/cache.txt"
+printf 'local\n' >"$repo/link"
+tree="$(base_merge_conflicts "$repo" main)" || fail "a merge over ignored files was reported as conflicting"
+[[ "$(base_merge_overwrites "$repo" "$tree")" == "$(printf 'cache.txt\nlink')" ]] ||
+  fail "the ignored paths in the way are not named: $(base_merge_overwrites "$repo" "$tree")"
+rm -f "$repo/cache.txt" "$repo/link"
+[[ -z "$(base_merge_overwrites "$repo" "$tree")" ]] || fail "a merge that writes over nothing names a path"
+
 # base_leftovers: untracked paths that the ignore rules of a commit ignored
 # and that Git does not ignore now. A directory is named as a whole when all
 # of it is such a leftover, its files otherwise; other untracked work is no

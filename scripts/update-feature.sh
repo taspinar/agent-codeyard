@@ -16,7 +16,9 @@ usage() {
   echo "1. fetches the base of the feature (origin/<base>, as start-feature.sh"
   echo "   recorded it), and merges it into the branch when the branch does not"
   echo "   contain it yet. A merge that conflicts stops before anything changed, with"
-  echo "   the conflicting files and the commands that continue;"
+  echo "   the conflicting files and the commands that continue. So does a merge that"
+  echo "   would write over an untracked file, also one that Git ignores, and staged"
+  echo "   changes in the index: the files are named, and the index is left as it is;"
   echo "2. runs the full verification, ./scripts/verify.sh --all --reuse: a run that"
   echo "   passed for exactly this content is not repeated;"
   echo "3. publishes again with publish-feature.sh, which pushes the branch and takes"
@@ -95,9 +97,19 @@ fi
 # publication takes, and on what an earlier merge of the base left behind,
 # which the verification would count as content of the feature.
 check_worktree() {
+  local staged
   local uncommitted
   local leftovers
 
+  # Staged changes first: a merge refuses them, and unstaging them would lose
+  # a staged version that differs from the file on disk.
+  staged="$(git -C "$root" -c core.quotePath=false diff --cached --name-only)" ||
+    fail "could not determine whether the index holds staged changes."
+  if [[ -n "$staged" ]]; then
+    echo "Staged in the index:" >&2
+    printf '%s\n' "$staged" | sed 's/^/  /' >&2
+    fail "the index holds staged changes, which a merge of $base_ref refuses. Commit them (./scripts/finish-feature.sh $issue \"<commit summary>\" for work of the feature), or unstage them with 'git restore --staged <path>' when the file on disk holds what you want. Nothing was merged or pushed, and the index is unchanged."
+  fi
   uncommitted="$(base_uncommitted_work "$root" "$finish_commit" "$scratch")" ||
     fail "could not determine whether the worktree has uncommitted changes."
   if [[ -n "$uncommitted" ]]; then
@@ -129,8 +141,17 @@ else
     records_stop "${0##*/}" "merging $base_ref conflicts with the feature in: $(printf '%s' "$conflicts" | tr '\n' ' ')"
     exit 1
   }
+  # Untracked files where the merge writes: Git would replace an ignored one
+  # without a word (lib/base.sh).
+  overwrites="$(base_merge_overwrites "$root" "$conflicts")" ||
+    fail "could not determine what the merge of $base_ref writes over. Nothing was changed."
+  if [[ -n "$overwrites" ]]; then
+    echo "Merging $base_ref would write over these untracked files of the worktree, which Git may ignore:" >&2
+    printf '%s\n' "$overwrites" | sed 's/^/  /' >&2
+    fail "the merge of $base_ref would write over untracked files: move each path above out of the worktree, or remove it after checking that it is not needed, and run ./scripts/update-feature.sh $issue again. Nothing was merged, changed, or pushed."
+  fi
   echo "Merging $base_ref into $branch..."
-  git -C "$root" merge -q --no-ff --no-edit "$base_ref" ||
+  git -C "$root" merge -q --no-ff --no-edit --no-overwrite-ignore "$base_ref" ||
     fail "Git refused the merge of $base_ref; see its output above. Nothing was pushed."
   echo "Merged: $(git -C "$root" log -1 --format='%h %s')"
   check_worktree

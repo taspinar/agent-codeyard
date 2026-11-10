@@ -197,3 +197,19 @@ A run whose base merges cleanly handles it itself: it merges the base, notes `ba
 - **Output:** the output of `update-feature.sh`, `publish-feature.sh`, or `run-feature.sh`.
 
 Git ignored these files on the feature branch, for example the build directory of a site that the base renamed, and the merged base no longer ignores them. They are not work of the feature, so they are not taken for uncommitted changes, and nothing deletes them for you. `publish-feature.sh` reports them and publishes; `update-feature.sh` and an unattended run stop until they are gone, since the verification would count them as content of the feature.
+
+### "… would write over … untracked files …"
+
+- **First fix:** check the paths it names, then move each out of the worktree, or remove it once you know it is not needed, and run the command again.
+- **Recovered when:** the merge goes through, and the base's version of each path is in the worktree.
+- **Output:** the output of `update-feature.sh` or `run-feature.sh`.
+
+The base adds a file at a path where your worktree has an untracked one, often one that Git ignores, such as a cache or a build output. Git would replace an ignored file during the merge without asking, so the script stops before it merges and leaves the file as it is.
+
+### "The index holds staged changes"
+
+- **First fix:** look at them with `git diff --cached`. Unstage them with `git restore --staged <path>` when the file on disk holds what you want, or commit them, then run the command again.
+- **Recovered when:** `git diff --cached` shows nothing and the merge goes through.
+- **Output:** the output of `update-feature.sh` or `run-feature.sh`.
+
+Git refuses to merge while changes are staged, and unstaging them for you could lose a staged version that differs from the file on disk. The script stops before the merge and leaves the index as it is.

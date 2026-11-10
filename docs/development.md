@@ -2113,16 +2113,24 @@ does it:
 
 It fetches the base of the feature (`origin/<base>`, as `start-feature.sh`
 recorded it) and merges it into the branch when the branch does not contain
-it yet. A merge that conflicts stops before anything changed: the script
-names the conflicting files and the commands that continue, which are to
-merge by hand (`git merge origin/main`), resolve the files, commit the
-merge, and run the script again; a merge left in progress is refused until it
-is committed. Then it runs the full verification, `./scripts/verify.sh --all
---reuse`, since a review that was done before the merge covered the feature,
-not the merge; on a rerun the pass of the same content is reused. Last, it
-publishes again with `publish-feature.sh`. Nothing is pushed when a step
-fails, and running the command again continues where it stopped. The same
-steps by hand are `git merge origin/main`, `./scripts/verify.sh --all`, and
+it yet. Staged changes in the index stop it before the merge, with the
+staged paths named and the index left as it is. A merge that conflicts stops
+before anything changed: the script names the conflicting files and the
+commands that continue, which are to merge by hand (`git merge
+origin/main`), resolve the files, commit the merge, and run the script
+again; a merge left in progress is refused until it is committed. A merge
+that would write over an untracked file at a path that the base adds stops
+before anything changed too, also when Git ignores the file: Git refuses to
+write over an untracked file, but a merge that is not a fast-forward
+replaces an ignored one without a word, even with `--no-overwrite-ignore`,
+which both scripts pass. The script names the paths; move each out of the
+worktree, or remove it once you know it is not needed, and run again. Then
+it runs the full verification, `./scripts/verify.sh --all --reuse`, since a
+review that was done before the merge covered the feature, not the merge; on
+a rerun the pass of the same content is reused. Last, it publishes again
+with `publish-feature.sh`. Nothing is pushed when a step fails, and running
+the command again continues where it stopped. The same steps by hand are
+`git merge origin/main`, `./scripts/verify.sh --all`, and
 `./scripts/publish-feature.sh 12`.
 
 A merge of the base can leave untracked files behind: a directory that Git
@@ -2167,20 +2175,24 @@ was merged into the base since then is not in it. Update the branch instead,
 and the checks run on the new head.
 
 **During an unattended run.** `run-feature.sh` asks the same question before
-it hands a failing verification to the implementer. When checks failed in two
-verification runs and the base moved since the feature started, it fetches
-the base and merges it into the branch when that merges cleanly, with the
-commits of the branch and with the uncommitted work of the feature, notes
-`base merged` in the log of the feature, and does the step again on the
-merged content; only a check that still fails goes to the implementer. A
-merge into a branch whose work is not committed yet first unstages the
-index, since Git refuses a merge with staged changes; the commit takes every
-change of the working tree anyway. A merge that would conflict stops the run
-before anything changed, with the conflicting files and the commands that
-continue: put the uncommitted work aside (`git stash push
---include-untracked`), merge, resolve and commit, take the work back (`git
-stash pop`), and run again. A merge that leaves untracked paths behind, as
-above, stops the run with their paths and removal commands too.
+it hands a failing verification to the implementer. When checks failed in
+two verification runs and the base moved since the feature started, it
+fetches the base and merges it into the branch when that merges cleanly,
+with the commits of the branch and with the uncommitted work of the feature,
+notes `base merged` in the log of the feature, and does the step again on
+the merged content; only a check that still fails goes to the implementer.
+Staged changes in the index stop the run before the merge, with the staged
+paths named: Git refuses a merge with staged changes, and unstaging them
+would lose a staged version that differs from the file on disk, so the run
+leaves the index as it is. Unstage them (`git restore --staged <path>`) when
+the file on disk holds what you want, and run again. A merge that would
+conflict stops the run before anything changed, with the conflicting files
+and the commands that continue: put the uncommitted work aside (`git stash
+push --include-untracked`), merge, resolve and commit, take the work back
+(`git stash pop`), and run again. A merge that leaves untracked paths
+behind, as above, stops the run with their paths and removal commands too,
+and so does a merge that would write over an untracked file, ignored ones
+included, before anything is merged.
 
 The script ends once the pull request is open and prints its address. Follow
 the checks there and merge after they passed. Local verification during a
@@ -2370,7 +2382,7 @@ The run stops with a non-zero status, and keeps the worktree, when:
 | An agent needs a decision of yours, or reports a conflict with the Issue's scope, the architecture, or an ADR. Its question is in the handoff note | 3 |
 | An agent or a connection keeps failing after the retries | 1 |
 | The verification still fails after three repairs, or checks are unstable more than three times | 1 |
-| The verification fails, the base moved, and its merge conflicts with the branch or the uncommitted work of the feature, or leaves untracked paths behind that the branch ignored; the files are named | 1 |
+| The verification fails, the base moved, and its merge conflicts with the branch or the uncommitted work of the feature, would write over an untracked file (also one that Git ignores), meets staged changes in the index, or leaves untracked paths behind that the branch ignored; the files are named | 1 |
 | The proposed triage is invalid, for example because it defers a critical or major finding | 1 |
 | Five rounds are used and the last one still has a finding that must be fixed, or was an intermediate round (only the changes, or partially checked content) | 1 |
 | The implementer ended four sessions without completing the Issue | 1 |
