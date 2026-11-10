@@ -1,13 +1,13 @@
 {
   "schema": "approval-request/v1",
-  "content_tree": "45a0686d4234bf2e214d204912e09b590f789c87",
+  "content_tree": "2173a6d3726bae6d9bf776f7b324b38d7b2d7b77",
   "commit": {
     "branch": "feature/350-show-the-merge-approval",
-    "parent": "9efee7d205986fefc84e301f5db205d4731bbd7c",
+    "parent": "48f7821dc973f5f71d6ae974552e11bf11fae7f8",
     "base": "9efee7d205986fefc84e301f5db205d4731bbd7c"
   },
   "review": {
-    "round": 1,
+    "round": 2,
     "verdict": "PASS",
     "reviewer": "codex (gpt-6-luna)"
   },

@@ -11,10 +11,13 @@ usage() {
   echo "Runs check-guardrails.sh --commits <base-commit> <head-commit>"
   echo "--fail-on-protected and decides what the check of the pull request shows:"
   echo
-  echo "  success          nothing the owner must approve is changed"
-  echo "  action_required  a protected path is changed and the pull request carries an"
-  echo "                   approval request that the gate accepts: the owner's"
-  echo "                   approval is required"
+  echo "  success          nothing the owner must approve is changed and the pull"
+  echo "                   request carries no approval request"
+  echo "  action_required  the pull request carries an approval request that the gate"
+  echo "                   accepts, whether or not it changes a protected path (a"
+  echo "                   major impact on the architecture or a skipped review also"
+  echo "                   makes finish-feature.sh write one): the owner's approval is"
+  echo "                   required"
   echo "  failure          a protected path is changed without an accepted approval"
   echo "                   request, a request is refused (status 4), or the gate"
   echo "                   could not run"
@@ -36,23 +39,58 @@ mkdir -p "$out"
 status=0
 output="$("$script_dir/check-guardrails.sh" --commits "$1" "$2" --fail-on-protected 2>&1)" || status=$?
 
+head="$2"
+
 # bullets <prefix>: the lines of the output that start with '<prefix>: ', as
 # a Markdown list without the prefix.
 bullets() {
   printf '%s\n' "$output" | sed -n "s/^$1: \(.*\)/- \1/p"
 }
 
+# request_reasons: the reasons of the accepted approval requests, as a
+# Markdown list, read from the head as data for display only.
+request_reasons() {
+  local path
+
+  printf '%s\n' "$output" | sed -n 's/^request: \(.*\) names the content tree recomputed here$/\1/p' |
+    while IFS= read -r path; do
+      git show "$head:$path" 2>/dev/null | jq -r '.reasons[]? | "- " + .' 2>/dev/null || true
+    done
+}
+
+# approval_required <why>: the decision for a pull request that carries an
+# accepted approval request.
+approval_required() {
+  local protected reasons
+
+  text="$1 This is not a defect: the owner reviews it and merges it, or not."
+  protected="$(bullets protected)"
+  reasons="$(request_reasons)"
+  [[ -z "$protected" ]] || text+=$'\n\n'"Protected paths:"$'\n'"$protected"
+  [[ -z "$reasons" ]] || text+=$'\n\n'"Reasons of the approval request:"$'\n'"$reasons"
+  text+=$'\n\n'"Approval request, which names the content tree recomputed here and grants nothing:"$'\n'"$(bullets request)"
+  conclusion="action_required"
+  title="Owner approval required"
+}
+
+has_request=0
+if grep -q '^request: ' <<<"$output"; then
+  has_request=1
+fi
+
 case "$status" in
   0)
-    conclusion="success"
-    title="No owner approval needed"
-    text="The pull request changes nothing that only the owner may approve."
+    if [[ "$has_request" -eq 1 ]]; then
+      approval_required "The pull request carries an approval request: finish-feature.sh found a reason for the owner's approval, such as a major impact on the architecture or a skipped review, although it changes no protected path."
+    else
+      conclusion="success"
+      title="No owner approval needed"
+      text="The pull request changes nothing that only the owner may approve and carries no approval request."
+    fi
     ;;
   3)
-    if printf '%s\n' "$output" | grep -q '^request: '; then
-      conclusion="action_required"
-      title="Owner approval required"
-      text="The pull request changes what only the owner may approve. This is not a defect: the owner reviews it and merges it, or not."$'\n\n'"Reasons:"$'\n'"$(bullets protected)"$'\n\n'"Approval request, which names the content tree recomputed here and grants nothing:"$'\n'"$(bullets request)"
+    if [[ "$has_request" -eq 1 ]]; then
+      approval_required "The pull request changes what only the owner may approve."
     else
       conclusion="failure"
       title="Approval request missing"

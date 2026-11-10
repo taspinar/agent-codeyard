@@ -168,11 +168,17 @@ branch. Its job `Approval gate` reports the decision as a check named
 
 | The pull request | `guardrails` shows | The job `Approval gate` |
 | --- | --- | --- |
-| changes nothing that only the owner may approve | success, "No owner approval needed" | succeeds |
-| changes a protected path and carries an approval request that names its content tree | "Action required", "Owner approval required", with the protected paths and the request | succeeds |
+| changes nothing that only the owner may approve and carries no approval request | success, "No owner approval needed" | succeeds |
+| carries an approval request that names its content tree, with or without a protected path | "Action required", "Owner approval required", with the protected paths, the reasons of the request, and the request | succeeds |
 | changes a protected path without an approval request | failure, "Approval request missing", with the protected paths | fails |
 | carries an approval request that is malformed or names another content tree | failure, "Approval request refused", with the reason | fails |
 | cannot be checked (the gate itself fails) | failure, "The merge approval gate could not run" | fails |
+
+Any approval request makes the check `action_required`, not only a
+protected path: `finish-feature.sh` also writes one when the review rated
+the impact on the architecture as major, when the feature was committed
+without a review, or for another reason it records, and the check then
+waits for you as `finish-feature.sh` does.
 
 "Owner approval required" is not a defect: it says the pull request waits
 for you. A red failure is a defect of the pull request or the gate. The
@@ -180,8 +186,8 @@ workflow asks for `checks: write` to create the check, explicitly in its
 file, so read-only default permissions (section 5) do not stand in its way.
 
 Whether to require it: GitHub counts only success, neutral, and skipped as
-a passing check, so a required `guardrails` refuses the merge of a protected
-change while it shows "Owner approval required". You then merge such a pull
+a passing check, so a required `guardrails` refuses the merge of a pull
+request that needs you while it shows "Owner approval required". You then merge such a pull
 request only by bypassing the ruleset, which needs bypass rights and is
 never an accident.
 

@@ -85,11 +85,11 @@ The gate is a check and a statement. `check-guardrails.sh` checks locally; on ev
 
 | The pull request | The `guardrails` check |
 | --- | --- |
-| changes nothing that needs you | passes: “No owner approval needed” |
-| changes a protected path and carries a valid approval request | “Action required”: “Owner approval required”, with the paths and the reasons. Not a defect: it waits for you |
+| changes nothing that needs you and carries no approval request | passes: “No owner approval needed” |
+| carries a valid approval request, for a protected path or for another reason | “Action required”: “Owner approval required”, with the paths and the reasons. Not a defect: it waits for you |
 | changes a protected path without an approval request, or with one that is malformed or names other content | fails, with the reason. Something is wrong; do not merge |
 
-The job behind it, `Approval gate`, fails only in the last case. GitHub counts “Action required” as not passed, so a **required** `guardrails` check blocks the merge of a protected change until someone with bypass rights merges it. Alone, leave it optional and merge after your review. In a team, or when an agent may merge, require it and keep bypass rights for the people who approve. Never require `Approval gate`: it passes while your approval is still needed. The [repository setup guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/repository-setup.md) has the details.
+Any approval request makes the check “Action required”, not only a protected path: `finish-feature.sh` also writes one when the review rated the impact on the architecture as major or the feature was committed without a review. The job behind it, `Approval gate`, fails only in the last case. GitHub counts “Action required” as not passed, so a **required** `guardrails` check blocks the merge of a pull request that needs you until someone with bypass rights merges it. Alone, leave it optional and merge after your review. In a team, or when an agent may merge, require it and keep bypass rights for the people who approve. Never require `Approval gate`: it passes while your approval is still needed. The [repository setup guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/repository-setup.md) has the details.
 
 The complete list of settings is the [repository setup checklist](https://github.com/taspinar/agent-codeyard/blob/main/docs/repository-setup.md). What to keep out of a repository, and how to report a security problem, is in [`SECURITY.md`](https://github.com/taspinar/agent-codeyard/blob/main/SECURITY.md).
 

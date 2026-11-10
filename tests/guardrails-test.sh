@@ -509,6 +509,27 @@ grep -Fxq -- "- .agents/approval-requests/5.json names the content tree recomput
 # The command line is unchanged: the same diff exits 3 there.
 check "$repo" --commits main HEAD --fail-on-protected
 [[ "$status" -eq 3 ]] || fail "check-guardrails.sh changed its status for a protected change with a request ($status)"
+grep -Fxq -- "- docs/decisions/002-other.md: an ADR is added, changed, or removed" "$repo.gate/summary.md" ||
+  fail "the reasons of the request are not in the summary"
+
+# A request without a protected path: finish-feature.sh also asks for the
+# owner's approval for a major impact on the architecture or a skipped
+# review. check-guardrails.sh exits 0, and the check still waits for the owner.
+repo="$(setup_repo decision-request-only)"
+printf 'print("y")\n' >>"$repo/src/code.py"
+guardrails_request_write "$repo" 5 "$(fingerprint_worktree "$repo" "$scratch")" feature/5-thing \
+  "$(git -C "$repo" rev-parse HEAD)" "$(git -C "$repo" rev-parse main)" "" \
+  "the independent review classified the impact on the architecture as major: a new interface" \
+  "Please approve the new interface."
+commit_feature "$repo" "Finish the feature"
+check "$repo" --commits main HEAD --fail-on-protected
+[[ "$status" -eq 0 ]] || { cat "$repo.out" >&2; fail "check-guardrails.sh did not exit 0 for a request without a protected path ($status)"; }
+decide "$repo" main HEAD
+expect_decision "$repo" action_required "Owner approval required" "a request without a protected path"
+grep -Fxq -- "- the independent review classified the impact on the architecture as major: a new interface" "$repo.gate/summary.md" ||
+  { cat "$repo.gate/summary.md" >&2; fail "the reasons of a request without a protected path are not in the summary"; }
+grep -Fxq -- "- .agents/approval-requests/5.json names the content tree recomputed here" "$repo.gate/summary.md" ||
+  fail "the accepted request without a protected path is not in the summary"
 
 repo="$(setup_repo decision-missing)"
 printf '# ADR 002: Other\n\nStatus: Proposed\n' >"$repo/docs/decisions/002-other.md"
