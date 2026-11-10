@@ -41,6 +41,10 @@ You do not edit the approved requirements or roadmap by hand. Write the change d
 
 A feature branches from its base and merges back into it. Name the base as the third argument of `start-feature.sh` or `run-feature.sh`, or set it once for the project with a line `base: develop` in `.agents/template.conf`; without either it is `main`. The base is recorded with the feature, and every later step uses it: the review and the risk compare with it, and the pull request merges into it. A pull request of the branch that is already open into another branch stops the publication before the push. Details in [the base branch of a feature](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#the-base-branch-of-a-feature) of the development guide.
 
+### Features side by side
+
+Every feature has its own branch and worktree, so several can run at once. Nothing reserves a file or a number for one of them, though, and a clash shows only when the second one merges. Do not run features side by side that change the same module, or that each take the next number of a numbered sequence: a lesson, a migration, an ADR. Run them one after another, or give them disjoint scopes in their Issues. Otherwise the second pull request conflicts with its base or duplicates a number, and needs rework and a new review. Details in [features side by side](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#features-side-by-side) of the development guide.
+
 <a id="plans-and-earlier-review-rounds"></a>
 
 ### A plan for a complex Issue

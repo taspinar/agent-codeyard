@@ -554,7 +554,12 @@ docs-references: ./scripts/check-docs.sh --later docs/PLANNING_APPROVAL.md docs/
 ```
 
 The template has such a line in its own `scripts/verify.conf`. It catches a
-document that one change still names after another change removed it.
+document that one change still names after another change removed it. The
+line also names `.github/workflows/pages.yml`: a project deletes it with the
+template's website (`docs/repository-setup.md`), while the documents it takes
+over from the template still name it. The paths into `website/` need no
+entry: once the directory is deleted, it is no tracked top-level directory,
+and the check does not judge paths into it.
 
 ### Workflow self-tests
 
@@ -1287,6 +1292,22 @@ primary="$1"
 
 The script is optional and only saves time: when it fails, the script reports
 that and starts the agent anyway.
+
+### Features side by side
+
+Each feature has its own branch and worktree, so several features can run at
+the same time. Nothing reserves a file or a place in a numbered sequence for
+one of them, though, and a clash shows only when the second of them merges.
+Do not run features side by side that change the same module, or that each
+take the next number of a numbered sequence, such as a lesson, a migration,
+or an ADR. Run them one after another, or give them disjoint scopes in their
+Issues: the module each one may change, the number each one takes.
+Otherwise the pull request of the second feature conflicts with its base
+once the first is merged, or it takes a number the first already took. It
+then needs rework: `update-feature.sh` merges the base and stops at a
+conflict, and a duplicate number has to be renumbered by hand. The rework
+changes the feature after its review, so it needs a new review before the
+feature is finished again (see "Finishing a feature").
 
 ### Comments on the Issue
 

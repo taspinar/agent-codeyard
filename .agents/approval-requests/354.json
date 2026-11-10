@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "7b0afd36bad6cf94cb9b46307f127895afee105d",
+  "commit": {
+    "branch": "feature/354-document-side-by-side",
+    "parent": "fb9ca67f1f3b384b1fb0af76425e99c932bec134",
+    "base": "fb9ca67f1f3b384b1fb0af76425e99c932bec134"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/verify.conf: an existing check or line is changed or removed"
+  ],
+  "explanation": "Issue #354: Document side-by-side features that share a module or a numbered sequence; check the synced docs check (from #114). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

@@ -226,6 +226,49 @@ check "$repo"
   fail "an untracked file or a path outside the tracked directories was judged"
 }
 
+# A project deletes the template's website and its workflow
+# (docs/repository-setup.md), while the documents it takes over still name
+# them. The template's own docs-references line still passes there, and it
+# needs its --later entry for the workflow to pass. Only where this
+# repository still has the template's site: elsewhere, such as in a project
+# that deleted it, its documents are the project's own.
+if [[ -f "$source_root/website/.codeyard-site" && -f "$source_root/.github/workflows/pages.yml" ]]; then
+  repo="$tmp/project"
+  mkdir -p "$repo"
+  (cd "$source_root" && git ls-files -z) |
+    while IFS= read -r -d '' path; do
+      case "$path" in
+        website/* | .github/workflows/pages.yml) continue ;;
+      esac
+      [[ -f "$source_root/$path" ]] || continue
+      mkdir -p "$repo/$(dirname "$path")"
+      cp -p "$source_root/$path" "$repo/$path"
+    done
+  git -C "$repo" init -q -b main
+  git -C "$repo" config user.name "Check Docs Test"
+  git -C "$repo" config user.email "check-docs-test@example.com"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm "A project without the template's website"
+  docs_references="$(sed -n 's/^docs-references: //p' "$source_root/scripts/verify.conf")"
+  [[ "$docs_references" == "./scripts/check-docs.sh --later "* ]] ||
+    fail "scripts/verify.conf has no docs-references line of check-docs.sh"
+  status=0
+  (cd "$repo" && bash -c "$docs_references") >"$repo.out" 2>&1 || status=$?
+  [[ "$status" -eq 0 ]] || {
+    cat "$repo.out" >&2
+    fail "the shipped docs-references check failed after the website was deleted"
+  }
+  read -r -a later <<<"${docs_references#./scripts/check-docs.sh --later }"
+  without_workflow=()
+  for path in "${later[@]}"; do
+    [[ "$path" == .github/workflows/pages.yml ]] || without_workflow+=("$path")
+  done
+  check "$repo" --later "${without_workflow[@]}"
+  [[ "$status" -eq 1 ]] || fail "the deleted website workflow was accepted without its --later entry"
+  grep -Fq "names .github/workflows/pages.yml" "$repo.out" ||
+    fail "the deleted website workflow was not reported"
+fi
+
 # Refusals.
 repo="$(setup_repo refusals)"
 check "$repo" --later
