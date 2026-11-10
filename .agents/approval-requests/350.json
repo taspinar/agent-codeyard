@@ -1,0 +1,21 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "2173a6d3726bae6d9bf776f7b324b38d7b2d7b77",
+  "commit": {
+    "branch": "feature/350-show-the-merge-approval",
+    "parent": "48f7821dc973f5f71d6ae974552e11bf11fae7f8",
+    "base": "9efee7d205986fefc84e301f5db205d4731bbd7c"
+  },
+  "review": {
+    "round": 2,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".github/workflows/guardrails.yml: the file defines or carries out the workflow and its gate",
+    "scripts/gate-pull-request.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/guardrails.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The change adds a GitHub Checks API integration and a new `guardrails` check-run interface in the repository-wide approval workflow, including the permission and branch-protection behavior documented for adopters. "
+  ],
+  "explanation": "Issue #350: Show the merge approval gate as 'owner approval required', not as a failed check (from #114). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

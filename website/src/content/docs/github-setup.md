@@ -38,6 +38,7 @@ A repository created from the template does not inherit these settings: GitHub d
 4. **Require the `verify` check.** Without a required check, a pull request can be merged while CI fails. GitHub knows a check only by the name a CI job reported, and it offers only names that it has seen on the repository, so open a first pull request, let CI run, then add `verify` under "Require status checks to pass" in the same ruleset. Do not require a check that no workflow produces: GitHub waits for it forever, and that blocks every merge.
    - Where: the ruleset of step 3.
    - Check: `./scripts/doctor.sh` no longer warns that `main` has no required check, and the rules of step 3 now include `required_status_checks`.
+   - The `guardrails` check: alone, leave it optional; in a team, or when an agent may merge, require it as well. It is explained under [What the `guardrails` check shows](#guardrails-check).
 5. **Name yourself as code owner.** Replace `@YOUR_GITHUB_USERNAME` in `.github/CODEOWNERS` with your account or team, through a pull request.
    - Where: `.github/CODEOWNERS`.
    - Check: this prints nothing:
@@ -72,11 +73,23 @@ Keep secrets out of Git. For production, use environment approvals and short-liv
 
 ## What GitHub has to enforce
 
-The gate is a check and a statement. `check-guardrails.sh` checks locally; the Guardrails job (`pull_request_target`, `--fail-on-protected`) signals protected changes, rather than serving as the required CI check. The commit and pull request carry a “Merge approval: required” statement. It tells you which pull requests need your attention, and the workflow's own scripts will not merge them. It does **not** stop someone, or an agent with your credentials, from merging on GitHub. To enforce the rules, configure the repository:
+The gate is a check and a statement. `check-guardrails.sh` checks locally; on every pull request the Guardrails workflow (`pull_request_target`) shows the result as the `guardrails` check. The commit and pull request carry a “Merge approval: required” statement. It tells you which pull requests need your attention, and the workflow's own scripts will not merge them. It does **not** stop someone, or an agent with your credentials, from merging on GitHub. To enforce the rules, configure the repository:
 
 - **A ruleset for `main`** that requires a pull request and the CI check before a merge. `./scripts/doctor.sh` warns you when the check is not required. The [repository setup guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/repository-setup.md) lists the settings.
 - **`.github/CODEOWNERS`** ships with the placeholder `@YOUR_GITHUB_USERNAME`. Replace it with your own account before you require code owner reviews; until then the file has no effect.
 - **Bypass rights:** a repository administrator can usually bypass a ruleset. Decide whether that should apply to you.
+
+<a id="guardrails-check"></a>
+
+### What the `guardrails` check shows
+
+| The pull request | The `guardrails` check |
+| --- | --- |
+| changes nothing that needs you and carries no approval request | passes: “No owner approval needed” |
+| carries a valid approval request, for a protected path or for another reason | “Action required”: “Owner approval required”, with the paths and the reasons. Not a defect: it waits for you |
+| changes a protected path without an approval request, or with one that is malformed or names other content | fails, with the reason. Something is wrong; do not merge |
+
+Any approval request makes the check “Action required”, not only a protected path: `finish-feature.sh` also writes one when the review rated the impact on the architecture as major or the feature was committed without a review. The job behind it, `Approval gate`, fails only in the last case. GitHub counts “Action required” as not passed, so a **required** `guardrails` check blocks the merge of a pull request that needs you until someone with bypass rights merges it. Alone, leave it optional and merge after your review. In a team, or when an agent may merge, require it and keep bypass rights for the people who approve. Never require `Approval gate`: it passes while your approval is still needed. The [repository setup guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/repository-setup.md) has the details.
 
 The complete list of settings is the [repository setup checklist](https://github.com/taspinar/agent-codeyard/blob/main/docs/repository-setup.md). What to keep out of a repository, and how to report a security problem, is in [`SECURITY.md`](https://github.com/taspinar/agent-codeyard/blob/main/SECURITY.md).
 

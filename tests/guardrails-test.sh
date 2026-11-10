@@ -184,7 +184,7 @@ expect_level "$repo" protected "a feature removes a path from the protected list
 grep -Fq "site/_quarto.yml" "$repo.out" || fail "the rules of the feature were used instead of those of its base"
 grep -Fq ".agents/policies/guardrails.conf" "$repo.out" || fail "the changed gate configuration was not named"
 
-for file in scripts/check-guardrails.sh scripts/lib/guardrails.sh scripts/finish-feature.sh \
+for file in scripts/check-guardrails.sh scripts/gate-pull-request.sh scripts/lib/guardrails.sh scripts/finish-feature.sh \
   scripts/lib/review-run.sh scripts/lib/review-data.sh scripts/lib/agent.sh scripts/review-feature.sh \
   scripts/publish-feature.sh scripts/run-feature.sh scripts/lib/fingerprint.sh \
   scripts/check-risk.sh scripts/lib/risk.sh \
@@ -470,5 +470,97 @@ printf 'later\n' >>"$repo/src/code.py"
 commit_feature "$repo" "A change after the finish"
 check "$repo" --commits main HEAD
 [[ "$status" -eq 4 ]] || fail "a commit after the finish kept the request valid ($status)"
+
+# The decision of the workflow for a pull request (gate-pull-request.sh): a
+# protected change with an accepted approval request is not a failure but
+# 'action_required', which no required check counts as passed; a missing or
+# refused request fails; a pull request with nothing protected passes.
+# decide <repo> <base> <head>: sets 'status', '<repo>.gate/', '<repo>.decision'.
+decide() {
+  status=0
+  (cd "$1" && PATH="/usr/bin:/bin" ./scripts/gate-pull-request.sh "$2" "$3" "$1.gate") >"$1.decision" 2>&1 || status=$?
+}
+
+# expect_decision <repo> <conclusion> <title> <description>
+expect_decision() {
+  [[ "$status" -eq 0 ]] || { cat "$1.decision" >&2; fail "the decision was not written ($status): $4"; }
+  [[ "$(cat "$1.gate/conclusion")" == "$2" ]] || { cat "$1.decision" >&2; fail "expected the conclusion $2: $4"; }
+  [[ "$(cat "$1.gate/title")" == "$3" ]] || fail "expected the title '$3': $4"
+  grep -Fxq "## $3" "$1.gate/summary.md" || fail "the summary does not start with its title: $4"
+}
+
+repo="$(setup_repo decision-none)"
+printf 'print("y")\n' >>"$repo/src/code.py"
+printf 'dependencies = ["y"]\n' >>"$repo/pyproject.toml"
+commit_feature "$repo" "Ordinary work"
+decide "$repo" main HEAD
+expect_decision "$repo" success "No owner approval needed" "a pull request changes nothing protected"
+
+repo="$(setup_repo decision-approval)"
+printf '# ADR 002: Other\n\nStatus: Proposed\n' >"$repo/docs/decisions/002-other.md"
+write_request "$repo" "$(fingerprint_worktree "$repo" "$scratch")"
+commit_feature "$repo" "Finish the feature"
+decide "$repo" main HEAD
+expect_decision "$repo" action_required "Owner approval required" "a protected change carries a valid request"
+grep -Fxq -- "- docs/decisions/002-other.md (an ADR is added, changed, or removed)" "$repo.gate/summary.md" ||
+  { cat "$repo.gate/summary.md" >&2; fail "the reason for the owner's approval is not in the summary"; }
+grep -Fxq -- "- .agents/approval-requests/5.json names the content tree recomputed here" "$repo.gate/summary.md" ||
+  fail "the accepted request is not in the summary"
+# The command line is unchanged: the same diff exits 3 there.
+check "$repo" --commits main HEAD --fail-on-protected
+[[ "$status" -eq 3 ]] || fail "check-guardrails.sh changed its status for a protected change with a request ($status)"
+grep -Fxq -- "- docs/decisions/002-other.md: an ADR is added, changed, or removed" "$repo.gate/summary.md" ||
+  fail "the reasons of the request are not in the summary"
+
+# A request without a protected path: finish-feature.sh also asks for the
+# owner's approval for a major impact on the architecture or a skipped
+# review. check-guardrails.sh exits 0, and the check still waits for the owner.
+repo="$(setup_repo decision-request-only)"
+printf 'print("y")\n' >>"$repo/src/code.py"
+guardrails_request_write "$repo" 5 "$(fingerprint_worktree "$repo" "$scratch")" feature/5-thing \
+  "$(git -C "$repo" rev-parse HEAD)" "$(git -C "$repo" rev-parse main)" "" \
+  "the independent review classified the impact on the architecture as major: a new interface" \
+  "Please approve the new interface."
+commit_feature "$repo" "Finish the feature"
+check "$repo" --commits main HEAD --fail-on-protected
+[[ "$status" -eq 0 ]] || { cat "$repo.out" >&2; fail "check-guardrails.sh did not exit 0 for a request without a protected path ($status)"; }
+decide "$repo" main HEAD
+expect_decision "$repo" action_required "Owner approval required" "a request without a protected path"
+grep -Fxq -- "- the independent review classified the impact on the architecture as major: a new interface" "$repo.gate/summary.md" ||
+  { cat "$repo.gate/summary.md" >&2; fail "the reasons of a request without a protected path are not in the summary"; }
+grep -Fxq -- "- .agents/approval-requests/5.json names the content tree recomputed here" "$repo.gate/summary.md" ||
+  fail "the accepted request without a protected path is not in the summary"
+
+repo="$(setup_repo decision-missing)"
+printf '# ADR 002: Other\n\nStatus: Proposed\n' >"$repo/docs/decisions/002-other.md"
+commit_feature "$repo" "A protected change without a request"
+decide "$repo" main HEAD
+expect_decision "$repo" failure "Approval request missing" "a protected change carries no request"
+grep -Fxq -- "- docs/decisions/002-other.md (an ADR is added, changed, or removed)" "$repo.gate/summary.md" ||
+  fail "the protected path is not named when the request is missing"
+
+repo="$(setup_repo decision-other-tree)"
+printf '# ADR 002: Other\n\nStatus: Proposed\n' >"$repo/docs/decisions/002-other.md"
+write_request "$repo" "0123456789012345678901234567890123456789"
+commit_feature "$repo" "A request for other content"
+decide "$repo" main HEAD
+expect_decision "$repo" failure "Approval request refused" "the request names another content tree"
+grep -Fq -- "- .agents/approval-requests/5.json (its content_tree 0123456789012345678901234567890123456789 is not the content tree recomputed here)" "$repo.gate/summary.md" ||
+  fail "the reason for the refusal is not in the summary"
+
+repo="$(setup_repo decision-malformed)"
+printf '# ADR 002: Other\n\nStatus: Proposed\n' >"$repo/docs/decisions/002-other.md"
+mkdir -p "$repo/.agents/approval-requests"
+printf '{"schema": "approval-request/v1"} {}\n' >"$repo/.agents/approval-requests/5.json"
+commit_feature "$repo" "A malformed request"
+decide "$repo" main HEAD
+expect_decision "$repo" failure "Approval request refused" "the request is malformed"
+grep -Fq "not exactly one JSON value" "$repo.gate/summary.md" || fail "the malformed request was not explained"
+
+decide "$repo" main no-such-commit
+expect_decision "$repo" failure "The merge approval gate could not run" "the gate cannot run"
+status=0
+(cd "$repo" && ./scripts/gate-pull-request.sh main HEAD) >/dev/null 2>&1 || status=$?
+[[ "$status" -eq 2 ]] || fail "gate-pull-request.sh accepted two arguments ($status)"
 
 echo "guardrails tests passed"

@@ -22,6 +22,7 @@ GUARDRAILS_BUILTIN_PROTECTED=(
   .agents/prompts/reviewer.md
   .agents/schemas
   scripts/check-guardrails.sh
+  scripts/gate-pull-request.sh
   scripts/lib/guardrails.sh
   scripts/check-risk.sh
   scripts/lib/risk.sh
