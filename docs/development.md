@@ -2429,9 +2429,13 @@ request, and an agent or a queue that merges for you must skip one that says
 
 **In CI.** The workflow `Guardrails` runs the gate on the actual diff of every
 pull request, with the script and the rules of the base branch and without
-running code of the pull request. It fails when the diff changes a protected
-path. It is a signal and not the required check, so that you can merge after
-reading what it lists.
+running code of the pull request, and reports the decision as the check
+`guardrails` (`scripts/gate-pull-request.sh`): success when nothing is
+protected; "Owner approval required", the conclusion `action_required` and
+not a failure, when the diff changes a protected path and carries an
+approval request that names its content tree; a failure when that request
+is missing or refused. What the check shows, and whether to require it, is
+in [`docs/repository-setup.md`](repository-setup.md).
 
 **Your approval is your own merge.** You merge the commit you see, so an
 approval never carries over to content that changed afterwards. This is an

@@ -9,8 +9,9 @@ automatically when creating a new repository from a template.
 
 **What GitHub enforces, and what the scripts only detect.** The workflow
 scripts check and report: `check-guardrails.sh` flags a change that needs
-the owner, `doctor.sh` warns when `main` has no required check, and no
-script of the workflow merges a pull request. None of that stops a person,
+the owner, the check `guardrails` shows it on the pull request, `doctor.sh`
+warns when `main` has no required check, and no script of the workflow
+merges a pull request. None of that stops a person,
 or an agent that runs with your GitHub permissions, from merging. Only the
 settings below do: a ruleset for `main`, a required status check, and, in a
 team, required reviews.
@@ -156,6 +157,43 @@ Without a required check a pull request can be merged while CI fails.
 branch without one, but only the ruleset refuses the merge.
 
 A project that splits its CI into more jobs adds those checks as well.
+
+### The check `guardrails`
+
+The workflow `Guardrails` (`.github/workflows/guardrails.yml`) runs the merge
+approval gate on every pull request, with the rules and scripts of the base
+branch. Its job `Approval gate` reports the decision as a check named
+`guardrails`, with the reasons in its summary
+(`scripts/gate-pull-request.sh`):
+
+| The pull request | `guardrails` shows | The job `Approval gate` |
+| --- | --- | --- |
+| changes nothing that only the owner may approve | success, "No owner approval needed" | succeeds |
+| changes a protected path and carries an approval request that names its content tree | "Action required", "Owner approval required", with the protected paths and the request | succeeds |
+| changes a protected path without an approval request | failure, "Approval request missing", with the protected paths | fails |
+| carries an approval request that is malformed or names another content tree | failure, "Approval request refused", with the reason | fails |
+| cannot be checked (the gate itself fails) | failure, "The merge approval gate could not run" | fails |
+
+"Owner approval required" is not a defect: it says the pull request waits
+for you. A red failure is a defect of the pull request or the gate. The
+workflow asks for `checks: write` to create the check, explicitly in its
+file, so read-only default permissions (section 5) do not stand in its way.
+
+Whether to require it: GitHub counts only success, neutral, and skipped as
+a passing check, so a required `guardrails` refuses the merge of a protected
+change while it shows "Owner approval required". You then merge such a pull
+request only by bypassing the ruleset, which needs bypass rights and is
+never an accident.
+
+-   **Alone:** do not require it. Require `verify`, read the check, and merge
+    a pull request that needs you after you reviewed it.
+-   **In a team, or with an agent that may merge:** require `guardrails`
+    next to `verify`, and give bypass rights only to the people who approve
+    protected changes.
+
+Do not require the job `Approval gate`: it succeeds when the owner's approval
+is required. A project that required `guardrails` before this check existed
+keeps that rule; it now means the check above.
 
 An adopted repository keeps its own CI, and the adoption adds no CI
 workflow: its required checks stay what they were. The project's commands

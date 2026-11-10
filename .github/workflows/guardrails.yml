@@ -7,18 +7,31 @@ name: Guardrails
 # request are never the pull request's own. The head of the pull request is
 # fetched as Git data only: no step runs code from it.
 #
-# The job fails when the pull request changes something only the owner may
-# approve. It is a signal, not the required check: the owner merges after
-# reading what the job lists.
+# The job reports its decision as the check run 'guardrails', through the
+# Checks API (scripts/gate-pull-request.sh):
+#
+# - success: nothing the owner must approve is changed.
+# - action_required, "Owner approval required": a protected path is changed
+#   and the pull request carries an approval request the gate accepts. It is
+#   not a failure, and GitHub does not count it as passing a required check,
+#   so a project that requires 'guardrails' cannot merge such a change
+#   through it by accident.
+# - failure: the approval request is missing or refused, or the gate could
+#   not run. The job fails too.
+#
+# Without the check run (the job broke before it), a required 'guardrails'
+# stays pending and blocks the merge.
 
 on:
   pull_request_target:
 
 permissions:
   contents: read
+  checks: write
 
 jobs:
-  guardrails:
+  gate:
+    name: Approval gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +41,27 @@ jobs:
         env:
           PULL_REQUEST: ${{ github.event.pull_request.number }}
         run: git fetch --no-tags origin "refs/pull/${PULL_REQUEST}/head:refs/remotes/pull-request/head"
-      - name: Check the merge approval gate
+      - name: Decide what the pull request needs
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: ./scripts/check-guardrails.sh --commits "$BASE_SHA" refs/remotes/pull-request/head --fail-on-protected
+        run: ./scripts/gate-pull-request.sh "$BASE_SHA" refs/remotes/pull-request/head "$RUNNER_TEMP/gate"
+      - name: Show the decision in the job summary
+        run: cat "$RUNNER_TEMP/gate/summary.md" >>"$GITHUB_STEP_SUMMARY"
+      - name: Report the decision as the check 'guardrails'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DETAILS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # The commit that was checked, which a push after the event may have
+          # replaced as the head; the run for that push reports on it.
+          head_sha="$(git rev-parse refs/remotes/pull-request/head)"
+          jq -n --arg head_sha "$head_sha" --arg details_url "$DETAILS_URL" \
+            --rawfile conclusion "$RUNNER_TEMP/gate/conclusion" \
+            --rawfile title "$RUNNER_TEMP/gate/title" \
+            --rawfile summary "$RUNNER_TEMP/gate/summary.md" \
+            '{name: "guardrails", head_sha: $head_sha, details_url: $details_url, status: "completed",
+              conclusion: ($conclusion | rtrimstr("\n")),
+              output: {title: ($title | rtrimstr("\n")), summary: $summary}}' |
+            gh api --method POST "repos/$GITHUB_REPOSITORY/check-runs" --input - >/dev/null
+      - name: Fail when the gate fails
+        run: '[[ "$(cat "$RUNNER_TEMP/gate/conclusion")" != failure ]]'
