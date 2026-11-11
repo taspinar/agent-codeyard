@@ -1,138 +1,97 @@
 ---
-// The home page, built from the approved design (design/DESIGN.md) and the
-// order of #329: the concrete result and what AI and Codeyard each do, the
-// coding tools and the fact line, why the open decisions come first, the
-// gym scenario of #328 in four steps, who does what, who it is for, and the
-// ways on; the real case is on the Projects page (#343). The first layer uses
-// plain words; a technical term follows its plain name. The full route with
-// its risk levels and profiles is on the workflow page; script names and the
-// terminal start are in the docs.
+// The home page, in the six sections of the owner's brief of 11 November
+// (#370): the promise, the interactive workflow, what Codeyard adds to the
+// coding tools, a real run as evidence, who it is for, and the two ways to
+// start. The demo is illustrative; the evidence is the real case of #241 as
+// Engineering records tells it. The old anchors of the page point to the
+// section that took their content: #example and #roles to the demo, #projects
+// to the evidence; #why, #who and #start keep their names.
 import Base from "../layouts/Base.astro";
 import Section from "../components/Section.astro";
+import WorkflowDemo from "../components/WorkflowDemo.astro";
 import { site } from "../../site.config";
-import { href } from "../lib/links";
+import { href, issue, pull } from "../lib/links";
 
-const [first, ...rest] = site.tagline.split(/(?<=,) /);
+const [first, ...rest] = site.tagline.split(/(?<=\.) /);
 const second = rest.join(" ");
 
-// What can happen when a coding tool works on its own, and how Codeyard
-// handles it, row by row and about as long on both sides.
+// What can happen when a coding tool works on its own, and what Codeyard
+// settles instead, row by row.
 const compare = [
-  { topic: "Open decisions", without: "The tool fills a decision you left open with a choice of its own.", with: "You answer a few questions first, and the answers are written down as agreements." },
-  { topic: "Long work", without: "A new session does not know what was agreed or done before.", with: "The plan and the progress are files that the next session reads." },
-  { topic: "Checking", without: "The tool checks its own work, and tends to confirm what it just did.", with: `A different AI model that did not write the code <a href="${href("features/#review")}">reviews it</a>, once the checks pass.` },
-  { topic: "Is it done?", without: "A change can look finished while part of it is missing.", with: "No agreement is ticked off without the check or record that proves it." },
+  { topic: "Requirements", without: "Agents may fill in missing requirements.", with: "Important decisions are settled before coding." },
+  { topic: "Context", without: "Work can lose context between sessions.", with: "Plans, decisions and handoffs persist." },
+  { topic: "Review", without: "Reviews may lack independent scrutiny.", with: `A separate model <a href="${href("features/#review")}">reviews the changes</a> by default.` },
+  { topic: "Completion", without: "Completion can be difficult to verify.", with: "Checks, evidence and approval gates control what advances." },
 ];
+
+// The comment on Issue #241 with the review and triage of round 1.
+const review = `${issue(241)}#issuecomment-6531925164`;
 ---
 <Base description={site.description}>
   <div class="hero wrap">
     <div class="hero-grid">
       <h1>{first} <em>{second}</em></h1>
       <div class="hero-side">
-        <p class="lede">Describe what you want to build. Agent Codeyard helps you clarify what you need, plan the work, and guide AI coding tools as they build and check each change. You review the result and decide whether to accept it.</p>
+        <p class="lede">{site.description}</p>
         <div class="actions">
-          <a class="btn" href={href("workflow/")}>See how it works</a>
+          <a class="btn" href="#demo">Watch it work</a>
           <a href={href("docs/getting-started/")}>Get started</a>
         </div>
       </div>
     </div>
-    <p class="hero-copy">Claude Code and Codex are AI coding tools: from a description, they write the code and its tests. Codeyard writes no code. It organises their work: questions first, then a plan, a role for each tool, checks on every change, and a stop wherever you are needed.</p>
-    <p class="facts-line"><span>Open source</span><span>Runs on your machine</span><span>The coding tools talk to their providers</span><span>You decide what is accepted</span></p>
+    <p class="facts-line"><span>Open source</span><span>Runs on your machine</span><span>Works with Claude Code and Codex</span><span>You control every merge</span></p>
   </div>
 
-  <Section id="why" title="Why not start building straight away?">
-    <Fragment slot="note">What each part adds: <a href={href("features/")}>Why Codeyard</a>.</Fragment>
-    <p>AI coding tools can start building from your first request. But a request often leaves important decisions open. Agent Codeyard gives those decisions a place in the process, before they become assumptions in the code.</p>
-    <p>Claude Code and Codex can plan, ask questions, run tests and support a review by themselves. Codeyard makes one process of it: the agreements are written down before the building starts, each tool has an assigned role, the checks run on every change, and the progress is recorded, so that the next session can continue from it.</p>
-    <div class="compare rows" role="group" aria-label="Possible problems and how Codeyard handles them" style={`--rows: ${compare.length + 1}`}>
+  <section id="demo" class="demo-section" aria-labelledby="demo-h">
+    <span id="example"></span><span id="example-h"></span><span id="roles"></span><span id="roles-h"></span>
+    <div class="wrap">
+      <div class="demo-head">
+        <h2 id="demo-h">See how Agent Codeyard works</h2>
+        <div>
+          <p class="demo-lead">Follow an illustrative project from the first idea to three independently reviewed pull requests.</p>
+          <p><strong>Illustrative demo, not a live run.</strong> The gym project, the messages, the files and the Issue and pull request numbers are simulated; the steps and the script names are those of the workflow.</p>
+        </div>
+      </div>
+      <WorkflowDemo />
+    </div>
+  </section>
+
+  <Section id="why" title="Why not just use Claude Code or Codex?">
+    <p>AI coding tools can already plan, implement, test and review code. Agent Codeyard makes these activities part of a repeatable, documented engineering process.</p>
+    <div class="compare rows" role="group" aria-label="What can happen with a coding tool alone, and what Agent Codeyard does" style={`--rows: ${compare.length + 1}`}>
       <div class="col"><h3>What can happen</h3><dl>
         {compare.map((row) => <div><dt>{row.topic}</dt><dd>{row.without}</dd></div>)}
       </dl></div>
-      <div class="col"><h3>How Codeyard handles it</h3><dl>
+      <div class="col"><h3>With Agent Codeyard</h3><dl>
         {compare.map((row) => <div><dt>{row.topic}</dt><dd set:html={row.with} /></div>)}
       </dl></div>
     </div>
+    <p><a href={href("features/")}>Explore all features</a></p>
   </Section>
 
-  <Section id="example" title="One example in four steps">
-    <Fragment slot="note"><strong>Illustrative example.</strong> The questions, the check and the review finding are made up to show the steps. Every step in detail: <a href={href("workflow/")}>How it works</a>.</Fragment>
-    <p>A gym wants an application for its members. Trainers record attendance for their classes; members see their own training history.</p>
-    <ol class="words scenario-steps" aria-label="The four steps of the illustrative example">
-      <li>
-        <b>1. Clarify what you need</b>
-        <dl class="facts">
-          <dt>you do</dt><dd>Describe the idea in a few sentences, then answer questions, a few at a time.</dd>
-          <dt>what happens</dt><dd><strong>Project Grill</strong>, the first step of Codeyard, asks what your description leaves open:
-            <ul class="asked">
-              <li>Who may record or correct attendance?</li>
-              <li>May members see other members' data?</li>
-              <li>What happens with a wrong registration?</li>
-            </ul>
-          </dd>
-          <dt>what comes out</dt><dd>The agreements: trainers record and correct attendance for their own classes; a member sees only their own history; a correction keeps the original entry visible as corrected.</dd>
-          <dt>why it helps</dt><dd>You make these decisions before the code exists, instead of finding a guess in it later. The agreements become the requirements of the project.</dd>
-        </dl>
-      </li>
-      <li>
-        <b>2. Plan the work</b>
-        <dl class="facts">
-          <dt>you do</dt><dd>Read the plan and approve it.</dd>
-          <dt>what happens</dt><dd>Planning gets the strongest model: it writes the architecture and the roadmap from your agreements. Another model reviews the plan, usually in a few rounds of review and revision, until every finding is resolved and you approve.</dd>
-          <dt>what comes out</dt><dd>A project plan: the architecture, the main design decisions, and a roadmap of small features, each with the agreements it must meet.</dd>
-          <dt>why it helps</dt><dd>Each part builds on the one before and can be checked on its own.</dd>
-        </dl>
-      </li>
-      <li>
-        <b>3. Build and check</b>
-        <dl class="facts">
-          <dt>you do</dt><dd>Start a feature, and answer if a tool stops to ask.</dd>
-          <dt>what happens</dt><dd>Each feature of the roadmap is built in its own working copy, so several can run in parallel. For every feature the agents go through rounds of building, checks, review and fixes until the review passes. You decide only at the end. In the example, the review finds that the first version let every signed-in user open the history view, and the fix is checked again.</dd>
-          <dt>what comes out</dt><dd>A proposed change per feature, with the checks that ran and what the review found and fixed.</dd>
-          <dt>why it helps</dt><dd>The change is checked against what you agreed before you look at it.</dd>
-        </dl>
-      </li>
-      <li class="you">
-        <b>4. Decide</b>
-        <dl class="facts">
-          <dt>you do</dt><dd>Read what was made, which checks ran and what the review found, and accept the change or send it back.</dd>
-          <dt>what happens</dt><dd>Nothing becomes part of the project before you accept it. Technically, the change is a pull request, and accepting it is the merge.</dd>
-          <dt>what comes out</dt><dd>The attendance part in your application, or a change you did not take.</dd>
-          <dt>why it helps</dt><dd>The last decision about your project stays with you.</dd>
-        </dl>
-      </li>
+  <Section id="evidence" title="Built with the process it describes.">
+    <span id="projects"></span>
+    <p>See a real Agent Codeyard run, from a GitHub issue to an independently reviewed pull request, including verification evidence and resolved findings.</p>
+    <p>Unlike the simulated demo above, this is a real run of this project, on 30 October 2026.</p>
+    <ol class="evidence" aria-label="The run of Issue 241, from the Issue to the pull request">
+      <li><b><a href={issue(241)}>Issue #241</a></b><span>Asked for the first Features, Examples and About pages of this site.</span></li>
+      <li><b>Review and checks</b><span>The checks passed twice, in 14 and 15 seconds. <a href={review}>Round 1 of the review</a> found one major problem, fixed in the same run; round 3 passed.</span></li>
+      <li class="you"><b><a href={pull(249)}>Pull request #249</a></b><span>Merged by the owner the same evening.</span></li>
     </ol>
+    <p><a href={href("docs/engineering-records/#story")}>The full case in Engineering records</a></p>
   </Section>
 
-  <Section id="roles" title="Who does what">
-    <Fragment slot="note">Where you are needed, step by step: <a href={href("workflow/")}>How it works</a>.</Fragment>
-    <div class="ledger" role="group" aria-label="Who does what">
-      <div><h3>You</h3><ul><li>Describe what you want</li><li>Answer the questions and approve the plan</li><li>Answer when a tool stops to ask</li><li>Accept or reject each change</li></ul></div>
-      <div><h3>The coding tools</h3><ul><li>Ask the questions and draft the plan</li><li>Write the code and its tests</li><li>Review a change another tool wrote</li><li>Fix what the review found</li></ul></div>
-      <div><h3>Codeyard's scripts</h3><ul><li>Start each tool in its role, with its instructions</li><li>Run the checks and hold back unfinished work</li><li>Have a tool of another provider review by default</li><li>Record each run, so that work can continue</li></ul></div>
-    </div>
+  <Section id="who" title="Built for developers who want more control over AI-generated software.">
+    <p>For developers and technical teams who use AI coding tools on new or existing projects, especially when the requirements, the verification and an independent review matter, or when several features and long-running work have to stay on track.</p>
+    <p>You need Git and a GitHub repository, a command line, and access to the supported AI coding tools. Agent Codeyard is open source; the model providers may cost money. It is not a no-code app builder and not a hosted service. <a href={href("faq/#who")}>Who it is for, in the FAQ</a></p>
   </Section>
 
-  <Section id="who" title="Who it is for">
-    <Fragment slot="note">Skills, cost and when it pays off: the <a href={href("faq/")}>FAQ</a>.</Fragment>
-    <p>Codeyard is for anyone who builds software with AI coding tools and wants more grip on the result: a plan that was agreed, checks that ran, and the last word on every change. You run it from the command line in a Git repository on GitHub; if you have done that once, you can use Codeyard. <a href={href("faq/#who")}>What you need to know</a></p>
-    <p>Codeyard itself is free and open source; the AI tools you plug in bring their own cost. <a href={href("faq/#cost")}>What it costs</a></p>
-  </Section>
-
-  <Section id="start" title="Start, or read further">
-    <Fragment slot="note">New to coding tools? <a href={href("docs/new-to-agentic-coding/")}>New to agentic coding</a>.</Fragment>
+  <Section id="start" title="Give your coding agents a process.">
+    <p>Start with a new project, or bring Agent Codeyard into an existing repository.</p>
     <div class="split">
-      <div><h3>Start</h3><ul>
-        <li>A new project: <a href={href("docs/getting-started/")}>Getting started</a></li>
-        <li>A project you already have: <a href={href("docs/adopting/")}>Adopting Codeyard</a></li>
-      </ul></div>
-      <div><h3>Read further</h3><ul>
-        <li>Every step and its technical detail: <a href={href("workflow/")}>How it works</a></li>
-        <li>What each part adds, and what the scripts enforce: <a href={href("features/")}>Why Codeyard</a></li>
-        <li>Every command and setting: <a href={href("docs/")}>Docs</a></li>
-      </ul></div>
+      <div><h3>New project</h3><p>Start with requirements and planning before the first feature.</p><p><a href={href("docs/getting-started/")}>Getting started</a></p></div>
+      <div><h3>Existing repository</h3><p>Assess your codebase and adopt the workflow incrementally.</p><p><a href={href("docs/adopting/")}>Adoption guide</a></p></div>
     </div>
+    <p class="quiet">The source is on <a href={site.repository}>GitHub</a>.</p>
   </Section>
-  <div class="wrap">
-    <p id="projects" class="moved-case">The real project moved to <a href={href("examples/")}>Projects</a>.</p>
-  </div>
 </Base>

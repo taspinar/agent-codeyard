@@ -1,0 +1,139 @@
+---
+// The interactive workflow of the home page (#370): the route map of an
+// illustrative project, its controls, the terminals and the repository, and
+// one dialog for the details and the files. The data and the step logic are
+// in src/lib/demo.ts, the behaviour in src/lib/demo-view.ts, the styles in
+// src/styles/demo.css. The map is drawn here in its first moment; the script
+// marks what each moment reached. Nothing moves until the visitor presses
+// Play. The route in words below the map is its text alternative.
+import "../styles/demo.css";
+import { lanes, milestones, moments, stages, loops, planSteps, last } from "../lib/demo";
+
+// The geometry of the map, in viewBox units: the planning line on the
+// middle row, then three feature lanes that split at 45 degrees and join
+// main again after their merges.
+const trunk = 118;
+const laneY = [56, 118, 180];
+const stopX = [40, 150, 260, 370, 480];
+const split = 520;
+const laneStart = 582;
+const stageX = [660, 760, 860, 960, 1060, 1160];
+const mainX = 1236;
+const xOf = Object.fromEntries(stages.map((s, i) => [s.key, stageX[i]]));
+const d = (y: number) => y - trunk;
+const loopTop = laneY[0] - 26;
+---
+<div class="demo" data-demo>
+  <figure class="demo-route">
+    <figcaption class="demo-sr" id="demo-map-t">The route of the illustrative run: idea, Project Grill, plan, your approval and the Issues; then three features in parallel, each through build, verify, review, triage and its own pull request, merged by you one at a time.</figcaption>
+    <div class="demo-scroll">
+      <svg class="demo-map" viewBox="0 0 1280 236" role="group" aria-labelledby="demo-map-t" aria-describedby="demo-words">
+        <g class="demo-tracks" aria-hidden="true">
+          {stopX.slice(0, -1).map((x, i) => <path class="track" data-track={`t${i}`} d={`M${x} ${trunk} H${stopX[i + 1]}`} />)}
+          {lanes.map((l, i) => (
+            <>
+              <path class="track" data-track={`branch-${l.key}`} d={`M${stopX[4]} ${trunk} H${split} L${split + Math.abs(d(laneY[i]))} ${laneY[i]} H${laneStart}`} />
+              <path class="track" data-track={`${l.key}-build`} d={`M${laneStart} ${laneY[i]} H${stageX[0]}`} />
+              {stages.slice(1).map((s, j) => <path class="track" data-track={`${l.key}-${s.key}`} d={`M${stageX[j]} ${laneY[i]} H${stageX[j + 1]}`} />)}
+              <path class="track" data-track={`${l.key}-main`} d={`M${stageX[5]} ${laneY[i]} L${stageX[5] + Math.abs(d(laneY[i]))} ${trunk} H${mainX}`} />
+            </>
+          ))}
+        </g>
+        {loops.map((loop) => (
+          <g class="demo-loop" data-loop={loop.key} aria-hidden="true">
+            <path d={`M${xOf[loop.from]} ${laneY[0] - 12} V${loopTop} H${xOf[loop.to]} V${laneY[0] - 14}`} />
+            <path class="head" d={`M${xOf[loop.to] - 6} ${laneY[0] - 22} L${xOf[loop.to]} ${laneY[0] - 13} L${xOf[loop.to] + 6} ${laneY[0] - 22}`} />
+            <text x={(xOf[loop.from] + xOf[loop.to]) / 2} y={loopTop - 8} text-anchor="middle">{loop.note}</text>
+          </g>
+        ))}
+        {milestones.map((m, i) => (
+          <g class="demo-stop" data-milestone={m.key} role="button" tabindex="0" aria-label={"details" in m ? "Plan: open the steps inside it" : `${m.name}: show this moment`}>
+            <rect class="hit" x={stopX[i] - 50} y={trunk - 20} width="100" height="70" />
+            {"owner" in m ? <rect class="sym gate" x={stopX[i] - 10} y={trunk - 10} width="20" height="20" transform={`rotate(45 ${stopX[i]} ${trunk})`} /> : <circle class="sym" cx={stopX[i]} cy={trunk} r="10" />}
+            <text class="name" x={stopX[i]} y={trunk + 32} text-anchor="middle">{m.name}</text>
+            <text class="sub" x={stopX[i]} y={trunk + 49} text-anchor="middle">{m.sub}</text>
+          </g>
+        ))}
+        {lanes.map((l, i) => (
+          <g class="demo-lane" data-lane={l.key} role="button" tabindex="0" aria-label={`${l.name}, Issue #${l.issue}: show its terminal`}>
+            <rect class="hit" x={laneStart + 6} y={laneY[i] - 28} width={stageX[5] - laneStart + 14} height="56" />
+            <text x={laneStart + 14} y={laneY[i] + 25}><tspan class="name">{l.name} #{l.issue}</tspan><tspan class="sub" dx="8">·</tspan><tspan class="sub" dx="8" data-status>not started</tspan></text>
+            {stages.map((s, j) => s.owner
+              ? <rect class="sym gate" data-stage={s.key} x={stageX[j] - 8} y={laneY[i] - 8} width="16" height="16" transform={`rotate(45 ${stageX[j]} ${laneY[i]})`} />
+              : <circle class="sym" data-stage={s.key} cx={stageX[j]} cy={laneY[i]} r="8" />)}
+          </g>
+        ))}
+        <g class="demo-main" aria-hidden="true">
+          <circle class="sym" data-main cx={mainX} cy={trunk} r="10" />
+          <text class="name" x={mainX} y={trunk + 32} text-anchor="middle">main</text>
+        </g>
+        <g class="demo-columns" aria-hidden="true">
+          {stages.map((s, j) => <text x={stageX[j]} y="228" text-anchor="middle">{s.name}</text>)}
+        </g>
+      </svg>
+    </div>
+  </figure>
+
+  <div class="demo-now">
+    <p class="demo-count" data-count>Moment 1 of {moments.length}</p>
+    <div class="demo-caption" aria-live="polite">
+      <p><b data-title>{moments[0].title}</b> <span class="who" data-who>{moments[0].who}</span></p>
+      <p class="text" data-text>{moments[0].text}</p>
+    </div>
+    <button type="button" class="demo-btn" data-action="details" hidden>Plan details</button>
+  </div>
+
+  <div class="demo-controls" role="group" aria-label="Demo controls">
+    <button type="button" class="demo-btn primary" data-action="play">Play</button>
+    <button type="button" class="demo-btn" data-action="previous">Previous</button>
+    <button type="button" class="demo-btn" data-action="next">Next</button>
+    <input type="range" min="0" max={last} step="1" value="0" data-action="timeline" aria-label="Moment of the run" aria-valuetext={`Moment 1 of ${moments.length}: ${moments[0].title}`}>
+    <button type="button" class="demo-btn" data-action="restart">Restart</button>
+  </div>
+
+  <div class="demo-panels">
+    <div class="demo-panel">
+      <header class="demo-panel-head">
+        <h3 id="demo-terminals-h" data-terminals-title>Terminal</h3>
+        <span class="meta">simulated</span>
+        <button type="button" class="demo-link" data-action="log" hidden>Planning log</button>
+      </header>
+      <div class="demo-terms" data-terminals></div>
+    </div>
+    <div class="demo-panel">
+      <header class="demo-panel-head">
+        <h3 id="demo-tree-h">Repository</h3>
+        <span class="meta">select a file to read it</span>
+      </header>
+      <div class="demo-tree" data-tree tabindex="0" role="region" aria-label="Repository, worktrees and GitHub"></div>
+    </div>
+  </div>
+
+  <details class="demo-words">
+    <summary>The route in words</summary>
+    <ol class="words" id="demo-words">
+      <li><b>Idea</b><small>you describe what you want</small></li>
+      <li><b>Project Grill</b><small>an agent asks what the idea leaves open; you approve the requirements</small></li>
+      <li><b>Plan</b><small>{planSteps.map((s) => s.name.toLowerCase()).join(", ")}</small></li>
+      <li class="you"><b>Approve</b><small>you approve the plan and merge it</small></li>
+      <li><b>Issues</b><small>one GitHub Issue per feature</small></li>
+      <li><b>Three features in parallel</b><small>each in its own worktree: build, verify, review, triage, pull request</small>
+        <p class="cond">When a check fails, the route goes back to build and verifies again. When the review finds a problem, triage sends it back to a fix, a check and a new review.</p></li>
+      <li class="you"><b>Merge</b><small>you merge each pull request into main, one at a time</small></li>
+    </ol>
+  </details>
+
+  <dialog class="demo-dialog" aria-labelledby="demo-dialog-h" data-dialog>
+    <header>
+      <h3 id="demo-dialog-h" data-dialog-title>Details</h3>
+      <button type="button" class="demo-btn" data-action="close">Close</button>
+    </header>
+    <div class="demo-dialog-body" data-dialog-body></div>
+  </dialog>
+</div>
+
+<script>
+  import { mountDemo } from "../lib/demo-view";
+
+  for (const root of document.querySelectorAll<HTMLElement>("[data-demo]")) mountDemo(root);
+</script>

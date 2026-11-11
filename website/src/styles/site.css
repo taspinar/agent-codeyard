@@ -167,7 +167,6 @@ p { margin: 0 0 var(--s-4); max-width: var(--measure); text-wrap: pretty; }
 .hero { padding-block: var(--s-7) var(--s-6); }
 .hero-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: var(--s-5) var(--s-7); align-items: end; }
 .hero-side .lede { margin-top: 0; }
-.hero-copy { margin-top: var(--s-4); max-width: var(--measure-lede); color: var(--ink-2); }
 .route { margin-left: 0; margin-right: 0; }
 .hero h1 { font-size: var(--t-display); max-width: var(--measure-display); letter-spacing: var(--track-display); line-height: var(--lh-display); }
 .hero h1 em { font-style: normal; color: var(--line-ink); }
@@ -242,14 +241,6 @@ main section:first-of-type { border-top: 0; }
 .body > * + * { margin-top: var(--s-5); }
 .body > p:first-child { font-size: var(--t-lg); line-height: var(--lh-lead); }
 
-/* Two-sided ledger: who does what */
-.ledger { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 2px solid var(--ink); }
-.ledger > div { padding: var(--s-4) var(--s-4) var(--s-4) 0; border-right: 1px solid var(--rule); }
-.ledger > div + div { padding-left: var(--s-4); }
-.ledger > div:last-child { border-right: 0; }
-.ledger h3 { font-size: var(--t-md); margin-bottom: var(--s-2); }
-.ledger ul { margin: 0; padding-left: var(--s-indent); color: var(--ink-2); font-size: var(--t-sm); }
-.ledger li + li { margin-top: var(--s-1); }
 
 /* Tables */
 table { border-collapse: collapse; width: 100%; font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
@@ -336,8 +327,6 @@ html:not(.js) .switches { display: none; }
   .artifact { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-  .ledger { grid-template-columns: 1fr; }
-  .ledger > div, .ledger > div + div { padding: var(--s-4) 0; border-right: 0; border-bottom: 1px solid var(--rule); }
   .split, .rules { grid-template-columns: 1fr; }
   main section { padding: var(--s-7) 0; }
   .hero { padding-top: var(--s-6); }
@@ -729,14 +718,21 @@ main section.overview-sec { padding: var(--s-6) 0 var(--s-8); border-top: 0; }
 .story > li { padding: var(--s-4) 0; border-bottom: 1px solid var(--rule); color: var(--ink-2); font-size: var(--t-sm); }
 .story > li > b { display: block; color: var(--ink); font-size: var(--t-md); }
 .story > li > a { font-weight: var(--w-semibold); }
-.scenario-steps { display: block; margin-top: 0; }
-.scenario-steps > li { padding-bottom: var(--s-6); }
-.scenario-steps > li > b { font-size: var(--t-md); }
-.scenario-steps .facts { margin-top: var(--s-3); }
-.asked { margin: var(--s-2) 0 0; padding-left: var(--s-indent); }
-.asked li { padding: 0; list-style: disc; }
-.asked li::before { content: none; }
+/* The evidence of the home page: Issue, review and checks, pull request on
+   one green line; the merge by the owner is the diamond. */
+.evidence { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-5); position: relative; }
+.evidence::before { content: ""; position: absolute; left: 0.45rem; right: 0.45rem; top: 0.45rem; height: var(--stroke); background: var(--line); border-radius: 3px; }
+.evidence li { position: relative; padding-top: var(--s-6); font-size: var(--t-sm); color: var(--ink-2); }
+.evidence li::before { content: ""; position: absolute; left: 0; top: 0; width: 0.95rem; height: 0.95rem; border-radius: 50%; background: var(--ground); border: 3.5px solid var(--ink); }
+.evidence li.you::before { border-radius: 0; transform: rotate(45deg) scale(0.85); background: var(--ink); }
+.evidence b { display: block; color: var(--ink); font-size: var(--t-md); margin-bottom: var(--s-1); }
+.quiet { font-size: var(--t-sm); color: var(--ink-2); }
+.split p { font-size: var(--t-sm); margin-bottom: var(--s-2); }
 @media (max-width: 760px) {
+  .evidence { grid-template-columns: minmax(0, 1fr); padding-left: var(--s-route-indent); }
+  .evidence::before { left: 0.45rem; right: auto; top: 0.6rem; bottom: 0.6rem; width: var(--stroke); height: auto; }
+  .evidence li { padding: 0 0 0 var(--s-3); }
+  .evidence li::before { left: -1.43rem; top: 0.3rem; }
   .compare.rows .col { display: block; }
   .compare.rows dl { display: block; }
 }

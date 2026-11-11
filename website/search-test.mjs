@@ -119,7 +119,7 @@ if (process.argv[2]) {
     finding: /the first version let every signed-in user open the history view/i,
   };
   const uses = {
-    '': ['function', 'agreement', 'finding'],
+    '': ['function'],
     'workflow/': Object.keys(parts),
     'features/': ['plan', 'check', 'finding'],
     'faq/': ['function'],
