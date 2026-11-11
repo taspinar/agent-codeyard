@@ -123,7 +123,6 @@ if (process.argv[2]) {
     'workflow/': Object.keys(parts),
     'features/': ['plan', 'check', 'finding'],
     'faq/': ['function'],
-    'examples/': Object.keys(parts),
     'docs/getting-started/': ['function'],
     'docs/new-to-agentic-coding/': Object.keys(parts),
     'docs/verification-and-completion/': ['function', 'check'],
