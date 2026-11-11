@@ -365,20 +365,32 @@ try {
       await p.keyboard.press('ArrowRight');
       assert.equal(await count(), 'Moment 2 of 19', `The timeline moves ${at}`);
       // The Plan dialog from its station: focus in, Escape out, focus back.
+      // A dialog opens and the focus moves a task after the key press: wait
+      // for the state that is expected, then assert it (no fixed delay).
       const dialog = p.locator('[data-dialog]');
+      const opened = async (title, message) => {
+        await p.waitForFunction(t => { const d = document.querySelector('[data-dialog]'); return d.open && d.querySelector('[data-dialog-title]').textContent === t; }, title, { timeout: 5000 }).catch(() => {});
+        assert.equal(await p.locator('[data-dialog-title]').innerText(), title, message);
+        assert(await dialog.isVisible(), message);
+      };
+      const focused = async (selector, message) => {
+        await p.waitForFunction(s => document.activeElement?.matches(s), selector, { timeout: 5000 }).catch(() => {});
+        assert(await p.evaluate(s => document.activeElement?.matches(s), selector), message);
+      };
       await press('[data-milestone="plan"]');
-      assert(await dialog.isVisible() && await dialog.evaluate(d => d.contains(document.activeElement)), `The Plan dialog takes the focus ${at}`);
-      assert.equal(await p.locator('[data-dialog-title]').innerText(), 'Inside Plan');
+      await opened('Inside Plan', `The Plan dialog ${at}`);
+      assert(await dialog.evaluate(d => d.contains(document.activeElement)), `The Plan dialog takes the focus ${at}`);
       await p.keyboard.press('Escape');
       assert(!await dialog.isVisible());
-      assert.equal(await p.evaluate(() => document.activeElement.dataset.milestone), 'plan', `Focus returns to Plan ${at}`);
+      await focused('[data-milestone="plan"]', `Focus returns to Plan ${at}`);
       // The feature dialog jumps to a moment.
       await p.locator('[data-action="timeline"]').fill('12');
       await press('[data-action="details"]');
-      assert.equal(await p.locator('[data-dialog-title]').innerText(), 'Inside a feature');
+      await opened('Inside a feature', `The feature dialog ${at}`);
       await press('[data-goto="13"]');
       assert(!await dialog.isVisible());
       assert.equal(await count(), 'Moment 14 of 19');
+      await focused('[data-action="details"]', `Focus returns to the feature steps ${at}`);
       // Switching the active feature terminal.
       await press('[data-select="f04"]');
       assert.equal(await p.locator('[data-select="f04"]').getAttribute('aria-pressed'), 'true', `Terminal switch ${at}`);
@@ -389,14 +401,14 @@ try {
       const file = p.locator('[data-file]').first();
       const path = (await file.innerText()).trim();
       await press('[data-file]');
-      assert.equal(await p.locator('[data-dialog-title]').innerText(), path, `The file dialog ${at}`);
+      await opened(path, `The file dialog ${at}`);
       assert((await p.locator('.demo-file').innerText()).trim().length > 0);
       const results = await new AxeBuilder({ page: p }).include('.demo').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
       assert.deepEqual(results.violations.filter(v => ['serious', 'critical'].includes(v.impact) || v.id === 'color-contrast'), [], `Accessibility of the demo with a dialog open ${at}`);
       await p.keyboard.press('Escape');
-      assert(await p.evaluate(() => document.activeElement.matches('[data-file]')), `Focus returns to the file ${at}`);
+      await focused('[data-file]', `Focus returns to the file ${at}`);
       await press('[data-action="log"]');
-      assert.equal(await p.locator('[data-dialog-title]').innerText(), 'Planning terminal');
+      await opened('Planning terminal', `The planning log ${at}`);
       await p.keyboard.press('Escape');
       // Every old anchor of the home page lands in the section that took its content.
       for (const [id, section] of [['example', 'demo'], ['roles', 'demo'], ['projects', 'evidence'], ['why', 'why'], ['who', 'who'], ['start', 'start']]) {

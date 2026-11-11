@@ -182,10 +182,12 @@ export function mountDemo(root: HTMLElement) {
     else if (e.target === dialog) dialog.close();
   });
   // Focus returns to the control that opened the dialog; Escape closes it natively.
+  // The close event comes a task later: a control the visitor moved to since keeps the focus.
   dialog.addEventListener("close", () => {
     const back = opener;
     opener = null;
-    if (back?.isConnected) back.focus();
+    const now = document.activeElement;
+    if (back?.isConnected && (!now || now === document.body || dialog.contains(now))) back.focus();
   });
   document.addEventListener("visibilitychange", () => { if (document.hidden) demo.pause(); });
   render(demo.state);
