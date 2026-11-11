@@ -7,71 +7,57 @@
 // marks what each moment reached. Nothing moves until the visitor presses
 // Play. The route in words below the map is its text alternative.
 import "../styles/demo.css";
-import { lanes, milestones, moments, stages, loops, planSteps, last } from "../lib/demo";
+import { lanes, milestones, moments, planSteps, last } from "../lib/demo";
+import { mapLayouts } from "../lib/demo-map";
 
-// The geometry of the map, in viewBox units: the planning line on the
-// middle row, then three feature lanes that split at 45 degrees and join
-// main again after their merges.
-const trunk = 118;
-const laneY = [56, 118, 180];
-const stopX = [40, 150, 260, 370, 480];
-const split = 520;
-const laneStart = 582;
-const stageX = [660, 760, 860, 960, 1060, 1160];
-const mainX = 1236;
-const xOf = Object.fromEntries(stages.map((s, i) => [s.key, stageX[i]]));
-const d = (y: number) => y - trunk;
-const loopTop = laneY[0] - 26;
+// The map is drawn in two layouts of the same route (src/lib/demo-map.ts):
+// horizontal on wide screens, top to bottom on narrow ones. demo.css shows
+// one of them; the script marks both.
+const stop = Object.fromEntries(milestones.map((m) => [m.key, m]));
+const lane = Object.fromEntries(lanes.map((l) => [l.key, l]));
 ---
 <div class="demo" data-demo>
   <figure class="demo-route">
     <figcaption class="demo-sr" id="demo-map-t">The route of the illustrative run: idea, Project Grill, plan, your approval and the Issues; then three features in parallel, each through build, verify, review, triage and its own pull request, merged by you one at a time.</figcaption>
-    <div class="demo-scroll">
-      <svg class="demo-map" viewBox="0 0 1280 236" role="group" aria-labelledby="demo-map-t" aria-describedby="demo-words">
+    {mapLayouts.map((map) => (
+      <svg class={`demo-map is-${map.orientation}`} data-map={map.orientation} viewBox={`0 0 ${map.width} ${map.height}`} role="group" aria-labelledby="demo-map-t" aria-describedby="demo-words">
         <g class="demo-tracks" aria-hidden="true">
-          {stopX.slice(0, -1).map((x, i) => <path class="track" data-track={`t${i}`} d={`M${x} ${trunk} H${stopX[i + 1]}`} />)}
-          {lanes.map((l, i) => (
-            <>
-              <path class="track" data-track={`branch-${l.key}`} d={`M${stopX[4]} ${trunk} H${split} L${split + Math.abs(d(laneY[i]))} ${laneY[i]} H${laneStart}`} />
-              <path class="track" data-track={`${l.key}-build`} d={`M${laneStart} ${laneY[i]} H${stageX[0]}`} />
-              {stages.slice(1).map((s, j) => <path class="track" data-track={`${l.key}-${s.key}`} d={`M${stageX[j]} ${laneY[i]} H${stageX[j + 1]}`} />)}
-              <path class="track" data-track={`${l.key}-main`} d={`M${stageX[5]} ${laneY[i]} L${stageX[5] + Math.abs(d(laneY[i]))} ${trunk} H${mainX}`} />
-            </>
-          ))}
+          {map.tracks.map((t) => <path class="track" data-track={t.key} d={t.d} />)}
         </g>
-        {loops.map((loop) => (
+        {map.loops.map((loop) => (
           <g class="demo-loop" data-loop={loop.key} aria-hidden="true">
-            <path d={`M${xOf[loop.from]} ${laneY[0] - 12} V${loopTop} H${xOf[loop.to]} V${laneY[0] - 14}`} />
-            <path class="head" d={`M${xOf[loop.to] - 6} ${laneY[0] - 22} L${xOf[loop.to]} ${laneY[0] - 13} L${xOf[loop.to] + 6} ${laneY[0] - 22}`} />
-            <text x={(xOf[loop.from] + xOf[loop.to]) / 2} y={loopTop - 8} text-anchor="middle">{loop.note}</text>
+            <path d={loop.d} />
+            <path class="head" d={loop.head} />
+            <text x={loop.note.x} y={loop.note.y} text-anchor={loop.note.anchor}>{loop.lines.map((line, i) => <tspan x={loop.note.x} dy={i ? 16 : 0}>{line}</tspan>)}</text>
           </g>
         ))}
-        {milestones.map((m, i) => (
-          <g class="demo-stop" data-milestone={m.key} role="button" tabindex="0" aria-label={"details" in m ? "Plan: open the steps inside it" : `${m.name}: show this moment`}>
-            <rect class="hit" x={stopX[i] - 50} y={trunk - 20} width="100" height="70" />
-            {"owner" in m ? <rect class="sym gate" x={stopX[i] - 10} y={trunk - 10} width="20" height="20" transform={`rotate(45 ${stopX[i]} ${trunk})`} /> : <circle class="sym" cx={stopX[i]} cy={trunk} r="10" />}
-            <text class="name" x={stopX[i]} y={trunk + 32} text-anchor="middle">{m.name}</text>
-            <text class="sub" x={stopX[i]} y={trunk + 49} text-anchor="middle">{m.sub}</text>
+        {map.stops.map(({ key, sym, hit, name, sub }) => (
+          <g class="demo-stop" data-milestone={key} role="button" tabindex="0" aria-label={"details" in stop[key] ? "Plan: open the steps inside it" : `${stop[key].name}: show this moment`}>
+            <rect class="hit" x={hit.x} y={hit.y} width={hit.width} height={hit.height} />
+            {sym.gate ? <rect class="sym gate" x={sym.x - sym.r} y={sym.y - sym.r} width={2 * sym.r} height={2 * sym.r} transform={`rotate(45 ${sym.x} ${sym.y})`} /> : <circle class="sym" cx={sym.x} cy={sym.y} r={sym.r} />}
+            <text class="name" x={name.x} y={name.y} text-anchor={name.anchor}>{stop[key].name}</text>
+            <text class="sub" x={sub.x} y={sub.y} text-anchor={sub.anchor}>{stop[key].sub}</text>
           </g>
         ))}
-        {lanes.map((l, i) => (
-          <g class="demo-lane" data-lane={l.key} role="button" tabindex="0" aria-label={`${l.name}, Issue #${l.issue}: show its terminal`}>
-            <rect class="hit" x={laneStart + 6} y={laneY[i] - 28} width={stageX[5] - laneStart + 14} height="56" />
-            <text x={laneStart + 14} y={laneY[i] + 25}><tspan class="name">{l.name} #{l.issue}</tspan><tspan class="sub" dx="8">·</tspan><tspan class="sub" dx="8" data-status>not started</tspan></text>
-            {stages.map((s, j) => s.owner
-              ? <rect class="sym gate" data-stage={s.key} x={stageX[j] - 8} y={laneY[i] - 8} width="16" height="16" transform={`rotate(45 ${stageX[j]} ${laneY[i]})`} />
-              : <circle class="sym" data-stage={s.key} cx={stageX[j]} cy={laneY[i]} r="8" />)}
+        {map.lanes.map(({ key, hits, label, tag, stages: syms }) => (
+          <g class="demo-lane" data-lane={key} role="button" tabindex="0" aria-label={`${lane[key].name}, Issue #${lane[key].issue}: show its terminal`}>
+            {hits.map((hit) => <rect class="hit" x={hit.x} y={hit.y} width={hit.width} height={hit.height} />)}
+            <text x={label.x} y={label.y}><tspan class="name">{lane[key].name} #{lane[key].issue}</tspan><tspan class="sub" dx="8">·</tspan><tspan class="sub" dx="8" data-status>not started</tspan></text>
+            {tag && <text class="name" x={tag.x} y={tag.y} text-anchor={tag.anchor}>#{lane[key].issue}</text>}
+            {syms.map((s) => s.gate
+              ? <rect class="sym gate" data-stage={s.key} x={s.x - s.r} y={s.y - s.r} width={2 * s.r} height={2 * s.r} transform={`rotate(45 ${s.x} ${s.y})`} />
+              : <circle class="sym" data-stage={s.key} cx={s.x} cy={s.y} r={s.r} />)}
           </g>
         ))}
         <g class="demo-main" aria-hidden="true">
-          <circle class="sym" data-main cx={mainX} cy={trunk} r="10" />
-          <text class="name" x={mainX} y={trunk + 32} text-anchor="middle">main</text>
+          <circle class="sym" data-main cx={map.main.sym.x} cy={map.main.sym.y} r={map.main.sym.r} />
+          <text class="name" x={map.main.label.x} y={map.main.label.y} text-anchor={map.main.label.anchor}>main</text>
         </g>
         <g class="demo-columns" aria-hidden="true">
-          {stages.map((s, j) => <text x={stageX[j]} y="228" text-anchor="middle">{s.name}</text>)}
+          {map.columns.map((c) => <text x={c.x} y={c.y} text-anchor={c.anchor}>{c.text}</text>)}
         </g>
       </svg>
-    </div>
+    ))}
   </figure>
 
   <div class="demo-now">

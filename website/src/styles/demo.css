@@ -27,8 +27,9 @@
 .demo { border-top: 2px solid var(--ink); }
 .demo-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .demo-route { margin: 0; position: relative; }
-.demo-scroll { overflow-x: auto; overflow-y: hidden; }
-.demo-map { display: block; width: 100%; min-width: 52rem; height: auto; }
+.demo-map { display: block; width: 100%; height: auto; }
+/* One layout of the map at a time: top to bottom where the horizontal one no longer fits. */
+.demo-map.is-vertical { display: none; max-width: 26rem; margin-inline: auto; }
 .demo-map text { font-family: var(--sans); fill: var(--ink); }
 .demo-map .name { font-weight: var(--w-bold); font-size: var(--t-map-sub); fill: var(--ink); }
 .demo-map .sub { font-weight: var(--w-semibold); font-size: var(--t-map-note); fill: var(--ink-2); }
@@ -143,6 +144,11 @@ html:not(.js) .demo-now, html:not(.js) .demo-controls, html:not(.js) .demo-panel
   .demo-panel { height: 20rem; }
   .demo-panel + .demo-panel { border-left: 0; border-top: 1px solid var(--rule); padding-left: 0; margin-top: var(--s-3); }
   .demo-panel:first-child { padding-right: 0; }
+}
+
+@media (max-width: 56rem) {
+  .demo-map.is-horizontal { display: none; }
+  .demo-map.is-vertical { display: block; }
 }
 
 @media (max-width: 760px) {

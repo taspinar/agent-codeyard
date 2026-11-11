@@ -87,7 +87,8 @@ try {
       assert.equal(await primary.innerText(), 'Watch it work');
       assert.equal(await primary.getAttribute('href'), '#demo');
       assert.equal(await hero.locator('.actions a:not(.btn)').getAttribute('href'), base + 'docs/getting-started/');
-      assert.equal(await page.locator('main svg').count(), 1, 'One process diagram on the home page: the demo');
+      // The demo draws its route in two layouts and the screen shows one of them.
+      assert.equal(await page.locator('main svg').evaluateAll(es => es.filter(e => e.checkVisibility()).length), 1, 'One process diagram on the home page: the demo');
       for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
         await page.setViewportSize(viewport);
         await page.evaluate(() => scrollTo(0, 0));
@@ -305,13 +306,15 @@ try {
       report.keyboard.push({ theme, width, pages: ['home', 'workflow', 'docs', 'examples'], passed: true });
     }
   }
-  // The workflow demo of the home page (#370), at 1280 × 800 and 390 × 844 in
-  // both themes: nothing plays on load; every moment shows a caption, the
-  // terminals and the tree, and the way back of its lane when it takes one;
-  // the merges come one at a time; the controls and the dialogs work by
+  // The workflow demo of the home page (#370), at 1280 × 800, 390 × 844 and
+  // 320 × 640 in both themes: nothing plays on load; every moment shows a
+  // caption, the terminals and the tree, and the way back of its lane when it
+  // takes one; the merges come one at a time; on a phone the route is drawn
+  // top to bottom, whole within the viewport, with the same state as the
+  // horizontal map of the desktop; the controls and the dialogs work by
   // keyboard, the dialogs take the focus and give it back; no error.
   for (const theme of ['light', 'dark']) {
-    for (const [width, height] of [[1280, 800], [390, 844]]) {
+    for (const [width, height] of [[1280, 800], [390, 844], [320, 640]]) {
       const demoContext = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce' });
       await demoContext.addInitScript(t => localStorage.setItem('act-theme', t), theme);
       const p = await demoContext.newPage();
@@ -320,7 +323,9 @@ try {
       const at = `(demo ${theme} ${width})`;
       await p.goto(origin + base);
       const count = () => p.locator('[data-count]').innerText();
-      const press = async (selector) => { await p.locator(selector).first().focus(); await p.keyboard.press('Enter'); };
+      const press = async (selector) => { await p.locator(selector).locator('visible=true').first().focus(); await p.keyboard.press('Enter'); };
+      const orientation = width >= 1280 ? 'horizontal' : 'vertical';
+      assert.deepEqual(await p.locator('.demo-map').evaluateAll(es => es.filter(e => e.checkVisibility()).map(e => e.dataset.map)), [orientation], `The route ${orientation} ${at}`);
       await p.waitForTimeout(3000);
       assert.equal(await count(), 'Moment 1 of 19', `Nothing plays on load ${at}`);
       assert.equal(await p.locator('.demo-map .track').first().evaluate(e => getComputedStyle(e).transitionDuration), '0s', `No transition under reduced motion ${at}`);
@@ -334,15 +339,29 @@ try {
       for (let m = 0; m < 19; m++) {
         if (m > 0) await press('[data-action="next"]');
         assert.equal(await count(), `Moment ${m + 1} of 19`, at);
-        const state = await p.evaluate(() => ({
-          caption: document.querySelector('[data-title]').textContent.trim() && document.querySelector('[data-text]').textContent.trim(),
-          terminals: [...document.querySelectorAll('[data-term]')].filter(e => e.checkVisibility()).map(e => e.innerText.trim().length),
-          tree: document.querySelector('[data-tree]').innerText.trim().length,
-          loops: [...document.querySelectorAll('[data-loop]')].filter(e => getComputedStyle(e).display !== 'none' && e.getBBox().width > 0).map(e => e.dataset.loop),
-          merged: [...document.querySelectorAll('[data-track$="-main"].is-done')].map(e => e.dataset.track),
-          overflow: document.documentElement.scrollWidth > innerWidth,
-        }));
+        const state = await p.evaluate(() => {
+          const [map, other] = [...document.querySelectorAll('.demo-map')].sort((a, b) => b.checkVisibility() - a.checkVisibility());
+          // What each layout marks: the classes and the words of every station, lane and loop.
+          const marks = svg => [...svg.querySelectorAll('[data-milestone], [data-lane], [data-stage], [data-track], [data-loop], [data-main]')].map(e => `${e.getAttribute('class')}|${e.querySelector?.('[data-status]')?.textContent ?? ''}`);
+          const frame = map.getBoundingClientRect();
+          const parts = [...map.querySelectorAll('text, .sym, .demo-loop path')].filter(e => e.checkVisibility()).map(e => e.getBoundingClientRect()).filter(r => r.width);
+          return {
+            caption: document.querySelector('[data-title]').textContent.trim() && document.querySelector('[data-text]').textContent.trim(),
+            terminals: [...document.querySelectorAll('[data-term]')].filter(e => e.checkVisibility()).map(e => e.innerText.trim().length),
+            tree: document.querySelector('[data-tree]').innerText.trim().length,
+            loops: [...map.querySelectorAll('[data-loop]')].filter(e => getComputedStyle(e).display !== 'none' && e.getBBox().width > 0).map(e => e.dataset.loop),
+            merged: [...map.querySelectorAll('[data-track$="-main"].is-done')].map(e => e.dataset.track),
+            statuses: [...map.querySelectorAll('[data-status]')].map(e => e.textContent.trim()),
+            same: JSON.stringify(marks(map)) === JSON.stringify(marks(other)),
+            outside: parts.filter(r => r.left < Math.max(0, frame.left) - 0.5 || r.right > Math.min(innerWidth, frame.right) + 0.5).length,
+            mapScrolls: map.parentElement.scrollWidth > map.parentElement.clientWidth,
+            overflow: document.documentElement.scrollWidth > innerWidth,
+          };
+        });
         assert(state.caption && state.tree > 0 && state.terminals.length > 0 && state.terminals.every(n => n > 0), `Empty panel at moment ${m + 1} ${at}`);
+        assert(state.same, `Both layouts of the route show the state of moment ${m + 1} ${at}`);
+        assert(state.statuses.length === 3 && state.statuses.every(Boolean), `Each lane's state in words at moment ${m + 1} ${at}`);
+        assert(state.outside === 0 && !state.mapScrolls, `The whole route within the viewport at moment ${m + 1} ${at}`);
         assert.deepEqual(state.loops, m === 11 || m === 12 ? ['repair'] : m === 13 || m === 14 ? ['findings'] : [], `Way back at moment ${m + 1} ${at}`);
         assert(!state.overflow, `Horizontal overflow at moment ${m + 1} ${at}`);
         merged.push(state.merged.length);

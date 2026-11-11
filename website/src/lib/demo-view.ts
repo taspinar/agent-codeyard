@@ -1,7 +1,9 @@
 // The behaviour of the home page's workflow demo (#370): draws each moment of
 // src/lib/demo.ts into the markup of src/components/WorkflowDemo.astro. The
-// map changes classes only; the terminals, the tree and the dialog are
-// written from the data. Nothing plays until the visitor presses Play.
+// map changes classes only, in both of its layouts (horizontal and vertical),
+// so the one the screen shows always has the state of the moment; the
+// terminals, the tree and the dialog are written from the data. Nothing plays
+// until the visitor presses Play.
 import { createDemo, featureSteps, featuresFrom, lanes, last, laneState, lineKind, loopAt, milestones, moments, planSteps, progress, stages, terminalLog, terminals, tree, type DemoFile, type DemoState, type Substep } from "./demo";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -21,7 +23,6 @@ export function mountDemo(root: HTMLElement) {
   const dialog = $<HTMLDialogElement>("[data-dialog]");
   const termBox = $("[data-terminals]");
   const treeBox = $("[data-tree]");
-  const scroller = $(".demo-scroll");
   let opener: HTMLElement | null = null;
   let shown = -1;
   let shownLane = "";
@@ -31,7 +32,8 @@ export function mountDemo(root: HTMLElement) {
 
   function drawMap(s: DemoState) {
     const reached = progress(s.moment);
-    all<SVGGElement>("[data-milestone]").forEach((g, i) => {
+    all<SVGGElement>("[data-milestone]").forEach((g) => {
+      const i = milestones.findIndex((m) => m.key === g.dataset.milestone);
       g.classList.toggle("is-done", i <= reached);
       g.classList.toggle("is-current", i === reached && s.moment < featuresFrom);
     });
@@ -42,18 +44,19 @@ export function mountDemo(root: HTMLElement) {
       if (s.moment >= featuresFrom) done.add(`branch-${l.key}`);
       for (const st of stages) if (state.reached[st.key]) done.add(`${l.key}-${st.key}`);
       if (state.merged) done.add(`${l.key}-main`);
-      const g = $<SVGGElement>(`[data-lane="${l.key}"]`);
-      g.classList.toggle("is-selected", s.moment >= featuresFrom && s.lane === l.key);
-      g.querySelector("[data-status]")!.textContent = state.status;
-      g.setAttribute("aria-label", `${l.name}, Issue #${l.issue}: ${state.status}. Show its terminal.`);
-      for (const sym of g.querySelectorAll<SVGElement>("[data-stage]")) {
-        const stage = sym.dataset.stage as keyof typeof state.reached;
-        sym.classList.toggle("is-done", state.reached[stage]);
-        sym.classList.toggle("is-current", state.current === stage);
+      for (const g of all<SVGGElement>(`[data-lane="${l.key}"]`)) {
+        g.classList.toggle("is-selected", s.moment >= featuresFrom && s.lane === l.key);
+        g.querySelector("[data-status]")!.textContent = state.status;
+        g.setAttribute("aria-label", `${l.name}, Issue #${l.issue}: ${state.status}. Show its terminal.`);
+        for (const sym of g.querySelectorAll<SVGElement>("[data-stage]")) {
+          const stage = sym.dataset.stage as keyof typeof state.reached;
+          sym.classList.toggle("is-done", state.reached[stage]);
+          sym.classList.toggle("is-current", state.current === stage);
+        }
       }
     }
     all<SVGPathElement>("[data-track]").forEach((p) => p.classList.toggle("is-done", done.has(p.dataset.track!)));
-    $("[data-main]").classList.toggle("is-done", s.moment >= lanes[0].mergeAt);
+    all("[data-main]").forEach((c) => c.classList.toggle("is-done", s.moment >= lanes[0].mergeAt));
     const loop = loopAt(s.moment);
     all<SVGGElement>("[data-loop]").forEach((g) => g.classList.toggle("is-taken", g.dataset.loop === loop?.key));
   }
@@ -94,9 +97,6 @@ export function mountDemo(root: HTMLElement) {
   function render(s: DemoState) {
     const m = moments[s.moment];
     drawMap(s);
-    // Where the map scrolls inside its frame (narrow screens): the part of the route this moment is on.
-    const features = s.moment >= featuresFrom;
-    if (shown < 0 || features !== shown >= featuresFrom) scroller.scrollLeft = features ? scroller.scrollWidth * 0.44 : 0;
     if (s.moment !== shown || s.lane !== shownLane) {
       drawTerminals(s);
       drawTree(s);
