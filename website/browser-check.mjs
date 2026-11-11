@@ -378,7 +378,8 @@ try {
     for (const theme of ['light', 'dark']) {
       await page.emulateMedia({ colorScheme: theme });
 
-      for (const width of [375, 768, 1440]) {
+      // About (#376) is also checked at the narrowest phone width, at 390 and at 1280 px.
+      for (const width of path === base + 'about/' ? [320, 375, 390, 768, 1280, 1440] : [375, 768, 1440]) {
         await page.setViewportSize({ width, height: 900 });
         await page.goto(origin + path + '?theme=' + theme);
         await page.evaluate(() => document.fonts.ready);
@@ -437,9 +438,24 @@ try {
           assert(length.words <= 1400, `${path} shows ${length.words} words, more than 1400`);
           assert(length.height <= 6000, `${path} is ${length.height} px high at 1440 px, more than 6000`);
         }
+        // About (#376): three parts in order, 300 to 500 visible words in <main>,
+        // one link to History and research, and every old anchor in the page.
+        if (path === base + 'about/' && width === 1440) {
+          const about = await page.evaluate(() => ({
+            parts: [...document.querySelectorAll('main section > .wrap h2')].map(h => h.closest('section').id),
+            words: document.querySelector('main').innerText.split(/\s+/).filter(Boolean).length,
+            history: [...document.querySelectorAll('main a')].filter(a => new URL(a.href).pathname.endsWith('/docs/history/')).length,
+            missing: ['maker', 'maker-h', 'why', 'limits', 'limits-h', 'history', 'decisions', 'research', 'contribute', 'contribute-h', 'source', 'source-h', 'improvements'].filter(id => !document.getElementById(id)),
+          }));
+          console.log(`  ${path} ${theme} 1440 px: ${about.words} words.`);
+          assert.deepEqual(about.parts, ['maker', 'why', 'contribute'], 'The parts of About and their order');
+          assert(about.words >= 300 && about.words <= 500, `${path} shows ${about.words} words, not 300 to 500`);
+          assert.equal(about.history, 1, 'About links History and research once');
+          assert.deepEqual(about.missing, [], 'Every old anchor of About resolves');
+        }
       }
     }
-    console.log(`  Checked ${path} in both themes at all three widths.`);
+    console.log(`  Checked ${path} in both themes at every width.`);
   }
   assert.deepEqual([...external], [], 'Third-party resources are forbidden');
 
