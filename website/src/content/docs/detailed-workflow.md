@@ -4,7 +4,7 @@ description: "The workflow in daily use: step by step or unattended, resuming a 
 order: 3
 ---
 
-This page is the manual for daily use: which way to run a feature, how to continue one that stopped, what to do when the plan changes, and what each step is for. For a first look at the route, with an illustrative example, read <a href="../../workflow/">How it works</a>. For the exact command of a step, what goes in and comes out, and when it stops or retries, use the <a href="../reference/workflow/">workflow reference</a>; each step below links to its entry there.
+This page is the manual for daily use: which way to run a feature, how to continue one that stopped, what to do when the plan changes, and what each step is for. For a first look at the route, with an illustrative example, read <a href="../workflow/">How it works</a>. For the exact command of a step, what goes in and comes out, and when it stops or retries, use the <a href="#workflow-reference">workflow reference</a>; each step below links to its entry there.
 
 The route has two stages. You plan the project at the start, and update the plan when its direction changes. Then every feature of the plan goes the same way, from an Issue to a pull request that you merge.
 
@@ -31,7 +31,7 @@ A feature that stopped keeps its worktree, its handoff note and its records, so 
 2. If an agent asked a question, answer it in `.agents/handoffs/<issue>.md` or in a comment on the Issue.
 3. Continue the way you were working: `./scripts/start-feature.sh <issue> --resume` step by step, or `./scripts/run-feature.sh <issue>` again unattended; the run continues where the feature stands.
 
-The feature has recovered when the next session starts from the handoff note instead of from the beginning, and the step that stopped runs again. If the same stop comes back, look up its message in <a href="../troubleshooting/">Troubleshooting</a>.
+The feature has recovered when the next session starts from the handoff note instead of from the beginning, and the step that stopped runs again. If the same stop comes back, look up its message in <a href="#troubleshooting">Troubleshooting</a>.
 
 ### When the plan changes
 
@@ -61,94 +61,94 @@ For an Issue with many parts, a technical plan in `.agents/plans/` holds the imp
 <a id="step-idea"></a>
 <a id="describe-the-idea"></a>
 
-**Describe the idea.** A short description in your own words. It does not need every detail: the next step asks about what it leaves open. No agent overwrites it, so it stays the record of what you asked for. <a href="../reference/workflow/#describe-the-idea">Reference</a>.
+**Describe the idea.** A short description in your own words. It does not need every detail: the next step asks about what it leaves open. No agent overwrites it, so it stays the record of what you asked for. <a href="#workflow-reference/describe-the-idea">Reference</a>.
 
 <a id="step-grill"></a>
 <a id="clarify-the-requirements-project-grill"></a>
 
-**Clarify the requirements (Project Grill).** An agent asks about the goals, the users, the scope and the constraints, and only about what would change the product or its technical direction. The requirements count only after you approve them, and everything after this point is checked against them, so this is the cheapest place to correct a misunderstanding. The planning runs in a planning worktree, a separate working copy next to your repository. <a href="../reference/workflow/#clarify-the-requirements">Reference</a>.
+**Clarify the requirements (Project Grill).** An agent asks about the goals, the users, the scope and the constraints, and only about what would change the product or its technical direction. The requirements count only after you approve them, and everything after this point is checked against them, so this is the cheapest place to correct a misunderstanding. The planning runs in a planning worktree, a separate working copy next to your repository. <a href="#workflow-reference/clarify-the-requirements">Reference</a>.
 
 <a id="step-plan"></a>
 <a id="create-the-project-plan"></a>
 
-**Create the project plan.** A fresh agent session proposes the architecture, a roadmap of features with IDs and dependencies, and a decision record (an ADR) for each important technical choice. When it needs a decision from you, it stops and asks instead of guessing. <a href="../reference/workflow/#create-the-plan">Reference</a>.
+**Create the project plan.** A fresh agent session proposes the architecture, a roadmap of features with IDs and dependencies, and a decision record (an ADR) for each important technical choice. When it needs a decision from you, it stops and asks instead of guessing. <a href="#workflow-reference/create-the-plan">Reference</a>.
 
 <a id="step-planning-review"></a>
 <a id="review-the-plan"></a>
 
-**Review the plan.** A second agent, which cannot edit files, checks the plan for missing requirements, inconsistent decisions and risks, in a form the scripts validate. <a href="../reference/workflow/#review-the-plan">Reference</a>.
+**Review the plan.** A second agent, which cannot edit files, checks the plan for missing requirements, inconsistent decisions and risks, in a form the scripts validate. <a href="#workflow-reference/review-the-plan">Reference</a>.
 
 <a id="step-revise"></a>
 <a id="address-the-review-findings"></a>
 
-**Address the review findings.** The planning agent proposes a decision per finding: adopt, reject, defer, or escalate to you. You approve the decisions, and a changed plan is reviewed again, until a round changes nothing. <a href="../reference/workflow/#address-the-findings">Reference</a>.
+**Address the review findings.** The planning agent proposes a decision per finding: adopt, reject, defer, or escalate to you. You approve the decisions, and a changed plan is reviewed again, until a round changes nothing. <a href="#workflow-reference/address-the-findings">Reference</a>.
 
 <a id="step-finish-planning"></a>
 <a id="approve-the-plan"></a>
 
-**Approve the plan.** Your approval is recorded with a fingerprint, a checksum of the requirements and roadmap you approved. If either changes later, the approval no longer applies, and no feature Issue is created from it. <a href="../reference/workflow/#approve-the-plan">Reference</a>.
+**Approve the plan.** Your approval is recorded with a fingerprint, a checksum of the requirements and roadmap you approved. If either changes later, the approval no longer applies, and no feature Issue is created from it. <a href="#workflow-reference/approve-the-plan">Reference</a>.
 
 <a id="step-planning-merge"></a>
 <a id="merge-the-planning-pull-request"></a>
 
-**Merge the planning pull request.** The approved plan is merged into `main`, and every feature starts from that version. <a href="../reference/workflow/#merge-the-plan">Reference</a>.
+**Merge the planning pull request.** The approved plan is merged into `main`, and every feature starts from that version. <a href="#workflow-reference/merge-the-plan">Reference</a>.
 
 <a id="step-change"></a>
 <a id="update-an-approved-plan"></a>
 
-**Update an approved plan.** When the requirements or the direction change, the change goes through the planning agent, the review and your approval again, as <a href="#when-the-plan-changes">When the plan changes</a> describes. Feature IDs stay the same, and a replaced decision stays traceable. <a href="../reference/workflow/#change-the-plan">Reference</a>.
+**Update an approved plan.** When the requirements or the direction change, the change goes through the planning agent, the review and your approval again, as <a href="#when-the-plan-changes">When the plan changes</a> describes. Feature IDs stay the same, and a replaced decision stays traceable. <a href="#workflow-reference/change-the-plan">Reference</a>.
 
 ### Stage 2 · Build each feature
 
 <a id="step-issue"></a>
 <a id="create-a-feature-issue"></a>
 
-**Create a feature Issue.** You create the GitHub Issue of a roadmap feature when you are ready to build it, not all at once at the start, so it matches the current requirements and architecture. <a href="../reference/workflow/#create-a-feature-issue">Reference</a>.
+**Create a feature Issue.** You create the GitHub Issue of a roadmap feature when you are ready to build it, not all at once at the start, so it matches the current requirements and architecture. <a href="#workflow-reference/create-a-feature-issue">Reference</a>.
 
 <a id="step-implement"></a>
 <a id="implement-the-feature"></a>
 
-**Implement the feature.** The implementer works in its own branch and worktree, so that features in progress do not get in each other's way. Its first session decides whether the feature is clear. If a decision that matters is still open, such as the scope, a public interface or security, it changes nothing, writes its questions in the handoff note with options and a recommendation, and the run stops for you; a name or the layout of the tests it decides itself. Your comments on the Issue reach the implementer, the reviewer and the triage agent alike. Every session ends with a completion record: complete, awaiting evidence, partial, or blocked, with evidence per acceptance criterion; only complete and awaiting evidence go on to the review. <a href="../verification-and-completion/">Verification and completion</a> explains the record; <a href="../reference/workflow/#implement-the-feature">Reference</a>.
+**Implement the feature.** The implementer works in its own branch and worktree, so that features in progress do not get in each other's way. Its first session decides whether the feature is clear. If a decision that matters is still open, such as the scope, a public interface or security, it changes nothing, writes its questions in the handoff note with options and a recommendation, and the run stops for you; a name or the layout of the tests it decides itself. Your comments on the Issue reach the implementer, the reviewer and the triage agent alike. Every session ends with a completion record: complete, awaiting evidence, partial, or blocked, with evidence per acceptance criterion; only complete and awaiting evidence go on to the review. <a href="#verification-and-review">Verification and completion</a> explains the record; <a href="#workflow-reference/implement-the-feature">Reference</a>.
 
 <a id="step-verify"></a>
 <a id="run-verification"></a>
 
-**Run verification.** Your tests, linters and builds run before every review and before the commit. A pass counts for exactly the content it checked, and the checks run again as soon as that content changes. <a href="../reference/workflow/#run-the-checks">Reference</a>.
+**Run verification.** Your tests, linters and builds run before every review and before the commit. A pass counts for exactly the content it checked, and the checks run again as soon as that content changes. <a href="#workflow-reference/run-the-checks">Reference</a>.
 
 <a id="step-review"></a>
 <a id="review-the-implementation"></a>
 
-**Review the implementation.** An agent of another provider than the implementer, which cannot edit files, checks every acceptance criterion against the code and the tests; the completion record is a claim, and the reviewer reports one the code does not support. It also rates the impact on the architecture, which decides whether the merge needs you. When the code changes, another review is needed; a finding you accepted or deferred is not raised again unless the change made it worse. <a href="../reference/workflow/#review-the-code">Reference</a>.
+**Review the implementation.** An agent of another provider than the implementer, which cannot edit files, checks every acceptance criterion against the code and the tests; the completion record is a claim, and the reviewer reports one the code does not support. It also rates the impact on the architecture, which decides whether the merge needs you. When the code changes, another review is needed; a finding you accepted or deferred is not raised again unless the change made it worse. <a href="#workflow-reference/review-the-code">Reference</a>.
 
 <a id="step-triage"></a>
 <a id="decide-what-to-do-with-review-findings"></a>
 
-**Decide what to do with review findings.** Each finding gets a recorded decision: fix it now, defer it to a follow-up Issue, or accept it with a reason. This step is called triage. Critical and major findings are always fix now; the one other route is <a href="#owner-exception">your exception</a> for a single finding. Step by step, an agent proposes and you approve; unattended, the agent decides and you read its decisions on the Issue. For a low- or medium-risk feature the risk policy can ask for a light triage, which defers or accepts a minor finding rather than starting a fix round. <a href="../reference/workflow/#decide-on-the-findings">Reference</a>.
+**Decide what to do with review findings.** Each finding gets a recorded decision: fix it now, defer it to a follow-up Issue, or accept it with a reason. This step is called triage. Critical and major findings are always fix now; the one other route is <a href="#owner-exception">your exception</a> for a single finding. Step by step, an agent proposes and you approve; unattended, the agent decides and you read its decisions on the Issue. For a low- or medium-risk feature the risk policy can ask for a light triage, which defers or accepts a minor finding rather than starting a fix round. <a href="#workflow-reference/decide-on-the-findings">Reference</a>.
 
 <a id="step-fix"></a>
 <a id="apply-fixes-and-review-again"></a>
 
-**Apply fixes and review again.** An implementer session repairs only the findings decided as fix now, and the checks run again. The changed content is reviewed again, first the recent fixes, then the complete feature, until a review leaves nothing to fix. <a href="../reference/workflow/#apply-the-fixes">Reference</a>.
+**Apply fixes and review again.** An implementer session repairs only the findings decided as fix now, and the checks run again. The changed content is reviewed again, first the recent fixes, then the complete feature, until a review leaves nothing to fix. <a href="#workflow-reference/apply-the-fixes">Reference</a>.
 
 <a id="step-commit"></a>
 <a id="commit-the-feature"></a>
 
-**Commit the feature.** The commit is refused unless the completion record says the feature is done, the verification passed for this content, and the latest review is current and covers the complete feature. The commit message records all of that with the risk level. When the merge needs your approval, the commit carries an approval request that names the content that was verified and reviewed; it asks and records, it grants nothing. <a href="../reference/workflow/#commit-the-feature">Reference</a>.
+**Commit the feature.** The commit is refused unless the completion record says the feature is done, the verification passed for this content, and the latest review is current and covers the complete feature. The commit message records all of that with the risk level. When the merge needs your approval, the commit carries an approval request that names the content that was verified and reviewed; it asks and records, it grants nothing. <a href="#workflow-reference/commit-the-feature">Reference</a>.
 
 <a id="step-publish"></a>
 <a id="open-the-pull-request"></a>
 
-**Open the pull request.** The branch is pushed and the pull request opened with the evidence in its description, and CI runs the checks again. It closes the Issue only when the feature is complete; unfinished work becomes a draft. <a href="../reference/workflow/#open-the-pull-request">Reference</a>.
+**Open the pull request.** The branch is pushed and the pull request opened with the evidence in its description, and CI runs the checks again. It closes the Issue only when the feature is complete; unfinished work becomes a draft. <a href="#workflow-reference/open-the-pull-request">Reference</a>.
 
 <a id="step-merge"></a>
 <a id="review-and-merge"></a>
 
-**Review and merge.** You read the pull request, its checks and the published triage, and merge it; no script merges. The workflow tells you when a change needs you: a protected path, an architecture impact rated major or breaking, or a feature that nobody reviewed. GitHub enforces that for everyone only with the settings of <a href="../github-setup/">GitHub setup</a>. <a href="../reference/workflow/#merge">Reference</a>.
+**Review and merge.** You read the pull request, its checks and the published triage, and merge it; no script merges. The workflow tells you when a change needs you: a protected path, an architecture impact rated major or breaking, or a feature that nobody reviewed. GitHub enforces that for everyone only with the settings of <a href="#github-setup">GitHub setup</a>. <a href="#workflow-reference/merge">Reference</a>.
 
 <a id="step-run"></a>
 <a id="run-a-feature-unattended"></a>
 
-**Run a feature unattended.** One command runs every step of this stage up to the pull request, as <a href="#step-by-step-or-unattended">Step by step or unattended</a> describes. <a href="../reference/workflow/#run-unattended">Reference</a>.
+**Run a feature unattended.** One command runs every step of this stage up to the pull request, as <a href="#step-by-step-or-unattended">Step by step or unattended</a> describes. <a href="#workflow-reference/run-unattended">Reference</a>.
 
 ## When you disagree, and exceptions
 
@@ -158,7 +158,7 @@ The steps above are the normal route. These are the exceptions, each recorded wh
 
 ### When you disagree with the triage
 
-If the triage agent's proposal is out of proportion, you can give your own decisions instead, an owner-directed triage. No agent runs; the script shows your decisions for confirmation and records your account and your reason on the Issue. It does not bypass any rule: critical and major findings are still fix now, and the only other route for one of them is <a href="#owner-exception">your exception</a> below; a deferral still needs a follow-up Issue, and an acceptance a reason. The options are in the <a href="../reference/workflow/#decide-on-the-findings">reference</a>, and the file format in [owner-directed triage](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#owner-directed-triage) of the development guide.
+If the triage agent's proposal is out of proportion, you can give your own decisions instead, an owner-directed triage. No agent runs; the script shows your decisions for confirmation and records your account and your reason on the Issue. It does not bypass any rule: critical and major findings are still fix now, and the only other route for one of them is <a href="#owner-exception">your exception</a> below; a deferral still needs a follow-up Issue, and an acceptance a reason. The options are in the <a href="#workflow-reference/decide-on-the-findings">reference</a>, and the file format in [owner-directed triage](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#owner-directed-triage) of the development guide.
 
 <a id="owner-exception"></a>
 
@@ -170,6 +170,6 @@ A critical or major finding stops the commit until it is fixed. If you judge tha
 
 ### Skipping a review
 
-Under the shipped policy every feature is reviewed. A project can let low-risk features skip the review, with `low: review: none` or `profile: light`, and for a low-risk change you can also finish without a review and a recorded reason. Either way the commit and the pull request say it was not reviewed, and since nobody assessed its impact, its merge needs you. The verification and the completion record still apply. <a href="../risk-policy/">Risk policy</a> says which changes are low risk.
+Under the shipped policy every feature is reviewed. A project can let low-risk features skip the review, with `low: review: none` or `profile: light`, and for a low-risk change you can also finish without a review and a recorded reason. Either way the commit and the pull request say it was not reviewed, and since nobody assessed its impact, its merge needs you. The verification and the completion record still apply. <a href="#risk-policy">Risk policy</a> says which changes are low risk.
 
 The [development guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md) holds every option of every command.

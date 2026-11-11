@@ -80,7 +80,7 @@ const toc = [
   { slug: "sources", text: "Where the figures come from" },
 ];
 ---
-<DocsPage id="engineering-records" title="Engineering records" description="The engineering case studies of Agent Codeyard: features of Codeyard itself, built with its own workflow, each named by the problem it solved, with its figures, review rounds and pull request." toc={toc}>
+<DocsPage page="docs/engineering-records/" title="Engineering records" description="The engineering case studies of Agent Codeyard: features of Codeyard itself, built with its own workflow, each named by the problem it solved, with its figures, review rounds and pull request." toc={toc}>
   <p>Features of Codeyard itself, built with its own workflow, each named by the problem it solved. A short summary first; open the records for the figures, the review rounds and the excerpts. Issue numbers name the sources. The products built with Codeyard are on <a href={href("examples/")}>Projects</a>.</p>
 
   <h2 id="memory">When the reviewer did not know what was decided</h2>
@@ -440,7 +440,7 @@ Risk: medium
   </details>
 
   <h2 id="levels">What each risk level changed</h2>
-  <p class="needs">The levels as each run recorded them. <a href={href("docs/risk-policy/")}>Risk policy</a>.</p>
+  <p class="needs">The levels as each run recorded them. <a href={href("docs/#risk-policy")}>Risk policy</a>.</p>
   <p>The risk level of a feature decides which model writes its fixes and whether the merge needs the owner's approval. This repository's risk policy has no low class, no low default and no profile line, so every feature here is medium or high.</p>
   <details class="proof">
     <summary>Records: the examples by level</summary>
@@ -457,11 +457,11 @@ Risk: medium
   </details>
 
   <h2 id="absent">What is not shown</h2>
-  <p class="needs"><a href={repoFile(".agents/policies/risk.conf")}><code>risk.conf</code></a> of this repository; <a href={href("docs/risk-policy/")}>Risk policy</a>; <a href={issue(170)}>Issue #170</a>.</p>
+  <p class="needs"><a href={repoFile(".agents/policies/risk.conf")}><code>risk.conf</code></a> of this repository; <a href={href("docs/#risk-policy")}>Risk policy</a>; <a href={issue(170)}>Issue #170</a>.</p>
   <ul class="rules">
     <li><b>A low-risk run.</b> A feature is low risk only when the project's risk policy makes every path it changes low, by a <code>low:</code> class, by <code>default: low</code>, or by <code>profile: light</code>, which adds a low class for documentation and process files; and nothing raises the level. This repository has none of these, so none of its features was low, and this page does not invent one. Under the shipped rules a low feature is still reviewed. With <code>low: review: none</code> or <code>profile: light</code> it is committed without a review; the commit and the pull request say so, and the merge then needs your approval.</li>
     <li><b>A cost in money.</b> The run records count tokens but no prices, and a price depends on the plan or the account. This page gives no amount.</li>
-    <li><b>Onboarding an existing repository.</b> An existing repository can adopt the workflow (<a href={href("docs/adopting/")}>Adopting</a>). A pilot on a private, existing application ran on 6 November 2026; <a href={issue(170)}>its report on Issue #170</a> describes it in general terms, and the fixes it led to were <a href={issue(299)}>#299</a>, <a href={issue(300)}>#300</a> and <a href={issue(306)}>#306</a>. Its records are private, so there is no run of it to show.</li>
+    <li><b>Onboarding an existing repository.</b> An existing repository can adopt the workflow (<a href={href("docs/#adopting")}>Adopting</a>). A pilot on a private, existing application ran on 6 November 2026; <a href={issue(170)}>its report on Issue #170</a> describes it in general terms, and the fixes it led to were <a href={issue(299)}>#299</a>, <a href={issue(300)}>#300</a> and <a href={issue(306)}>#306</a>. Its records are private, so there is no run of it to show.</li>
   </ul>
 
   <h2 id="sources">Where the figures come from</h2>

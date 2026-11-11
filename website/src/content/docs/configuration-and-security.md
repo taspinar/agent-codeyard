@@ -9,14 +9,14 @@ order: 2
 - **An agent runs on your machine, as you.** It uses the sandbox and permission settings of its own command-line tool. It is not in a container or a virtual machine: all agents share your machine, your network, and the services that run there, and a worktree separates working files only.
 - **Each step gets one of three permission profiles:** write, unattended, or read-only. Reviewers are always read-only. If an agent cannot enforce its profile, the script stops instead of starting it with more rights.
 - **Your code goes to the AI provider of each tool.** Codeyard has no service of its own. The coding tools send what they read to their providers, and the scripts publish to GitHub, both under your accounts (<a href="#data">which data goes where</a>).
-- **On GitHub, an agent has the rights of the account that started it.** If you may merge, so may the agent, until agents get an identity of their own ([Issue 99](https://github.com/taspinar/agent-codeyard/issues/99)). Only the settings of <a href="../github-setup/">GitHub setup</a> make GitHub refuse a merge.
+- **On GitHub, an agent has the rights of the account that started it.** If you may merge, so may the agent, until agents get an identity of their own ([Issue 99](https://github.com/taspinar/agent-codeyard/issues/99)). Only the settings of <a href="#github-setup">GitHub setup</a> make GitHub refuse a merge.
 - **Some changes always need you:** a protected path, a change the reviewer rates as major or breaking for the architecture, and a feature committed without a review are marked as needing your approval (<a href="#gate">changes that need the owner</a>). No script merges.
 
 <a id="profiles"></a>
 
 ## What an agent is allowed to do
 
-A script starts an agent with one of three permission profiles. A permission profile is unrelated to the risk level and the workflow profile of the <a href="../risk-policy/#three-settings">risk policy</a>.
+A script starts an agent with one of three permission profiles. A permission profile is unrelated to the risk level and the workflow profile of the <a href="#risk-policy/three-settings">risk policy</a>.
 
 | Profile | Used for | What the agent can do |
 | --- | --- | --- |
@@ -47,14 +47,14 @@ Codeyard is scripts and files in your repository, and it runs on your machine or
 
 | Where to | What | Through |
 | --- | --- | --- |
-| **The AI provider of each tool**: Anthropic for Claude Code, OpenAI for Codex | The instructions of the step and whatever the agent reads: your code, the Issue with its comments, the project documents | The tool's own connection, under your account and that provider's terms. Which tool does which role is set in <a href="../agent-roles/#shipped-configuration">`.agents/agents.conf`</a> |
+| **The AI provider of each tool**: Anthropic for Claude Code, OpenAI for Codex | The instructions of the step and whatever the agent reads: your code, the Issue with its comments, the project documents | The tool's own connection, under your account and that provider's terms. Which tool does which role is set in <a href="#agent-roles/shipped-configuration">`.agents/agents.conf`</a> |
 | **GitHub** | The commits and branches you push, the pull request with its evidence, and on the Issue the review and triage reports and the follow-up Issues | The `gh` command-line tool and Git, signed in as you |
 
-The run records stay on your machine: durations and tokens, never a prompt, an answer or a transcript. Only `publish-feature.sh --summary`, which you turn on yourself, posts the totals of a feature on its Issue, as numbers. Details in <a href="../technical-reference/#records">what is recorded on your machine</a>.
+The run records stay on your machine: durations and tokens, never a prompt, an answer or a transcript. Only `publish-feature.sh --summary`, which you turn on yourself, posts the totals of a feature on its Issue, as numbers. Details in <a href="#technical-reference/records">what is recorded on your machine</a>.
 
 ## GitHub rights
 
-The scripts use your GitHub account through `gh`. An agent therefore has the rights of the account that started it: if that account may push to `main` or merge, so may the agent. The workflow's own scripts never push to `main` and never merge, and they mark what needs your approval, but GitHub refuses a merge only when the repository's rulesets and code owners say so. <a href="../github-setup/">GitHub setup</a> lists those settings; whether you can require a review from someone else depends on whether you work alone or in a team.
+The scripts use your GitHub account through `gh`. An agent therefore has the rights of the account that started it: if that account may push to `main` or merge, so may the agent. The workflow's own scripts never push to `main` and never merge, and they mark what needs your approval, but GitHub refuses a merge only when the repository's rulesets and code owners say so. <a href="#github-setup">GitHub setup</a> lists those settings; whether you can require a review from someone else depends on whether you work alone or in a team.
 
 <a id="gate"></a>
 
@@ -87,4 +87,4 @@ Coding agents name themselves in what they commit: Claude Code adds a `Co-Author
 
 Co-authors who are people are never rejected, and the history of the base is never touched. Codex has no attribution setting and Cursor's is set per user, not per project: `doctor.sh` says so instead of claiming that they are configured.
 
-See the [development guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md) for command options, and <a href="../github-setup/">GitHub setup</a> for the settings that enforce merges.
+See the [development guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md) for command options, and <a href="#github-setup">GitHub setup</a> for the settings that enforce merges.

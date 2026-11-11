@@ -50,7 +50,7 @@ The supported tools are Claude Code and Codex. Which models you can use depends 
 | `reviewer` | Reviews a feature, read-only |
 | `triage` | Proposes what to do with each review finding |
 | `triage-implementer` | Fixes the findings that were selected |
-| `analyst` | Compares the runs of several features and proposes improvements, read-only (<a href="../technical-reference/#learning">learning from your runs</a>) |
+| `analyst` | Compares the runs of several features and proposes improvements, read-only (<a href="#technical-reference/learning">learning from your runs</a>) |
 | `assessor` | Writes the report and the proposal of an assessment of an existing repository, read-only (`assess-repository.sh`) |
 
 The reviewer must use a different tool than the implementer, at every risk level: that is what makes the review independent. `review-feature.sh` refuses to start a reviewer that resolves to a tool the implementer of the feature ran with, and `doctor.sh` warns when a reviewing role and the role it reviews resolve to the same tool.
@@ -86,7 +86,7 @@ analyst: claude fable
 assessor: claude fable
 ```
 
-Why a stronger model at high risk: the template chose it for the features that change the workflow and its gate, after a few of its own runs. That is the experience of one repository, not a measured result for every project. What the level changed in two recorded runs is in <a href="../engineering-records/#levels">What each risk level changed</a>. Codex stays supported as implementer for a project that configures it.
+Why a stronger model at high risk: the template chose it for the features that change the workflow and its gate, after a few of its own runs. That is the experience of one repository, not a measured result for every project. What the level changed in two recorded runs is in <a href="engineering-records/#levels">What each risk level changed</a>. Codex stays supported as implementer for a project that configures it.
 
 ## Further configuration
 
@@ -100,7 +100,7 @@ Why a stronger model at high risk: the template chose it for the features that c
 
 ### Models per risk level
 
-A role of a feature (`implementer`, `reviewer`, `triage`, `triage-implementer`) can also have a line per <a href="../risk-policy/#risk">risk level</a> of the feature, such as `implementer@high: claude fable` next to `implementer: claude opus`. A script that starts the role takes `--agent` and `--model` first, then the line of the level the feature has at that moment, then the plain line; a later session of a feature never runs at a weaker level than an earlier one did. Without a level line the plain line applies. `doctor.sh` validates the lines, and `report-runs.sh` shows the calls per level and model.
+A role of a feature (`implementer`, `reviewer`, `triage`, `triage-implementer`) can also have a line per <a href="#risk-policy/risk">risk level</a> of the feature, such as `implementer@high: claude fable` next to `implementer: claude opus`. A script that starts the role takes `--agent` and `--model` first, then the line of the level the feature has at that moment, then the plain line; a later session of a feature never runs at a weaker level than an earlier one did. Without a level line the plain line applies. `doctor.sh` validates the lines, and `report-runs.sh` shows the calls per level and model.
 
 <a id="skills"></a>
 

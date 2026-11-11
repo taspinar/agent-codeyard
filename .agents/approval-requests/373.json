@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "13688979bc537f2989af3a2aa1024b60497e55a3",
+  "commit": {
+    "branch": "feature/373-one-technical-documentation-interface",
+    "parent": "ec511bfd36259340737b93a952242167a394b51f",
+    "base": "ec511bfd36259340737b93a952242167a394b51f"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the independent review classified the impact on the architecture as major: This changes the public documentation URL and navigation model, introduces a shared redirect table and client-side hash router, and changes search indexing and sitemap generation. The diff and tests align with the referenced information architecture. "
+  ],
+  "explanation": "Issue #373: One Technical Documentation interface at /docs/ with Quick Start open by default (website IA step 2). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

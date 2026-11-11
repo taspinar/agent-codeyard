@@ -1,0 +1,135 @@
+---
+// Technical Documentation: every topic of src/lib/docs.ts on one page, in the
+// order of the navigation (website/design/INFORMATION-ARCHITECTURE.md, 4;
+// #373). Every id of a topic has the topic as prefix, so /docs/#<topic> and
+// /docs/#<topic>/<id> are real ids. Without JavaScript every topic is shown
+// and every link jumps within the page; with it, the router below shows one
+// topic at a time, chosen by the address, and Quick Start when it names none.
+import { getCollection } from "astro:content";
+import DocsPage from "../../components/DocsPage.astro";
+import WorkflowReference from "../../components/WorkflowReference.astro";
+import { first, prefixed, topics } from "../../lib/docs";
+import { docsAliases } from "../../lib/redirects";
+import { stages } from "../../lib/steps";
+import { site } from "../../../site.config";
+
+const entries = await getCollection("docs");
+const reference = "workflow-reference";
+const items = topics.map((topic, i) => {
+  let html = "";
+  let toc: { slug: string; text: string; children: { slug: string; text: string }[] }[] = [];
+  if (topic.entry) {
+    const entry = entries.find((e) => e.id === topic.entry);
+    if (!entry?.rendered) throw new Error(`docs: no rendered entry ${topic.entry}`);
+    html = prefixed(entry.rendered.html, topic.id);
+    for (const h of (entry.rendered.metadata?.headings ?? []) as { depth: number; slug: string; text: string }[]) {
+      const item = { slug: `${topic.id}/${h.slug}`, text: h.text, children: [] };
+      if (h.depth === 2) toc.push(item);
+      else if (h.depth === 3) (toc.at(-1)?.children ?? toc).push(item);
+    }
+  } else {
+    toc = [
+      { slug: `${reference}/index`, text: "Step index", children: [] },
+      { slug: `${reference}/parameters`, text: "Parameters", children: [] },
+      ...stages.map((stage) => ({
+        slug: `${reference}/${stage.id}`, text: stage.title,
+        children: stage.steps.map((step) => ({ slug: `${reference}/${step.id}`, text: step.title })),
+      })),
+    ];
+  }
+  // An old id of /docs/ itself, at the place its content is now.
+  for (const [alias, target] of Object.entries(docsAliases)) {
+    html = html.replace(new RegExp(`(<[a-z][a-z0-9]*\\b[^>]*?\\sid="${target}")`), `<a id="${alias}"></a>$1`);
+  }
+  return { ...topic, html, toc, previous: topics[i - 1], next: topics[i + 1] };
+});
+for (const entry of entries) {
+  if (!topics.some((topic) => topic.entry === entry.id)) throw new Error(`docs: ${entry.id} is not a topic`);
+}
+const ids = [...items.flatMap((item) => [item.id, ...[...item.html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1])])];
+const duplicate = ids.find((id, i) => ids.indexOf(id) !== i);
+if (duplicate) throw new Error(`docs: the id ${duplicate} is twice on /docs/`);
+
+const description = "Technical Documentation of Agent Codeyard: start a project, adopt an existing repository, run the workflow, configure it, verify and review, troubleshoot, and look up files and steps.";
+const routing = {
+  topics: items.map(({ id, title }) => ({ id, title })),
+  aliases: docsAliases,
+  suffix: `Technical Documentation — ${site.name}`,
+};
+---
+<DocsPage title="Technical Documentation" description={description}>
+  <Fragment slot="head">
+    <p class="lede docs-scope">This describes the current version on <code>main</code>. In your project, its own <code>docs/</code> describe the version you installed (<a href="#technical-reference/sources-and-scope">sources and scope</a>).</p>
+  </Fragment>
+  <Fragment slot="toc">
+    {items.map((item) => (
+      <div data-toc={item.id}>
+        <p class="nav-group">{item.title}</p>
+        <ul>{item.toc.map((h) => <li><a href={`#${h.slug}`}>{h.text}</a>
+          {h.children.length ? <ul>{h.children.map((c) => <li><a href={`#${c.slug}`}>{c.text}</a></li>)}</ul> : null}</li>)}</ul>
+      </div>
+    ))}
+  </Fragment>
+  <a id="more-to-read"></a>
+  {items.map((item) => (
+    <section class="topic" id={item.id} data-topic={item.id} data-title={item.title} data-open={item.id === first.id ? "" : undefined}>
+      <h2 tabindex="-1">{item.title}</h2>
+      {item.entry
+        ? <div class="prose"><Fragment set:html={item.html} /></div>
+        : <div class="prose ref"><WorkflowReference /></div>}
+      <nav class="docs-pagination" aria-label={`Previous and next: ${item.title}`}>
+        {item.previous && <a rel="prev" href={`#${item.previous.id}`}>Previous: {item.previous.title}</a>}
+        {item.next && <a rel="next" href={`#${item.next.id}`}>Next: {item.next.title}</a>}
+      </nav>
+    </section>
+  ))}
+  <script is:inline define:vars={routing}>
+    // The router (#373): the hash names a topic, or a place in one
+    // ("#troubleshooting/a-check-fails"). It shows that topic only, marks it in
+    // the navigation and "On this page", names it in the section picker and the
+    // title, and scrolls to the place. When the visitor chose it, the focus
+    // moves to the heading of the topic; on the first load it stays.
+    var names = topics.map(function (t) { return t.id; });
+    var current;
+    function show(hash, chosen) {
+      var id = decodeURIComponent(hash.replace(/^#/, ""));
+      if (Object.prototype.hasOwnProperty.call(aliases, id)) {
+        id = aliases[id];
+        history.replaceState(history.state, "", "#" + id);
+      }
+      var place = id ? document.getElementById(id) : null;
+      var holder = place && place.closest("[data-topic]");
+      var topic = names.indexOf(id.split("/")[0]) >= 0 ? id.split("/")[0] : holder ? holder.dataset.topic : null;
+      // An id of the layout, such as the target of the skip link: no topic changes.
+      if (!topic && place && current) return;
+      topic = topic || names[0];
+      var title = topics[names.indexOf(topic)].title;
+      if (topic !== current) {
+        current = topic;
+        document.querySelectorAll("[data-topic]").forEach(function (s) { s.toggleAttribute("data-open", s.dataset.topic === topic); });
+        document.querySelectorAll("[data-toc]").forEach(function (l) { l.hidden = l.dataset.toc !== topic; });
+        var section = Array.prototype.find.call(document.querySelectorAll(".docs-sections a"), function (a) { return a.hash === "#" + topic; }).closest("[data-section]");
+        document.querySelectorAll("[data-section]").forEach(function (s) { s.toggleAttribute("data-open", s === section); });
+        document.querySelectorAll('.docs-sidebar nav a[href^="#"]').forEach(function (a) {
+          if (a.getAttribute("href") === "#" + topic) a.setAttribute("aria-current", "page");
+          else a.removeAttribute("aria-current");
+        });
+        document.querySelector("[data-picked]").textContent = title;
+        document.title = title + " · " + suffix;
+      }
+      var picker = document.querySelector(".docs-picker");
+      if (chosen && matchMedia("(max-width: 760px)").matches) picker.open = false;
+      if (place && holder && place !== holder) place.scrollIntoView();
+      else if (chosen) document.getElementById(topic).querySelector("h2").focus();
+    }
+    show(location.hash, false);
+    addEventListener("hashchange", function () { show(location.hash, true); });
+    // A link to the topic that is open already changes no hash: show it all the same.
+    document.addEventListener("click", function (event) {
+      var link = event.target.closest && event.target.closest("a[href]");
+      if (!link || event.defaultPrevented) return;
+      var url = new URL(link.href, location.href);
+      if (url.pathname === location.pathname && url.hash && url.hash === location.hash) show(url.hash, true);
+    });
+  </script>
+</DocsPage>

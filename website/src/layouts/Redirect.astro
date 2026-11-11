@@ -1,0 +1,42 @@
+---
+// A retired route (website/design/INFORMATION-ARCHITECTURE.md, 3.2,
+// mechanism C): GitHub Pages has no server redirects, so the page sends the
+// visitor on. The script comes first: it maps the old anchor through the
+// table of src/lib/redirects.ts; an unknown anchor goes to the default
+// target. Without JavaScript the refresh goes to the default target. No
+// header, footer or <main>: the search index skips the page, the sitemap
+// does not list it.
+import { site } from "../../site.config";
+import { href } from "../lib/links";
+
+interface Props {
+  /** The title of the old page. */
+  title: string;
+  /** The default target, a path under the base with its fragment. */
+  to: string;
+  /** The name of the target, for the link. */
+  label: string;
+  /** Every old id with its new address, a path under the base with its fragment. */
+  anchors: Record<string, string>;
+}
+
+const { title, to, label, anchors } = Astro.props;
+const target = href(to);
+const map = Object.fromEntries(Object.entries(anchors).map(([id, path]) => [id, href(path)]));
+---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script is:inline define:vars={{ map, target }}>var id = decodeURIComponent(location.hash.slice(1)); location.replace(Object.prototype.hasOwnProperty.call(map, id) ? map[id] : target);</script>
+<meta http-equiv="refresh" content={`0; url=${target}`}>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moved: {title} — {site.name}</title>
+<meta name="description" content={`${title} moved to ${label}.`}>
+<link rel="canonical" href={new URL(target, Astro.site).href}>
+<meta name="robots" content="noindex">
+</head>
+<body>
+<p>This page moved to <a href={target}>{label}</a>.</p>
+</body>
+</html>

@@ -15,6 +15,15 @@ export function plainText(html) {
     }).replace(/\s+/g, ' ').trim();
 }
 
+/** The topics of an article, by their <section data-topic>, with their title and text. */
+export function topicsOf(article) {
+  const parts = article.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').split(/(?=<section\b[^>]*\bdata-topic=)/);
+  return parts.flatMap(part => {
+    const open = part.match(/^<section\b[^>]*\bdata-topic="([^"]+)"[^>]*\bdata-title="([^"]+)"/);
+    return open ? [{ id: open[1], title: plainText(open[2]), text: plainText(part.replace(/<nav\b[^>]*class="docs-pagination"[\s\S]*?<\/nav>/, '')) }] : [];
+  });
+}
+
 /** Index the rendered output, so MDX, tables and code are searchable too. */
 export default function searchIndex() {
   let base;
@@ -32,11 +41,18 @@ export default function searchIndex() {
             const main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1];
             if (!main) continue;
             const page = relative(root, path).split(sep).join('/').replace(/index\.html$/, '');
+            const article = main.match(/<article\b[^>]*\bdata-search\b[^>]*>([\s\S]*?)<\/article>/i)?.[1];
+            const topics = topicsOf(article ?? '');
+            // Technical Documentation: one entry per topic, which the router opens (#373).
+            if (topics.length) {
+              for (const topic of topics) pages.push({ title: topic.title, url: `${base}${page}#${topic.id}`, rank: pageRank(`${page}#${topic.id}`), text: topic.text });
+              continue;
+            }
             pages.push({
               title: plainText(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || ''),
               url: base + page,
               rank: pageRank(page),
-              text: plainText(main.match(/<article\b[^>]*\bdata-search\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] || main),
+              text: plainText(article || main),
             });
           }
         }

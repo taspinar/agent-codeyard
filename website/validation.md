@@ -6,7 +6,10 @@ It builds and link-checks the project path (currently
 `/agent-codeyard/`) and `/`, runs the site's
 unit and search tests, and uses Playwright Chromium and axe-core on every
 built HTML page, including 404, in light and dark themes at 375, 768 and
-1440 pixels. Serious/critical violations and text contrast failures fail the
+1440 pixels, and Technical Documentation (`/docs/` and its Appendix pages) at
+320, 390, 768, 1280 and 1440 pixels. A redirect page of a retired route is
+not checked as a page: the walk of the table below covers it. A JavaScript
+error on any page fails the check. Serious/critical violations and text contrast failures fail the
 check. Horizontal page overflow and third-party requests also fail it.
 Before the build, the check starts Playwright Chromium once
 (`browser-ready.mjs`; `./check.sh --browser` runs only this step). It
@@ -44,6 +47,23 @@ an old anchor of a case moved to Engineering records shows its one-line
 pointer only when it is the target, and that the FightAnalytics case is labelled as an illustrative example. Native
 summaries keep both navigation lists usable with JavaScript disabled.
 
+For Technical Documentation (#373) it checks that `/docs/` opens with Quick
+Start and has the search and the section navigation in view at 1280 px; that
+every section opens from the navigation with the focus on its heading and
+every topic by its deep link, with its "On this page" list; that back and
+forward move between sections; that a heading deep link scrolls to it, an old
+id of `/docs/` goes on to its new place and an unknown hash opens Quick
+Start; that search opens the right topic for "existing project", "resume",
+`run-feature.sh`, "cost", "planning" and "risk"; that at 390 px the section
+picker is on the first screen and a choice by keyboard closes it, names the
+topic and moves the focus to its heading; that every redirect page lands on
+its topic with and without JavaScript, and on the heading of a sample of its
+old anchors with it; and that without JavaScript every topic is on the page
+and a deep link scrolls natively. `search-test.mjs` walks the whole table of
+old addresses (`src/lib/redirects.ts`) on the built site and compares the
+headings and code blocks of the old docs pages (`docs-before.json`) with the
+one page.
+
 The check writes full-page screenshots and `report.json` under
 `website/reports/{project,root}/` (ignored by Git). Set
 `DOCUMENTATION_REPORT_DIR` to retain them elsewhere. Reports include axe
@@ -61,7 +81,7 @@ after CI has run. It expires after 30 days; retain a copy for a longer review.
 
 ## Visual review
 
-Review every page in both themes at all three widths against
+Review every page in both themes at each of its widths against
 `design/PRODUCT.md` and `design/DESIGN.md`:
 
 - Does each diagram communicate an actual mechanism, with a readable text
@@ -70,7 +90,7 @@ Review every page in both themes at all three widths against
   illustrations, cards, icons, shadows, gradients or extra accent colours?
 - Are there any invented claims, numbers, testimonials or superlatives?
 - Are navigation, focus, code and tables readable in both themes? Does the
-  narrow Docs layout place search above the collapsed navigation lists?
+  narrow Docs layout place search above the section picker?
 - Is the content available without JavaScript and without animation?
 
 Automated axe results are evidence, not a complete WCAG certification. Review

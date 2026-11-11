@@ -15,6 +15,10 @@ async function pagesIn(dir, prefix = '') {
   return (await Promise.all(entries.map(e => e.isDirectory() ? pagesIn(join(dir, e.name), `${prefix}${e.name}/`) : e.name.endsWith('.html') ? [`${prefix}${e.name}`] : []))).flat().sort();
 }
 const files = await pagesIn(output);
+// A retired route is a redirect page (src/lib/redirects.ts): the walk of the table below checks it.
+const redirects = [];
+for (const file of files) if ((await readFile(join(output, file), 'utf8')).includes('<meta http-equiv="refresh"')) redirects.push(file);
+const pages = files.filter(file => !redirects.includes(file));
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.woff2': 'font/woff2' };
 const server = createServer(async (req, res) => {
   try {
@@ -34,6 +38,13 @@ try {
   browser = await chromium.launch();
   const context = await browser.newContext({ reducedMotion: 'reduce' });
   const page = await context.newPage();
+  // No JavaScript error on any page (#373).
+  const errors = [];
+  const watch = p => {
+    p.on('pageerror', error => errors.push(`${p.url()}: ${error.message}`));
+    p.on('console', message => { if (message.type() === 'error') errors.push(`${p.url()}: ${message.text()}`); });
+  };
+  watch(page);
   const external = new Set();
   await context.route('**/*', route => {
     if (new URL(route.request().url()).origin !== origin) { external.add(route.request().url()); return route.abort(); }
@@ -61,6 +72,114 @@ try {
       if (matched) return;
     }
     assert.fail(`Cannot reach ${selector} with Tab`);
+  }
+  // Technical Documentation, one interface (#373): Quick Start by default, the
+  // navigation and search in view, every section by the navigation and by its
+  // deep link, back and forward, the section picker by keyboard, search into
+  // the right topic, and the walk of every redirect page with and without
+  // JavaScript.
+  async function docsInterface() {
+    const { sections, topics } = await import('./src/lib/docs.ts');
+    const { retired, moved } = await import('./src/lib/redirects.ts');
+    const wide = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const p = await wide.newPage();
+    watch(p);
+    const open = () => p.evaluate(() => [...document.querySelectorAll('.docs-topics > [data-topic]')].filter(s => s.checkVisibility()).map(s => s.id));
+    // A fresh load of an address, not a change of the hash of the open page.
+    const visit = async url => { await p.goto('about:blank'); await p.goto(url); };
+    const inView = (selector) => p.locator(selector).first().evaluate(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.top >= 0 && r.bottom <= innerHeight; });
+    await p.goto(origin + base + 'docs/');
+    assert.deepEqual(await open(), ['quick-start'], '/docs/ opens with Quick Start');
+    for (const selector of ['.docs-search input', '.docs-sidebar nav a', '#quick-start h2']) assert(await inView(selector), `Not in view at 1280 px: ${selector}`);
+    assert.equal(await p.locator('.docs-sidebar nav a[aria-current="page"]').innerText(), 'Quick Start');
+    // Every section from the navigation, then every topic by its deep link.
+    for (const section of sections) {
+      await p.locator(`.docs-sections > li > a[href="#${section.id}"]`).click();
+      await p.waitForURL(origin + base + 'docs/#' + section.id);
+      // The router answers the hashchange event, which follows the new address.
+      await p.waitForFunction(id => document.activeElement.closest('[data-topic]')?.id === id, section.id, { timeout: 2000 }).catch(() => {});
+      assert.deepEqual(await open(), [section.id], `The navigation opens ${section.id}`);
+      assert.equal(await p.evaluate(() => document.activeElement.closest('[data-topic]')?.id + ' ' + document.activeElement.tagName), `${section.id} H2`, `The focus moves to the heading of ${section.id}`);
+      assert.match(await p.title(), new RegExp(`^${section.topics[0].title.replace(/[?]/g, '\\?')} · Technical Documentation`));
+    }
+    await p.goBack();
+    await p.waitForFunction(id => document.querySelector(`[data-topic="${id}"]`).checkVisibility(), sections.at(-2).id, { timeout: 2000 }).catch(() => {});
+    assert.deepEqual(await open(), [sections.at(-2).id], 'Back opens the section before');
+    await p.goForward();
+    await p.waitForFunction(id => document.querySelector(`[data-topic="${id}"]`).checkVisibility(), sections.at(-1).id, { timeout: 2000 }).catch(() => {});
+    assert.deepEqual(await open(), [sections.at(-1).id], 'Forward opens the section after');
+    for (const topic of topics) {
+      await visit(origin + base + 'docs/#' + topic.id);
+      assert.deepEqual(await open(), [topic.id], `The deep link opens ${topic.id}`);
+      assert.equal(await p.locator('.docs-sidebar nav a[aria-current="page"]').getAttribute('href'), '#' + topic.id);
+      assert.equal(await p.locator('[data-toc]:visible').getAttribute('data-toc'), topic.id, `"On this page" of ${topic.id}`);
+    }
+    await visit(origin + base + 'docs/#troubleshooting/a-check-fails');
+    assert.deepEqual(await open(), ['troubleshooting']);
+    assert(await inView('[id="troubleshooting/a-check-fails"]'), 'A heading deep link scrolls to its heading');
+    await visit(origin + base + 'docs/#what-stays-with-you');
+    assert.equal(new URL(p.url()).hash, '#configuration/the-limits-in-short', 'An old id of /docs/ goes on to its new place');
+    assert(await inView('[id="configuration/the-limits-in-short"]'));
+    await visit(origin + base + 'docs/#no-such-topic');
+    assert.deepEqual(await open(), ['quick-start'], 'An unknown hash opens Quick Start');
+    // Search opens the right topic, also from /docs/ itself.
+    for (const [query, topic] of [['existing project', 'adopting'], ['resume', 'troubleshooting'], ['run-feature.sh', 'quick-start'], ['cost', 'quick-start'], ['planning', 'quick-start'], ['risk', 'quick-start']]) {
+      await p.locator('.docs-search input').fill(query);
+      await p.locator('#search-results li a').first().waitFor();
+      await p.locator('#search-results li a').first().click();
+      await p.waitForURL(origin + base + 'docs/#' + topic);
+      await p.waitForFunction(id => document.querySelector(`[data-topic="${id}"]`).checkVisibility(), topic, { timeout: 2000 }).catch(() => {});
+      assert.deepEqual(await open(), [topic], `Search for "${query}" opens ${topic}`);
+    }
+    // The section picker at 390 px: on the first screen, operable by keyboard;
+    // a choice closes it and moves the focus to the topic's heading.
+    await p.setViewportSize({ width: 390, height: 844 });
+    await p.goto(origin + base + 'docs/');
+    assert(await inView('.docs-picker > summary'), 'The section picker is on the first screen at 390 px');
+    assert.equal(await p.locator('.docs-picker > summary').innerText(), 'Section: Quick Start');
+    await p.locator('.docs-picker > summary').focus();
+    await p.keyboard.press('Enter');
+    assert.notEqual(await p.locator('.docs-picker').getAttribute('open'), null);
+    for (let i = 0; i < 20 && !await p.evaluate(() => document.activeElement.getAttribute('href') === '#troubleshooting'); i++) await p.keyboard.press('Tab');
+    assert.equal(await p.evaluate(() => getComputedStyle(document.activeElement).outlineStyle !== 'none' && parseFloat(getComputedStyle(document.activeElement).outlineWidth) >= 2), true, 'Visible focus in the picker');
+    await p.keyboard.press('Enter');
+    await p.waitForURL(origin + base + 'docs/#troubleshooting');
+    await p.waitForFunction(() => document.activeElement.matches('#troubleshooting > h2'), null, { timeout: 2000 }).catch(() => {});
+    assert.equal(await p.locator('.docs-picker').getAttribute('open'), null, 'A choice closes the picker');
+    assert.equal(await p.locator('.docs-picker > summary').innerText(), 'Section: Troubleshooting');
+    assert.equal(await p.evaluate(() => document.activeElement.matches('#troubleshooting > h2')), true, 'The focus is on the heading of the chosen topic');
+    assert.equal(await p.evaluate(() => getComputedStyle(document.activeElement).outlineStyle !== 'none'), true, 'The focused heading shows its focus');
+    await wide.close();
+    // Every retired route, with and without JavaScript: the default target,
+    // and a sample of its anchors (the first and the last, and a layout id).
+    for (const javaScriptEnabled of [true, false]) {
+      const context = await browser.newContext({ javaScriptEnabled, viewport: { width: 1280, height: 800 } });
+      const r = await context.newPage();
+      watch(r);
+      for (const route of retired) {
+        const html = await readFile(join(output, route.path, 'index.html'), 'utf8');
+        const ids = Object.keys(JSON.parse(html.match(/const map = (\{.*?\});/)[1]));
+        const samples = javaScriptEnabled ? [undefined, 'main', ids[4], ids.at(-1), 'no-such-anchor'] : [undefined, ids.at(-1)];
+        for (const id of samples) {
+          await r.goto(origin + base + route.path + (id ? '#' + id : ''));
+          const expected = javaScriptEnabled && id && id !== 'no-such-anchor' ? moved(route, id) : moved(route);
+          await r.waitForURL(origin + base + expected);
+          const fragment = expected.split('#')[1];
+          // An alias id is an empty element: its topic is what must be shown.
+          await r.waitForFunction(id => { const e = document.getElementById(id); return e && (e.closest('[data-topic]') ?? e).checkVisibility(); }, fragment, { timeout: 5000 });
+          if (javaScriptEnabled) assert.deepEqual(await r.evaluate(() => [...document.querySelectorAll('.docs-topics > [data-topic]')].filter(s => s.checkVisibility()).map(s => s.id)), [route.topic], `/${route.path}#${id ?? ''} opens ${route.topic}`);
+        }
+      }
+      await context.close();
+    }
+    // Without JavaScript every topic is on the page, in order, and a deep link is a real id.
+    const plain = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 1280, height: 800 } });
+    const q = await plain.newPage();
+    await q.goto(origin + base + 'docs/#risk-policy/shipped-configuration');
+    assert.deepEqual(await q.evaluate(() => [...document.querySelectorAll('.docs-topics > [data-topic]')].filter(s => s.checkVisibility()).map(s => s.id)), topics.map(t => t.id), 'Without JavaScript every topic is shown');
+    assert(await q.locator('[id="risk-policy/shipped-configuration"]').evaluate(e => { const r = e.getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight; }), 'Without JavaScript a deep link scrolls natively');
+    await plain.close();
+    console.log(`  Technical Documentation: ${sections.length} sections, ${topics.length} topics, ${retired.length} redirect pages walked with and without JavaScript.`);
   }
   const panelAccessible = async () => {
     const results = await new AxeBuilder({ page }).include('#step-panel').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
@@ -361,24 +480,27 @@ try {
     await p.waitForTimeout(3000);
     assert.match(await p.locator('[data-caption="lead"]').innerText(), /^Step 1 of/, 'Without reduced motion, too, nothing advances by itself');
     await p.goto(origin + base + 'workflow/#review-the-code');
-    await p.waitForURL(origin + base + 'docs/reference/workflow/#review-the-code');
-    assert(await p.locator('#review-the-code').isVisible());
-    await p.mouse.wheel(0, 4000);
+    await p.waitForURL(origin + base + 'docs/#workflow-reference/review-the-code');
+    assert(await p.locator('[id="workflow-reference/review-the-code"]').isVisible());
+    await p.mouse.wheel(0, 1000);
     const toc = await p.locator('.docs-toc').boundingBox();
     const text = await p.locator('.docs-body').boundingBox();
     assert(toc.x >= text.x + text.width && toc.y >= 0 && toc.y < 900, 'On this page is not beside the text');
     await p.goto(origin + base + 'docs/getting-started/');
+    await p.waitForURL(origin + base + 'docs/#quick-start');
     await p.locator('.code-block .copy').first().click();
     assert.equal(await p.evaluate(() => navigator.clipboard.readText()), await p.locator('.code-block pre').first().evaluate(e => e.innerText.replace(/\n$/, '')));
     await wide.close();
   }
-  for (const file of files) {
+  await docsInterface();
+  for (const file of pages) {
     const path = base + file.replace(/index\.html$/, '');
     const slug = file.replace(/\/index\.html$/, '').replace(/\.html$/, '').replaceAll('/', '-');
     for (const theme of ['light', 'dark']) {
       await page.emulateMedia({ colorScheme: theme });
 
-      for (const width of [375, 768, 1440]) {
+      // Technical Documentation at the widths of #373, the other pages at three.
+      for (const width of path.startsWith(base + 'docs/') ? [320, 390, 768, 1280, 1440] : [375, 768, 1440]) {
         await page.setViewportSize({ width, height: 900 });
         await page.goto(origin + path + '?theme=' + theme);
         await page.evaluate(() => document.fonts.ready);
@@ -439,12 +561,13 @@ try {
         }
       }
     }
-    console.log(`  Checked ${path} in both themes at all three widths.`);
+    console.log(`  Checked ${path} in both themes at every width.`);
   }
   assert.deepEqual([...external], [], 'Third-party resources are forbidden');
+  assert.deepEqual(errors, [], 'JavaScript errors');
 
   report.largestPage = report.pages.reduce((a, b) => a.pageBytes > b.pageBytes ? a : b);
-  console.log(`browser-check: ${files.length} pages, both themes, three widths; keyboard checks passed (${base}).`);
+  console.log(`browser-check: ${pages.length} pages, both themes, three or five widths; ${redirects.length} redirect pages; keyboard checks passed (${base}).`);
   for (const p of report.pages) console.log(`  ${p.path}: JS ${p.javascriptBytes} bytes; page ${p.pageBytes} bytes (uncompressed, cold load)`);
   console.log(`  Largest page: ${report.largestPage.path}, ${report.largestPage.pageBytes} bytes. No third-party requests.`);
 } finally {

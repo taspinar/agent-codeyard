@@ -17,7 +17,7 @@ This page is one path, in eight steps, from a GitHub account without the project
 - `jq` 1.6 or later
 - Two coding agents of different providers. As shipped, Claude Code implements and Codex reviews; `review-feature.sh` refuses a reviewer of the implementer’s provider.
 
-**What you should know:** how to work in a terminal, and the basics of Git and GitHub: a commit, a branch, a pull request. If those are new, read <a href="../new-to-agentic-coding/">New to agentic coding? Start here</a> first.
+**What you should know:** how to work in a terminal, and the basics of Git and GitHub: a commit, a branch, a pull request. If those are new, read <a href="#new-to-agentic-coding">New to agentic coding? Start here</a> first.
 
 **What you will do by hand:** the scripts do not do these for you.
 
@@ -27,7 +27,7 @@ This page is one path, in eight steps, from a GitHub account without the project
 - Approve the requirements and the plan, and merge the planning pull request.
 - Read and merge every feature pull request: no script merges.
 
-Questions about cost, supported environments, stopping a run or what agents may do without you: <a href="../../faq/">/faq/</a>.
+Questions about cost, supported environments, stopping a run or what agents may do without you: <a href="../faq/">/faq/</a>.
 
 ## 1. Sign in
 
@@ -87,7 +87,7 @@ cd my-project
 
 Then delete `website/` and `.github/workflows/pages.yml`: they are this website, not part of your project. Keep, replace, or remove `LICENSE`, the MIT licence of the template, for your own project.
 
-Have an existing repository instead? It adopts the workflow on a branch you review, without a new repository: <a href="../adopting/">Adopting Agent Codeyard in an existing repository</a>.
+Have an existing repository instead? It adopts the workflow on a branch you review, without a new repository: <a href="#adopting">Adopting Agent Codeyard in an existing repository</a>.
 
 - **Where:** the template on GitHub in your browser, or the GitHub CLI; then the folder that should hold your project folder, and the new folder `my-project`.
 - **Input:** the name of the repository, and its visibility for your plan.
@@ -102,7 +102,7 @@ The scripts point out risky changes, but only GitHub can enforce who merges:
 - Commit that change and the deletions of step 2, and push them: the planning in step 6 starts only from a working tree without uncommitted changes.
 - Add a ruleset for `main` that requires a pull request and the CI check. GitHub lists the check, `verify`, only after it ran once on your repository, so you add it in step 7. The ruleset needs the plan and visibility of step 2: a private repository on GitHub Free cannot have one, and then nothing protects its `main`.
 
-The [repository setup guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/repository-setup.md) has every setting; <a href="../github-setup/#github">GitHub setup</a> explains why they matter.
+The [repository setup guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/repository-setup.md) has every setting; <a href="#github-setup/github">GitHub setup</a> explains why they matter.
 
 - **Where:** `my-project` for the file, and the settings of the repository on GitHub for the ruleset.
 - **Input:** your GitHub account name.
@@ -132,7 +132,7 @@ implementer@high: claude fable
 reviewer: codex gpt-6-luna
 ```
 
-This is what the template ships: Claude implements, with a stronger model for a high-risk feature, and Codex reviews. A line with `@high` (or `@low`, `@medium`) applies to features of that <a href="../risk-policy/#risk">risk level</a>, and the plain line to the others. The file lists every role, including the planner and the planning reviewer; <a href="../agent-roles/#shipped-configuration">Agent roles and models</a> explains each one and how to change it. The reviewer must use a different agent than the implementer, at every level.
+This is what the template ships: Claude implements, with a stronger model for a high-risk feature, and Codex reviews. A line with `@high` (or `@low`, `@medium`) applies to features of that <a href="#risk-policy/risk">risk level</a>, and the plain line to the others. The file lists every role, including the planner and the planning reviewer; <a href="#agent-roles/shipped-configuration">Agent roles and models</a> explains each one and how to change it. The reviewer must use a different agent than the implementer, at every level.
 
 - **Where:** `my-project`.
 - **Input:** nothing when the shipped models are available to your accounts; otherwise a model your account offers, on the line of its role.
@@ -186,7 +186,7 @@ The steps of this section in order, with the folder of each:
 
 ## 7. Require the CI check
 
-By now `verify` has run on your repository, on the push of step 3 and on the planning pull request, so GitHub lists it. Add `verify` as a required status check to the ruleset of `main`; <a href="../github-setup/#github">GitHub setup</a> shows where. Then run `./scripts/doctor.sh` again in `my-project`.
+By now `verify` has run on your repository, on the push of step 3 and on the planning pull request, so GitHub lists it. Add `verify` as a required status check to the ruleset of `main`; <a href="#github-setup/github">GitHub setup</a> shows where. Then run `./scripts/doctor.sh` again in `my-project`.
 
 - **Where:** the settings of the repository on GitHub for the ruleset, then `my-project` for `doctor.sh`.
 - **Input:** the check `verify`.
@@ -206,11 +206,11 @@ From your repository, on the updated `main`, create the issue of the first roadm
 
 The run implements the feature, runs your checks, has it reviewed, fixes what the review finds, and opens a pull request. It does not merge. Read the pull request and the decisions about the review findings, then merge it yourself.
 
-To stay closer to the work, run the steps one at a time, starting with `./scripts/start-feature.sh <issue>`. <a href="../detailed-workflow/">The workflow</a> explains each step.
+To stay closer to the work, run the steps one at a time, starting with `./scripts/start-feature.sh <issue>`. <a href="#workflow-and-commands">The workflow</a> explains each step.
 
 - **Where:** `my-project`, on `main`.
 - **Input:** the feature ID, your approval of the Issue, and the Issue number.
 - **Result:** a pull request of the feature with the checks that ran and the decisions about the review findings in its description.
-- **Next:** read it and merge it, then create the Issue of the next feature. A run that stops prints its reason; <a href="../troubleshooting/">Troubleshooting</a> has the first fix.
+- **Next:** read it and merge it, then create the Issue of the next feature. A run that stops prints its reason; <a href="#troubleshooting">Troubleshooting</a> has the first fix.
 
 For a complete sample project, read the [worked example](https://github.com/taspinar/agent-codeyard/blob/main/docs/example.md).

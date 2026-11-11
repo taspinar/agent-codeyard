@@ -85,6 +85,25 @@ expect_fault missing-canonical / \
 expect_fault sitemap-page / \
   'rm -r docs && sed -i "s|href=\"/docs/#intro\"|href=\"#top\"|" index.html' "sitemap.xml (base /) lists"
 
+# A redirect page of a retired route (#373): checked by its target, not by its
+# metadata; a link to a place on it must be one its table maps.
+redirect() {
+  mkdir -p "$1/old"
+  printf '<!doctype html><html><head><script>var map = {"step":"%sdocs/#intro"};</script><meta http-equiv="refresh" content="0; url=%s"><meta name="robots" content="noindex"></head><body><a href="%s">moved</a></body></html>\n' \
+    "$2" "$3" "$3" >"$1/old/index.html"
+}
+output "$work/redirect" /
+redirect "$work/redirect" / /docs/#intro
+sed -i 's|run doctor.sh|<a href="/old/#step">old</a>|' "$work/redirect/index.html"
+"$site/check.sh" "$work/redirect" / >/dev/null 2>&1 || fail "a correct redirect page does not pass"
+rm -rf "$work/redirect"
+expect_fault redirect-missing-target / \
+  'mkdir -p old && printf "%s" "<meta http-equiv=\"refresh\" content=\"0; url=/gone/\"><meta name=\"robots\" content=\"noindex\">" >old/index.html' "old/index.html (base /) redirects to /gone/, which is not in the output"
+expect_fault redirect-missing-place / \
+  'printf "%s" "<meta http-equiv=\"refresh\" content=\"0; url=/docs/#none\"><meta name=\"robots\" content=\"noindex\">" >redirect.html' "redirects to /docs/#none, which is not on that page"
+expect_fault redirect-unmapped-anchor / \
+  'mkdir -p old && printf "%s" "<script>var map = {\"step\":\"/docs/#intro\"};</script><meta http-equiv=\"refresh\" content=\"0; url=/docs/#intro\"><meta name=\"robots\" content=\"noindex\">" >old/index.html && sed -i "s|run doctor.sh|<a href=\"/old/#other\">o</a>|" index.html' "links to /old/#other, which its redirect does not map"
+
 # The tokens: a style sheet that names only tokens passes; a literal font,
 # spacing or colour value outside :root and @font-face is reported.
 tokens="$work/tokens.css"

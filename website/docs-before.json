@@ -1,0 +1,715 @@
+{
+ "about": "The headings (id, text) and code blocks of the docs pages before the one interface of #373, read from the build of main on 11 November 2026. search-test.mjs checks that each is still in the docs.",
+ "pages": {
+  "docs/": {
+   "headings": [
+    [
+     "what-stays-with-you",
+     "What stays with you"
+    ],
+    [
+     "find-a-command-or-setting",
+     "Find a command or setting"
+    ],
+    [
+     "more-to-read",
+     "More to read"
+    ],
+    [
+     "sources-and-scope",
+     "Sources and scope"
+    ]
+   ],
+   "code": []
+  },
+  "docs/adopting/": {
+   "headings": [
+    [
+     "the-three-steps",
+     "The three steps"
+    ],
+    [
+     "the-normal-route",
+     "The normal route"
+    ],
+    [
+     "1-assess",
+     "1. Assess"
+    ],
+    [
+     "2-adopt",
+     "2. Adopt"
+    ],
+    [
+     "3-record-the-baseline",
+     "3. Record the baseline"
+    ],
+    [
+     "after-the-merge",
+     "After the merge"
+    ],
+    [
+     "existing-files",
+     "Existing files"
+    ],
+    [
+     "monorepos-and-subdirectories",
+     "Monorepos and subdirectories"
+    ],
+    [
+     "the-base-branch",
+     "The base branch"
+    ],
+    [
+     "baseline-exceptions",
+     "Baseline exceptions"
+    ],
+    [
+     "what-is-preserved",
+     "What is preserved"
+    ],
+    [
+     "limits",
+     "Limits"
+    ]
+   ],
+   "code": [
+    "./scripts/assess-repository.sh ~/my-project",
+    "./scripts/adopt-repository.sh ~/my-project",
+    "./scripts/verify.sh --baseline",
+    "accepted-failure: lint The style errors predate the adoption; F03 fixes them."
+   ]
+  },
+  "docs/agent-roles/": {
+   "headings": [
+    [
+     "the-roles-in-plain-words",
+     "The roles in plain words"
+    ],
+    [
+     "role-tool-provider-and-model",
+     "Role, tool, provider and model"
+    ],
+    [
+     "agent-roles-and-models",
+     "Agent roles and models"
+    ],
+    [
+     "shipped-configuration",
+     "Shipped configuration"
+    ],
+    [
+     "further-configuration",
+     "Further configuration"
+    ],
+    [
+     "one-run-with-another-tool-or-model",
+     "One run with another tool or model"
+    ],
+    [
+     "models-per-risk-level",
+     "Models per risk level"
+    ],
+    [
+     "project-skills",
+     "Project skills"
+    ]
+   ],
+   "code": [
+    "implementer: claude opus reviewer: codex gpt-6-luna",
+    "project-grill: claude fable project-planner: claude fable planning-reviewer: codex gpt-6-astra implementer: claude opus implementer@high: claude fable reviewer: codex gpt-6-luna triage: claude sonnet triage-implementer: claude opus triage-implementer@high: claude fable analyst: claude fable assessor: claude fable"
+   ]
+  },
+  "docs/configuration-and-security/": {
+   "headings": [
+    [
+     "the-limits-in-short",
+     "The limits in short"
+    ],
+    [
+     "what-an-agent-is-allowed-to-do",
+     "What an agent is allowed to do"
+    ],
+    [
+     "which-data-goes-where",
+     "Which data goes where"
+    ],
+    [
+     "github-rights",
+     "GitHub rights"
+    ],
+    [
+     "changes-that-need-the-owner",
+     "Changes that need the owner"
+    ],
+    [
+     "agent-attribution",
+     "Agent attribution"
+    ]
+   ],
+   "code": []
+  },
+  "docs/detailed-workflow/": {
+   "headings": [
+    [
+     "daily-use",
+     "Daily use"
+    ],
+    [
+     "step-by-step-or-unattended",
+     "Step by step or unattended"
+    ],
+    [
+     "resume-a-feature-that-stopped",
+     "Resume a feature that stopped"
+    ],
+    [
+     "when-the-plan-changes",
+     "When the plan changes"
+    ],
+    [
+     "a-base-branch-other-than-main",
+     "A base branch other than main"
+    ],
+    [
+     "features-side-by-side",
+     "Features side by side"
+    ],
+    [
+     "a-plan-for-a-complex-issue",
+     "A plan for a complex Issue"
+    ],
+    [
+     "what-each-step-is-for",
+     "What each step is for"
+    ],
+    [
+     "stage-1--plan-the-project",
+     "Stage 1 · Plan the project"
+    ],
+    [
+     "stage-2--build-each-feature",
+     "Stage 2 · Build each feature"
+    ],
+    [
+     "when-you-disagree-and-exceptions",
+     "When you disagree, and exceptions"
+    ],
+    [
+     "when-you-disagree-with-the-triage",
+     "When you disagree with the triage"
+    ],
+    [
+     "when-you-disagree-with-a-blocking-finding",
+     "When you disagree with a blocking finding"
+    ],
+    [
+     "skipping-a-review",
+     "Skipping a review"
+    ]
+   ],
+   "code": []
+  },
+  "docs/getting-started/": {
+   "headings": [
+    [
+     "before-you-start",
+     "Before you start"
+    ],
+    [
+     "1-sign-in",
+     "1. Sign in"
+    ],
+    [
+     "2-create-your-repository",
+     "2. Create your repository"
+    ],
+    [
+     "3-set-up-github",
+     "3. Set up GitHub"
+    ],
+    [
+     "4-check-your-setup",
+     "4. Check your setup"
+    ],
+    [
+     "5-choose-your-agents",
+     "5. Choose your agents"
+    ],
+    [
+     "6-plan-your-project",
+     "6. Plan your project"
+    ],
+    [
+     "7-require-the-ci-check",
+     "7. Require the CI check"
+    ],
+    [
+     "8-build-your-first-feature",
+     "8. Build your first feature"
+    ]
+   ],
+   "code": [
+    "gh auth login gh auth status claude codex login",
+    "git clone https://github.com/<account>/my-project.git",
+    "gh repo create my-project --template taspinar/agent-codeyard --private --clone",
+    "gh repo create my-project --template taspinar/agent-codeyard --public --clone",
+    "cd my-project",
+    "./scripts/doctor.sh",
+    "implementer: claude opus implementer@high: claude fable reviewer: codex gpt-6-luna",
+    "A gym's member application. Trainers record attendance for their classes; members see their own training history.",
+    "./scripts/start-planning.sh --description path/to/idea.md",
+    "cd ../<repository>-planning-project-bootstrap ./scripts/review-planning.sh ./scripts/revise-planning.sh --review <review> ./scripts/finish-planning.sh",
+    "cd ../<repository> git pull",
+    "./scripts/create-feature-issue.sh F01 ./scripts/run-feature.sh <issue>"
+   ]
+  },
+  "docs/github-setup/": {
+   "headings": [
+    [
+     "step-by-step",
+     "Step by step"
+    ],
+    [
+     "what-github-has-to-enforce",
+     "What GitHub has to enforce"
+    ],
+    [
+     "what-the-guardrails-check-shows",
+     "What the guardrails check shows"
+    ],
+    [
+     "advanced-publishing-this-website",
+     "Advanced: publishing this website"
+    ]
+   ],
+   "code": [
+    "gh repo view --json hasIssuesEnabled --jq .hasIssuesEnabled",
+    "gh repo view --json squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed,deleteBranchOnMerge",
+    "gh api 'repos/{owner}/{repo}/rules/branches/main' --jq '.[].type'",
+    "grep YOUR_GITHUB_USERNAME .github/CODEOWNERS",
+    "gh api 'repos/{owner}/{repo}/actions/permissions/workflow'"
+   ]
+  },
+  "docs/new-to-agentic-coding/": {
+   "headings": [
+    [
+     "one-feature-from-idea-to-decision",
+     "One feature, from idea to decision"
+    ],
+    [
+     "the-idea",
+     "The idea"
+    ],
+    [
+     "clarify-what-you-need",
+     "Clarify what you need"
+    ],
+    [
+     "the-project-folder",
+     "The project folder"
+    ],
+    [
+     "a-coding-agent-builds-it",
+     "A coding agent builds it"
+    ],
+    [
+     "a-change-proposal",
+     "A change proposal"
+    ],
+    [
+     "a-second-agent-reviews-it",
+     "A second agent reviews it"
+    ],
+    [
+     "you-decide",
+     "You decide"
+    ],
+    [
+     "what-agent-codeyard-adds",
+     "What Agent Codeyard adds"
+    ],
+    [
+     "when-codeyard-is-relevant",
+     "When Codeyard is relevant"
+    ],
+    [
+     "what-to-read-next",
+     "What to read next"
+    ],
+    [
+     "glossary",
+     "Glossary"
+    ]
+   ],
+   "code": []
+  },
+  "docs/risk-policy/": {
+   "headings": [
+    [
+     "a-typo-and-a-change-to-authentication",
+     "A typo and a change to authentication"
+    ],
+    [
+     "what-a-level-changes-in-practice",
+     "What a level changes in practice"
+    ],
+    [
+     "three-settings-with-similar-names",
+     "Three settings with similar names"
+    ],
+    [
+     "the-risk-level-of-a-feature",
+     "The risk level of a feature"
+    ],
+    [
+     "shipped-configuration",
+     "Shipped configuration"
+    ],
+    [
+     "the-risk-policy",
+     "The risk policy"
+    ],
+    [
+     "classes-of-paths",
+     "Classes of paths"
+    ],
+    [
+     "what-each-level-requires",
+     "What each level requires"
+    ],
+    [
+     "workflow-profiles",
+     "Workflow profiles"
+    ],
+    [
+     "fixed-escalations",
+     "Fixed escalations"
+    ]
+   ],
+   "code": [
+    "low: docs :(glob)**/*.md high: src/auth",
+    "default: medium high: docs/decisions .github/workflows .github/CODEOWNERS .agents/policies .agents/prompts/reviewer.md .agents/schemas .agents/agents.conf scripts/check-guardrails.sh scripts/lib/guardrails.sh scripts/check-risk.sh scripts/lib/risk.sh scripts/lib/agent.sh scripts/lib/review-data.sh scripts/lib/review-run.sh scripts/lib/fingerprint.sh scripts/review-feature.sh scripts/finish-feature.sh scripts/publish-feature.sh scripts/run-feature.sh scripts/verify.conf scripts/verify-workflow.conf tests: tests test test-fixtures: tests/lib-fakes.sh",
+    "default: medium low: docs :(glob)**/*.md high: src/auth db/migrations deploy"
+   ]
+  },
+  "docs/technical-reference/": {
+   "headings": [
+    [
+     "files-by-function",
+     "Files by function"
+    ],
+    [
+     "what-is-recorded-on-your-machine",
+     "What is recorded on your machine"
+    ],
+    [
+     "learning-from-your-runs",
+     "Learning from your runs"
+    ],
+    [
+     "rules-and-configuration",
+     "Rules and configuration"
+    ],
+    [
+     "project-documents",
+     "Project documents"
+    ],
+    [
+     "workflow-scripts",
+     "Workflow scripts"
+    ],
+    [
+     "script-libraries",
+     "Script libraries"
+    ],
+    [
+     "agent-contracts-and-schemas",
+     "Agent contracts and schemas"
+    ],
+    [
+     "working-directories",
+     "Working directories"
+    ],
+    [
+     "website-files",
+     "Website files"
+    ],
+    [
+     "source-ownership",
+     "Source ownership"
+    ]
+   ],
+   "code": []
+  },
+  "docs/troubleshooting/": {
+   "headings": [
+    [
+     "starting-and-resuming",
+     "Starting and resuming"
+    ],
+    [
+     "-is-not-installed-or-github-is-not-signed-in",
+     "“… is not installed”, or GitHub is not signed in"
+    ],
+    [
+     "an-agent-does-not-start-or-rejects-the-model",
+     "An agent does not start, or rejects the model"
+    ],
+    [
+     "a-session-or-a-run-was-interrupted",
+     "A session or a run was interrupted"
+    ],
+    [
+     "an-agent-needs-a-decision-its-question-is-in-the-handoff-note",
+     "“an agent needs a decision; its question is in the handoff note”"
+    ],
+    [
+     "the-implementer-wrote-no-completion-record-or-the-handoff-note--lists-remaining-work",
+     "“the implementer wrote no completion record”, or “the handoff note … lists remaining work”"
+    ],
+    [
+     "this-is-a-usage-limit-of--not-a-defect",
+     "“This is a usage limit of …, not a defect”"
+    ],
+    [
+     "could-not-read-the-comments-of-issue-",
+     "“could not read the comments of Issue #…”"
+    ],
+    [
+     "checks-and-reviews",
+     "Checks and reviews"
+    ],
+    [
+     "a-check-fails",
+     "A check fails"
+    ],
+    [
+     "busy--the-slot-for-heavy-verification-of-this-machine-is-held-by-",
+     "“BUSY the slot for heavy verification of this machine is held by …”"
+    ],
+    [
+     "the-reviewer-would-use--the-provider-the-implementer-ran-with",
+     "“the reviewer would use …, the provider the implementer ran with”"
+    ],
+    [
+     "the-latest-review--is-stale-the-code-changed-after-it",
+     "“the latest review (…) is stale: the code changed after it”"
+    ],
+    [
+     "the-latest-review-round--covers-only-the-changes-since-round-",
+     "“the latest review (round …) covers only the changes since round …”"
+    ],
+    [
+     "a-review-has-findings",
+     "A review has findings"
+    ],
+    [
+     "the-implementer-refuted-every-finding-left-to-fix-in-round-",
+     "“the implementer refuted every finding left to fix in round …”"
+    ],
+    [
+     "planning",
+     "Planning"
+    ],
+    [
+     "the-planning-has-not-been-approved-or-a-planning-document-changed-after-the-planning-was-approved",
+     "“the planning has not been approved”, or “a planning document changed after the planning was approved”"
+    ],
+    [
+     "the-latest-planning-review--is-stale",
+     "“the latest planning review (…) is stale”"
+    ],
+    [
+     "commit-and-publish",
+     "Commit and publish"
+    ],
+    [
+     "-must-run-on-feature--current-branch-",
+     "“… must run on feature/ -*. Current branch: …”"
+    ],
+    [
+     "the-base-branch-moved-after-the-feature-was-finished",
+     "The base branch moved after the feature was finished"
+    ],
+    [
+     "merging-origin-conflicts-with-the-feature-in-",
+     "“Merging origin/… conflicts with the feature in: …”"
+    ],
+    [
+     "left-behind-by-a-merge-of-the-base",
+     "“Left behind by a merge of the base”"
+    ],
+    [
+     "-would-write-over--untracked-files-",
+     "“… would write over … untracked files …”"
+    ],
+    [
+     "the-index-holds-staged-changes",
+     "“The index holds staged changes”"
+    ]
+   ],
+   "code": []
+  },
+  "docs/updating/": {
+   "headings": [
+    [
+     "update-the-project",
+     "Update the project"
+    ],
+    [
+     "which-files-it-changes",
+     "Which files it changes"
+    ],
+    [
+     "versions-and-conflicts",
+     "Versions and conflicts"
+    ],
+    [
+     "a-conflict-and-the-next-step",
+     "A conflict, and the next step"
+    ]
+   ],
+   "code": [
+    "./scripts/sync-template.sh"
+   ]
+  },
+  "docs/verification-and-completion/": {
+   "headings": [
+    [
+     "the-agent-says-done-against-verified-done",
+     "“The agent says done” against “verified done”"
+    ],
+    [
+     "one-criterion-and-its-evidence",
+     "One criterion and its evidence"
+    ],
+    [
+     "completion-is-recorded-per-criterion",
+     "Completion is recorded per criterion"
+    ],
+    [
+     "project-checks-and-workflow-checks",
+     "Project checks and workflow checks"
+    ],
+    [
+     "advanced-settings",
+     "Advanced settings"
+    ],
+    [
+     "partial-checks-and-budgets",
+     "Partial checks and budgets"
+    ],
+    [
+     "a-parallel-ci",
+     "A parallel CI"
+    ],
+    [
+     "failures-that-existed-before-the-adoption",
+     "Failures that existed before the adoption"
+    ],
+    [
+     "heavy-checks-on-a-shared-machine",
+     "Heavy checks on a shared machine"
+    ]
+   ],
+   "code": [
+    "- met: A member sees only their own training history. (test \"a member who requests another member's history is refused\", run by ./scripts/verify.sh, which passed for this content)",
+    "- met: The social preview note states the profile condition. (website/og-image.svg reads 'low risk may skip review under the light profile'; website/public/og.png re-rendered with node og-image.mjs and inspected: the line fits under the bypass without overlap)"
+   ]
+  },
+  "docs/reference/workflow/": {
+   "headings": [
+    [
+     "index",
+     "Step index"
+    ],
+    [
+     "parameters",
+     "Parameters"
+    ],
+    [
+     "plan-the-project",
+     "Plan the project"
+    ],
+    [
+     "describe-the-idea-h",
+     "Describe the idea"
+    ],
+    [
+     "clarify-the-requirements-h",
+     "Clarify the requirements"
+    ],
+    [
+     "create-the-plan-h",
+     "Create the plan"
+    ],
+    [
+     "review-the-plan-h",
+     "Review the plan"
+    ],
+    [
+     "address-the-findings-h",
+     "Address the review findings"
+    ],
+    [
+     "approve-the-plan-h",
+     "Approve the plan"
+    ],
+    [
+     "merge-the-plan-h",
+     "Merge the planning pull request"
+    ],
+    [
+     "change-the-plan-h",
+     "Change an approved plan"
+    ],
+    [
+     "build-each-feature",
+     "Build each feature"
+    ],
+    [
+     "create-a-feature-issue-h",
+     "Create a feature Issue"
+    ],
+    [
+     "implement-the-feature-h",
+     "Implement the feature"
+    ],
+    [
+     "run-the-checks-h",
+     "Run the checks"
+    ],
+    [
+     "review-the-code-h",
+     "Review the code"
+    ],
+    [
+     "decide-on-the-findings-h",
+     "Decide on the findings"
+    ],
+    [
+     "apply-the-fixes-h",
+     "Fix and review again"
+    ],
+    [
+     "commit-the-feature-h",
+     "Commit the feature"
+    ],
+    [
+     "open-the-pull-request-h",
+     "Open the pull request"
+    ],
+    [
+     "merge-h",
+     "Review and merge"
+    ],
+    [
+     "run-unattended-h",
+     "Run a feature unattended"
+    ]
+   ],
+   "code": []
+  }
+ }
+}
