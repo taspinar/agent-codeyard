@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "acc7968dc37d48d60d197a1989b13844ccb4e6ef",
+  "commit": {
+    "branch": "feature/376-about-short-and-personal",
+    "parent": "ec511bfd36259340737b93a952242167a394b51f",
+    "base": "ec511bfd36259340737b93a952242167a394b51f"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the review could not confirm: website/check.sh --build and ./scripts/verify.sh pass; checks at 320–390, 768, 1280 and 1440 px, both themes."
+  ],
+  "explanation": "Issue #376: About: short and personal, history to the appendix (website IA step 5). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
