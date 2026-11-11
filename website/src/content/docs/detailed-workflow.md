@@ -43,6 +43,8 @@ A feature branches from its base and merges back into it. Name the base as the t
 
 ### Features side by side
 
+`./scripts/start-feature.sh <issue>` creates the branch `feature/<issue>-<slug>` and a worktree beside the main checkout: a second working folder of the same repository, so your main copy stays untouched. One agent writes in a worktree; agents that work in parallel need separate worktrees and branches. A setup script of your own, if your project adds one, prepares every new worktree before the agent starts, for example by copying ignored files such as installed dependencies; the [development guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md) describes it. After the merge, `./scripts/cleanup-worktree.sh <issue>`, run from the main checkout, copies the run records of the feature and then removes its worktree and branch.
+
 Every feature has its own branch and worktree, so several can run at once. Nothing reserves a file or a number for one of them, though, and a clash shows only when the second one merges. Do not run features side by side that change the same module, or that each take the next number of a numbered sequence: a lesson, a migration, an ADR. Run them one after another, or give them disjoint scopes in their Issues. Otherwise the second pull request conflicts with its base or duplicates a number, and needs rework and a new review. Details in [features side by side](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#features-side-by-side) of the development guide.
 
 <a id="plans-and-earlier-review-rounds"></a>
@@ -66,7 +68,7 @@ For an Issue with many parts, a technical plan in `.agents/plans/` holds the imp
 <a id="step-grill"></a>
 <a id="clarify-the-requirements-project-grill"></a>
 
-**Clarify the requirements (Project Grill).** An agent asks about the goals, the users, the scope and the constraints, and only about what would change the product or its technical direction. The requirements count only after you approve them, and everything after this point is checked against them, so this is the cheapest place to correct a misunderstanding. The planning runs in a planning worktree, a separate working copy next to your repository. <a href="../reference/workflow/#clarify-the-requirements">Reference</a>.
+**Clarify the requirements (Project Grill).** An agent asks about the goals, the users, the scope and the constraints, and only about what would change the product or its technical direction. The requirements count only after you approve them, and everything after this point is checked against them, so this is the cheapest place to correct a misunderstanding. They are written to `docs/PROJECT_REQUIREMENTS.md`, and a feature Issue cannot override them silently: where it would, the conflict is a question for you, with a proposed ADR or an update of the requirements as one of the options. The planning runs in a planning worktree, a separate working copy next to your repository. <a href="../reference/workflow/#clarify-the-requirements">Reference</a>.
 
 <a id="step-plan"></a>
 <a id="create-the-project-plan"></a>
@@ -76,7 +78,7 @@ For an Issue with many parts, a technical plan in `.agents/plans/` holds the imp
 <a id="step-planning-review"></a>
 <a id="review-the-plan"></a>
 
-**Review the plan.** A second agent, which cannot edit files, checks the plan for missing requirements, inconsistent decisions and risks, in a form the scripts validate. <a href="../reference/workflow/#review-the-plan">Reference</a>.
+**Review the plan.** A second agent, which cannot edit files and, as shipped, runs on another provider than the planner, checks the plan for missing requirements, inconsistent decisions and risks, in a form the scripts validate. <a href="../reference/workflow/#review-the-plan">Reference</a>.
 
 <a id="step-revise"></a>
 <a id="address-the-review-findings"></a>
@@ -86,7 +88,7 @@ For an Issue with many parts, a technical plan in `.agents/plans/` holds the imp
 <a id="step-finish-planning"></a>
 <a id="approve-the-plan"></a>
 
-**Approve the plan.** Your approval is recorded with a fingerprint, a checksum of the requirements and roadmap you approved. If either changes later, the approval no longer applies, and no feature Issue is created from it. <a href="../reference/workflow/#approve-the-plan">Reference</a>.
+**Approve the plan.** Your approval is recorded with a fingerprint, a checksum of the requirements and roadmap you approved. If either changes later, the approval no longer applies, and no feature Issue is created from it. Every feature session reads the approved architecture, ADRs and roadmap first. An accepted ADR outranks the Issue: an implementer that would have to break one stops and reports the conflict, a new ADR enters with the status `Proposed`, and a pull request that adds, changes or removes an ADR is marked as needing your approval. <a href="../reference/workflow/#approve-the-plan">Reference</a>.
 
 <a id="step-planning-merge"></a>
 <a id="merge-the-planning-pull-request"></a>
@@ -108,7 +110,7 @@ For an Issue with many parts, a technical plan in `.agents/plans/` holds the imp
 <a id="step-implement"></a>
 <a id="implement-the-feature"></a>
 
-**Implement the feature.** The implementer works in its own branch and worktree, so that features in progress do not get in each other's way. Its first session decides whether the feature is clear. If a decision that matters is still open, such as the scope, a public interface or security, it changes nothing, writes its questions in the handoff note with options and a recommendation, and the run stops for you; a name or the layout of the tests it decides itself. Your comments on the Issue reach the implementer, the reviewer and the triage agent alike. Every session ends with a completion record: complete, awaiting evidence, partial, or blocked, with evidence per acceptance criterion; only complete and awaiting evidence go on to the review. <a href="../verification-and-completion/">Verification and completion</a> explains the record; <a href="../reference/workflow/#implement-the-feature">Reference</a>.
+**Implement the feature.** The implementer works in its own branch and worktree, so that features in progress do not get in each other's way. Its first session reads the Issue, your comments on it, the requirements, the architecture, the ADRs and the code, and decides whether the feature is clear. If a decision that matters is still open, such as the scope, a public interface or security, it changes nothing, writes its questions in the handoff note with options and a recommendation, and the run stops for you, an unattended one with status 3; a name or the layout of the tests it decides itself. Your comments on the Issue reach the implementer, the reviewer and the triage agent alike; only comments of the owner, members and collaborators are passed on. Every session ends with a completion record: complete, awaiting evidence, partial, or blocked, with evidence per acceptance criterion; only complete and awaiting evidence go on to the review. <a href="../verification-and-completion/">Verification and completion</a> explains the record; <a href="../reference/workflow/#implement-the-feature">Reference</a>.
 
 <a id="step-verify"></a>
 <a id="run-verification"></a>
@@ -148,7 +150,7 @@ For an Issue with many parts, a technical plan in `.agents/plans/` holds the imp
 <a id="step-run"></a>
 <a id="run-a-feature-unattended"></a>
 
-**Run a feature unattended.** One command runs every step of this stage up to the pull request, as <a href="#step-by-step-or-unattended">Step by step or unattended</a> describes. <a href="../reference/workflow/#run-unattended">Reference</a>.
+**Run a feature unattended.** One command runs every step of this stage up to the pull request, as <a href="#step-by-step-or-unattended">Step by step or unattended</a> describes. Its limits: at most five review rounds, and by default four implementer sessions, three retries of a failing agent call and three repairs of a failing verification. An agent that needs your decision ends with a `BLOCKED:` line, and the run exits with status 3; running the same command again continues where the feature stands. It never merges and never removes a worktree. <a href="../reference/workflow/#run-unattended">Reference</a>.
 
 ## When you disagree, and exceptions
 
