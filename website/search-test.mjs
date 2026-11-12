@@ -5,7 +5,7 @@ import { plainText, topicsOf } from './integrations/search.mjs';
 import { pageRank, passage, resultPassage, searchPages } from './src/lib/search.mjs';
 import { feature, planning } from './src/lib/steps.ts';
 import { topics } from './src/lib/docs.ts';
-import { moved, routes, stays } from './src/lib/redirects.ts';
+import { listed, moved, routes, stays } from './src/lib/redirects.ts';
 
 assert.equal(plainText('<p>A &amp; B &#x3c; C</p><script>secret</script>'), 'A & B < C');
 const example = [{ title: 'Risk policy', text: 'verification: groups', url: '/docs/risk/' }];
@@ -39,9 +39,9 @@ if (process.argv[2]) {
   const [output, base] = process.argv.slice(2);
   const pages = JSON.parse(await readFile(join(output, 'search-index.json'), 'utf8'));
   const docs = pages.filter(p => p.url.startsWith(`${base}docs/`));
-  // One entry per topic of Technical Documentation, and the two Appendix pages (#373).
-  assert.deepEqual(docs.map(p => p.url), [...topics.map(t => `${base}docs/#${t.id}`), `${base}docs/engineering-records/`, `${base}docs/history/`].sort((a, b) => docs.findIndex(p => p.url === a) - docs.findIndex(p => p.url === b)));
-  assert.equal(docs.length, topics.length + 2);
+  // One entry per topic of Technical Documentation, and the one Appendix page (#373, #390).
+  assert.deepEqual(docs.map(p => p.url), [...topics.map(t => `${base}docs/#${t.id}`), `${base}docs/history/`].sort((a, b) => docs.findIndex(p => p.url === a) - docs.findIndex(p => p.url === b)));
+  assert.equal(docs.length, topics.length + 1);
   for (const topic of topics) assert.equal(docs.find(p => p.url === `${base}docs/#${topic.id}`)?.title, topic.title, `The search entry of ${topic.id}`);
   for (const [query, slug] of [['Troubleshooting', 'troubleshooting'], ['GitHub setup', 'github-setup']]) {
     const results = searchPages(docs, query);
@@ -69,14 +69,16 @@ if (process.argv[2]) {
   // The table of old addresses (src/lib/redirects.ts) has a row for every
   // route of the live site before #335: the 21 its Issue names and
   // Engineering records (#344), 22 in all. The sitemap and the search index
-  // list the routes that stay; a retired route is a redirect page.
+  // list the routes that stay but for the unlisted Projects (#390); a retired
+  // route is a redirect page.
   const sitemap = await readFile(join(output, 'sitemap.xml'), 'utf8');
   const legacy = JSON.parse(await readFile(new URL('./legacy-anchors.json', import.meta.url), 'utf8')).pages;
   assert.equal(Object.keys(legacy).length, 22);
   assert.deepEqual(routes.map(r => r.path).sort(), Object.keys(legacy).sort(), 'The table of old addresses has other routes than the live site before #335');
   const located = [...sitemap.matchAll(/<loc>[^<]*?\/\/[^/<]+([^<]*)<\/loc>/g)].map(m => m[1].slice(base.length)).sort();
-  assert.deepEqual(located, stays.map(r => r.path).sort(), 'The sitemap lists other routes than those that stay');
-  assert.deepEqual([...new Set(pages.map(p => p.url.slice(base.length).replace(/#.*/, '')))].sort(), stays.map(r => r.path).sort(), 'The search index lists other routes than those that stay');
+  assert.deepEqual(located, listed.map(r => r.path).sort(), 'The sitemap lists other routes than those that stay and are listed');
+  assert.deepEqual([...new Set(pages.map(p => p.url.slice(base.length).replace(/#.*/, '')))].sort(), listed.map(r => r.path).sort(), 'The search index lists other routes than those that stay and are listed');
+  for (const route of stays.filter(r => r.unlisted)) assert(/<main\b[^>]*\bdata-unlisted\b/.test(await readFile(join(output, route.path, 'index.html'), 'utf8')), `/${route.path} is not marked unlisted`);
   // The walk of the table: every old anchor, and the two restored as pointers
   // by #335, has a row whose target is in the build; the redirect page of a
   // retired route maps it there.
@@ -119,20 +121,14 @@ if (process.argv[2]) {
     for (const block of code) assert(blocks.includes(block), `Code block lost from /${path}: ${block.slice(0, 60)}`);
   }
   assert(searchPages(pages, 'LICENSE').some(p => p.url === `${base}docs/#quick-start`));
-  // History and research moved from About to the docs (#319).
-  assert(searchPages(docs, 'Physics by Construction').some(p => p.url === `${base}docs/history/`));
-  // The engineering case studies moved from Projects to Engineering records (#344).
-  assert(sitemap.includes(`${base}docs/engineering-records/</loc>`), 'Engineering records is missing from the sitemap');
-  for (const query of ['41 recorded runs', '#217']) {
-    assert(searchPages(pages, query).some(p => p.url === `${base}docs/engineering-records/`), `Engineering records not found for "${query}"`);
-  }
-  const records = await readFile(join(output, 'docs/engineering-records/index.html'), 'utf8');
+  // The owner's story opens History (#390), and the search finds it there.
+  assert(searchPages(docs, 'Giving each agent a job').some(p => p.url === `${base}docs/history/`));
+  assert.equal(docs.find(p => p.url === `${base}docs/history/`)?.title, 'How Agent Codeyard began');
+  // Engineering records was removed (#390): no page, no entry of the sitemap or the search.
+  assert(!sitemap.includes('engineering-records') && !sitemap.includes(`${base}examples/`), 'The sitemap lists Engineering records or Projects');
+  assert(!searchPages(pages, '41 recorded runs').length, 'The search still finds the engineering records');
   const projects = await readFile(join(output, 'examples/index.html'), 'utf8');
-  for (const id of ['memory', 'story', 'tradeoff', 'features', 'owner', 'repair', 'short', 'analysis', 'levels']) {
-    assert(records.includes(`<h2 id="${id}">`), `Not in Engineering records: ${id}`);
-    assert(projects.includes(`<p id="${id}" class="moved-case">This case moved to <a href="${base}docs/engineering-records/#${id}">Engineering records</a>.</p>`), `Old anchor lost: /examples/#${id}`);
-  }
-  assert(!/When the reviewer did not know|What 41 recorded runs/.test(projects), 'An engineering case is still on Projects');
+  assert(!/When the reviewer did not know|What 41 recorded runs|Engineering records/.test(projects), 'Projects still names the engineering records');
   assert(searchPages(pages, 'owner-directed').some(p => p.url === `${base}docs/#workflow-and-commands`));
   // Every step is in the workflow reference, and its old anchor on /workflow/ leads there (#377).
   const reference = topicHtml["workflow-reference"];
@@ -143,10 +139,11 @@ if (process.argv[2]) {
   }
   // The explorer of /workflow/ is the topic workflow-map, its ids with the prefix of the topic (#377).
   for (const id of ['explore', 'workflow', 'workflow-words', 'step-panel', 'routes-label']) assert(topicHtml['workflow-map'].includes(`id="workflow-map/${id}"`), `Not in the workflow map: ${id}`);
-  // No page links a retired route of #377 any more, and Get Started leads to Quick Start.
+  // No page links a retired route of #377 or #390 any more, nor the unlisted
+  // Projects, and Get Started leads to Quick Start.
   for (const page of [...new Set(pages.map(p => p.url.replace(/#.*/, '')))]) {
     const html = await readFile(join(output, page.slice(base.length), 'index.html'), 'utf8');
-    for (const retiredPath of ['workflow/', 'faq/']) assert(!html.includes(`href="${base}${retiredPath}`), `${page} links the retired /${retiredPath}`);
+    for (const retiredPath of ['workflow/', 'faq/', 'docs/engineering-records/', 'examples/']) assert(!html.includes(`href="${base}${retiredPath}`), `${page} links /${retiredPath}`);
     for (const [, target] of html.matchAll(/<a\b[^>]*href="([^"]*)"[^>]*>\s*Get Started\s*<\/a>/gi)) assert.equal(target, `${base}docs/#quick-start`, `${page}: Get Started leads to ${target}`);
   }
   // The gym scenario of #328 says the same on every page that uses it (#335).
@@ -168,7 +165,6 @@ if (process.argv[2]) {
   };
   const uses = {
     '': ['function'],
-    'features/': ['function', 'plan', 'check', 'finding'],
     'docs/#quick-start': ['function'],
     'docs/#new-to-agentic-coding': Object.keys(parts),
     'docs/#verification-and-review': ['function', 'check'],

@@ -1,9 +1,9 @@
 ---
-// Sticky header (#377): the mark, the five destinations, the repository, the
-// action Get Started and the theme toggle. Below 1100px the links wrap onto
-// further rows, so none leaves the screen.
+// Sticky header (#377): the mark, the four destinations, the repository and
+// the theme toggle; Projects and the action Get Started left it (#390). Below
+// 1100px the links wrap onto further rows, so none leaves the screen.
 import { site } from "../../site.config";
-import { getStarted, href, sections } from "../lib/links";
+import { href, sections } from "../lib/links";
 
 const here = Astro.url.pathname;
 ---
@@ -18,7 +18,6 @@ const here = Astro.url.pathname;
         return <a href={target} aria-current={current}>{section.label}</a>;
       })}
       <a href={site.repository}>GitHub</a>
-      <a class="btn start" href={href(getStarted)}>Get Started</a>
       <button class="theme" type="button" aria-label="Switch colour theme"><span>Dark</span></button>
     </nav>
   </div>

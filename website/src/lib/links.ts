@@ -22,14 +22,16 @@ export function pull(number: number): string {
   return `${site.repository}/pull/${number}`;
 }
 
-/** The destinations of the site, in the order of the navigation (#377). */
+/**
+ * The destinations of the site, in the order of the navigation (#377).
+ * Projects (/examples/) is left out and linked from nowhere (#390).
+ */
 export const sections = [
   { path: "", label: "Home" },
   { path: "features/", label: "Features" },
-  { path: "examples/", label: "Projects" },
   { path: "about/", label: "About" },
   { path: "docs/", label: "Docs" },
 ] as const;
 
-/** The action "Get Started": the Quick Start of the docs, from every page (#377). */
+/** "Get Started": the Quick Start of the docs, from the hero and the last section of the home page (#377, #390). */
 export const getStarted = "docs/#quick-start";

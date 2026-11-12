@@ -86,7 +86,7 @@ analyst: claude fable
 assessor: claude fable
 ```
 
-Why a stronger model at high risk: the template chose it for the features that change the workflow and its gate, after a few of its own runs. That is the experience of one repository, not a measured result for every project. What the level changed in two recorded runs is in <a href="engineering-records/#levels">What each risk level changed</a>. Codex stays supported as implementer for a project that configures it.
+Why a stronger model at high risk: the template chose it for the features that change the workflow and its gate, after a few of its own runs. That is the experience of one repository, not a measured result for every project. Codex stays supported as implementer for a project that configures it.
 
 ## Further configuration
 

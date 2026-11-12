@@ -1,12 +1,14 @@
 ---
-// The history of Agent Codeyard, the principles it taught, and the research
-// behind it: moved from About (#319), which keeps one paragraph and a link;
-// the design decisions followed (#333). A few phases with their cause and
-// effect come first; the periods with their pull requests follow (#335).
-// Each period links to the pull requests that built it, by their merge dates.
+// How Agent Codeyard began: the maker's own story, in the first person and
+// word for word as the owner wrote it on 12 November 2026, ending with what
+// comes next (#390); then the periods with their pull requests (#335) and the
+// research. The supervisor and local models of "What comes next" are planned
+// work (#361, #357 to #360), not available. The sections "In short",
+// "Engineering principles" and "Design decisions" were removed (#390); their
+// old ids sit at the top of the page.
 import DocsPage from "../../components/DocsPage.astro";
 import Table from "../../components/Table.astro";
-import { issue, pull, repoFile } from "../../lib/links";
+import { pull } from "../../lib/links";
 
 const prs = (numbers: number[]) => numbers.map((number) => ({ number, url: pull(number) }));
 
@@ -40,37 +42,6 @@ const history = [
     text: "After the owner's editorial audit of 3 November (#269), the homepage, Features, Examples and the docs were rewritten for a developer who has not heard of Codeyard: the value first, the technical proof as the deeper layer." },
 ];
 
-// The phases in short: what caused each and what it changed. Each names the
-// periods of the history below that it sums up.
-const phases = [
-  { title: "From a routine to scripts", when: "September 2026",
-    cause: "The same steps were done by hand for every feature: plan in an Issue, build in a worktree, have a second agent read it.",
-    effect: "Scripts took over what was the same every time, and a planning process came before the first feature." },
-  { title: "From the agent's word to records", when: "October 2026",
-    cause: "Whether the tests passed or a review covered the current code rested on what an agent reported.",
-    effect: "Checks, reviews and decisions became records a script can verify, tied to the content they saw. That made it possible to run a feature unattended, with the scripts, not an agent, deciding whether a step succeeded." },
-  { title: "Effort that follows risk", when: "Late October 2026",
-    cause: "A documentation fix and a change to the workflow's own checks got the same treatment, and Physics by Construction, which tried a risk detector first, needed several corrections of it within a week.",
-    effect: "Every feature gets a computed risk level that only rises, workflow profiles make low-risk work lighter, and an added file never escalates by itself." },
-  { title: "A site for people new to it", when: "From 30 October 2026",
-    cause: "The first website explained the workflow accurately, but asked visitors to know agentic coding already, as the owner's audits of 3 and 8 November found.",
-    effect: "The site was rewritten in two reading layers: what you get first, with one illustrative example, and the technical detail behind it." },
-];
-
-// The design decisions, each with the pull request that made it: moved from
-// About (#333).
-const decisions = [
-  { name: "Read-only reviewers", why: "A reviewer that can edit can fix what it should report.", prs: [35] },
-  { name: "A reviewer of another provider", why: "An agent of the same family shares the implementer's blind spots.", prs: [211] },
-  { name: "Evidence tied to content", why: "A review or a verification counts only for the content it saw.", prs: [42, 74, 200] },
-  { name: "Scripts decide outcomes", why: "An unattended run needs a judge that does not depend on how a session ended.", prs: [101] },
-  { name: "The completion gate", why: "A session that ends is not a finished feature.", prs: [126] },
-  { name: "Your merge", why: "No script merges; a protected change asks for the owner's approval, which only GitHub's settings enforce.", prs: [100] },
-  { name: "A computed risk level", why: "Read from the diff and the base branch's rules, so a feature cannot classify itself lower.", prs: [194] },
-  { name: "Local run records", why: "Measurement without sending anything anywhere.", prs: [136] },
-  { name: "Issues when ready", why: "The roadmap is not turned into a backlog in advance.", prs: [44] },
-];
-
 // The frameworks compared, from the earlier research page, statuses corrected (#235, item 9).
 const frameworks = [
   { name: "GitHub Spec Kit", url: "https://github.com/github/spec-kit", took: "Clear links between requirements, plans, tasks and implementation; consistency checks", left: "A second specification system with its own commands and directories", status: "Partly: requirements, roadmap, feature Issues, planning review" },
@@ -80,27 +51,41 @@ const frameworks = [
   { name: "GSD Core", url: "https://github.com/open-gsd/gsd-core", took: "Small tasks, progress notes that survive a session, resuming with a fresh context", left: "A second orchestrator; parallel execution by default", status: "Partly: handoff notes and resuming; no task scheduling" },
 ];
 
+// The four parts of the story, "What comes next", the periods and the research.
 const toc = [
-  { slug: "phases", text: "In short" },
+  { slug: "giving-each-agent-a-job", text: "Giving each agent a job" },
+  { slug: "making-the-handoffs-reliable", text: "Making the handoffs reliable" },
+  { slug: "from-an-issue-to-a-pull-request", text: "From an issue to a pull request" },
+  { slug: "learning-from-real-projects", text: "Learning from real projects" },
+  { slug: "what-comes-next", text: "What comes next" },
   { slug: "history", text: "History" },
-  { slug: "principles", text: "Engineering principles" },
-  { slug: "decisions", text: "Design decisions" },
   { slug: "research", text: "Research" },
 ];
 ---
-<DocsPage page="docs/history/" title="History and research" description="How Agent Codeyard evolved from the first pull request on 10 September 2026: four phases with their cause and effect, then period by period with the pull requests that built it, the principles that history taught, the design decisions with their sources, and the frameworks and talks it learned from." toc={toc} class="history">
-  <h2 id="phases">In short</h2>
-  <p>The ideas behind the workflow are not new: it combines established engineering practice with coding agents, inside a development process on GitHub. It started manual and automated the steps that proved useful and repeatable. Four phases, each with what caused it and what it changed:</p>
-  <ol class="words timeline">
-    {phases.map((phase) => (
-      <li>
-        <b>{phase.title}</b><small class="k">{phase.when}</small>
-        <p><strong>Cause:</strong> {phase.cause}</p>
-        <p><strong>Effect:</strong> {phase.effect}</p>
-      </li>
-    ))}
-  </ol>
-  <p>From Physics by Construction, the maker's physics course that runs this workflow: its corrections of the risk detector became the rule that an added file never escalates by itself (<a href={`${issue(189)}#issuecomment-6443105170`}>Issue #189</a>), and a fix of its planning approval came back to the template in <a href={pull(179)}>PR #179</a>.</p>
+<DocsPage page="docs/history/" title="How Agent Codeyard began" description="How Agent Codeyard began, told by its maker, and what comes next; then period by period with the pull requests that built it, and the frameworks and talks it learned from." toc={toc} class="history">
+  <span id="phases"></span><span id="principles"></span><span id="decisions"></span>
+  <p>I started Agent Codeyard with a question about which AI model to use for which part of building software. I wanted to use a model like Fable for the hardest planning decisions, and a model like Opus to implement individual features once the plan was clear. That raised a second question. Once an agent had built a feature, how would I know it was ready?</p>
+
+  <h2 id="giving-each-agent-a-job">Giving each agent a job</h2>
+  <p>I began with a simple routine. I put the feature in a GitHub issue, had one agent implement it, and asked a separate agent to review the changes. A review could produce several findings, and each needed a decision. Some pointed to bugs worth fixing immediately. Others needed more evidence or could wait. I added a step to make those decisions explicit, then sent the agreed fixes back to the implementer. That gave me a repeatable cycle for building, reviewing, and revising a feature.</p>
+  <p>The routine worked when I already knew what I wanted to build. For a new project, I often needed to work that out first. I added Project Grill, a conversation in which an agent asks questions about the idea, challenges assumptions, and helps me turn the answers into requirements. A planning agent could then use those requirements to propose an architecture and a roadmap. Later, I gave the plan its own independent review and revision. That let me catch problems in the plan before they became problems in the code.</p>
+
+  <h2 id="making-the-handoffs-reliable">Making the handoffs reliable</h2>
+  <p>As I used the workflow more, I spent more time passing information from one step to the next. The reviewer needed to know what the implementer had changed and checked. The agent deciding what to do with the review findings needed to know exactly what the reviewer had found. The implementer then needed to know which fixes to make.</p>
+  <p>I had been using Markdown for review findings and decisions. It was easy to read, but scripts had to interpret the text to figure out what should happen next. I moved those records to structured JSON so the scripts could validate them and match each decision to the right finding. I also tied reviews and verification results to the version of the code they covered. If the code changed, the workflow could tell which results were still valid.</p>
+  <p>GitHub became the place where I could follow the work. I could turn a roadmap item into a feature issue, and the workflow could post readable review findings and decisions back to that issue. If I wanted to know why a fix had been made or why a finding was left open, I could follow the discussion in one place.</p>
+
+  <h2 id="from-an-issue-to-a-pull-request">From an issue to a pull request</h2>
+  <p>By then I was running much the same sequence for each feature. I wanted to start it with one command and have the workflow pause whenever it needed a decision from me. Once the scripts could tell whether the checks had passed and whether the review covered the current code, they could also decide when to continue or retry. An interrupted session could pick up from a handoff note without needing the original chat.</p>
+  <p>Eventually, one command could take a feature from its GitHub issue through implementation, verification, review, and revision to an open pull request. I used the pull request to inspect the changes, check the verification and review results, and resolve any open decisions before deciding whether to merge.</p>
+
+  <h2 id="learning-from-real-projects">Learning from real projects</h2>
+  <p>Using the workflow on real projects showed me where it asked for too much work. A small documentation edit could go through much the same process as a change to the scripts that decide whether a review is valid. I started recording how long runs took, which models they used, and where I had to step in. That gave me something concrete to look at when a change took longer than I expected.</p>
+  <p>I added risk levels so the amount of verification and review could follow the consequences of the change. Small edits could take a lighter route, while changes with a wider impact could get more scrutiny. Risk also gave me a better way to make the model choice I had started with. I could decide where a more expensive model was worth using based on the work in front of it. Later, I added a way to bring the workflow into an existing repository, starting with the project's own conventions and checks.</p>
+  <p>What began as a choice between models became a way to work with coding agents across the software development lifecycle. I can start with an idea I'm still working through, follow it into a plan and a set of changes, and see the evidence I need to decide whether those changes are ready to merge.</p>
+
+  <h2 id="what-comes-next">What comes next</h2>
+  <p>Today I still start each feature run myself, answer the questions it stops for, and decide every merge. Several runs can work side by side, so my work has moved from driving each agent to overseeing the runs. The next step is a supervisor: a layer above the runs that starts and follows the features of an approved plan and brings me only the decisions. I also want Agent Codeyard to work with open-source models that run on your own machine, through opencode and Ollama, beside Claude Code and Codex. What stays with me is what I started with: deciding what gets built and how, steering now and then, and deciding what gets merged.</p>
 
   <h2 id="history">History</h2>
   <p>Period by period, with the pull requests that built it. Pages are named as they were called then: Examples is now Projects, and Workflow is How it works; Features, called Why Codeyard for a while, has its name again.</p>
@@ -113,32 +98,6 @@ const toc = [
       </li>
     ))}
   </ol>
-
-  <h2 id="principles">Engineering principles</h2>
-  <p>From the history above and <a href={repoFile("docs/workflow.md")}><code>docs/workflow.md</code></a>.</p>
-  <ul>
-    <li><b>Manual first.</b> Deciding on findings, the planning loop and the unattended run, one command that takes a feature to a pull request without waiting for you, were each a manual routine before they were a script.</li>
-    <li><b>Evidence before automation.</b> Recorded reviews and verification came before the command that runs a feature alone; without them an unattended run would have nothing to stop on.</li>
-    <li><b>A script decides, not an agent.</b> Whether a step succeeded, whether a review is current, what the risk level is: computed from the repository, never taken from an agent's report.</li>
-    <li><b>Effort follows risk.</b> A documentation fix and a change to the workflow's own checks do not get the same treatment; high-risk work keeps every control, whatever the project's profile, its one-line choice of how much process it wants.</li>
-    <li><b>Controls only get stricter.</b> Any source can raise a level or require approval; nothing an agent controls can lower it, and the rules are read from the base branch.</li>
-    <li><b>Driven by real use.</b> Once real work depended on the template, most changes answered something that had gone wrong, and since October the run records show what.</li>
-  </ul>
-
-  <h2 id="decisions">Design decisions</h2>
-  <p>Each with the pull request that made it.</p>
-  <Table label="Design decisions">
-    <thead><tr><th scope="col">decision</th><th scope="col">why</th><th scope="col">source</th></tr></thead>
-    <tbody>
-      {decisions.map((row) => (
-        <tr>
-          <th scope="row">{row.name}</th>
-          <td data-col="why">{row.why}</td>
-          <td data-col="source">{prs(row.prs).map((pr, index) => <>{index > 0 && ", "}<a href={pr.url}>{index === 0 && row.prs.length === 1 ? "PR " : ""}#{pr.number}</a></>)}</td>
-        </tr>
-      ))}
-    </tbody>
-  </Table>
 
   <h2 id="research">Research</h2>
   <p>No code was copied from the projects named here.</p>

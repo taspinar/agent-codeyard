@@ -5,19 +5,27 @@ approval: it changes no page, route, component or style. Once merged, it is
 the source for where content goes and which old URL leads where, for the
 steps #373 to #377 and for the home page of #370 where it touches them.
 
-The site today has 22 routes (the sitemap of the build). After the steps it has
-five destinations in the header, Home, Features, Projects, About and Docs,
-plus two appendix pages of the docs; every other old route becomes a redirect.
+The site had 22 routes when this plan was made (the sitemap of the build).
+Since #390 it has four destinations in the header, Home, Features, About and
+Docs (then GitHub), plus one appendix page of the docs, History; Projects
+stays at its route, unlisted; every other old route is a redirect.
 
 | Header label | Route | Role |
 |---|---|---|
 | Home | `/` | first impression, value, the interactive demo (#370) |
 | Features | `/features/` | what Codeyard adds, three themes and a short FAQ (#374) |
-| Projects | `/examples/` (kept) | real cases with sources (#375) |
 | About | `/about/` | the maker, why it exists, open source (#376) |
-| Docs | `/docs/` | Technical Documentation, one interface (#373) |
+| Docs | `/docs/` | Technical Documentation, one interface (#373); its Appendix is `/docs/history/` |
+| (none, unlisted since #390) | `/examples/` (kept) | Projects: real cases with sources (#375), linked from no page |
 
-**Get Started** is an action, not a page: `/docs/#quick-start`.
+**Get Started** is an action, not a page: `/docs/#quick-start`. Since #390 it
+is a link of the home page, not of the header.
+
+**Changed by #390** (the owner's brief of 12 November 2026, section 8): the
+header is Home, Features, About, Docs and GitHub, without Projects and without
+Get Started; `/examples/` stays at its URL but is unlisted; Engineering
+records was removed and redirects to `/docs/history/`, the one Appendix page.
+Where this plan says otherwise, section 8 replaces it.
 
 How this document was made: the site was built from the branch of this step
 (`npx astro build` in `website/`), and the routes, headings and ids were read
@@ -35,15 +43,24 @@ Contents:
 5. Source hierarchy
 6. Conflicts
 7. The order of the following steps
+8. The owner's brief of 12 November 2026 (#390)
 
 ---
 
 ## 1. Inventory
 
+**A record of the site before the steps, not of the current site.** This
+section is the inventory of 11 November 2026, before #373 to #377 and #390:
+the routes, anchors, header, footer and links it lists are the old ones that
+section 3 maps. Several no longer exist as listed: `/workflow/`, `/faq/` and
+`/docs/engineering-records/` are redirect pages, the header and footer
+changed with #377 and #390 (the header is that of section 8), and no page links Engineering records or `/examples/`.
+The current routes are in 3.3 and 3.4, the current header in section 8.
+
 ### 1.1 Routes
 
-The sitemap lists 22 routes. `search-test.mjs` asserts the same 22 and that
-every anchor of `legacy-anchors.json` (the ids of the live site on
+On 11 November 2026 the sitemap listed 22 routes, and `search-test.mjs`
+asserted the same 22 (now the listed routes of 3.4) and that every anchor of `legacy-anchors.json` (the ids of the live site on
 9 November 2026) still resolves on its route; every id of that file is among
 the ids listed below.
 
@@ -461,6 +478,8 @@ Interface ids: `main`, `docs-query`, `search-status`, `search-results`.
 
 #### 21. `/docs/engineering-records/` — Engineering records
 
+Removed by #390: the route and every id below redirect to `/docs/history/`.
+
 | Anchor | Element | Text |
 |---|---|---|
 | `#memory` | h2 | When the reviewer did not know what was decided |
@@ -481,6 +500,9 @@ Interface ids: `main`, `docs-query`, `search-status`, `search-results`.
 
 #### 22. `/docs/history/` — History and research
 
+Since #390 titled "How Agent Codeyard began"; `#phases`, `#principles` and
+`#decisions` are aliases at the top of the page (section 8).
+
 | Anchor | Element | Text |
 |---|---|---|
 | `#phases` | h2 | In short |
@@ -493,7 +515,9 @@ Interface ids: `main`, `docs-query`, `search-status`, `search-results`.
 
 ### 1.3 Header and footer
 
-The same on every page (`src/components/Header.astro`, `src/lib/links.ts`,
+The header and footer of 11 November 2026, replaced by #377 and then by #390:
+the header is now Home, Features, About, Docs, GitHub and the theme toggle
+(section 8). They were the same on every page (`src/components/Header.astro`, `src/lib/links.ts`,
 `src/components/Footer.astro`):
 
 | Where | Label | Target |
@@ -531,7 +555,11 @@ No script message, test outside `website/`, `AGENTS.md` or other file of
 name, not by URL: "Getting started", "Configuration and security", "The
 workflow page of the website", "The repository tree on the website" (see 6.9).
 
-**From the site itself (links between pages, read from `dist/`):** every docs
+**From the site itself (links between pages, read from `dist/`, 11 November
+2026):** since #390 no page links `/docs/engineering-records/` or `/examples/`,
+and `/workflow/` and `/faq/` are redirect pages (#377); the rows below that
+name them are the old links, kept as the record of what section 3 had to
+redirect. Every docs
 page links every other docs page through the sidebar. The deep links between
 pages:
 
@@ -598,7 +626,8 @@ keeps leading somewhere.
 
 Destinations: **Home**, **Features**, **Projects**, **About**, a **Docs**
 section (by its id from 4.2), the **Appendix** of the docs (Engineering
-records, History and research), or **removed** with the reason. "Duplicate"
+records and History and research when this plan was made; since #390 only
+History, and Projects unlisted), or **removed** with the reason. "Duplicate"
 names what already says the same; a duplicate is removed only once the step
 that removes it has checked that its new place holds every fact (the rule
 of #371: no content is removed before its new place exists).
@@ -613,7 +642,7 @@ of #371: no content is removed before its new place exists).
 | Who does what (`roles`) | removed | #370 removes it; duplicate of Features theme 3 (your decision) and of the roles of Configuration (`agent-roles`) |
 | Who it is for (`who`) | Home, "Who it's for" | #370 shortens it |
 | Start, or read further (`start`) | Home, "Get started" | #370; its "Read further" list is replaced by the header |
-| Pointer "The real project moved to Projects" (`projects`) | Home, "Real engineering evidence" (`/#evidence`) | #370's evidence section (`evidence`, PR #378) holds the id as an alias |
+| Pointer "The real project moved to Projects" (`projects`) | Home, "From running features to overseeing them." (`/#oversee`) | #370's evidence section held the id; #390 replaced that section, and `oversee` holds `projects` and `evidence` as aliases |
 
 ### 2.2 How it works `/workflow/` (retired by #377)
 
@@ -654,7 +683,7 @@ destination lacks.
 | Autonomy with limits (`control`) | Features, `independent` | — |
 | Let AI agents work while you are away (`unattended`) | Features, `independent` | `/docs/#configuration/unattended`, `/docs/#workflow-and-commands/run-a-feature-unattended` |
 | You hold the last word on every change (`authority`) | Features, `verify` | `/docs/#configuration/changes-that-need-the-owner` |
-| A self-improving process that learns from its own runs (`learn`) | Docs, `technical-reference` ("Learning from your runs"); Features may keep one sentence in `verify` | `/docs/#technical-reference/learning-from-your-runs` |
+| A self-improving process that learns from its own runs (`learn`) | Docs, `technical-reference` ("Learning from your runs"); Features keeps one sentence, since #390 in its own section "Learn from your runs" (`learn`) after `verify` | `/docs/#technical-reference/learning-from-your-runs` |
 
 ### 2.4 Projects `/examples/` (rewritten by #375)
 
@@ -664,9 +693,9 @@ destination lacks.
 | Products (`products`) | Projects, the list of cases | Group heading only |
 | FightAnalytics, a platform for gyms (`fightanalytics`) | Projects, case "FightAnalytics", labelled as private pilot or illustrative | #375: only public information |
 | Physics by Construction (`application`) and its records (request, result, review found, unattended and owner, the pull request annotated, the run) | Projects, case "Physics by Construction"; the records under "Explore engineering evidence", closed | #375 |
-| About the figures (`figures`), What is not shown (`absent`), Where the figures come from (`sources`) | Projects, inside the PBC evidence disclosure | They explain the PBC figures; Engineering records has its own `#absent` and `#sources` for its cases |
+| About the figures (`figures`), What is not shown (`absent`), Where the figures come from (`sources`) | Projects, inside the PBC evidence disclosure | They explain the PBC figures; Engineering records had its own `#absent` and `#sources` for its cases until #390 |
 | Optional third case: Agent Codeyard itself | Projects, one compact case (#241 → PR #249 or another), labelled real verifiable run | #375; must not repeat Home's text |
-| Pointers `engineering`, `memory`, `story`, `tradeoff`, `features`, `owner`, `repair`, `short`, `analysis`, `levels` | Projects, kept as pointers to Engineering records | Old anchors of #344 (see 3.3) |
+| Pointers `engineering`, `memory`, `story`, `tradeoff`, `features`, `owner`, `repair`, `short`, `analysis`, `levels` | Projects, empty aliases at the heading of the cases (#390) | Old anchors of #344 (see 3.3); Engineering records was removed by #390 |
 
 ### 2.5 About `/about/` (rewritten by #376)
 
@@ -676,7 +705,7 @@ New parts: **Who built Agent Codeyard?** (`maker`), **Why it exists** (`why`),
 | Section (anchor) | Destination | Reason |
 |---|---|---|
 | The maker, JIDAI and the project (`maker`) | About, `maker` | — |
-| Its history sentence (`history`, with the alias ids `why`, `decisions`, `research`, `improvements`) | About, one link to the Appendix page History and research | `why` becomes the id of the real part "Why it exists"; the others stay on the link sentence |
+| Its history sentence (`history`, with the alias ids `why`, `decisions`, `research`, `improvements`) | About, one link to the Appendix page, "How Agent Codeyard began" since #390 | `why` becomes the id of the real part "Why it exists"; the others stay on the link sentence |
 | What it does, in short (`limits`) | removed | Duplicate of Home's hero and of the Features intro; "Codeyard writes no code" stays on Features; "no security boundary" is in `/docs/#configuration` |
 | Ready to use, open to contributions (`contribute`) | About, `contribute` | — |
 | Source and licence (`source`) | About, `contribute` | Merged: GitHub, MIT licence, contributing, security reports |
@@ -938,26 +967,30 @@ Each h2 has a short alias before it; both move.
 | Build each feature (`build-each-feature`) | `/docs/#workflow-reference/build-each-feature` |
 | ↳ its ten steps (`create-a-feature-issue-h`, `implement-the-feature-h`, `run-the-checks-h`, `review-the-code-h`, `decide-on-the-findings-h`, `apply-the-fixes-h`, `commit-the-feature-h`, `open-the-pull-request-h`, `merge-h`, `run-unattended-h`, each with its id without `-h`) | `/docs/#workflow-reference/<id>`, for the heading and for its id without `-h` |
 
-#### `engineering-records` → Appendix, kept at its route
+#### `engineering-records` → removed by #390, a redirect to `/docs/history/`
 
-All ids stay on the page; Projects (#375) and Home (#370) link it.
+This plan kept the page in the Appendix, linked from Projects (#375) and Home
+(#370). #390 removed it: the route is a redirect page and every id below goes
+to the top of `/docs/history/` (row 21 of 3.3, section 8); no page links it.
 
 | Section (anchor) | Destination |
 |---|---|
-| The nine cases (`memory`, `story`, `tradeoff`, `features`, `owner`, `repair`, `short`, `analysis`, `levels`; with them the ids `run-217-t`, `run-217-words`, `run-241-t`, `run-241-words` of the run figures) | `/docs/engineering-records/#<id>`, unchanged |
-| What is not shown (`absent`) | `/docs/engineering-records/#absent`, unchanged |
-| Where the figures come from (`sources`) | `/docs/engineering-records/#sources`, unchanged |
+| The nine cases (`memory`, `story`, `tradeoff`, `features`, `owner`, `repair`, `short`, `analysis`, `levels`; with them the ids `run-217-t`, `run-217-words`, `run-241-t`, `run-241-words` of the run figures) | removed; `/docs/history/` (redirect) |
+| What is not shown (`absent`) | removed; `/docs/history/` (redirect) |
+| Where the figures come from (`sources`) | removed; `/docs/history/` (redirect) |
 
 #### `history` → Appendix, kept at its route
 
-All ids stay on the page; About (#376) links it once.
+All ids stay on the page; About (#376) links it once. #390 removed "In
+short", "Engineering principles" and "Design decisions": their ids are aliases
+at the top of the page (section 8).
 
 | Section (anchor) | Destination |
 |---|---|
-| In short (`phases`) | `/docs/history/#phases`, unchanged |
+| In short (`phases`) | removed by #390; `phases` is an alias at the top of `/docs/history/` |
 | History (`history`) | `/docs/history/#history`, unchanged |
-| Engineering principles (`principles`) | `/docs/history/#principles`, unchanged |
-| Design decisions (`decisions`) | `/docs/history/#decisions`, unchanged |
+| Engineering principles (`principles`) | removed by #390; `principles` is an alias at the top of `/docs/history/` |
+| Design decisions (`decisions`) | removed by #390; `decisions` is an alias at the top of `/docs/history/` |
 | Research (`research`) | `/docs/history/#research`, unchanged |
 
 The interface ids of every docs page (`main`, `docs-query`, `search-status`,
@@ -1054,7 +1087,7 @@ ids `main`, `docs-query`, `search-status` and `search-results` map to
 | 18 | `/docs/updating/` | `/docs/#updating` | C | #373 | mechanical, topic `updating` |
 | 19 | `/docs/verification-and-completion/` | `/docs/#verification-and-review` | C | #373 | mechanical, topic `verification-and-review` |
 | 20 | `/docs/reference/workflow/` | `/docs/#workflow-reference` | C | #373 | mechanical, topic `workflow-reference` (for example `#review-the-code` → `#workflow-reference/review-the-code`, `#review-the-code-h` → `#workflow-reference/review-the-code-h`) |
-| 21 | `/docs/engineering-records/` | `/docs/engineering-records/` | stays (Appendix) | — | unchanged |
+| 21 | `/docs/engineering-records/` | `/docs/history/` | C | #390 | every id to `/docs/history/` |
 | 22 | `/docs/history/` | `/docs/history/` | stays (Appendix) | — | unchanged |
 
 Without JavaScript, every C row lands on its default target, which is the right
@@ -1070,7 +1103,7 @@ and 2.2 are updated to it before #377 builds the redirect)
 | `main`, `overview`, `overview-h`, `describe-and-clarify`, `plan-the-work`, `build-and-check`, `decide` | `/#demo` |
 | `technical`, `technical-h`, `explore`, `workflow`, `workflow-title`, `workflow-map-title`, `workflow-words`, `step-panel`, `step-panel-h`, `step-tab-overview`, `step-tab-technical`, `step-tab-failure`, `step-tab-body`, `routes-label` | `/docs/#workflow-map/<same id>` (`technical`, `technical-h`: `/docs/#workflow-map`) |
 | `ways`, `ways-h` | `/docs/#workflow-and-commands/step-by-step-or-unattended` |
-| `case`, `case-h` | `/docs/engineering-records/#story` |
+| `case`, `case-h` | `/docs/history/` (#390; it was `/docs/engineering-records/#story`) |
 | `steps`, `steps-h` | `/docs/#workflow-reference` |
 | the 18 step ids `describe-the-idea`, `clarify-the-requirements`, `create-the-plan`, `review-the-plan`, `address-the-findings`, `approve-the-plan`, `merge-the-plan`, `change-the-plan`, `create-a-feature-issue`, `implement-the-feature`, `run-the-checks`, `review-the-code`, `decide-on-the-findings`, `apply-the-fixes`, `commit-the-feature`, `open-the-pull-request`, `merge`, `run-unattended` | `/docs/#workflow-reference/<same id>` |
 
@@ -1098,25 +1131,28 @@ page keeps them)
 | `/` | `example`, `example-h` | alias on the demo section (`demo`) |
 | `/` | `roles`, `roles-h` | alias on the demo section (`demo`; the roles show there) |
 | `/` | `who`, `who-h`, `start`, `start-h` | the sections of the same name |
-| `/` | `projects` | alias on "Real engineering evidence" (`evidence`) |
+| `/` | `projects`, and #370's `evidence` | aliases on "From running features to overseeing them." (`oversee`, #390) |
 | `/features/` | `planning`, `planning-h`, `requirements`, `requirements-h`, `requirements-t`, `requirements-words`, `architecture`, `architecture-h`, `planning-t`, `planning-words` | aliases in `agree` |
 | `/features/` | `isolation`, `isolation-h`, `isolation-t`, `isolation-words`, `control`, `control-h`, `unattended`, `unattended-h`, `unattended-t`, `unattended-words` | aliases in `independent` |
 | `/features/` | `quality`, `quality-h`, `evidence`, `evidence-h`, `evidence-t`, `evidence-words`, `review`, `review-h`, `review-t`, `review-words`, `risk`, `risk-h`, `risk-t`, `risk-words`, `authority`, `authority-h`, `authority-t`, `authority-words` | aliases in `verify` |
-| `/features/` | `learn`, `learn-h`, `learn-t`, `learn-words` | B: a pointer sentence in `verify` to `/docs/#technical-reference/learning-from-your-runs`, or an alias on the sentence that stays |
+| `/features/` | `learn`, `learn-h`, `learn-t`, `learn-words` | the section "Learn from your runs" (`learn`, #390), its one sentence linking `/docs/#technical-reference/learning-from-your-runs` |
 | `/examples/` | `products`, `products-h`, `fightanalytics`, `fightanalytics-h`, `application`, `application-h` | the cases (`application` stays the id of the PBC case) |
 | `/examples/` | `figures`, `figures-h`, `absent`, `absent-h`, `sources`, `sources-h` | aliases on the PBC evidence disclosure, which a link to them opens |
-| `/examples/` | `engineering`, `memory`, `story`, `tradeoff`, `features`, `owner`, `repair`, `short`, `analysis`, `levels` | B: the existing pointers to `/docs/engineering-records/#<id>`, kept |
+| `/examples/` | `engineering`, `memory`, `story`, `tradeoff`, `features`, `owner`, `repair`, `short`, `analysis`, `levels` | aliases at the heading of the cases (`products`, #390; they were pointers to Engineering records) |
 | `/about/` | `maker`, `maker-h`, `contribute`, `contribute-h` | the parts of the same name |
 | `/about/` | `why` | the part "Why it exists" (today an alias on the history sentence) |
 | `/about/` | `limits`, `limits-h` | alias on `why` |
 | `/about/` | `source`, `source-h`, `improvements` | aliases in `contribute` |
-| `/about/` | `history`, `decisions`, `research` | aliases on the one link to History and research |
+| `/about/` | `history`, `decisions`, `research` | aliases on the one link to the History page, "How Agent Codeyard began" |
 
 ### 3.4 Sitemap, search index and tests
 
-- The sitemap lists the routes that stay: `/`, `/features/`, `/examples/`,
-  `/about/`, `/docs/`, `/docs/engineering-records/`, `/docs/history/`.
-- The search index has no redirect page; its docs entries are topics (4.6).
+- The sitemap lists the routes that stay and are listed: `/`, `/features/`,
+  `/about/`, `/docs/`, `/docs/history/`. Since #390 `/examples/` stays
+  unlisted (`unlisted` in `src/lib/redirects.ts`) and
+  `/docs/engineering-records/` is a redirect page.
+- The search index has no redirect page and no unlisted page; its docs
+  entries are topics (4.6).
 - `search-test.mjs` today asserts exactly the 22 routes and every legacy
   anchor on its own route. #373 changes the assertion to: the sitemap lists
   the routes of the table that stay, and every (route, id) pair of
@@ -1161,18 +1197,23 @@ is also the id of its first topic, so `/docs/#troubleshooting` is both.
 | **Troubleshooting** (`troubleshooting`) | `troubleshooting` | `website/src/content/docs/troubleshooting.md` | Troubleshooting |
 | **Technical Reference** (`technical-reference`) | `technical-reference` | `website/src/content/docs/technical-reference.md` | Files, records and sources |
 | | `workflow-reference` | `src/pages/docs/reference/workflow.astro` content, from `src/lib/steps.ts` (moved into a component) | Workflow reference |
-| **Appendix** (links only) | — | `src/pages/docs/engineering-records.astro`, `src/pages/docs/history.astro` | Engineering records; History and research |
+| **Appendix** (links only) | — | `src/pages/docs/history.astro` | How Agent Codeyard began (History and research until #390, which removed Engineering records) |
 
 Where the remaining pages fit: Agent roles, Risk policy and GitHub setup in
 Configuration; Updating in Workflow & Commands; New to agentic coding in Quick
 Start, after the steps; the workflow reference in Technical Reference;
-Engineering records and History in the Appendix, as their own pages.
+History in the Appendix, as its own page (Engineering records too, until #390).
 
-Why the Appendix stays outside the one page: neither is documentation of using
-Codeyard (one is evidence, the other background), together they are about
-7 000 words, more than a fifth of the docs, Projects and About link them by their current URLs, and they
-need no redirect. They get the new navigation, with "Appendix" as its last
-group.
+Why the Appendix stays outside the one page: History is not documentation
+of using Codeyard but background, it is long, About links it once by its own
+URL (`/docs/history/`), and keeping its route spares it a redirect. It gets
+the new navigation, with "Appendix" as its last group.
+
+When #373 made this plan, the Appendix had two pages, History and
+Engineering records (evidence), together about 7 000 words, both linked by
+their URLs from Projects and About. #390 removed Engineering records: its
+route is now a redirect page to `/docs/history/` (section 8), and Projects
+links neither page.
 
 Verification & Review has one file. Review is also explained in
 `workflow-and-commands` ("When you disagree, and exceptions") and in
@@ -1317,7 +1358,7 @@ resolution changes it explicitly.
 
 | # | Conflict | With | Proposed resolution |
 |---|---|---|---|
-| 6.1 | Header labels and order "How it works, Why Codeyard, Projects, Docs, About, Get started (`/docs/getting-started/`), GitHub" | DESIGN.md "Header and navigation"; PRODUCT.md "Brand Commitments: Navigation labels"; `src/lib/links.ts`; #329 | #377 changes all three to "Home · Features · Projects · About · Docs · GitHub · [Get Started]", Get Started a primary button to `/docs/#quick-start`, and records the change in DESIGN.md and PRODUCT.md |
+| 6.1 | Header labels and order "How it works, Why Codeyard, Projects, Docs, About, Get started (`/docs/getting-started/`), GitHub" | DESIGN.md "Header and navigation"; PRODUCT.md "Brand Commitments: Navigation labels"; `src/lib/links.ts`; #329 | #377 changes all three to "Home · Features · Projects · About · Docs · GitHub · [Get Started]", Get Started a primary button to `/docs/#quick-start`, and records the change in DESIGN.md and PRODUCT.md; #390 then removes Projects and Get Started from the header (section 8) |
 | 6.2 | Footer "source, contributing, licence, FAQ, About" | DESIGN.md "Footer" | #377: "Open source · MIT; GitHub / Source; Contributing; Security policy; Technical Documentation", and DESIGN.md "Footer" with it |
 | 6.3 | Docs pages: a sidebar in four groups (Begin, Use, Configure, Reference), one page per topic, "On this page" per page, previous and next pages, search ranking by page, `content-migration.md` "remain ordinary links without JavaScript" | DESIGN.md "Layout: Docs pages"; #334; #240 | #373 rewrites that paragraph for the one interface of section 4 (sections as navigation groups, the same group-label style, "On this page" per topic, ranking by topic) and adds a line to `content-migration.md` that #373 supersedes its navigation sentence |
 | 6.4 | `/workflow/` is retired, but its explorer (route map with switches) is "signature", and PRODUCT.md says "the interactive workflow walkthrough (step-by-step versus unattended), the step tables, the configuration tables" must survive; DESIGN.md also describes the four-step overview and the "Every step in detail" lines of `/workflow` | DESIGN.md "Route map with switches", "Four-step overview", "Workflow explorer", "Layout: Docs pages" (last sentence); PRODUCT.md "Capabilities and Constraints" | The explorer moves into the docs as topic `workflow-map` (Workflow & Commands), unchanged in behaviour, added by #377 before the redirect; the four-step overview is replaced by Home's demo (#370). #377 moves the "Workflow explorer" paragraph to the docs and removes "Four-step overview" from DESIGN.md. **Alternative for the owner:** drop the explorer in favour of the demo; then PRODUCT.md's sentence changes too |
@@ -1366,10 +1407,37 @@ What the steps need that the tracking issue does not say:
   where each now stands. A fact with no place goes into the destination file
   in the same pull request.
 - **#376 and #375 need no redirect:** their routes stay, and their old anchors
-  are aliases or pointers (3.3). The Appendix pages keep their URLs.
+  are aliases or pointers (3.3). The Appendix pages keep their URLs (until
+  #390, which made `/docs/engineering-records/` a redirect, section 8).
 - **Each step changes its own paragraph of DESIGN.md** (6.1 to 6.10), in the
   pull request that departs from it, as #371 requires.
 - **One test across the steps:** the walk of the table (3.4) runs in every
   step after #373, so that #374 to #377 cannot drop an old anchor unnoticed.
 - **A follow-up Issue, not part of these steps:** the check of script options
   named on the site (section 5).
+
+---
+
+## 8. The owner's brief of 12 November 2026 (#390)
+
+A shorter site, without the record pages, with what is coming next on the
+home page and the maker's own story on the History page. The owner's
+decisions replace the earlier ones they touch: the six home sections of #370,
+the Projects link in the header of #377, the History page of #319 and #333,
+and Engineering records as an Appendix page.
+
+| Where | Change | Old anchors |
+|---|---|---|
+| Home | "Built with the process it describes." (`evidence`, the run of #241 to PR #249, the link to Engineering records) is replaced, between "Why not just use Claude Code or Codex?" and "Who it's for", by "From running features to overseeing them." (`oversee`): one paragraph and two lines "Coming soon:", the supervisor (#361) and open-source local models (#357 to #360), planned work with no date | `evidence`, `evidence-h`, `projects` are aliases on `oversee` |
+| Features | The three paragraphs "Illustrative example." are removed; "Learning from the runs" becomes the section "Learn from your runs" (`learn`) after `verify`; the cost answer no longer links Engineering records | `learn`, `learn-h`, `learn-t`, `learn-words` in `learn` |
+| Engineering records | The page `/docs/engineering-records/` is removed from the site, the docs navigation, the Appendix and the search; the route is a redirect page (C, `src/pages/docs/[...slug].astro`) to `/docs/history/`; no page links it | every id to `/docs/history/` (row 21 of 3.3) |
+| Projects | `/examples/` stays at its URL, built, but unlisted: no link from the header, the footer, Home, About, Features or the docs; not in the sitemap or the search index; its lines that pointed to Engineering records are removed | the old pointer ids are aliases at the heading of the cases |
+| Header | Home, Features, About, Docs, GitHub, then the theme toggle; Projects and the button Get Started leave it. The hero's "Get Started" link and the home section "Give your coding agents a process" keep Quick Start; `/docs/getting-started/` stays a redirect to `/docs/#quick-start` | — |
+| About | The first paragraph is the owner's, word for word; the sentence about the projects is removed; the link to History says "How Agent Codeyard began" | unchanged |
+| History | Opens with the owner's story in the first person, word for word, under the title "How Agent Codeyard began" (also its title in the navigation), its four parts as level-2 headings, then "What comes next" (planned work, no date); "In short", "Engineering principles" and "Design decisions" are removed; the period list ("History") and "Research" stay below | `phases`, `principles`, `decisions` are aliases at the top of the page |
+
+The tests follow: `src/lib/redirects.test.ts` (the redirect and the unlisted
+route), `src/lib/docs.test.ts` (the Appendix), `search-test.mjs` (the
+sitemap, the search index, no link to `/examples/` or the removed page, the
+walk of the old anchors) and `browser-check.mjs` (the home sections, the
+header, Features, About, History and the old anchors of Projects).

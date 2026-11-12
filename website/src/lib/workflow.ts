@@ -371,9 +371,8 @@ function walk(state: State, models: Models): Step[] {
 /**
  * The real case: Issue #241 as it ran (PR #249, one unattended run of
  * run-feature.sh on 30 October 2026), shown on /workflow below the map.
- * Every figure is that of Engineering records (/docs/engineering-records/#story), which names
- * its sources: the Issue, its published review and triage, the description of
- * PR #249 and the run record. Its route is the walkthrough of this state, so
+ * Every figure comes from its sources: the Issue, its published review and
+ * triage, the description of PR #249 and the run record. Its route is the walkthrough of this state, so
  * the guide moves along the map exactly as the switches would draw it.
  */
 export const example: State = { part: "feature", run: "unattended", risk: "medium", profile: "standard", situation: "findings" };

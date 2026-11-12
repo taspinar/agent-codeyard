@@ -25,8 +25,8 @@ test("the topics and the files that feed them", () => {
   });
 });
 
-test("Engineering records and History and research are the Appendix, pages of their own", () => {
-  assert.deepEqual(appendix.map((item) => item.path), ["docs/engineering-records/", "docs/history/"]);
+test("How Agent Codeyard began is the Appendix, a page of its own; Engineering records left it (#390)", () => {
+  assert.deepEqual(appendix, [{ path: "docs/history/", title: "How Agent Codeyard began" }]);
 });
 
 test("every id of a topic gets the topic as prefix, and so do links to its own ids", () => {

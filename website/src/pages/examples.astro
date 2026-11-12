@@ -7,9 +7,10 @@
 // "Explore engineering evidence"; the old anchors of the parts that moved into
 // it (figures, absent, sources) sit there and a link to them opens it.
 // FightAnalytics shows only what its public website shows; its repository and
-// records are private. The engineering case studies of this repository are in
-// /docs/engineering-records/ (#344); each of their ids stays here as one line
-// that points to the same id there, shown when a visitor lands on it.
+// records are private. The page stays at its URL, but no page links to it and
+// it is left out of the sitemap and the search index (#390). The old ids of
+// the engineering case studies, whose page was removed (#390), land on the
+// cases.
 import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Section from "../components/Section.astro";
@@ -45,19 +46,19 @@ const cases = [
   { id: "fightanalytics", title: "FightAnalytics, a platform for gyms" },
 ];
 
-// The engineering case studies that moved to the docs (#344): their old ids.
-const moved = ["memory", "story", "tradeoff", "features", "owner", "repair", "short", "analysis", "levels"];
+// The old ids of the engineering case studies (#344) and of their section.
+const moved = ["records", "records-h", "engineering", "memory", "story", "tradeoff", "features", "owner", "repair", "short", "analysis", "levels"];
 ---
-<Base title="Projects" description="Two products of the maker of Agent Codeyard, a physics course and a gym platform: what each is, what was done with Codeyard and what can be shown, each case labelled as a real run, a simulation or private work.">
+<Base unlisted title="Projects" description="Two products of the maker of Agent Codeyard, a physics course and a gym platform: what each is, what was done with Codeyard and what can be shown, each case labelled as a real run, a simulation or private work.">
   <PageHead title="Projects" lede="Two products by the maker of Agent Codeyard. Each case carries one label: a real verifiable run, with its public Issue and pull request; a simulation, made up to show the steps; or a private pilot or future work, which this page cannot show as evidence.">
     <ol class="contents">
       {cases.map((item) => <li><a href={`#${item.id}`}>{item.title}</a></li>)}
-      <li><a href="#records">Engineering records</a></li>
     </ol>
   </PageHead>
 
   <section id="products" class="group" aria-labelledby="products-h">
     <div class="wrap">
+      {moved.map((id) => <span id={id}></span>)}
       <h2 id="products-h">Two cases</h2>
     </div>
   </section>
@@ -210,11 +211,6 @@ triage published on #388
     </Figure>
   </Section>
 
-  <Section id="records" title="Engineering records">
-    <p>The longer records of Codeyard's own features, with their review rounds, run figures and timelines, are in the appendix of the docs: <a href={href("docs/engineering-records/")}>Engineering records</a>.</p>
-    <p id="engineering" class="moved-case">The engineering case studies moved to <a href={href("docs/engineering-records/")}>Engineering records</a>.</p>
-    {moved.map((id) => <p id={id} class="moved-case">This case moved to <a href={href(`docs/engineering-records/#${id}`)}>Engineering records</a>.</p>)}
-  </Section>
 </Base>
 
 <script>
