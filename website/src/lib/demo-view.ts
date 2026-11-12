@@ -66,6 +66,11 @@ export function mountDemo(root: HTMLElement) {
     const split = list.length > 1;
     const moved = s.moment !== shown;
     const keep = new Map(all<HTMLElement>("[data-term]").map((e) => [e.dataset.term!, e.scrollTop]));
+    // The redraw replaces the tabs and the terminals: a visitor on one of them
+    // keeps the focus on the same tab or terminal, or on the active terminal
+    // when it is gone.
+    const focused = termBox.contains(document.activeElement) ? (document.activeElement as HTMLElement) : null;
+    const focusKey = focused?.dataset.select ? `[data-select="${focused.dataset.select}"]` : focused?.dataset.term ? `[data-term="${focused.dataset.term}"]` : "";
     termBox.classList.toggle("is-split", split);
     $("[data-terminals-title]").textContent = split ? "Terminals, one per feature" : "Terminal";
     button("log").hidden = !split;
@@ -73,6 +78,7 @@ export function mountDemo(root: HTMLElement) {
       (split ? list.map((t) => `<button type="button" class="term-bar" data-select="${t.key}" aria-pressed="${t.active}"><b>${esc(t.title)}</b> <span>${esc(t.cwd)}</span></button>`).join("") : `<p class="term-bar"><b>${esc(list[0].title)}</b> <span>${esc(list[0].cwd)}</span></p>`) +
       list.map((t) => `<div class="term-body${t.active ? " is-active" : ""}" data-term="${t.key}" tabindex="0" role="region" aria-label="Terminal: ${esc(t.title)}">${log(t.entries)}</div>`).join("");
     for (const body of all<HTMLElement>("[data-term]")) body.scrollTop = moved ? body.scrollHeight : (keep.get(body.dataset.term!) ?? body.scrollHeight);
+    if (focused) ((focusKey ? termBox.querySelector<HTMLElement>(focusKey) : null) ?? termBox.querySelector<HTMLElement>("[data-term].is-active") ?? termBox.querySelector<HTMLElement>("[data-term]"))?.focus({ preventScroll: true });
   }
 
   function drawTree(s: DemoState) {

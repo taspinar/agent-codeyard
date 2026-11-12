@@ -1,19 +1,18 @@
 {
   "schema": "approval-request/v1",
-  "content_tree": "a247d59a61d63dc37fbded3d1bf79c029e5e90b5",
+  "content_tree": "2d0e10f5f4a739e958e6729b4bb2ff0f7df908a2",
   "commit": {
     "branch": "feature/370-home-page-six-sections",
-    "parent": "8e0120f3b323f250c846c509d31ea021bc73195c",
+    "parent": "9227b532ff4f74a1340e8cf9d28ab4990d2f79ed",
     "base": "f3a5f64cb44e8b9eb76500f3dfeab7b8b4bf3e4b"
   },
   "review": {
-    "round": 3,
+    "round": 4,
     "verdict": "PASS",
     "reviewer": "codex (gpt-6-luna)"
   },
   "reasons": [
-    "the review could not confirm: The facts of the #241/#249 case match the GitHub records and the Engineering records page.",
-    "the review could not confirm: website/check.sh --build and ./scripts/verify.sh pass; the pull request names the checks at 390, 768, 1280 and 1440 px, both themes, keyboard and reduced motion, and lists the main design decisions."
+    "the review could not confirm: The facts of the #241/#249 case match the GitHub records and the Engineering records page."
   ],
   "explanation": "Issue #370: Home page: six sections around an interactive workflow demo (owner's brief of 11 November). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
 }

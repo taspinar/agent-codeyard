@@ -410,9 +410,20 @@ try {
       assert(!await dialog.isVisible());
       assert.equal(await count(), 'Moment 14 of 19');
       await focused('[data-action="details"]', `Focus returns to the feature steps ${at}`);
-      // Switching the active feature terminal.
-      await press('[data-select="f04"]');
+      // Switching the active feature terminal by keyboard: the chosen tab keeps
+      // the focus through the redraw, Tab reaches the next tab right away, and
+      // a change of moment while a tab has the focus does not drop it.
+      await press('[data-select="f03"]');
+      assert.equal(await p.locator('[data-select="f03"]').getAttribute('aria-pressed'), 'true', `Terminal switch to f03 ${at}`);
+      await focused('[data-select="f03"]', `The chosen terminal tab keeps the focus ${at}`);
+      await p.keyboard.press('Tab');
+      await focused('[data-select="f04"]', `Tab reaches the next terminal tab ${at}`);
+      await p.keyboard.press(' ');
       assert.equal(await p.locator('[data-select="f04"]').getAttribute('aria-pressed'), 'true', `Terminal switch ${at}`);
+      await focused('[data-select="f04"]', `The next terminal tab keeps the focus ${at}`);
+      await p.evaluate(() => document.querySelector('[data-action="next"]').click());
+      assert.equal(await count(), 'Moment 15 of 19');
+      await focused('[data-select="f04"]', `A change of moment keeps the focus on the terminal tab ${at}`);
       assert.equal(await p.locator('[data-term].is-active').getAttribute('data-term'), 'f04');
       if (width < 760) assert.equal(await p.locator('[data-term]').evaluateAll(es => es.filter(e => e.checkVisibility()).length), 1, `One terminal at a time on a phone ${at}`);
       else assert.equal(await p.locator('[data-term]').evaluateAll(es => es.filter(e => e.checkVisibility()).length), 3, `Three terminals side by side ${at}`);
