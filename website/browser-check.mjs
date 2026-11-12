@@ -270,25 +270,40 @@ try {
       await tabTo('.docs-pagination a');
 
       await page.goto(origin + base + 'examples/?theme=' + theme);
-      // The Projects page (#332): products first, the engineering case studies
-      // behind closed disclosures; short and complete with every disclosure closed.
+      // The Projects page (#375): two or three cases of 100 to 200 visible
+      // words, each with exactly one of the three labels and one real image;
+      // the long evidence behind closed disclosures.
       if (width === 1440) {
         const projects = await page.evaluate(() => ({
-          words: document.body.innerText.split(/\s+/).filter(Boolean).length,
-          height: document.documentElement.scrollHeight,
           open: document.querySelectorAll('details[open]').length,
-          missing: ['application', 'memory', 'story', 'tradeoff', 'features', 'owner', 'repair', 'short', 'analysis', 'levels', 'absent', 'sources'].filter(id => !document.getElementById(id)),
+          missing: ['products', 'application', 'fightanalytics', 'figures', 'absent', 'sources', 'engineering', 'memory', 'story', 'tradeoff', 'features', 'owner', 'repair', 'short', 'analysis', 'levels'].filter(id => !document.getElementById(id)),
           first: document.querySelector('main section[id]').id,
-          illustrative: document.getElementById('fightanalytics').innerText.includes('Illustrative example.'),
+          cases: [...document.querySelectorAll('main section[id]:has(.case-label)')].map(section => ({
+            id: section.id,
+            words: section.innerText.split(/\s+/).filter(Boolean).length,
+            labels: [...section.querySelectorAll('.case-label')].map(label => label.innerText.trim()),
+            images: [...section.querySelectorAll('img')].filter(img => !img.closest('details')).map(img => ({ alt: img.alt.length, caption: !!img.closest('figure')?.querySelector('figcaption a') })),
+          })),
           unnamed: ['Leyra', 'TrafficInsights', 'ChatDocs'].filter(name => document.body.innerText.includes(name)),
         }));
         assert.equal(projects.open, 0, 'Every disclosure of the Projects page starts closed');
-        assert(projects.words <= 3000, `The Projects page shows ${projects.words} words with its disclosures closed`);
-        assert(projects.height <= 10000, `The Projects page is ${projects.height} px high at 1440 px`);
         assert.deepEqual(projects.missing, [], 'Every anchor of the Projects page resolves');
-        assert.equal(projects.first, 'products', 'The Projects page opens with the products');
-        assert(projects.illustrative, 'The FightAnalytics case is labelled as an illustrative example');
+        assert.equal(projects.first, 'products', 'The Projects page opens with the cases');
+        assert(projects.cases.length >= 2 && projects.cases.length <= 3, `The Projects page shows ${projects.cases.length} cases`);
+        for (const project of projects.cases) {
+          assert(project.words >= 100 && project.words <= 200, `The case ${project.id} shows ${project.words} words`);
+          assert.equal(project.labels.length, 1, `The case ${project.id} carries ${project.labels.length} labels`);
+          assert(['Real verifiable run', 'Simulation', 'Private pilot or future work'].includes(project.labels[0]), `The case ${project.id} is labelled "${project.labels[0]}"`);
+          assert.equal(project.images.length, 1, `The case ${project.id} shows ${project.images.length} images`);
+          assert(project.images[0].alt > 0 && project.images[0].caption, `The image of the case ${project.id} lacks alt text or a linked source`);
+        }
+        assert.equal(projects.cases.find(project => project.id === 'fightanalytics')?.labels[0], 'Private pilot or future work', 'FightAnalytics is presented as evidence');
         assert.deepEqual(projects.unnamed, [], 'The Projects page names no other product');
+        // An old anchor of a part that moved into the evidence opens it.
+        await page.goto(origin + base + 'examples/?theme=' + theme + '#sources');
+        assert(await page.locator('#evidence').evaluate(e => e.open), 'The old anchor /examples/#sources leaves the evidence closed');
+        assert(await page.locator('#sources-h').isVisible(), 'The old anchor /examples/#sources shows no heading');
+        await page.goto(origin + base + 'examples/?theme=' + theme);
         // A case that moved to Engineering records (#344): its old anchor shows
         // one line with the link, and only when a visitor lands on it.
         assert.equal(await page.locator('.moved-case:visible').count(), 0, 'A moved-case line shows without its anchor');

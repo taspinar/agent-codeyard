@@ -1,23 +1,21 @@
 ---
-// The Projects page (#332, step 4 of #328), at the route /examples/: two
-// products of the maker in the seven parts of a product case (ProductCase).
-// FightAnalytics, the gym platform the illustrative example of #328 is
-// modelled on, whose repository and records are private, so it shows the
-// public website and the labelled example only (the owner's decisions 1 to 3
-// on #328); and Physics by Construction, a course that runs this workflow,
-// with #388 from the records it published on GitHub. The engineering case
-// studies of this repository moved to /docs/engineering-records/ (#344); each
-// of their ids stays here as one line that points to the same id there, shown
-// when a visitor lands on it. Every figure comes from a source named beside
-// it: the Issue and its published comments, or the pull request and its
-// timestamps.
+// The Projects page (#375, step 4 of #371), at the route /examples/: two
+// cases of the maker's own products, each about 150 visible words with one
+// real image and one of the three labels of #371 (`labels`), so that nothing
+// simulated reads as evidence. Physics by Construction, a real verifiable run
+// (#388 and its pull request), keeps its records behind one closed disclosure,
+// "Explore engineering evidence"; the old anchors of the parts that moved into
+// it (figures, absent, sources) sit there and a link to them opens it.
+// FightAnalytics shows only what its public website shows; its repository and
+// records are private. The engineering case studies of this repository are in
+// /docs/engineering-records/ (#344); each of their ids stays here as one line
+// that points to the same id there, shown when a visitor lands on it.
 import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Section from "../components/Section.astro";
 import Table from "../components/Table.astro";
 import Figure from "../components/Figure.astro";
 import CaseSummary from "../components/CaseSummary.astro";
-import ProductCase from "../components/ProductCase.astro";
 import { href } from "../lib/links";
 
 // Physics by Construction, the repository of the application case.
@@ -34,84 +32,47 @@ const pbcRounds = [
   { round: 4, verdict: "PASS", finding: "–", decision: "–" },
 ];
 
+// The three labels of a case (#371): every case carries exactly one.
+const labels = {
+  simulation: "Simulation",
+  real: "Real verifiable run",
+  private: "Private pilot or future work",
+};
 
-// The groups of the page and their parts, for the contents list.
-const groups = [
-  { id: "products", title: "Products", items: [
-    { id: "fightanalytics", title: "FightAnalytics, a platform for gyms" },
-    { id: "application", title: "Physics by Construction, a physics course" },
-  ] },
-  { id: "figures", title: "About the figures", items: [
-    { id: "absent", title: "What is not shown" },
-    { id: "sources", title: "Where the figures come from" },
-  ] },
+// The cases, for the contents list.
+const cases = [
+  { id: "application", title: "Physics by Construction, a physics course" },
+  { id: "fightanalytics", title: "FightAnalytics, a platform for gyms" },
 ];
 
 // The engineering case studies that moved to the docs (#344): their old ids.
 const moved = ["memory", "story", "tradeoff", "features", "owner", "repair", "short", "analysis", "levels"];
 ---
-<Base title="Projects" description="What working with Agent Codeyard looks like in two products of its maker, a gym platform and a physics course, each with what was settled, checked, found and decided.">
-  <PageHead title="Projects" lede="Two products by the maker of Agent Codeyard, and what working with it looks like in each. FightAnalytics, a platform for gyms, is shown with an illustrative example modelled on it. Physics by Construction, a physics course, is shown with a real change and its public records.">
-    <ol class="contents grouped">
-      {groups.map((group) => (
-        <li><a href={`#${group.id}`}>{group.title}</a>
-          <ol>{group.items.map((item) => <li><a href={`#${item.id}`}>{item.title}</a></li>)}</ol>
-        </li>
-      ))}
+<Base title="Projects" description="Two products of the maker of Agent Codeyard, a physics course and a gym platform: what each is, what was done with Codeyard and what can be shown, each case labelled as a real run, a simulation or private work.">
+  <PageHead title="Projects" lede="Two products by the maker of Agent Codeyard. Each case carries one label: a real verifiable run, with its public Issue and pull request; a simulation, made up to show the steps; or a private pilot or future work, which this page cannot show as evidence.">
+    <ol class="contents">
+      {cases.map((item) => <li><a href={`#${item.id}`}>{item.title}</a></li>)}
+      <li><a href="#records">Engineering records</a></li>
     </ol>
   </PageHead>
 
   <section id="products" class="group" aria-labelledby="products-h">
     <div class="wrap">
-      <h2 id="products-h">Products</h2>
-      <p class="lede">What each product is and who uses it, then one change in seven parts: the problem, the change, what was settled first, the agreed check, what the review found, the owner's decision, and the sources.</p>
+      <h2 id="products-h">Two cases</h2>
     </div>
   </section>
 
-  <Section id="fightanalytics" title="FightAnalytics, a platform for gyms" level={3}>
-    <Fragment slot="note"><a href="https://fightanalytics.nl">fightanalytics.nl</a>, the maker's own product. Its repository is private.</Fragment>
-    <p class="lede">FightAnalytics is a platform for martial-arts gyms, made by Ahmet Taspinar, who also makes Codeyard. Gym owners, trainers and members use it.</p>
-    <dl class="facts">
-      <dt>gym owners</dt><dd>Manage locations, groups, trainers, users and their roles, with reports per gym and per group.</dd>
-      <dt>trainers</dt><dd>Record attendance by scanning a member's barcode, write performance reports, and give members feedback.</dd>
-      <dt>members</dt><dd>Check in at a class with their barcode, follow their goals and progress over time in charts, and read their trainer's reports.</dd>
-    </dl>
-    <Figure>
-      <img src={href("images/fightanalytics-dashboard.png")} width="1600" height="1000" loading="lazy" alt="A member's progress page, in Dutch. Left, a gauge with an overall score of 8.2 out of 10, marked as above the group average and 0.9 higher than 90 days before. Right, a radar chart of nine skills, such as technique, condition and strength, in December 2025 against the start in March 2025. Below, the strongest area, the point to improve and the latest personal record." />
-      <Fragment slot="caption">The dashboard image that FightAnalytics publishes on its home page, <a href="https://fightanalytics.nl">fightanalytics.nl</a>, as published on 9 November 2026. The functions above are those its website names.</Fragment>
-    </Figure>
-    <p><strong>Illustrative example.</strong> The gym example of this site is modelled on FightAnalytics. Its questions, check and review finding are made up to show the steps; it does not say how FightAnalytics was built.</p>
-    <ProductCase>
-      <Fragment slot="problem">Trainers want to record attendance for their classes. Members want to see their own training history.</Fragment>
-      <Fragment slot="change">One function: trainers record attendance for their classes; members see their own training history. Planned in order: users and roles, then classes and attendance, then the member's history view.</Fragment>
-      <Fragment slot="settled">May members see other members' data? Agreed: no, a member sees only their own history. Also agreed: trainers record and correct attendance for their own classes, and a correction keeps the original entry visible as corrected.</Fragment>
-      <Fragment slot="check">A member who requests another member's history is refused; the check runs with the feature.</Fragment>
-      <Fragment slot="found">The first version let every signed-in user open the history view. The reviewer reported it, and the fix was checked.</Fragment>
-      <Fragment slot="result">A proposed change, with the checks that ran and the review's remarks. The owner decides whether it becomes part of the application.</Fragment>
-      <Fragment slot="sources">None: this part is an illustration. The records of FightAnalytics are private, so this page shows none of them.</Fragment>
-    </ProductCase>
-    <p class="needs">Every step of the example: <a href={href("workflow/")}>How it works</a>.</p>
-  </Section>
-
   <Section id="application" title="Physics by Construction, a physics course" level={3}>
-    <Fragment slot="note"><a href={pbc}>Physics by Construction</a> on GitHub, the maker's own course. The change: <a href={pbcIssue(388)}>Issue #388</a>, <a href={pbcPull(390)}>PR #390</a>, 6 November 2026.</Fragment>
-    <p class="lede">Physics by Construction is a free website for people who learn physics. Each lesson turns a model into a short program you can run, and tests it against theory, measurements or a proof that a computer checks.</p>
-    <p>It is made by Ahmet Taspinar, and its development runs the Codeyard workflow. A lesson whose code fails cannot be published, so the site's checks run on every change. This case is one maintenance change to those checks.</p>
+    <Fragment slot="note">Sources: <a href={pbcIssue(388)}>Issue #388</a> and <a href={pbcPull(390)}>PR #390</a>, 6 November 2026.</Fragment>
+    <p class="case-label" data-label="real">{labels.real}</p>
+    <p>Physics by Construction is a free website for learning physics. Each lesson turns a model into a short program, tested against theory, measurements or a proof a computer checks. Its development runs the Codeyard workflow.</p>
+    <p>The change: reading the lessons started one <code>quarto pandoc</code> per lesson block, 183 processes for 94 lessons, and that step crashed now and then. Now the checks start the bundled pandoc directly and read the lessons only when a test needs them. The independent review found that a new test could skip itself and pass without checking anything; under the project's own rules that raised the change to its highest risk level. The test now asserts what it needs. The result: the same 344 claims in 9 s instead of 56 s, and the owner approved and merged the pull request the same day.</p>
     <Figure>
       <img src={href("images/physics-by-construction-home.png")} width="1280" height="800" loading="lazy" alt="The home page of Physics by Construction: a headline about exploring physics with computation and AI, a Start learning button, and a map of its subjects, from classical mechanics to quantum physics and scientific agents." />
-      <Fragment slot="caption">The home page of Physics by Construction, <a href="https://taspinar.github.io/physics-by-construction/">taspinar.github.io/physics-by-construction</a>, screenshot of 9 November 2026.</Fragment>
+      <Fragment slot="caption">The home page, <a href="https://taspinar.github.io/physics-by-construction/">taspinar.github.io/physics-by-construction</a>, screenshot of 9 November 2026.</Fragment>
     </Figure>
-    <ProductCase>
-      <Fragment slot="problem">The checks that keep every lesson correct crashed now and then, and stopped work that had nothing to do with them. After the change they read the lessons without the step that crashed, and faster.</Fragment>
-      <Fragment slot="change">Made with Codeyard: the checks read the lessons with a more direct program, and only when a test needs them. No lesson changed.</Fragment>
-      <Fragment slot="settled">Should the two fixes be one change? The owner decided: one request and one proposed change, with a small earlier fix taken along.</Fragment>
-      <Fragment slot="check">Six agreed conditions. The first: reading all lessons gives exactly the same results as before, without the step that crashed.</Fragment>
-      <Fragment slot="found">A new test could skip itself when something was missing, and so pass without checking anything. It was fixed: the test now checks what it needs. Under the project's own rules the finding raised the change to its highest risk level.</Fragment>
-      <Fragment slot="result">At that level the change needed the owner's approval. The owner accepted it the same day.</Fragment>
-      <Fragment slot="sources">The request, the four review rounds, the annotated proposed change and the measured times, in the records below.</Fragment>
-    </ProductCase>
-    <details class="proof">
-      <summary>Records: the request, the review rounds, the pull request and the run</summary>
+    <details class="proof" id="evidence">
+      <summary>Explore engineering evidence: the review rounds, the pull request and the run</summary>
       <CaseSummary>
         <Fragment slot="changed">Reading the claims of the course's lessons starts the pandoc that ships with Quarto directly, instead of one <code>quarto pandoc</code> per lesson block, and the tests read the claims when they run, not when they are loaded.</Fragment>
         <Fragment slot="rounds">4. Rounds 1 and 2 each raised major findings, all fixed; round 4 passed.</Fragment>
@@ -212,43 +173,60 @@ triage published on #388
         <li><b>Pull request</b><small class="k">14:09</small><p>With the completion record, the verification, the review line, the risk level and the merge approval.</p></li>
         <li class="you"><b>Merge by the owner</b><small class="k">15:38 UTC</small><p>The CI run of the pull request had passed at 15:35; the description still shows that criterion as pending, because it was written at the opening. The Issue stays open until its pending criteria are recorded, as the pull request says.</p></li>
       </ol>
+
+      <h4 id="figures"><span id="figures-h"></span>About the figures</h4>
+      <p>What this page leaves out, and where each figure comes from.</p>
+      <h4 id="absent-h"><span id="absent"></span>What is not shown</h4>
+      <ul class="rules">
+        <li><b>The records of FightAnalytics.</b> Its repository is private, so this page shows no run, review, figure or pull request of it, and no claim about which of its functions were built with Codeyard.</li>
+        <li><b>The run record of Physics by Construction.</b> Its run records stay on the owner's machine, so its case shows no tokens, interventions, verification times or active run time; it shows what the project published on GitHub.</li>
+      </ul>
+      <h4 id="sources-h"><span id="sources"></span>Where the figures come from</h4>
+      <p>The case of Physics by Construction has two sources:</p>
+      <Table>
+        <thead><tr><th scope="col">source</th><th scope="col">what it holds</th><th scope="col">where</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Issue comments</th><td data-col="what it holds">The review report and the triage of every round with findings, published by <code>triage-review.sh</code>; with the Issue itself, its acceptance criteria, the owner's word and the time it was opened</td><td data-col="where">GitHub, on <a href={pbcIssue(388)}>its Issue #388</a></td></tr>
+          <tr><th scope="row">Pull request</th><td data-col="what it holds">Completion record, verification, review line, risk level and merge approval, written by <code>finish-feature.sh</code> and <code>publish-feature.sh</code>; the measured result in its summary; when it was opened and merged, and the result of its checks</td><td data-col="where">GitHub, <a href={pbcPull(390)}>PR #390</a></td></tr>
+        </tbody>
+      </Table>
+      <p>Times are given in two parts, where the sources have them:</p>
+      <dl class="facts">
+        <dt>waiting time</dt><dd>The time before the run started, while the request waited, and after the pull request opened, until the owner merged it.</dd>
+        <dt>total lead time</dt><dd>From the opening of the Issue to the merge of its pull request, both timestamps on GitHub.</dd>
+      </dl>
+      <p>Its run record stays on the owner's machine, so the figures that only a run record gives, tokens, verification seconds, interventions and the active run time, are left out for it.</p>
     </details>
   </Section>
 
-  <section id="figures" class="group" aria-labelledby="figures-h">
-    <div class="wrap">
-      <h2 id="figures-h">About the figures</h2>
-      <p class="lede">What this page leaves out, and where each figure comes from.</p>
-    </div>
-  </section>
-
-  <Section id="absent" title="What is not shown" level={3}>
-    <ul class="rules">
-      <li><b>The records of FightAnalytics.</b> Its repository is private, so this page shows no run, review, figure or pull request of it, and no claim about which of its functions were built with Codeyard.</li>
-      <li><b>The run record of Physics by Construction.</b> Its run records stay on the owner's machine, so its case shows no tokens, interventions, verification times or active run time; it shows what the project published on GitHub.</li>
-    </ul>
+  <Section id="fightanalytics" title="FightAnalytics, a platform for gyms" level={3}>
+    <Fragment slot="note">Source: <a href="https://fightanalytics.nl">fightanalytics.nl</a>, its public website.</Fragment>
+    <p class="case-label" data-label="private">{labels.private}</p>
+    <p>FightAnalytics is a platform for martial-arts gyms, made by Ahmet Taspinar, who also makes Codeyard. Gym owners manage locations, groups, trainers and roles; trainers scan a member's barcode at class and write performance reports; members follow their goals and progress in charts.</p>
+    <p><strong>Demonstrably done:</strong> the product is live, with the functions its website names and the dashboard below. <strong>Not shown:</strong> its repository and records are private, so this page shows no run, review or pull request of it and makes no claim about which of its functions were built with Codeyard. The gym example elsewhere on this site is modelled on it; that example is illustrative, a {labels.simulation.toLowerCase()}, and no evidence of how FightAnalytics was built.</p>
+    <Figure>
+      <img src={href("images/fightanalytics-dashboard.png")} width="1600" height="1000" loading="lazy" alt="A member's progress page, in Dutch. Left, a gauge with an overall score of 8.2 out of 10, marked as above the group average and 0.9 higher than 90 days before. Right, a radar chart of nine skills, such as technique, condition and strength, in December 2025 against the start in March 2025. Below, the strongest area, the point to improve and the latest personal record." />
+      <Fragment slot="caption">The dashboard image that FightAnalytics publishes on its home page, <a href="https://fightanalytics.nl">fightanalytics.nl</a>, as published on 9 November 2026.</Fragment>
+    </Figure>
   </Section>
 
-  <Section id="sources" title="Where the figures come from" level={3}>
-    <p>The case of Physics by Construction has two sources:</p>
-    <Table>
-      <thead><tr><th scope="col">source</th><th scope="col">what it holds</th><th scope="col">where</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">Issue comments</th><td data-col="what it holds">The review report and the triage of every round with findings, published by <code>triage-review.sh</code>; with the Issue itself, its acceptance criteria, the owner's word and the time it was opened</td><td data-col="where">GitHub, on <a href={pbcIssue(388)}>its Issue #388</a></td></tr>
-        <tr><th scope="row">Pull request</th><td data-col="what it holds">Completion record, verification, review line, risk level and merge approval, written by <code>finish-feature.sh</code> and <code>publish-feature.sh</code>; the measured result in its summary; when it was opened and merged, and the result of its checks</td><td data-col="where">GitHub, <a href={pbcPull(390)}>PR #390</a></td></tr>
-      </tbody>
-    </Table>
-    <p>Times are given in two parts, where the sources have them:</p>
-    <dl class="facts">
-      <dt>waiting time</dt><dd>The time before the run started, while the request waited, and after the pull request opened, until the owner merged it.</dd>
-      <dt>total lead time</dt><dd>From the opening of the Issue to the merge of its pull request, both timestamps on GitHub.</dd>
-    </dl>
-    <p>Its run record stays on the owner's machine, so the figures that only a run record gives, tokens, verification seconds, interventions and the active run time, are left out for it.</p>
-  </Section>
-
-  <div class="wrap">
-    <p class="needs">The engineering case studies, the records of Codeyard's own features, are in the docs: <a href={href("docs/engineering-records/")}>Engineering records</a>.</p>
+  <Section id="records" title="Engineering records">
+    <p>The longer records of Codeyard's own features, with their review rounds, run figures and timelines, are in the appendix of the docs: <a href={href("docs/engineering-records/")}>Engineering records</a>.</p>
     <p id="engineering" class="moved-case">The engineering case studies moved to <a href={href("docs/engineering-records/")}>Engineering records</a>.</p>
     {moved.map((id) => <p id={id} class="moved-case">This case moved to <a href={href(`docs/engineering-records/#${id}`)}>Engineering records</a>.</p>)}
-  </div>
+  </Section>
 </Base>
+
+<script>
+  // A link to a part of the evidence of a case opens its disclosure.
+  function arrive() {
+    const target = location.hash ? document.getElementById(decodeURIComponent(location.hash.slice(1))) : null;
+    const evidence = target?.closest("details");
+    if (evidence && !evidence.open) {
+      evidence.open = true;
+      target?.scrollIntoView();
+    }
+  }
+  arrive();
+  addEventListener("hashchange", arrive);
+</script>
