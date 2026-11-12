@@ -27,7 +27,9 @@ This page is one path, in eight steps, from a GitHub account without the project
 - Approve the requirements and the plan, and merge the planning pull request.
 - Read and merge every feature pull request: no script merges.
 
-Questions about cost, supported environments, stopping a run or what agents may do without you: <a href="../faq/">/faq/</a>.
+**Where it runs:** in a Bash shell on Linux. Parts of it also work on macOS, but no automated test covers macOS, and Windows is not supported. `./scripts/doctor.sh` (step 4) tells you what is missing.
+
+Questions about cost and about what Codeyard adds: <a href="../features/#faq">the questions on Features</a>. Stopping a run: <a href="#troubleshooting/a-session-or-a-run-was-interrupted">a session or a run was interrupted</a>. What agents may do without you: <a href="#configuration/unattended">what "unattended" means</a>.
 
 ## 1. Sign in
 

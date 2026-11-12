@@ -86,10 +86,11 @@ if (process.argv[2]) {
     const route = routes.find(r => r.path === path);
     const target = moved(route, id);
     const [to, fragment] = target.split('#');
-    assert((await readFile(join(output, to, 'index.html'), 'utf8')).includes(`id="${fragment}"`), `Old anchor lost: /${path}#${id} → /${target}`);
+    const landing = await readFile(join(output, to, 'index.html'), 'utf8');
+    assert(fragment === undefined ? landing.includes('<main') : landing.includes(`id="${fragment}"`), `Old anchor lost: /${path}#${id} → /${target}`);
     const page = await readFile(join(output, path, 'index.html'), 'utf8');
-    if (route.topic) {
-      assert(page.includes('<meta name="robots" content="noindex">') && page.includes(`<meta http-equiv="refresh" content="0; url=${base}docs/#${route.topic}">`), `Not a redirect page: /${path}`);
+    if (route.topic || route.to) {
+      assert(page.includes('<meta name="robots" content="noindex">') && page.includes(`<meta http-equiv="refresh" content="0; url=${base}${moved(route)}">`), `Not a redirect page: /${path}`);
       assert(page.includes(`${JSON.stringify(id)}:${JSON.stringify(base + target)}`), `The redirect of /${path} does not map #${id} to /${target}`);
       assert(!/<main\b/.test(page), `A redirect page has a <main>: /${path}`);
     } else {
@@ -133,13 +134,20 @@ if (process.argv[2]) {
   }
   assert(!/When the reviewer did not know|What 41 recorded runs/.test(projects), 'An engineering case is still on Projects');
   assert(searchPages(pages, 'owner-directed').some(p => p.url === `${base}docs/#workflow-and-commands`));
-  // Every step is in the workflow reference, and its old anchor on /workflow leads there.
+  // Every step is in the workflow reference, and its old anchor on /workflow/ leads there (#377).
   const reference = topicHtml["workflow-reference"];
   const workflow = await readFile(join(output, 'workflow/index.html'), 'utf8');
-  assert(workflow.includes('id="steps"'), 'The section anchor of /workflow is gone');
   for (const { id } of [...planning, ...feature]) {
     assert(reference.includes(`<section class="ref-step" id="workflow-reference/${id}"`), `Not in the reference: ${id}`);
-    assert(workflow.includes(`<a id="${id}" href="${base}docs/reference/workflow/#${id}">`), `Old anchor lost: /workflow/#${id}`);
+    assert(workflow.includes(`${JSON.stringify(id)}:${JSON.stringify(`${base}docs/#workflow-reference/${id}`)}`), `Old anchor lost: /workflow/#${id}`);
+  }
+  // The explorer of /workflow/ is the topic workflow-map, its ids with the prefix of the topic (#377).
+  for (const id of ['explore', 'workflow', 'workflow-words', 'step-panel', 'routes-label']) assert(topicHtml['workflow-map'].includes(`id="workflow-map/${id}"`), `Not in the workflow map: ${id}`);
+  // No page links a retired route of #377 any more, and Get Started leads to Quick Start.
+  for (const page of [...new Set(pages.map(p => p.url.replace(/#.*/, '')))]) {
+    const html = await readFile(join(output, page.slice(base.length), 'index.html'), 'utf8');
+    for (const retiredPath of ['workflow/', 'faq/']) assert(!html.includes(`href="${base}${retiredPath}`), `${page} links the retired /${retiredPath}`);
+    for (const [, target] of html.matchAll(/<a\b[^>]*href="([^"]*)"[^>]*>\s*Get Started\s*<\/a>/gi)) assert.equal(target, `${base}docs/#quick-start`, `${page}: Get Started leads to ${target}`);
   }
   // The gym scenario of #328 says the same on every page that uses it (#335).
   const gym = [
@@ -160,9 +168,7 @@ if (process.argv[2]) {
   };
   const uses = {
     '': ['function'],
-    'workflow/': Object.keys(parts),
     'features/': ['function', 'plan', 'check', 'finding'],
-    'faq/': ['function'],
     'docs/#quick-start': ['function'],
     'docs/#new-to-agentic-coding': Object.keys(parts),
     'docs/#verification-and-review': ['function', 'check'],

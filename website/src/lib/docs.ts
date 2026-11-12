@@ -1,7 +1,8 @@
 // Technical Documentation: one page, /docs/, whose sections group topics
 // (website/design/INFORMATION-ARCHITECTURE.md, 4.2; #373). A topic is one
-// source: an entry of the docs collection, or the workflow reference built
-// from src/lib/steps.ts. A section's id is the id of its first topic, so
+// source: an entry of the docs collection, or a component: the workflow map
+// (#377, from /workflow/) or the workflow reference, both built from
+// src/lib/steps.ts. A section's id is the id of its first topic, so
 // /docs/#troubleshooting opens both. The Appendix pages keep their own routes
 // and get the same navigation, as its last group.
 
@@ -18,6 +19,7 @@ export const sections: Section[] = [
   ] },
   { id: "workflow-and-commands", label: "Workflow & Commands", topics: [
     { id: "workflow-and-commands", title: "How the workflow works", entry: "detailed-workflow" },
+    { id: "workflow-map", title: "The workflow as a map" },
     { id: "updating", title: "Updating a project", entry: "updating" },
   ] },
   { id: "configuration", label: "Configuration", topics: [

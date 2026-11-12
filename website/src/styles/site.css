@@ -92,6 +92,7 @@
   --s-control: 0.3rem 0.55rem;
   --s-chip: 0.25rem 0.6rem 0.15rem;
   --s-button: 0.8rem 1.25rem 0.7rem;
+  --s-button-small: 0.45rem 0.85rem 0.35rem;
   --s-glyph-sm: 0.3rem;
   --s-glyph: 0.35rem;
   --s-glyph-lg: 0.4rem;
@@ -157,6 +158,9 @@ p { margin: 0 0 var(--s-4); max-width: var(--measure); text-wrap: pretty; }
 .nav { display: flex; gap: var(--s-5); margin-left: auto; align-items: center; }
 .nav a { text-decoration: none; font-weight: var(--w-semibold); font-size: var(--t-sm); color: var(--ink-2); padding: var(--s-2) 0; }
 .nav a:hover, .nav a[aria-current] { color: var(--ink); box-shadow: inset 0 -3px 0 var(--line); }
+/* Get Started: the one primary action of the header (#377). */
+.nav a.start { color: var(--ground); padding: var(--s-button-small); white-space: nowrap; }
+.nav a.start:hover { color: var(--ground); box-shadow: none; }
 .theme { font: var(--w-semibold) var(--t-xs) var(--mono); color: var(--ink-2); background: none; border: 1px solid var(--rule); border-radius: 2px; padding: var(--s-control); cursor: pointer; }
 .theme:hover { border-color: var(--rule-strong); color: var(--ink); }
 
@@ -307,8 +311,8 @@ footer nav { display: flex; flex-wrap: wrap; gap: var(--s-5); }
 html:not(.js) .switches { display: none; }
 
 @media (max-width: 1100px) {
-  /* The seven links of the header do not fit beside the mark: they move to
-     a second row, and wrap onto further rows rather than scroll out of view. */
+  /* The links of the header and Get Started do not fit beside the mark: they
+     move to a second row, and wrap onto further rows rather than scroll out of view. */
   .top .wrap { flex-wrap: wrap; gap: 0 var(--s-4); padding-top: var(--s-2); }
   /* The links wrap to a second row instead of scrolling out of view. */
   .nav { order: 3; flex-basis: 100%; flex-wrap: wrap; gap: 0 var(--s-4); margin-left: 0; padding-bottom: var(--s-1); }
@@ -462,7 +466,6 @@ html.js .docs-topics > .topic + .topic { margin-top: 0; padding-top: 0; border-t
 .ref .ref-step { border-top: 1px solid var(--rule); padding: var(--s-4) 0 0; margin-top: var(--s-6); }
 .ref .ref-step h4 { margin-top: 0; }
 .ref .what { margin-bottom: var(--s-2); }
-.moved-note { font-size: var(--t-sm); color: var(--ink-2); }
 /* An old anchor of content that moved (/examples/, #344; Home, #335): its one line shows
    only when a visitor lands on it. */
 .moved-case { display: none; font-size: var(--t-sm); color: var(--ink-2); }
@@ -673,49 +676,8 @@ main section.group { border-top: 2px solid var(--ink); padding-bottom: 0; }
 .advanced .reset { margin-top: var(--s-3); }
 html:not(.js) .routes, html:not(.js) .advanced { display: none; }
 
-/* The four-step overview (/workflow, #330): the shared scenario in four
-   steps, two per phase. The planning phase sits under the ink line of the
-   map, the phase of each function under its green line. Every step is a
-   column of the same rows (its title, the four answers, the example, the
-   reference line), aligned across the columns by subgrids; the reading order
-   stays step by step. Two columns below 1100px, one below 760px. */
-main section.overview-sec { padding: var(--s-6) 0 var(--s-8); border-top: 0; }
-:is(.overview-sec, .technical-sec) h2 { font-size: var(--t-xl); }
-.example-label { margin: var(--s-2) 0 var(--s-5); color: var(--ink-2); max-width: var(--measure-wide); }
-.example-label b { color: var(--ink); }
-.overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: var(--s-5); }
-.overview .phase { grid-column: span 2; display: grid; grid-template-columns: subgrid; grid-template-rows: subgrid; grid-row: span var(--rows); }
-.overview .phase > header { grid-column: 1 / -1; border-top: var(--stroke) solid var(--ink); padding-top: var(--s-3); }
-.overview .phase.each > header { border-top-color: var(--line); }
-.overview .phase > header h3 { font-size: var(--t-md); }
-.overview .phase > header p { margin: var(--s-1) 0 0; font-size: var(--t-sm); color: var(--ink-2); }
-.overview ol { display: contents; }
-.overview ol > li { display: grid; grid-template-rows: subgrid; grid-row: span var(--step-rows); }
-.overview h4 { font-size: var(--t-lg); font-weight: var(--w-bold); letter-spacing: var(--track-snug); line-height: var(--lh-heading); margin: var(--s-4) 0 var(--s-2); }
-.overview h4 .n { font: var(--w-semibold) var(--t-sm) var(--mono); color: var(--ink-3); margin-right: var(--s-2); }
-.overview .said { display: contents; }
-.overview .eg { margin: 0; border-top: 1px solid var(--rule); }
-.overview :is(.said, .eg) > div { border-top: 1px solid var(--rule); padding: var(--s-2) 0; }
-.overview .eg > div:first-child { border-top: 0; }
-.overview dt { font: var(--w-bold) var(--t-xs) var(--sans); color: var(--ink-3); }
-.overview dd { margin: var(--s-1) 0 0; font-size: var(--t-sm); }
-.overview .eg { color: var(--ink-2); }
-.overview .eg ul { margin: 0; padding-left: var(--s-indent); }
-.overview .ref-link { margin: 0; padding-top: var(--s-2); border-top: 1px solid var(--rule); font-size: var(--t-sm); color: var(--ink-2); }
-@media (max-width: 1100px) {
-  .overview { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: var(--s-6); }
-}
-@media (max-width: 760px) {
-  .overview, .overview .phase, .overview ol > li { display: block; }
-  .overview ol { display: block; list-style: none; margin: 0; padding: 0; }
-  .overview .phase + .phase { margin-top: var(--s-6); }
-  .overview .said { display: block; margin: 0; }
-}
-/* The technical layer: the explorer under one named disclosure. */
-.technical-lede { margin: var(--s-2) 0 var(--s-4); color: var(--ink-2); max-width: var(--measure-wide); }
-.explore > summary { font: var(--w-bold) var(--t-md) var(--sans); color: var(--ink); cursor: pointer; width: fit-content; }
-.explore .route { margin-top: var(--s-4); }
-.ways-h { font-size: var(--t-md); margin-top: var(--s-6); }
+/* The workflow map, a topic of the docs (#377). */
+.explorer .route { margin-top: var(--s-4); }
 
 /* The answers of a page head (About, #317), and the home page (#329): the
    comparison keeps each row opposite its counterpart (a subgrid of --rows

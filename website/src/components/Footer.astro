@@ -1,16 +1,18 @@
 ---
+// The footer (#377): open source and the licence, the source, how to
+// contribute, how to report a security problem, and the docs.
 import { site } from "../../site.config";
 import { href, repoFile } from "../lib/links";
 ---
 <footer>
   <div class="wrap">
-    <span>{site.name}, an open-source workflow for AI coding agents. MIT licence.</span>
+    <span>{site.name}, an open-source workflow for AI coding agents.</span>
     <nav aria-label="Project">
-      <a href={site.repository}>Source</a>
+      <a href={repoFile("LICENSE")}>Open source · MIT</a>
+      <a href={site.repository}>GitHub / Source</a>
       <a href={repoFile("CONTRIBUTING.md")}>Contributing</a>
-      <a href={repoFile("LICENSE")}>Licence</a>
-      <a href={href("faq/")}>FAQ</a>
-      <a href={href("about/")}>About</a>
+      <a href={repoFile("SECURITY.md")}>Security policy</a>
+      <a href={href("docs/")}>Technical Documentation</a>
     </nav>
   </div>
 </footer>

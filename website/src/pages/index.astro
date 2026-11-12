@@ -10,7 +10,7 @@ import Base from "../layouts/Base.astro";
 import Section from "../components/Section.astro";
 import WorkflowDemo from "../components/WorkflowDemo.astro";
 import { site } from "../../site.config";
-import { href, issue, pull } from "../lib/links";
+import { getStarted, href, issue, pull } from "../lib/links";
 
 const [first, ...rest] = site.tagline.split(/(?<=\.) /);
 const second = rest.join(" ");
@@ -35,7 +35,7 @@ const review = `${issue(241)}#issuecomment-6531925164`;
         <p class="lede">{site.description}</p>
         <div class="actions">
           <a class="btn" href="#demo">Watch it work</a>
-          <a href={href("docs/getting-started/")}>Get started</a>
+          <a href={href(getStarted)}>Get Started</a>
         </div>
       </div>
     </div>
@@ -83,14 +83,14 @@ const review = `${issue(241)}#issuecomment-6531925164`;
 
   <Section id="who" title="Built for developers who want more control over AI-generated software.">
     <p>For developers and technical teams who use AI coding tools on new or existing projects, especially when the requirements, the verification and an independent review matter, or when several features and long-running work have to stay on track.</p>
-    <p>You need Git and a GitHub repository, a command line, and access to the supported AI coding tools. Agent Codeyard is open source; the model providers may cost money. It is not a no-code app builder and not a hosted service. <a href={href("faq/#who")}>Who it is for, in the FAQ</a></p>
+    <p>You need Git and a GitHub repository, a command line, and access to the supported AI coding tools. Agent Codeyard is open source; the model providers may cost money. It is not a no-code app builder and not a hosted service. <a href={href("features/#who")}>Who it is for, in the questions on Features</a></p>
   </Section>
 
   <Section id="start" title="Give your coding agents a process.">
     <p>Start with a new project, or bring Agent Codeyard into an existing repository.</p>
     <div class="split">
-      <div><h3>New project</h3><p>Start with requirements and planning before the first feature.</p><p><a href={href("docs/getting-started/")}>Getting started</a></p></div>
-      <div><h3>Existing repository</h3><p>Assess your codebase and adopt the workflow incrementally.</p><p><a href={href("docs/adopting/")}>Adoption guide</a></p></div>
+      <div><h3>New project</h3><p>Start with requirements and planning before the first feature.</p><p><a href={href(getStarted)}>Get Started</a></p></div>
+      <div><h3>Existing repository</h3><p>Assess your codebase and adopt the workflow incrementally.</p><p><a href={href("docs/#adopting")}>Adoption guide</a></p></div>
     </div>
     <p class="quiet">The source is on <a href={site.repository}>GitHub</a>.</p>
   </Section>

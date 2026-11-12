@@ -1,7 +1,8 @@
 ---
 // The workflow as one line map (DESIGN.md, "Route map with switches" and
-// "Workflow explorer"), the technical layer of /workflow, under its
-// "Explore the technical workflow" disclosure. It opens on the complete
+// "Workflow explorer"), the topic "workflow-map" of the docs (#377; it was
+// the technical layer of /workflow). Every id has the prefix of the topic,
+// as the ids of the other topics have. It opens on the complete
 // drawing; a walkthrough moves only when the reader asks (Previous, Next),
 // and a row of routes follows one exception each. Nothing advances by itself.
 // Project planning on the ink line, feature execution on the green line,
@@ -20,7 +21,6 @@
 import agentsConf from "../../../.agents/agents.conf?raw";
 import { switches, describe, initial, classesOf, parseAgents, routes, route } from "../lib/workflow";
 import { details, entry, parts, stations as detailed, tabs } from "../lib/steps";
-import { href } from "../lib/links";
 
 // The agents of the roles, as .agents/agents.conf of the repository sets them.
 const models = parseAgents(agentsConf);
@@ -33,10 +33,12 @@ const rows = [switches.filter((s) => !("minor" in s)), switches.filter((s) => "m
 // at most three sentences, the entry tells the rest.
 const refOf = (key: string) => {
   const step = entry(key);
-  return step && { href: href(`docs/reference/workflow/#${step.id}`), title: step.title };
+  return step && { href: `#workflow-reference/${step.id}`, title: step.title };
 };
 const refs = Object.fromEntries(route.flatMap((key) => { const ref = refOf(key); return ref ? [[key, ref]] : []; }));
 const box = "-30 0 1260 482";
+/** The id of an element of the map on the one docs page. */
+const at = (id: string) => `workflow-map/${id}`;
 
 // Stations: x on their row, the shape, the name and the sub-label (mono when
 // it is a value), and an optional second sub-label.
@@ -105,9 +107,9 @@ const featureWords: Word[] = [
   { key: "f-merge", name: "Merge", sub: "f-merge.sub", you: true, cond: "w-f-merge.cond" },
 ];
 ---
-<figure class="route workflow" id="workflow" aria-labelledby="workflow-title" data-workflow data-models={JSON.stringify(models)} data-refs={JSON.stringify(refs)}>
+<figure class="route workflow" id={at("workflow")} aria-labelledby={at("workflow-title")} data-workflow data-models={JSON.stringify(models)} data-refs={JSON.stringify(refs)}>
   <div class="route-head">
-    <h3 id="workflow-title">The route of a change, as a map</h3>
+    <h3 id={at("workflow-title")}>The route of a change, as a map</h3>
     <div class="scenario">
       <p aria-live="polite">
         <strong data-summary>{view.summary.map((bit, i) => <>{i > 0 && <span class="sep" aria-hidden="true">·</span>}{bit}</>)}</strong>
@@ -117,8 +119,8 @@ const featureWords: Word[] = [
     </div>
   </div>
 
-  <svg class="map" viewBox={box} role="img" aria-labelledby="workflow-map-title" aria-describedby="workflow-words">
-    <title id="workflow-map-title">The workflow as a line map: project planning on one line, from the idea to the merged plan, then each feature on a second line from its Issue to the merge, with the owner's decisions, the loops for a clarification, a failed check and review findings, and the review bypass of low risk under a policy without review for it.</title>
+  <svg class="map" viewBox={box} role="img" aria-labelledby={at("workflow-map-title")} aria-describedby={at("workflow-words")}>
+    <title id={at("workflow-map-title")}>The workflow as a line map: project planning on one line, from the idea to the merged plan, then each feature on a second line from its Issue to the merge, with the owner's decisions, the loops for a clarification, a failed check and review findings, and the review bypass of low risk under a policy without review for it.</title>
     <text class:list={["stage", "plan-part", c("t-planning")]} data-key="t-planning" x="-20" y="28">Plan the project: once, and for each change of the plan</text>
     <text class:list={["stage", c("t-feature")]} data-key="t-feature" x="80" y="240">Build each feature: in its own branch and worktree</text>
 
@@ -180,17 +182,17 @@ const featureWords: Word[] = [
   </ul>
 
   <p class="hint">Select a step on the map for what happens, who acts, the command and what can go wrong.</p>
-  <section class="step-panel" id="step-panel" aria-labelledby="step-panel-h" hidden>
+  <section class="step-panel" id={at("step-panel")} aria-labelledby={at("step-panel-h")} hidden>
     <div class="step-panel-head">
-      <h3 id="step-panel-h" tabindex="-1"></h3>
+      <h3 id={at("step-panel-h")} tabindex="-1"></h3>
       <button type="button" class="panel-close" aria-label="Close the step details">Close</button>
     </div>
     <div class="tabs" role="tablist" aria-label="Step details">
       {tabs.map((tab, i) => (
-        <button role="tab" type="button" id={`step-tab-${tab.id}`} data-tab={tab.id} aria-controls="step-tab-body" aria-selected={String(i === 0)} tabindex={i === 0 ? undefined : "-1"}>{tab.name}</button>
+        <button role="tab" type="button" id={at(`step-tab-${tab.id}`)} data-tab={tab.id} aria-controls={at("step-tab-body")} aria-selected={String(i === 0)} tabindex={i === 0 ? undefined : "-1"}>{tab.name}</button>
       ))}
     </div>
-    <div class="tab-body" id="step-tab-body" role="tabpanel" aria-labelledby="step-tab-overview"></div>
+    <div class="tab-body" id={at("step-tab-body")} role="tabpanel" aria-labelledby={at("step-tab-overview")}></div>
   </section>
   {panels.map((panel) => (
     <template data-step={panel.key} data-title={panel.title}>
@@ -213,12 +215,12 @@ const featureWords: Word[] = [
             : null}
         </div>
       ))}
-      <p class="ref-link">In the reference: {panel.steps.map((step, i) => <>{i > 0 && " · "}<a href={href(`docs/reference/workflow/#${step.id}`)}>{step.title}</a></>)}</p>
+      <p class="ref-link">In the reference: {panel.steps.map((step, i) => <>{i > 0 && " · "}<a href={`#workflow-reference/${step.id}`}>{step.title}</a></>)}</p>
     </template>
   ))}
 
-  <div class="routes" role="group" aria-labelledby="routes-label">
-    <span class="routes-label" id="routes-label">Follow</span>
+  <div class="routes" role="group" aria-labelledby={at("routes-label")}>
+    <span class="routes-label" id={at("routes-label")}>Follow</span>
     {routes.map((r) => (
       <button type="button" data-route={r.id} aria-pressed="false">{r.name}</button>
     ))}
@@ -226,7 +228,7 @@ const featureWords: Word[] = [
 
   <div class="map-actions more" role="group" aria-label="The complete workflow">
     <button type="button" data-action="finish" hidden>Show the complete workflow</button>
-    <button type="button" class="list-toggle" data-action="list" aria-expanded="false" aria-controls="workflow-words">Show the steps as a list</button>
+    <button type="button" class="list-toggle" data-action="list" aria-expanded="false" aria-controls={at("workflow-words")}>Show the steps as a list</button>
   </div>
 
   <div class="advanced">
@@ -248,7 +250,7 @@ const featureWords: Word[] = [
     <button type="button" class="reset" data-action="reset">Reset the switches</button>
   </div>
 
-  <div class="words-set" id="workflow-words">
+  <div class="words-set" id={at("workflow-words")}>
     <div class:list={c("w-planning")} data-key="w-planning">
       <h3>Plan the project</h3>
       <ol class="words">
@@ -396,7 +398,7 @@ const featureWords: Word[] = [
 
     // The step detail panel: under the map, or inside the item of the words
     // list that opened it. Tabs move with the arrow keys (roving tabindex).
-    const panel = figure.querySelector<HTMLElement>("#step-panel")!;
+    const panel = figure.querySelector<HTMLElement>(".step-panel")!;
     const home = document.createComment("step panel");
     panel.before(home);
     const heading = panel.querySelector<HTMLElement>("h3")!;

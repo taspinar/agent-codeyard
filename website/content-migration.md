@@ -40,3 +40,5 @@ The owner's comments on #240 explicitly include the licence instruction in getti
 ## Validation
 
 `website/check.sh --build` builds both base paths, checks links and anchors, requires repository links to name main, checks named scripts at their actual paths, and runs `search-test.mjs` against each generated index. The checker regression tests cover missing files, wrong repository refs and qualified script paths. Search indexes rendered HTML, including MDX, code and tables, locally after the build; no external service is required. Sidebar, contents and previous/next navigation remain ordinary links without JavaScript. Superseded by #373: the docs are one page, `/docs/`, whose section navigation, "On this page" and previous and next links are links within the page; without JavaScript every topic is on it (`design/INFORMATION-ARCHITECTURE.md`, 4.5).
+
+Superseded by #377: `/workflow/` and `/faq/` are redirect pages. The interactive walkthrough is the docs topic "The workflow as a map" (`/docs/#workflow-map`), and the answers of the FAQ are on Features or in their docs topics (`design/INFORMATION-ARCHITECTURE.md`, 2.2, 2.6, 3.3).

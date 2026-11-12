@@ -1,7 +1,9 @@
 ---
-// Sticky header: the mark, the sections, the repository and the theme toggle.
+// Sticky header (#377): the mark, the five destinations, the repository, the
+// action Get Started and the theme toggle. Below 1100px the links wrap onto
+// further rows, so none leaves the screen.
 import { site } from "../../site.config";
-import { href, sections } from "../lib/links";
+import { getStarted, href, sections } from "../lib/links";
 
 const here = Astro.url.pathname;
 ---
@@ -11,11 +13,12 @@ const here = Astro.url.pathname;
     <nav class="nav" aria-label="Site">
       {sections.map((section) => {
         const target = href(section.path);
-        // Docs stays marked under Get started, a page of the docs.
-        const current = here === target ? "page" : here.startsWith(target) ? "true" : undefined;
-        return <a class:list={[{ keep: "keep" in section && section.keep }]} href={target} aria-current={current}>{section.label}</a>;
+        // Docs stays marked on the pages of its Appendix; Home only on itself.
+        const current = here === target ? "page" : section.path && here.startsWith(target) ? "true" : undefined;
+        return <a href={target} aria-current={current}>{section.label}</a>;
       })}
-      <a class="keep" href={site.repository}>GitHub</a>
+      <a href={site.repository}>GitHub</a>
+      <a class="btn start" href={href(getStarted)}>Get Started</a>
       <button class="theme" type="button" aria-label="Switch colour theme"><span>Dark</span></button>
     </nav>
   </div>

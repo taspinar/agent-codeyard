@@ -22,12 +22,14 @@ export function pull(number: number): string {
   return `${site.repository}/pull/${number}`;
 }
 
-/** The sections of the site, in the order of the navigation. */
+/** The destinations of the site, in the order of the navigation (#377). */
 export const sections = [
-  { path: "workflow/", label: "How it works" },
+  { path: "", label: "Home" },
   { path: "features/", label: "Features" },
   { path: "examples/", label: "Projects" },
-  { path: "docs/", label: "Docs", keep: true },
   { path: "about/", label: "About" },
-  { path: "docs/getting-started/", label: "Get started" },
+  { path: "docs/", label: "Docs" },
 ] as const;
+
+/** The action "Get Started": the Quick Start of the docs, from every page (#377). */
+export const getStarted = "docs/#quick-start";

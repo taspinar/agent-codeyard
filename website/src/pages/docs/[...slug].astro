@@ -11,7 +11,8 @@ import { stages } from "../../lib/steps";
 export async function getStaticPaths() {
   const entries = await getCollection("docs");
   const reference = ["index", "parameters", ...stages.flatMap((stage) => [stage.id, ...stage.steps.flatMap((step) => [step.id, `${step.id}-h`])])];
-  return retired.map((route) => {
+  // The retired routes of the docs; /workflow/ and /faq/ have pages of their own.
+  return retired.filter((route) => route.topic).map((route) => {
     const topic = topics.find((t) => t.id === route.topic);
     if (!topic) throw new Error(`redirects: no topic ${route.topic}`);
     const html = topic.entry ? entries.find((entry) => entry.id === topic.entry)?.rendered?.html : undefined;
