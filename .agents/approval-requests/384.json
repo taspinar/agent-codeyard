@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "8c14cc49f74600e434c4fa8466892814e3d40f1a",
+  "commit": {
+    "branch": "feature/384-features-intro-the-owner",
+    "parent": "8fdc296407c8a4777f663e9e0d6a85790c4df2e6",
+    "base": "8fdc296407c8a4777f663e9e0d6a85790c4df2e6"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the review could not confirm: The word check of the Features page still passes (adjust nothing else to make room).",
+    "the review could not confirm: website/check.sh --build passes."
+  ],
+  "explanation": "Issue #384: Features intro: the owner's text of 9 November with the tool names. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
