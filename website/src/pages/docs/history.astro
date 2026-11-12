@@ -1,46 +1,14 @@
 ---
 // How Agent Codeyard began: the maker's own story, in the first person and
 // word for word as the owner wrote it on 12 November 2026, ending with what
-// comes next (#390); then the periods with their pull requests (#335) and the
-// research. The supervisor and local models of "What comes next" are planned
-// work (#361, #357 to #360), not available. The sections "In short",
-// "Engineering principles" and "Design decisions" were removed (#390); their
-// old ids sit at the top of the page.
+// comes next (#390), in the owner's words of their correction of 12 November;
+// then the research. The supervisor and local models of "What comes next" are
+// planned work (#361, #357 to #360), not available. The sections "In short",
+// "Engineering principles" and "Design decisions" and the period list
+// ("History", #335) were removed (#390); their old ids sit at the top of the
+// page, where the story starts.
 import DocsPage from "../../components/DocsPage.astro";
 import Table from "../../components/Table.astro";
-import { pull } from "../../lib/links";
-
-const prs = (numbers: number[]) => numbers.map((number) => ({ number, url: pull(number) }));
-
-// The history: periods by the merge dates of their pull requests.
-const history = [
-  { title: "A manual workflow", when: "September 2026", prs: prs([5, 8, 12, 14]),
-    text: "Instructions for agents, a few policies, a setup guide, and a rhythm of plan, act and evaluate. A feature was planned in an Issue, built in its own worktree, and read by a second agent. The first scripts took over what was the same every time; soon each review finding got an explicit decision, and the implementer fixed only what was decided." },
-  { title: "Structured planning", when: "September 2026", prs: prs([22]),
-    text: "A planning process before the first feature: from an idea to agreed requirements, an architecture and a roadmap." },
-  { title: "Records instead of reports", when: "2 October", prs: prs([31, 35, 39, 42, 43, 49, 50, 51]),
-    text: "Checks that relied on the agent's own word (the tests passed, the review covers the current code) became records a script can check: one command for the checks, structured data of the reviews and of the decisions on their findings, tied to the reviewed version, read-only reviewers, and a planning review with an approval tied to the approved documents." },
-  { title: "Reliability from real use", when: "6–7 October", prs: prs([61, 71, 74, 76, 77, 79, 81]),
-    text: "A feature resumes from a handoff note, the short note a session keeps so that the next one can continue, a passed verification is reused for unchanged content, an approved plan has a change process, a later review can read only what changed, and a project takes over template changes with a script." },
-  { title: "Unattended runs", when: "8–10 October", prs: prs([89, 90, 91, 95, 100, 101]),
-    text: "One command takes a feature from its Issue to an open pull request without waiting for you; it does not merge. A script, not an agent, decides whether a step succeeded and retries a temporary failure; “blocked” means only that a person has to decide; whether a change needs the owner's approval is no longer left to the agent that made it." },
-  { title: "Learning from runs", when: "13–21 October", prs: prs([126, 136, 138, 139, 140, 164, 168]),
-    text: "The scripts commit and close an Issue only when the implementer's completion record says the work is complete. Every run records its durations and tokens; a report, the experience of each run and an analysis by a read-only agent follow. The owner can give the decisions on review findings directly, with an audit trail, and a feature can wait for evidence that cannot exist yet." },
-  { title: "Effort by risk", when: "26–28 October", prs: prs([185, 194, 197, 198, 199, 200, 202, 211, 213, 214]),
-    text: "Every feature gets a computed risk level that selects the models and what the review rounds require; workflow profiles, a one-line choice of how much process a project wants, make low-risk work lighter. The owner's comments reach every agent of a feature, and the implementer asks before it invents an answer. Budgets measure without failing, and an approval request is tied to a checksum of exactly the content that was reviewed." },
-  { title: "Corrections from the first analysis", when: "27–29 October", prs: prs([183, 208, 215, 222, 223, 224, 225, 228, 229]),
-    text: "Agent attribution became configurable and is disabled by default; Codex may write the runtime files it needs. The five proposals of the run analysis of 28 October were built: earlier review decisions in every round, a recorded reason for every stop, timed checks, warnings about undeclared models. Test escalation was narrowed to removed or changed lines, and the owner can raise the level before the first session." },
-  { title: "This website", when: "30 October", prs: prs([244, 245, 246, 247, 248]),
-    text: "An MIT licence, then the redesign of this site, tracked in #234." },
-  { title: "The first site finished", when: "30–31 October", prs: prs([249, 251, 252]),
-    text: "Features, Examples and About written from the repository's own records; accessibility, performance and publication checked, with a guide for a rename and a custom domain; the browser check detects a missing browser instead of installing one on every run." },
-  { title: "The product-first redesign", when: "31 October", prs: prs([260, 261, 262, 263]),
-    text: "A product-first homepage, from the problem through the route of one feature, risk, review and the owner's gates to the records of one real feature. The workflow map became an explorer with the detail of each step, Features were organised around engineering problems and Examples by risk, and the workflow reference moved into the regrouped docs." },
-  { title: "Agent Codeyard", when: "31 October – 2 November", prs: prs([264, 266, 268]),
-    text: "The site took the name Agent Codeyard, with a social preview image for every page, and About named the maintainer. Two days later the repository and the site moved to agent-codeyard and agentcodeyard.com; the scripts kept their names." },
-  { title: "Value first", when: "4 November", prs: prs([276, 277, 278, 281]),
-    text: "After the owner's editorial audit of 3 November (#269), the homepage, Features, Examples and the docs were rewritten for a developer who has not heard of Codeyard: the value first, the technical proof as the deeper layer." },
-];
 
 // The frameworks compared, from the earlier research page, statuses corrected (#235, item 9).
 const frameworks = [
@@ -51,19 +19,18 @@ const frameworks = [
   { name: "GSD Core", url: "https://github.com/open-gsd/gsd-core", took: "Small tasks, progress notes that survive a session, resuming with a fresh context", left: "A second orchestrator; parallel execution by default", status: "Partly: handoff notes and resuming; no task scheduling" },
 ];
 
-// The four parts of the story, "What comes next", the periods and the research.
+// The four parts of the story, "What comes next" and the research.
 const toc = [
   { slug: "giving-each-agent-a-job", text: "Giving each agent a job" },
   { slug: "making-the-handoffs-reliable", text: "Making the handoffs reliable" },
   { slug: "from-an-issue-to-a-pull-request", text: "From an issue to a pull request" },
   { slug: "learning-from-real-projects", text: "Learning from real projects" },
   { slug: "what-comes-next", text: "What comes next" },
-  { slug: "history", text: "History" },
   { slug: "research", text: "Research" },
 ];
 ---
-<DocsPage page="docs/history/" title="How Agent Codeyard began" description="How Agent Codeyard began, told by its maker, and what comes next; then period by period with the pull requests that built it, and the frameworks and talks it learned from." toc={toc} class="history">
-  <span id="phases"></span><span id="principles"></span><span id="decisions"></span>
+<DocsPage page="docs/history/" title="How Agent Codeyard began" description="How Agent Codeyard began, told by its maker, and what comes next; then the frameworks and talks it learned from." toc={toc} class="history">
+  <span id="history"></span><span id="phases"></span><span id="principles"></span><span id="decisions"></span>
   <p>I started Agent Codeyard with a question about which AI model to use for which part of building software. I wanted to use a model like Fable for the hardest planning decisions, and a model like Opus to implement individual features once the plan was clear. That raised a second question. Once an agent had built a feature, how would I know it was ready?</p>
 
   <h2 id="giving-each-agent-a-job">Giving each agent a job</h2>
@@ -85,19 +52,8 @@ const toc = [
   <p>What began as a choice between models became a way to work with coding agents across the software development lifecycle. I can start with an idea I'm still working through, follow it into a plan and a set of changes, and see the evidence I need to decide whether those changes are ready to merge.</p>
 
   <h2 id="what-comes-next">What comes next</h2>
-  <p>Today I still start each feature run myself, answer the questions it stops for, and decide every merge. Several runs can work side by side, so my work has moved from driving each agent to overseeing the runs. The next step is a supervisor: a layer above the runs that starts and follows the features of an approved plan and brings me only the decisions. I also want Agent Codeyard to work with open-source models that run on your own machine, through opencode and Ollama, beside Claude Code and Codex. What stays with me is what I started with: deciding what gets built and how, steering now and then, and deciding what gets merged.</p>
-
-  <h2 id="history">History</h2>
-  <p>Period by period, with the pull requests that built it. Pages are named as they were called then: Examples is now Projects, and Workflow is How it works; Features, called Why Codeyard for a while, has its name again.</p>
-  <ol class="words timeline">
-    {history.map((period) => (
-      <li>
-        <b>{period.title}</b><small class="k">{period.when}</small>
-        <p>{period.text}</p>
-        <p>{period.prs.map((pr, index) => <>{index > 0 && ", "}<a href={pr.url}>#{pr.number}</a></>)}</p>
-      </li>
-    ))}
-  </ol>
+  <p>Today I start each feature run myself. When several runs are underway, I keep track of what’s ready, what’s blocked, and which decisions need my attention. I’m planning a supervisor that can follow an approved plan, start features as their dependencies are met, and flag decisions that need my input. I’ll continue to set priorities, review proposed changes, and decide what gets merged.</p>
+  <p>I also want to use models that run on my own machine. I’m planning to add OpenCode alongside Claude Code and Codex, with Ollama as a way to run local models. I’ll start with read-only roles such as review and triage.</p>
 
   <h2 id="research">Research</h2>
   <p>No code was copied from the projects named here.</p>

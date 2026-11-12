@@ -413,10 +413,6 @@ html:not(.js) .docs-search { display: none; }
 .docs-body .prose { max-width: var(--measure-wide); }
 .docs-body .prose table { display: block; overflow-x: auto; }
 .docs-body .prose pre { overflow-x: auto; }
-/* History and research (/docs/history/): the timeline of About, in the prose
-   of a docs page. */
-.prose .words.timeline { padding-left: var(--s-route-indent); }
-.prose .words.timeline li + li { margin-top: 0; }
 .nav-group { font: var(--w-bold) var(--t-xs) var(--sans); color: var(--ink-3); margin: var(--s-5) 0 0; }
 /* Technical Documentation (#373): the sections of the navigation, each a link
    to its first topic, with its other topics below it; with JavaScript only the

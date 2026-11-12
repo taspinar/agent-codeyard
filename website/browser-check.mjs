@@ -226,6 +226,12 @@ try {
         'Build software with AI. Keep control of every change.', 'See how Agent Codeyard works', 'Why not just use Claude Code or Codex?',
         'From running features to overseeing them.', 'Built for developers who want more control over AI-generated software.', 'Give your coding agents a process.',
       ]);
+      // Both roadmap items of overseeing runs are planned work (#390, the owner's correction of 12 November).
+      assert.deepEqual(await page.locator('#oversee .rules li b').allInnerTexts(), ['Coming soon: a supervisor.', 'Coming soon: local models.']);
+      const comingSoon = await page.locator('#oversee .rules').innerText();
+      assert.match(comingSoon, /Start feature runs as their dependencies are met/);
+      assert.match(comingSoon, /OpenCode alongside Claude Code and Codex, with Ollama/);
+      assert.match(comingSoon, /read-only roles such as review and triage/);
       const primary = hero.locator('.actions a.btn');
       assert.equal(await primary.count(), 1);
       assert.equal(await primary.innerText(), 'Watch it work');
@@ -732,21 +738,28 @@ try {
           assert.deepEqual(features.learn, ['learn', 'learn', 'learn'], 'The old ids of learning are not in its section');
           assert.equal(await page.locator('#learn-h').innerText(), 'Learn from your runs');
         }
-        // History (#390): the owner's story with "What comes next" first, then the periods and the research; the removed sections' ids at the top.
+        // History (#390): the owner's story with "What comes next" first, then the research; the removed sections' ids,
+        // the period list's #history among them (the owner's correction of 12 November), at the top where the story starts.
         if (path === base + 'docs/history/' && width === 1440) {
           const history = await page.evaluate(() => ({
             title: document.querySelector('main h1').innerText,
             headings: [...document.querySelectorAll('.docs-body h2')].map(h => h.innerText),
             toc: [...document.querySelectorAll('.docs-toc a')].map(a => a.innerText),
-            top: ['phases', 'principles', 'decisions'].map(id => document.getElementById(id)?.nextElementSibling?.tagName ?? 'missing'),
+            top: ['history', 'phases', 'principles', 'decisions'].map(id => document.getElementById(id)?.nextElementSibling?.tagName ?? 'missing'),
             first: document.querySelector('.docs-body .prose > p')?.innerText,
+            timeline: document.querySelectorAll('main .timeline').length,
+            pulls: [...document.querySelectorAll('main a')].filter(a => a.href.includes('/pull/')).length,
+            next: [...document.querySelectorAll('#what-comes-next ~ p')].slice(0, 2).map(p => p.innerText),
           }));
-          const parts = ['Giving each agent a job', 'Making the handoffs reliable', 'From an issue to a pull request', 'Learning from real projects', 'What comes next', 'History', 'Research'];
+          const parts = ['Giving each agent a job', 'Making the handoffs reliable', 'From an issue to a pull request', 'Learning from real projects', 'What comes next', 'Research'];
           assert.equal(history.title, 'How Agent Codeyard began');
           assert.deepEqual(history.headings, parts, 'The parts of History and their order');
           assert.deepEqual(history.toc, parts, 'On this page of History');
-          assert.deepEqual(history.top, ['SPAN', 'SPAN', 'P'], 'The old ids of the removed sections are not at the top of History');
+          assert.deepEqual(history.top, ['SPAN', 'SPAN', 'SPAN', 'P'], 'The old ids of the removed sections are not at the top of History');
           assert(history.first?.startsWith('I started Agent Codeyard with a question'), 'History does not open with the story');
+          assert.equal(history.timeline + history.pulls, 0, 'History still has the period list with its pull requests');
+          assert(history.next[0]?.startsWith('Today I start each feature run myself.') && history.next[0].includes('I’m planning a supervisor'), 'What comes next: the supervisor');
+          assert(history.next[1]?.startsWith('I also want to use models that run on my own machine.') && history.next[1].includes('read-only roles such as review and triage'), 'What comes next: local models');
         }
         // About (#376): three parts in order, 300 to 500 visible words in <main>,
         // one link to History and research, and every old anchor in the page.

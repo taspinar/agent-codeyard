@@ -500,8 +500,8 @@ Interface ids: `main`, `docs-query`, `search-status`, `search-results`.
 
 #### 22. `/docs/history/` — History and research
 
-Since #390 titled "How Agent Codeyard began"; `#phases`, `#principles` and
-`#decisions` are aliases at the top of the page (section 8).
+Since #390 titled "How Agent Codeyard began"; `#history`, `#phases`,
+`#principles` and `#decisions` are aliases at the top of the page (section 8).
 
 | Anchor | Element | Text |
 |---|---|---|
@@ -982,13 +982,13 @@ to the top of `/docs/history/` (row 21 of 3.3, section 8); no page links it.
 #### `history` → Appendix, kept at its route
 
 All ids stay on the page; About (#376) links it once. #390 removed "In
-short", "Engineering principles" and "Design decisions": their ids are aliases
-at the top of the page (section 8).
+short", "Engineering principles", "Design decisions" and the period list
+("History"): their ids are aliases at the top of the page (section 8).
 
 | Section (anchor) | Destination |
 |---|---|
 | In short (`phases`) | removed by #390; `phases` is an alias at the top of `/docs/history/` |
-| History (`history`) | `/docs/history/#history`, unchanged |
+| History (`history`) | removed by #390 (the owner's correction of 12 November); `history` is an alias at the top of `/docs/history/`, where the story starts |
 | Engineering principles (`principles`) | removed by #390; `principles` is an alias at the top of `/docs/history/` |
 | Design decisions (`decisions`) | removed by #390; `decisions` is an alias at the top of `/docs/history/` |
 | Research (`research`) | `/docs/history/#research`, unchanged |
@@ -1428,16 +1428,18 @@ and Engineering records as an Appendix page.
 
 | Where | Change | Old anchors |
 |---|---|---|
-| Home | "Built with the process it describes." (`evidence`, the run of #241 to PR #249, the link to Engineering records) is replaced, between "Why not just use Claude Code or Codex?" and "Who it's for", by "From running features to overseeing them." (`oversee`): one paragraph and two lines "Coming soon:", the supervisor (#361) and open-source local models (#357 to #360), planned work with no date | `evidence`, `evidence-h`, `projects` are aliases on `oversee` |
+| Home | "Built with the process it describes." (`evidence`, the run of #241 to PR #249, the link to Engineering records) is replaced, between "Why not just use Claude Code or Codex?" and "Who it's for", by "From running features to overseeing them." (`oversee`): one paragraph and two lines "Coming soon:", a supervisor that coordinates feature runs (#361, steps #362 to #365; not the optional language-model supervisor of #366) and local models with OpenCode and Ollama, starting with read-only roles (#357 to #360), planned work with no date, in the owner's copy of their correction of 12 November | `evidence`, `evidence-h`, `projects` are aliases on `oversee` |
 | Features | The three paragraphs "Illustrative example." are removed; "Learning from the runs" becomes the section "Learn from your runs" (`learn`) after `verify`; the cost answer no longer links Engineering records | `learn`, `learn-h`, `learn-t`, `learn-words` in `learn` |
 | Engineering records | The page `/docs/engineering-records/` is removed from the site, the docs navigation, the Appendix and the search; the route is a redirect page (C, `src/pages/docs/[...slug].astro`) to `/docs/history/`; no page links it | every id to `/docs/history/` (row 21 of 3.3) |
 | Projects | `/examples/` stays at its URL, built, but unlisted: no link from the header, the footer, Home, About, Features or the docs; not in the sitemap or the search index; its lines that pointed to Engineering records are removed | the old pointer ids are aliases at the heading of the cases |
 | Header | Home, Features, About, Docs, GitHub, then the theme toggle; Projects and the button Get Started leave it. The hero's "Get Started" link and the home section "Give your coding agents a process" keep Quick Start; `/docs/getting-started/` stays a redirect to `/docs/#quick-start` | — |
 | About | The first paragraph is the owner's, word for word; the sentence about the projects is removed; the link to History says "How Agent Codeyard began" | unchanged |
-| History | Opens with the owner's story in the first person, word for word, under the title "How Agent Codeyard began" (also its title in the navigation), its four parts as level-2 headings, then "What comes next" (planned work, no date); "In short", "Engineering principles" and "Design decisions" are removed; the period list ("History") and "Research" stay below | `phases`, `principles`, `decisions` are aliases at the top of the page |
+| History | Opens with the owner's story in the first person, word for word, under the title "How Agent Codeyard began" (also its title in the navigation), its four parts as level-2 headings, then "What comes next" (planned work, no date; two paragraphs in the owner's words of their correction of 12 November); "In short", "Engineering principles", "Design decisions" and, by that correction, the period list ("History") with its dates and pull requests are removed; "Research" stays below | `history`, `phases`, `principles`, `decisions` are aliases at the top of the page, where the story starts |
 
 The tests follow: `src/lib/redirects.test.ts` (the redirect and the unlisted
 route), `src/lib/docs.test.ts` (the Appendix), `search-test.mjs` (the
 sitemap, the search index, no link to `/examples/` or the removed page, the
 walk of the old anchors) and `browser-check.mjs` (the home sections, the
-header, Features, About, History and the old anchors of Projects).
+header, Features, About, History and the old anchors of Projects; the two
+"Coming soon" items on Home and "What comes next" without the period list on
+History).

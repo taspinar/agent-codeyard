@@ -124,6 +124,9 @@ if (process.argv[2]) {
   // The owner's story opens History (#390), and the search finds it there.
   assert(searchPages(docs, 'Giving each agent a job').some(p => p.url === `${base}docs/history/`));
   assert.equal(docs.find(p => p.url === `${base}docs/history/`)?.title, 'How Agent Codeyard began');
+  // The period list left History (the owner's correction of 12 November); "What comes next" names both planned items.
+  assert(!searchPages(docs, 'Records instead of reports').some(p => p.url === `${base}docs/history/`), 'History still has the period list');
+  assert(searchPages(docs, 'OpenCode Ollama supervisor').some(p => p.url === `${base}docs/history/`));
   // Engineering records was removed (#390): no page, no entry of the sitemap or the search.
   assert(!sitemap.includes('engineering-records') && !sitemap.includes(`${base}examples/`), 'The sitemap lists Engineering records or Projects');
   assert(!searchPages(pages, '41 recorded runs').length, 'The search still finds the engineering records');

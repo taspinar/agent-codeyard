@@ -51,8 +51,10 @@ evidence opens its disclosure, and that an old anchor of a removed
 engineering case lands on the cases. It checks the order of the home
 sections, that Features has no illustrative example and "Learn from your runs"
 as its own section, that About links the History page once as "How Agent
-Codeyard began", and that History opens with the owner's story with the old
-ids of its removed sections at the top. Native
+Codeyard began", that both "Coming soon" items of the home page are there,
+and that History opens with the owner's story with the old ids of its removed
+sections (`#history` among them) at the top, ends it with "What comes next",
+and has no period list or pull request links. Native
 summaries keep both navigation lists usable with JavaScript disabled.
 
 For Technical Documentation (#373) it checks that `/docs/` opens with Quick
