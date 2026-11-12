@@ -32,8 +32,8 @@ const question = Object.fromEntries(questions.map((item) => [item.id, item.title
 const old = (name: string) => [name, `${name}-h`, `${name}-t`, `${name}-words`];
 ---
 <Base title="Features" description="Why Agent Codeyard next to Claude Code or Codex: agree on what to build before it is built, let agents work on features independently, and verify every change before you accept it. With a short FAQ.">
-  <PageHead title="Features" lede="Claude Code and Codex write the code. Codeyard adds the way of working around them: agree on what to build, let the agents work on their own, and check every change before you accept it.">
-    <p>Codeyard writes no code itself and is not a hosted service. It runs on your machine or server, and the coding tools you already use do the writing.</p>
+  <PageHead title="Features" lede="Claude Code and Codex write the code; Codeyard governs how. It turns a request into agreed requirements and a plan, has every change verified and reviewed by another model, and keeps the final decision yours.">
+    <p>Codeyard writes no code and is not a hosted service. It runs on your machine or server; the coding tools you use talk to their own providers.</p>
     <ol class="contents">
       {themes.map((theme) => <li><a href={`#${theme.id}`}>{theme.title}</a></li>)}
       <li><a href="#faq">Questions</a></li>
