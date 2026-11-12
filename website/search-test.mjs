@@ -121,7 +121,7 @@ if (process.argv[2]) {
   const uses = {
     '': ['function'],
     'workflow/': Object.keys(parts),
-    'features/': ['plan', 'check', 'finding'],
+    'features/': ['function', 'plan', 'check', 'finding'],
     'faq/': ['function'],
     'examples/': Object.keys(parts),
     'docs/getting-started/': ['function'],

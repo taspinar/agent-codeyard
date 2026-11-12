@@ -99,7 +99,7 @@ try {
       }
       await page.setViewportSize({ width, height: 900 });
       // The header: the seven labels of the navigation, in order.
-      assert.deepEqual(await page.locator('.top .nav a').allInnerTexts(), ['How it works', 'Why Codeyard', 'Projects', 'Docs', 'About', 'Get started', 'GitHub']);
+      assert.deepEqual(await page.locator('.top .nav a').allInnerTexts(), ['How it works', 'Features', 'Projects', 'Docs', 'About', 'Get started', 'GitHub']);
       await page.goto(origin + base + '?theme=' + theme);
       await tabTo('.nav a');
       await page.keyboard.press('Enter');
@@ -523,7 +523,8 @@ try {
     for (const theme of ['light', 'dark']) {
       await page.emulateMedia({ colorScheme: theme });
 
-      for (const width of [375, 768, 1440]) {
+      // Features (#374) and About (#376) are also checked at the narrowest phone width and at 1280 px.
+      for (const width of path === base + 'features/' ? [320, 375, 768, 1280, 1440] : path === base + 'about/' ? [320, 375, 390, 768, 1280, 1440] : [375, 768, 1440]) {
         await page.setViewportSize({ width, height: 900 });
         await page.goto(origin + path + '?theme=' + theme);
         await page.evaluate(() => document.fonts.ready);
@@ -566,9 +567,8 @@ try {
           const inlineJS = [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].reduce((sum, m) => sum + Buffer.byteLength(m[1]), 0);
           report.pages.push({ path, javascriptBytes: inlineJS + resources.filter(r => r.kind === 'script').reduce((s, r) => s + r.bytes, 0), pageBytes: Buffer.byteLength(html) + resources.reduce((s, r) => s + r.bytes, 0), resources });
         }
-        // Why Codeyard (#331): with the disclosures closed, at most 1400 visible
-        // words in <main> (1300 until the owner's texts of #343) and at most
-        // 6000 px high at 1440 px.
+        // Features (#374): with the questions closed, at most 900 visible words
+        // in <main> and at most 6000 px high at 1440 px.
         if (path === base + 'features/' && width === 1440) {
           const length = await page.evaluate(() => ({
             open: document.querySelectorAll('main details[open]').length,
@@ -577,14 +577,34 @@ try {
           }));
           report.features ??= [];
           report.features.push({ theme, ...length });
-          console.log(`  ${path} ${theme} 1440 px, disclosures closed: ${length.words} words, ${length.height} px high.`);
+          console.log(`  ${path} ${theme} 1440 px, questions closed: ${length.words} words, ${length.height} px high.`);
           assert.equal(length.open, 0, `Disclosures open on ${path}`);
-          assert(length.words <= 1400, `${path} shows ${length.words} words, more than 1400`);
+          assert(length.words <= 900, `${path} shows ${length.words} words, more than 900`);
           assert(length.height <= 6000, `${path} is ${length.height} px high at 1440 px, more than 6000`);
+        }
+        // About (#376): three parts in order, 300 to 500 visible words in <main>,
+        // one link to History and research, and every old anchor in the page.
+        if (path === base + 'about/' && width === 1440) {
+          const about = await page.evaluate(() => ({
+            parts: [...document.querySelectorAll('main section > .wrap h2')].map(h => h.closest('section').id),
+            words: document.querySelector('main').innerText.split(/\s+/).filter(Boolean).length,
+            history: [...document.querySelectorAll('main a')].filter(a => new URL(a.href).pathname.endsWith('/docs/history/')).length,
+            missing: ['maker', 'maker-h', 'why', 'limits', 'limits-h', 'history', 'decisions', 'research', 'contribute', 'contribute-h', 'source', 'source-h', 'improvements'].filter(id => !document.getElementById(id)),
+          }));
+          console.log(`  ${path} ${theme} 1440 px: ${about.words} words.`);
+          assert.deepEqual(about.parts, ['maker', 'why', 'contribute'], 'The parts of About and their order');
+          assert(about.words >= 300 && about.words <= 500, `${path} shows ${about.words} words, not 300 to 500`);
+          assert.equal(about.history, 1, 'About links History and research once');
+          assert.deepEqual(about.missing, [], 'Every old anchor of About resolves');
         }
       }
     }
-    console.log(`  Checked ${path} in both themes at all three widths.`);
+    console.log(`  Checked ${path} in both themes at all its widths.`);
+  }
+  // A link to a question of Features, as the redirect of /faq/ makes, opens its answer (#374).
+  for (const id of ['cost', 'data-h']) {
+    await page.goto(origin + base + 'features/#' + id);
+    assert(await page.locator(`#${id}`).evaluate(e => e.closest('details').open), `features/#${id} leaves its answer closed`);
   }
   assert.deepEqual([...external], [], 'Third-party resources are forbidden');
 
