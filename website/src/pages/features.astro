@@ -118,7 +118,7 @@ const old = (name: string) => [name, `${name}-h`, `${name}-t`, `${name}-words`];
 <script>
   // A link to a question, or to an id inside a closed answer, opens it.
   const open = () => {
-    const target = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    const target = location.hash ? document.getElementById(decodeURIComponent(location.hash.slice(1))) : null;
     const details = target?.closest("details");
     if (details && !details.open) {
       details.open = true;

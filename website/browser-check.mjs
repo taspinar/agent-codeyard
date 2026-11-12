@@ -461,6 +461,16 @@ try {
     await page.goto(origin + base + 'features/#' + id);
     assert(await page.locator(`#${id}`).evaluate(e => e.closest('details').open), `features/#${id} leaves its answer closed`);
   }
+  // Features raises no script error without a hash, with a question's hash or with an unknown one (#386).
+  const errors = [];
+  const onError = error => errors.push(error.message);
+  page.on('pageerror', onError);
+  for (const hash of ['', '#cost', '#no-such-question']) {
+    await page.goto(origin + base + 'features/' + hash);
+    await page.waitForLoadState('load');
+    assert.deepEqual(errors, [], `features/${hash} raises a script error`);
+  }
+  page.off('pageerror', onError);
   assert.deepEqual([...external], [], 'Third-party resources are forbidden');
 
   report.largestPage = report.pages.reduce((a, b) => a.pageBytes > b.pageBytes ? a : b);
