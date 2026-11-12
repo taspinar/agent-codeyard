@@ -32,7 +32,7 @@ The workflow keeps a record of every run, so that you can see what a feature cos
 | What | Where |
 | --- | --- |
 | One file per run: how long each step took, the tokens each agent call used, the verifications, and what you did that a script saw | `.agents/run/records/` in your main checkout, also for a feature in a worktree |
-| The runs of a feature or a planning together, copied when the pull request is opened and before its worktree is removed | `.agents/records/` in your main checkout |
+| The runs of a feature or a planning together, copied when the pull request is opened and before its worktree is removed | `.agents/records/feature-<issue>.jsonl` or `planning-<name>.jsonl` in your main checkout, format `run-record/v1` |
 | The notes of the implementer on a run, optional | `.agents/experience/` in the feature worktree, kept in the record of the run once they are valid |
 | The input, the result, and the report of an analysis | `.agents/analysis/` in your main checkout |
 
@@ -64,7 +64,7 @@ Some care is built in, so that the numbers do not mislead:
 - A comparison names what differs between the features: the template version, the prompts, the configuration, and the models. It also says that a difference between totals or averages does not show its cause.
 - An analysis cites the runs and observations every conclusion rests on. One observation never becomes a rule, a finding needs at least two runs, and "not enough evidence" is a valid outcome. An observation that an earlier analysis already used is not counted again as new.
 
-An analysis changes nothing in your repository. Each proposal says where it belongs: a decision record, an agent instruction, a skill, the documentation, a check in a script, an issue, or the workflow template. A project cannot repair the workflow scripts itself, because it takes them over from the template; a proposal about them is an issue for the template. You decide what to do with a proposal, and it goes through the review that applies there. Records and analyses never stop a feature: a record that cannot be written is reported, and the work goes on.
+An analysis changes nothing in your repository. Each proposal says where it belongs: a decision record, an agent instruction, a skill, the documentation, a check in a script, an issue, or the workflow template. A project cannot repair the workflow scripts itself, because it takes them over from the template; a proposal about them is an issue for the template. You decide what to do with a proposal, and it goes through the review that applies there. You start an analysis yourself, for example over the last twenty features now and then; running it periodically is an open issue ([Issue 131](https://github.com/taspinar/agent-codeyard/issues/131)). Records and analyses never stop a feature: a record that cannot be written is reported, and the work goes on.
 
 <a id="rules"></a>
 
