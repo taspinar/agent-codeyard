@@ -62,9 +62,6 @@
   --t-map-sub: 14px;
   --t-map-station: 17px;
   --t-lines-station: 15px;
-  --t-learn-note: 15px;
-  --t-learn-sub: 16px;
-  --t-learn-station: 18px;
 
   /* Weights: the cuts of Overpass in src/fonts/. */
   --w-regular: 400;
@@ -301,7 +298,6 @@ td .k { font-family: var(--mono); font-size: var(--t-code-cell); }
 .lines .branch { stroke: var(--rule-strong); stroke-width: 3px; fill: none; stroke-dasharray: 7 7; stroke-linejoin: round; }
 
 .lines .note { font-weight: var(--w-semibold); font-size: var(--t-map-note); fill: var(--ink-3); }
-.lines.learn .l1 { stroke: var(--ink); }
 .rules { list-style: none; margin: 0; padding: 0; border-top: 2px solid var(--ink); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--s-5); }
 .rules li { padding: var(--s-3) 0; border-bottom: 1px solid var(--rule); font-size: var(--t-sm); color: var(--ink-2); }
 .rules b { color: var(--ink); }
@@ -354,9 +350,6 @@ html:not(.js) .switches { display: none; }
   .map .trunk, .map .bypass, .map .reviewed { transition: stroke 160ms ease-out; }
 }
 figure.plain { margin: 0; }
-.lines.learn .st { font-size: var(--t-learn-station); }
-.lines.learn .sub { font-size: var(--t-learn-sub); }
-.lines.learn .note { font-size: var(--t-learn-note); }
 
 /* ---- Site components beyond the prototype, built from the same tokens ---- */
 
@@ -624,25 +617,17 @@ main section.group { border-top: 2px solid var(--ink); padding-bottom: 0; }
 .group .lede { margin-top: var(--s-3); }
 .group + section { border-top: 0; }
 .sec > header h3 { font-size: var(--t-xl); font-weight: var(--w-heavy); letter-spacing: var(--track-heading); }
-.pitch { display: grid; grid-template-columns: 12rem minmax(0, 1fr); margin: 0; border-top: 2px solid var(--ink); max-width: var(--measure-wide); }
-.pitch dt, .pitch dd { padding: var(--s-3) 0; border-bottom: 1px solid var(--rule); }
-.pitch dt { font-weight: var(--w-bold); padding-right: var(--s-4); }
-.pitch dd { margin: 0; }
-.pitch dd:first-of-type { font-size: var(--t-lg); line-height: var(--lh-lede); }
 .proof > summary { font: var(--w-semibold) var(--t-sm) var(--sans); color: var(--ink); cursor: pointer; width: fit-content; }
 .proof > * + * { margin-top: var(--s-5); }
-/* Features (#343): the open technical layer of a feature hangs from a 2px ink
-   rule on its left, its content indented by s-5 in body small; no fill, no
-   border box, no shadow. */
-.proof > .layer { border-left: 2px solid var(--ink); padding-left: var(--s-5); font-size: var(--t-sm); }
-.proof > .layer > * + * { margin-top: var(--s-5); }
-.proof > .layer > :last-child { margin-bottom: 0; }
-.split h5 { font-size: var(--t-md); font-weight: var(--w-bold); line-height: var(--lh-heading); letter-spacing: var(--track-snug); margin: 0 0 var(--s-3); padding-bottom: var(--s-2); border-bottom: 2px solid var(--ink); }
+/* Features (#374): the inline FAQ, one closed disclosure per question between
+   hairlines; the answer opens below its question in body size. */
+.faq { border-top: 2px solid var(--ink); max-width: var(--measure-wide); }
+.faq details { border-bottom: 1px solid var(--rule); padding: var(--s-3) 0; }
+.faq summary { font-weight: var(--w-bold); color: var(--ink); cursor: pointer; }
+.faq details > * + * { margin-top: var(--s-3); }
 @media (max-width: 760px) {
   .contents { columns: 1; }
   .contents.grouped { grid-template-columns: minmax(0, 1fr); }
-  .pitch { grid-template-columns: minmax(0, 1fr); }
-  .pitch dt { padding-bottom: 0; border-bottom: 0; }
 }
 
 /* Native disclosures keep the article close on small screens, including without JS. */
