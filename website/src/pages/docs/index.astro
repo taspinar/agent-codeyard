@@ -7,6 +7,7 @@
 // topic at a time, chosen by the address, and Quick Start when it names none.
 import { getCollection } from "astro:content";
 import DocsPage from "../../components/DocsPage.astro";
+import WorkflowMap from "../../components/WorkflowMap.astro";
 import WorkflowReference from "../../components/WorkflowReference.astro";
 import { first, prefixed, topics } from "../../lib/docs";
 import { docsAliases } from "../../lib/redirects";
@@ -15,6 +16,7 @@ import { site } from "../../../site.config";
 
 const entries = await getCollection("docs");
 const reference = "workflow-reference";
+const map = "workflow-map";
 const items = topics.map((topic, i) => {
   let html = "";
   let toc: { slug: string; text: string; children: { slug: string; text: string }[] }[] = [];
@@ -27,6 +29,11 @@ const items = topics.map((topic, i) => {
       if (h.depth === 2) toc.push(item);
       else if (h.depth === 3) (toc.at(-1)?.children ?? toc).push(item);
     }
+  } else if (topic.id === map) {
+    toc = [
+      { slug: `${map}/workflow-title`, text: "The route of a change, as a map", children: [] },
+      { slug: `${map}/workflow-words`, text: "The steps as a list", children: [] },
+    ];
   } else {
     toc = [
       { slug: `${reference}/index`, text: "Step index", children: [] },
@@ -76,6 +83,11 @@ const routing = {
       <h2 tabindex="-1">{item.title}</h2>
       {item.entry
         ? <div class="prose"><Fragment set:html={item.html} /></div>
+        : item.id === map
+        ? <div class="explorer" id={`${map}/explore`}>
+            <p>Every script and agent of the workflow on one map: the loops for a question, a failed check and review findings, where the run stops for you, and how risk levels and profiles change the route. <a href="#workflow-and-commands">How the workflow works</a> explains it in words; the <a href="#workflow-reference">workflow reference</a> has every step in detail.</p>
+            <WorkflowMap />
+          </div>
         : <div class="prose ref"><WorkflowReference /></div>}
       <nav class="docs-pagination" aria-label={`Previous and next: ${item.title}`}>
         {item.previous && <a rel="prev" href={`#${item.previous.id}`}>Previous: {item.previous.title}</a>}

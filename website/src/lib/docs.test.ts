@@ -18,7 +18,7 @@ test("a section's id is the id of its first topic, and every topic id is unique"
 test("the topics and the files that feed them", () => {
   assert.deepEqual(Object.fromEntries(topics.map((topic) => [topic.id, topic.entry ?? null])), {
     "quick-start": "getting-started", "new-to-agentic-coding": "new-to-agentic-coding", adopting: "adopting",
-    "workflow-and-commands": "detailed-workflow", updating: "updating", configuration: "configuration-and-security",
+    "workflow-and-commands": "detailed-workflow", "workflow-map": null, updating: "updating", configuration: "configuration-and-security",
     "agent-roles": "agent-roles", "risk-policy": "risk-policy", "github-setup": "github-setup",
     "verification-and-review": "verification-and-completion", troubleshooting: "troubleshooting",
     "technical-reference": "technical-reference", "workflow-reference": null,

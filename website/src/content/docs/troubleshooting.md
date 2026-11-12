@@ -4,6 +4,8 @@ description: "Find the symptom or the message you see: the first fix to try, how
 order: 9
 ---
 
+When an agent needs a decision only you can make, it stops and asks instead of guessing. A failing check is repaired and run again a limited number of times; after that, the run stops and says why. A review finding is fixed and the fix is reviewed again, and nothing becomes part of your project until you merge it.
+
 Find what you see below: a symptom, or the words a script printed. A script that stops always prints its reason and, where there is one, the command that continues. Each entry gives:
 
 - **First fix:** the one thing to try first.
@@ -43,6 +45,8 @@ The workflow passes the model name on as you wrote it and never replaces it, so 
 - **First fix:** when you work step by step, resume the interrupted step: `./scripts/start-feature.sh <issue> --resume`. When an unattended run was interrupted, run `./scripts/run-feature.sh <issue>` again; it continues where the feature stands.
 - **Recovered when:** a new session starts from the handoff note, and the step that was interrupted runs again.
 - **Output:** the handoff note, `.agents/handoffs/<issue>.md`, and for an unattended run its log, `.agents/run/<issue>-log`, both in the feature worktree.
+
+To stop a run yourself, stop it like any command in the terminal (Ctrl+C). Nothing is merged, and the work stays in the feature's worktree. Run the same command again and it continues where the feature stands, skipping the steps that are done; if it stopped for a decision of yours, answer it first in the handoff note or on the Issue.
 
 The implementer keeps a handoff note with what is done and what remains, so the work continues without the earlier conversation. An unattended run retries a temporary failure itself, such as a short loss of the network while it reads the Issue. <a href="#workflow-and-commands/resume">Resume a feature that stopped</a> has the route.
 

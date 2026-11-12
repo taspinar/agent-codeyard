@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "f49cd0759faf35f2e8976506c4c438d74607587a",
+  "commit": {
+    "branch": "feature/377-header-footer-and-get",
+    "parent": "f05f43b332a1d989a21fa130876826e1ac6f24d2",
+    "base": "f05f43b332a1d989a21fa130876826e1ac6f24d2"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the independent review classified the impact on the architecture as major: The change alters the public site navigation and route interface, retires two public routes with anchor redirects, and adds the workflow map as a shared docs topic. The migration table and redirects preserve the documented destinations. ",
+    "the review could not confirm: website/check.sh --build and ./scripts/verify.sh pass; checks at 320, 390, 768, 1280 and 1440 px, both themes, keyboard, no JavaScript error."
+  ],
+  "explanation": "Issue #377: Header, footer and Get Started; retire /workflow/ and /faq/ with redirects (website IA step 6). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

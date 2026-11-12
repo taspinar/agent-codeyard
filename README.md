@@ -8,6 +8,8 @@ results, and reviewing changes before they are merged.
 
 **Documentation:** <https://agentcodeyard.com/>
 
+**Get Started:** <https://agentcodeyard.com/docs/#quick-start>
+
 ## How it works
 
 1. **Plan.** An agent questions you about the idea and writes the
@@ -63,7 +65,7 @@ the template itself.
 
 | You want to | Read |
 |---|---|
-| Understand the workflow, with a diagram | [The documentation site](https://agentcodeyard.com/) |
+| Understand the workflow, with a diagram | [The workflow map](https://agentcodeyard.com/docs/#workflow-map) on the documentation site |
 | Set up GitHub for a new project | [docs/repository-setup.md](docs/repository-setup.md) |
 | Look up a command or an option | [docs/development.md](docs/development.md) |
 | See every step, artifact, and approval | [docs/workflow.md](docs/workflow.md) |

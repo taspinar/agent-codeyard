@@ -169,15 +169,18 @@ try {
       for (const route of retired) {
         const html = await readFile(join(output, route.path, 'index.html'), 'utf8');
         const ids = Object.keys(JSON.parse(html.match(/const map = (\{.*?\});/)[1]));
-        const samples = javaScriptEnabled ? [undefined, 'main', ids[4], ids.at(-1), 'no-such-anchor'] : [undefined, ids.at(-1)];
+        // Every anchor of /workflow/ and /faq/, whose rows are written out (#377); a sample of a mechanical row.
+        const samples = !javaScriptEnabled ? [undefined, ids.at(-1)] : route.to ? [undefined, ...ids, 'no-such-anchor'] : [undefined, 'main', ids[4], ids.at(-1), 'no-such-anchor'];
         for (const id of samples) {
           await r.goto(origin + base + route.path + (id ? '#' + id : ''));
           const expected = javaScriptEnabled && id && id !== 'no-such-anchor' ? moved(route, id) : moved(route);
           await r.waitForURL(origin + base + expected);
           const fragment = expected.split('#')[1];
           // An alias id is an empty element: its topic is what must be shown.
-          await r.waitForFunction(id => { const e = document.getElementById(id); return e && (e.closest('[data-topic]') ?? e).checkVisibility(); }, fragment, { timeout: 5000 });
-          if (javaScriptEnabled) assert.deepEqual(await r.evaluate(() => [...document.querySelectorAll('.docs-topics > [data-topic]')].filter(s => s.checkVisibility()).map(s => s.id)), [route.topic], `/${route.path}#${id ?? ''} opens ${route.topic}`);
+          // A target without a fragment is a page (/faq/#what to /features/).
+          await r.waitForFunction(id => { const e = id ? document.getElementById(id) : document.querySelector('main'); return e && (e.closest('[data-topic]') ?? e).checkVisibility(); }, fragment ?? null, { timeout: 5000 });
+          const topic = route.topic ?? (expected.startsWith('docs/#') ? expected.slice(6).split('/')[0] : undefined);
+          if (javaScriptEnabled && topic) assert.deepEqual(await r.evaluate(() => [...document.querySelectorAll('.docs-topics > [data-topic]')].filter(s => s.checkVisibility()).map(s => s.id)), [topic], `/${route.path}#${id ?? ''} opens ${topic}`);
         }
       }
       await context.close();
@@ -204,7 +207,7 @@ try {
     console.log(`  Technical Documentation: ${sections.length} sections, ${topics.length} topics, ${retired.length} redirect pages walked with and without JavaScript.`);
   }
   const panelAccessible = async () => {
-    const results = await new AxeBuilder({ page }).include('#step-panel').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
+    const results = await new AxeBuilder({ page }).include('[id="workflow-map/step-panel"]').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
     assert.deepEqual(results.violations.filter(v => ['serious', 'critical'].includes(v.impact) || v.id === 'color-contrast'), [], 'Accessibility of the step detail panel');
   };
   for (const theme of ['light', 'dark']) {
@@ -216,7 +219,7 @@ try {
       await page.keyboard.press('Enter');
       assert.equal(await page.evaluate(() => document.activeElement.id), 'main');
       // The home page (#370): the six sections in order; the hero's primary
-      // action goes to the demo, the text link to Getting started, and the
+      // action goes to the demo, the text link Get Started to Quick Start (#377), and the
       // headline, the lede and both actions are in view without scrolling.
       const hero = page.locator('.hero-grid');
       assert.deepEqual(await page.locator('main h1, main h2').allInnerTexts(), [
@@ -227,7 +230,7 @@ try {
       assert.equal(await primary.count(), 1);
       assert.equal(await primary.innerText(), 'Watch it work');
       assert.equal(await primary.getAttribute('href'), '#demo');
-      assert.equal(await hero.locator('.actions a:not(.btn)').getAttribute('href'), base + 'docs/getting-started/');
+      assert.equal(await hero.locator('.actions a:not(.btn)').getAttribute('href'), base + 'docs/#quick-start');
       // The demo draws its route in two layouts and the screen shows one of them.
       assert.equal(await page.locator('main svg').evaluateAll(es => es.filter(e => e.checkVisibility()).length), 1, 'One process diagram on the home page: the demo');
       for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
@@ -239,35 +242,20 @@ try {
         }
       }
       await page.setViewportSize({ width, height: 900 });
-      // The header: the seven labels of the navigation, in order.
-      assert.deepEqual(await page.locator('.top .nav a').allInnerTexts(), ['How it works', 'Features', 'Projects', 'Docs', 'About', 'Get started', 'GitHub']);
+      // The header (#377): the five destinations, GitHub and Get Started, in order, then the theme toggle.
+      assert.deepEqual(await page.locator('.top .nav a').allInnerTexts(), ['Home', 'Features', 'Projects', 'About', 'Docs', 'GitHub', 'Get Started']);
       await page.goto(origin + base + '?theme=' + theme);
-      await tabTo('.nav a');
+      await tabTo('.nav a[href="' + base + 'docs/"]');
       await page.keyboard.press('Enter');
-      await page.waitForURL(origin + base + 'workflow/');
+      await page.waitForURL(origin + base + 'docs/');
       await tabTo('.theme');
       await page.keyboard.press('Enter');
       assert.equal(await page.locator('html').getAttribute('data-theme'), theme === 'light' ? 'dark' : 'light');
       await page.keyboard.press('Enter');
-      // The first layer: the four-step overview of the gym scenario, labelled
-      // as an illustration; at 1440 x 900 it is on the first screen, and no
-      // map with risk levels or profiles is shown before it.
-      assert.equal(await page.locator('#overview .phase li[id]').count(), 4);
-      assert.match(await page.locator('.example-label').innerText(), /^Illustrative example\. A gym's member application\./);
-      assert(!await page.locator('#workflow').isVisible(), 'The technical map starts closed');
-      if (width === 1440) {
-        const first = await page.evaluate(() => {
-          const steps = [...document.querySelectorAll('#overview .phase li[id] h4')].map(e => e.getBoundingClientRect().bottom <= innerHeight);
-          const answers = [...document.querySelectorAll('#overview .said dd')].every(e => e.getBoundingClientRect().bottom <= innerHeight);
-          return { steps, answers, label: document.querySelector('.example-label').getBoundingClientRect().bottom <= innerHeight };
-        });
-        assert.deepEqual(first, { steps: [true, true, true, true], answers: true, label: true }, 'The first screen shows the four steps with their answers');
-      }
-      // The technical layer opens from its named control, by keyboard, on the
-      // complete drawing; nothing walks until the reader asks.
-      await tabTo('#explore > summary');
-      await page.keyboard.press('Enter');
-      assert(await page.locator('#workflow').isVisible());
+      // The workflow map, a topic of the docs (#377): the complete drawing;
+      // nothing walks until the reader asks.
+      await page.goto(origin + base + 'docs/?theme=' + theme + '#workflow-map');
+      assert(await page.locator('[id="workflow-map/workflow"]').isVisible());
       assert.match(await page.locator('[data-summary]').innerText(), /^Medium risk\s*·\s*standard profile\s*·\s*step by step$/);
       assert(!await page.locator('[data-workflow]').evaluate(e => e.classList.contains('walking')));
       assert(await page.locator('.workflow form').isVisible(), 'The switches are shown with the map');
@@ -278,14 +266,9 @@ try {
       assert(await page.locator('[data-workflow]').evaluate(e => e.classList.contains('walking')));
       assert.match(await page.locator('[data-caption="lead"]').innerText(), /^Step 1 of \d+\.$/);
       assert.equal(await page.locator('[data-caption="who"]').innerText(), 'You:');
-      // #241 follows the scenario and the technical map.
-      assert(await page.evaluate(() => {
-        const after = (a, b) => document.querySelector(a).compareDocumentPosition(document.querySelector(b)) & Node.DOCUMENT_POSITION_FOLLOWING;
-        return after('#overview', '#case') && after('#explore', '#case') && !document.querySelector('#overview').textContent.includes('#241');
-      }), '#241 comes after the overview and the map');
       // A step text is at most three sentences; the reference entry of the step tells the rest.
       assert.equal(await page.locator('[data-caption="ref"] a').innerText(), 'Describe the idea');
-      assert.match(await page.locator('[data-caption="ref"] a').getAttribute('href'), /docs\/reference\/workflow\/#describe-the-idea$/);
+      assert.match(await page.locator('[data-caption="ref"] a').getAttribute('href'), /^#workflow-reference\/describe-the-idea$/);
       const html = await page.content();
       assert(!html.includes('Nothing in the reference') && !html.includes('Moved to the documentation'));
       assert.equal(await page.locator('[data-key="n-bypass"]').textContent(), 'low risk: no review if the project allows it; then you approve the merge');
@@ -316,20 +299,20 @@ try {
       if (width === 1440) {
         await tabTo('svg g.station[data-key="f-review"]');
         await page.keyboard.press('Enter');
-        assert(await page.locator('#step-panel').isVisible());
-        assert.equal(await page.evaluate(() => document.activeElement.id), 'step-panel-h');
-        assert.equal(await page.locator('#step-panel-h').innerText(), 'Review the code');
+        assert(await page.locator('.step-panel').isVisible());
+        assert.equal(await page.evaluate(() => document.activeElement.id), 'workflow-map/step-panel-h');
+        assert.equal(await page.locator('.step-panel h3').innerText(), 'Review the code');
         assert(await page.locator('svg g[data-key="f-review"]').evaluate(e => e.classList.contains('is-selected')));
-        await tabTo('#step-panel [role="tab"][aria-selected="true"]');
+        await tabTo('.step-panel [role="tab"][aria-selected="true"]');
         await page.keyboard.press('ArrowRight');
         assert.equal(await page.evaluate(() => document.activeElement.dataset.tab), 'technical');
-        assert.match(await page.locator('#step-tab-body').innerText(), /Command\s+\.\/scripts\/review-feature\.sh/);
+        assert.match(await page.locator('.step-panel [role="tabpanel"]').innerText(), /Command\s+\.\/scripts\/review-feature\.sh/);
         await page.keyboard.press('ArrowRight');
-        assert.match(await page.locator('#step-tab-body').innerText(), /Stops, retries and exceptions/);
+        assert.match(await page.locator('.step-panel [role="tabpanel"]').innerText(), /Stops, retries and exceptions/);
         await panelAccessible();
         await page.keyboard.press('Shift+Tab');
         await page.keyboard.press('Enter');
-        assert(!await page.locator('#step-panel').isVisible());
+        assert(!await page.locator('.step-panel').isVisible());
         assert.equal(await page.evaluate(() => document.activeElement.dataset.key), 'f-review');
       }
       await page.locator('[data-action="reset"]').press('Enter');
@@ -387,12 +370,12 @@ try {
       // The same panel from the words list, inside the item that opened it.
       await tabTo('.words li[data-key="f-checks"] .detail-btn');
       await page.keyboard.press('Enter');
-      assert(await page.locator('.words li[data-key="f-checks"] #step-panel').isVisible());
-      assert.equal(await page.evaluate(() => document.activeElement.id), 'step-panel-h');
+      assert(await page.locator('.words li[data-key="f-checks"] .step-panel').isVisible());
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'workflow-map/step-panel-h');
       await panelAccessible();
       await tabTo('.panel-close');
       await page.keyboard.press('Enter');
-      assert(!await page.locator('#step-panel').isVisible());
+      assert(!await page.locator('.step-panel').isVisible());
       assert(await page.evaluate(() => document.activeElement.matches('.words li[data-key="f-checks"] .detail-btn')));
       await page.goto(origin + base + 'docs/?theme=' + theme);
       await tabTo('.docs-search input');
@@ -459,7 +442,7 @@ try {
       await tabTo('.contents a');
       // Reaching the final footer link walks every intervening content link too.
       await tabTo('footer nav a:last-child');
-      report.keyboard.push({ theme, width, pages: ['home', 'workflow', 'docs', 'examples'], passed: true });
+      report.keyboard.push({ theme, width, pages: ['home', 'docs', 'workflow map', 'examples'], passed: true });
     }
   }
   // The workflow demo of the home page (#370), at 1280 × 800, 390 × 844 and
@@ -636,28 +619,25 @@ try {
         await summary.press('Enter');
         assert(!await nav.isVisible(), `No-JS desktop content did not close: ${selector}`);
       }
-      await p.goto(origin + base + 'workflow/');
-      assert(await p.locator('#overview').isVisible() && await p.locator('.example-label').isVisible(), 'Without JavaScript the overview is the first layer');
-      assert(await p.locator('#case .words.timeline').isVisible(), 'Without JavaScript the case of #241 is a timeline in words');
-      assert.equal(await p.locator('#case li').count(), await p.locator('#case li a[href*="reference/workflow/#"]').count(), 'Every step of the case links to its reference entry');
-      await p.locator('#explore > summary').press('Enter');
-      assert(await p.locator('#workflow-words').isVisible(), 'Without JavaScript the disclosure opens on the words list');
+      await p.goto(origin + base + 'docs/#workflow-map');
+      assert(await p.locator('[id="workflow-map/workflow-words"]').isVisible(), 'Without JavaScript the workflow map is its words list');
       assert.match(await p.locator('[data-summary]').innerText(), /^Medium risk\s*·\s*standard profile\s*·\s*step by step$/, 'Without JavaScript the summary is that of the complete drawing');
       assert(await p.locator('[data-key="w-planning"]').isVisible() && await p.locator('[data-key="w-feature"]').isVisible(), 'Without JavaScript the words list is the complete workflow');
-      assert(!await p.locator('.routes').isVisible() && !await p.locator('.advanced').isVisible());
-      for (const actions of await p.locator('.map-actions').all()) assert(!await actions.isVisible());
-      assert(!await p.locator('.hint').isVisible() && !await p.locator('.reset').isVisible());
+      assert(!await p.locator('.workflow .routes').isVisible() && !await p.locator('.workflow .advanced').isVisible());
+      for (const actions of await p.locator('.workflow .map-actions').all()) assert(!await actions.isVisible());
+      assert(!await p.locator('.workflow .hint').isVisible() && !await p.locator('.workflow .reset').isVisible());
       assert.equal(await p.locator('.station, .detail-btn').count(), 0, 'Without JavaScript nothing pretends to open the step detail');
     }
     await docs.close();
   }
-  // The workflow reference: an old anchor of /workflow goes on to its step,
+  // The workflow map and the workflow reference: an old anchor of /workflow/ goes on to its place,
   // "On this page" stays beside the text on a wide screen, and a code block copies.
   {
     const wide = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
     const p = await wide.newPage();
     await p.goto(origin + base + 'workflow/#workflow-words');
-    assert(await p.locator('#explore').evaluate(e => e.open), 'A link into the technical workflow opens its disclosure');
+    await p.waitForURL(origin + base + 'docs/#workflow-map/workflow-words');
+    assert(await p.locator('[id="workflow-map/workflow-words"]').isVisible(), 'An old anchor of the technical workflow opens the workflow map');
     await p.locator('[data-action="start"]').click();
     await p.waitForTimeout(3000);
     assert.match(await p.locator('[data-caption="lead"]').innerText(), /^Step 1 of/, 'Without reduced motion, too, nothing advances by itself');
@@ -683,7 +663,9 @@ try {
 
       // Technical Documentation at the widths of #373; Features (#374) and About (#376) also
       // at the narrowest phone width and at 1280 px; the other pages at three.
-      for (const width of path.startsWith(base + 'docs/') ? [320, 390, 768, 1280, 1440] : path === base + 'features/' ? [320, 375, 768, 1280, 1440] : path === base + 'about/' ? [320, 375, 390, 768, 1280, 1440] : [375, 768, 1440]) {
+      // Every page at the widths of #377, the docs at those of #373; the
+      // other pages also at 375 px, the width of the keyboard checks.
+      for (const width of path.startsWith(base + 'docs/') ? [320, 390, 768, 1280, 1440] : [320, 375, 390, 768, 1280, 1440]) {
         await page.setViewportSize({ width, height: 900 });
         await page.goto(origin + path + '?theme=' + theme);
         await page.evaluate(() => document.fonts.ready);
@@ -698,6 +680,11 @@ try {
           }).map(e => e.textContent.trim());
           return nav.scrollWidth > nav.clientWidth ? ['the header scrolls', ...hidden] : hidden;
         }), [], `Header cut off: ${path} ${width}`);
+        // The same header and footer on every page (#377).
+        assert.deepEqual(await page.locator('.top .nav a').allInnerTexts(), ['Home', 'Features', 'Projects', 'About', 'Docs', 'GitHub', 'Get Started'], `Header: ${path}`);
+        assert.equal(await page.locator('.top .nav a.start').getAttribute('href'), base + 'docs/#quick-start');
+        assert(await page.locator('.top .theme').isVisible(), `Theme toggle: ${path}`);
+        assert.deepEqual(await page.locator('footer nav a').allInnerTexts(), ['Open source · MIT', 'GitHub / Source', 'Contributing', 'Security policy', 'Technical Documentation'], `Footer: ${path}`);
         const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
         const violations = results.violations.filter(v => ['serious', 'critical'].includes(v.impact) || v.id === 'color-contrast');
         report.accessibility.push({ path, theme, width, violations, incomplete: results.incomplete.map(v => ({ id: v.id, targets: v.nodes.map(n => n.target) })) });
@@ -779,7 +766,7 @@ try {
   assert.deepEqual(errors, [], 'JavaScript errors');
 
   report.largestPage = report.pages.reduce((a, b) => a.pageBytes > b.pageBytes ? a : b);
-  console.log(`browser-check: ${pages.length} pages, both themes, three or five widths; ${redirects.length} redirect pages; keyboard checks passed (${base}).`);
+  console.log(`browser-check: ${pages.length} pages, both themes, five or six widths; ${redirects.length} redirect pages; keyboard checks passed (${base}).`);
   for (const p of report.pages) console.log(`  ${p.path}: JS ${p.javascriptBytes} bytes; page ${p.pageBytes} bytes (uncompressed, cold load)`);
   console.log(`  Largest page: ${report.largestPage.path}, ${report.largestPage.pageBytes} bytes. No third-party requests.`);
 } finally {

@@ -13,12 +13,12 @@ the website describes the current template.
 | Topic | Authoritative | Summarized in |
 |---|---|---|
 | What the template is, in short | `README.md` | The introduction of the website |
-| GitHub settings: rulesets, required checks, code owners, permissions | `docs/repository-setup.md` | "Getting started" and "Configuration and security" on the website |
+| GitHub settings: rulesets, required checks, code owners, permissions | `docs/repository-setup.md` | "Quick Start" and "Configuration" in the Technical Documentation of the website |
 | Commands, options, and how to resume or recover | `docs/development.md` and the usage text of each script | Selected commands on the website and in the README |
-| Steps, artifacts, approvals, and what stops a step | `docs/workflow.md` | The workflow page of the website |
+| Steps, artifacts, approvals, and what stops a step | `docs/workflow.md` | "Workflow & Commands" in the Technical Documentation of the website, with the workflow map |
 | Principles: where state lives, roadmap versus Issues, plans versus Issues | "Principles" in `docs/workflow.md` | `AGENTS.md`, briefly |
-| What makes a check or a review worth having | `docs/evaluation.md` | "Configuration and security" on the website |
-| What each file is for | This file | The repository tree on the website |
+| What makes a check or a review worth having | `docs/evaluation.md` | "Configuration" in the Technical Documentation of the website |
+| What each file is for | This file | "Technical Reference" in the Technical Documentation of the website |
 | A complete run | `docs/example.md` | Linked, not repeated |
 | Rules and boundaries for agents | `AGENTS.md`, `.agents/policies/`, `.agents/prompts/` | Never replaced by a page of the website |
 | Reporting a security problem | `SECURITY.md` | Linked from the website |

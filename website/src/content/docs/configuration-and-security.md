@@ -10,6 +10,7 @@ order: 2
 - **Each step gets one of three permission profiles:** write, unattended, or read-only. Reviewers are always read-only. If an agent cannot enforce its profile, the script stops instead of starting it with more rights.
 - **Your code goes to the AI provider of each tool.** Codeyard has no service of its own. The coding tools send what they read to their providers, and the scripts publish to GitHub, both under your accounts (<a href="#data">which data goes where</a>).
 - **On GitHub, an agent has the rights of the account that started it.** If you may merge, so may the agent, until agents get an identity of their own ([Issue 99](https://github.com/taspinar/agent-codeyard/issues/99)). Only the settings of <a href="#github-setup">GitHub setup</a> make GitHub refuse a merge.
+- **No deployment.** Codeyard ends with a pull request, and the merge is yours. It sets up no deployment and leaves your existing automation as it is: if your project publishes itself after a merge, that is your own setup at work.
 - **Some changes always need you:** a protected path, a change the reviewer rates as major or breaking for the architecture, and a feature committed without a review are marked as needing your approval (<a href="#gate">changes that need the owner</a>). No script merges.
 
 <a id="profiles"></a>
@@ -28,7 +29,7 @@ If an agent cannot enforce a profile, the script stops. It never starts the agen
 
 <a id="unattended"></a>
 
-**What "unattended" means.** An unattended session runs between your decisions: nobody answers its questions, so a question is denied, not approved, and an agent that needs a decision of yours stops the run with its question in the handoff note. The two tools get there differently, as [`scripts/lib/agent.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/agent.sh) starts them:
+**What "unattended" means.** An unattended session runs between your decisions: nobody answers its questions, so a question is denied, not approved, and an agent that needs a decision of yours stops the run with its question in the handoff note. An unattended run (`run-feature.sh`) takes a feature from its Issue to a pull request: it approves the decision the triage agent proposes for each review finding and records it on the Issue, stops when it needs your decision or reaches a limit or a failure, and never merges. The two tools get there differently, as [`scripts/lib/agent.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/agent.sh) starts them:
 
 - **Codex** runs non-interactively in its workspace sandbox with network access, without your own Codex configuration file, and with apps, browser use and computer use turned off. A command the sandbox blocks is refused.
 - **Claude Code** runs non-interactively in its `auto` permission mode with permission prompts turned off, and without MCP servers from your configuration. Its own check allows or denies each action; what would still need a question is denied.

@@ -4,7 +4,7 @@ description: "The workflow in daily use: step by step or unattended, resuming a 
 order: 3
 ---
 
-This page is the manual for daily use: which way to run a feature, how to continue one that stopped, what to do when the plan changes, and what each step is for. For a first look at the route, with an illustrative example, read <a href="../workflow/">How it works</a>. For the exact command of a step, what goes in and comes out, and when it stops or retries, use the <a href="#workflow-reference">workflow reference</a>; each step below links to its entry there.
+This page is the manual for daily use: which way to run a feature, how to continue one that stopped, what to do when the plan changes, and what each step is for. For a first look at the route, with an illustrative example, watch the <a href="../#demo">demo on the home page</a>; <a href="#workflow-map">the workflow as a map</a> shows every step and exception on one drawing. For the exact command of a step, what goes in and comes out, and when it stops or retries, use the <a href="#workflow-reference">workflow reference</a>; each step below links to its entry there.
 
 The route has two stages. You plan the project at the start, and update the plan when its direction changes. Then every feature of the plan goes the same way, from an Issue to a pull request that you merge.
 
