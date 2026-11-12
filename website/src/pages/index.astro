@@ -1,16 +1,18 @@
 ---
 // The home page, in the six sections of the owner's brief of 11 November
-// (#370): the promise, the interactive workflow, what Codeyard adds to the
-// coding tools, a real run as evidence, who it is for, and the two ways to
-// start. The demo is illustrative; the evidence is the real case of #241 as
-// Engineering records tells it. The old anchors of the page point to the
-// section that took their content: #example and #roles to the demo, #projects
-// to the evidence; #why, #who and #start keep their names.
+// (#370), with the fourth replaced by the brief of 12 November (#390): the
+// promise, the interactive workflow, what Codeyard adds to the coding tools,
+// what changes when you oversee runs and what is coming, who it is for, and
+// the two ways to start. The demo is illustrative; the two lines marked
+// "Coming soon" are planned work, not available. The old anchors of the page
+// point to the section that took their content: #example and #roles to the
+// demo, #evidence and #projects to the section on overseeing runs; #why, #who
+// and #start keep their names.
 import Base from "../layouts/Base.astro";
 import Section from "../components/Section.astro";
 import WorkflowDemo from "../components/WorkflowDemo.astro";
 import { site } from "../../site.config";
-import { getStarted, href, issue, pull } from "../lib/links";
+import { getStarted, href } from "../lib/links";
 
 const [first, ...rest] = site.tagline.split(/(?<=\.) /);
 const second = rest.join(" ");
@@ -23,9 +25,6 @@ const compare = [
   { topic: "Review", without: "Reviews may lack independent scrutiny.", with: `A separate model <a href="${href("features/#review")}">reviews the changes</a> by default.` },
   { topic: "Completion", without: "Completion can be difficult to verify.", with: "Checks, evidence and approval gates control what advances." },
 ];
-
-// The comment on Issue #241 with the review and triage of round 1.
-const review = `${issue(241)}#issuecomment-6531925164`;
 ---
 <Base description={site.description}>
   <div class="hero wrap">
@@ -69,16 +68,13 @@ const review = `${issue(241)}#issuecomment-6531925164`;
     <p><a href={href("features/")}>Explore all features</a></p>
   </Section>
 
-  <Section id="evidence" title="Built with the process it describes.">
-    <span id="projects"></span>
-    <p>See a real Agent Codeyard run, from a GitHub issue to an independently reviewed pull request, including verification evidence and resolved findings.</p>
-    <p>Unlike the simulated demo above, this is a real run of this project, on 30 October 2026.</p>
-    <ol class="evidence" aria-label="The run of Issue 241, from the Issue to the pull request">
-      <li><b><a href={issue(241)}>Issue #241</a></b><span>Asked for the first Features, Examples and About pages of this site.</span></li>
-      <li><b>Review and checks</b><span>The checks passed twice, in 14 and 15 seconds. <a href={review}>Round 1 of the review</a> found one major problem, fixed in the same run; round 3 passed.</span></li>
-      <li class="you"><b><a href={pull(249)}>Pull request #249</a></b><span>Merged by the owner the same evening.</span></li>
-    </ol>
-    <p><a href={href("docs/engineering-records/#story")}>The full case in Engineering records</a></p>
+  <Section id="oversee" title="From running features to overseeing them.">
+    <span id="evidence"></span><span id="evidence-h"></span><span id="projects"></span>
+    <p>Each feature is its own run: Agent Codeyard orchestrates it from the GitHub issue through implementation, checks and independent review to a pull request. Several runs can work side by side, so you oversee them instead of driving each agent yourself. Your part is to start them, answer the questions they stop for, and decide what gets merged.</p>
+    <ul class="rules">
+      <li><b>Coming soon: a supervisor.</b> Start feature runs as their dependencies are met, follow their progress, and flag decisions that need your input. You approve the plan, set priorities, and decide what gets merged.</li>
+      <li><b>Coming soon: local models.</b> Use OpenCode alongside Claude Code and Codex, with Ollama to run models on your own machine. Initial support will focus on read-only roles such as review and triage.</li>
+    </ul>
   </Section>
 
   <Section id="who" title="Built for developers who want more control over AI-generated software.">

@@ -12,9 +12,11 @@ interface Props {
   /** The page title; the home page passes none and gets the product line. */
   title?: string;
   description: string;
+  /** A page that stays reachable but is left out of the search index (#390). */
+  unlisted?: boolean;
 }
 
-const { title, description } = Astro.props;
+const { title, description, unlisted } = Astro.props;
 const fullTitle = title ? `${title} — ${site.name}` : `${site.name} — ${site.tagline}`;
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 const image = new URL(href("og.png"), Astro.site).href;
@@ -45,7 +47,7 @@ const image = new URL(href("og.png"), Astro.site).href;
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <Header />
-<main id="main" tabindex="-1">
+<main id="main" tabindex="-1" data-unlisted={unlisted ? "" : undefined}>
   <slot />
 </main>
 <Footer />

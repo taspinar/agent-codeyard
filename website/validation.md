@@ -6,7 +6,7 @@ It builds and link-checks the project path (currently
 `/agent-codeyard/`) and `/`, runs the site's
 unit and search tests, and uses Playwright Chromium and axe-core on every
 built HTML page, including 404, in light and dark themes at 375, 768 and
-1440 pixels, and Technical Documentation (`/docs/` and its Appendix pages) at
+1440 pixels, and Technical Documentation (`/docs/` and its Appendix page, `/docs/history/`) at
 320, 390, 768, 1280 and 1440 pixels. A redirect page of a retired route is
 not checked as a page: the walk of the table below covers it. A JavaScript
 error on any page fails the check. Serious/critical violations and text contrast failures fail the
@@ -27,8 +27,8 @@ list (retain `/`), its usage comment and this guide. Keep
 configuration; CI uses them through `check.sh --build`.
 
 `browser-check.mjs` checks on every page the header (Home, Features,
-Projects, About, Docs, GitHub, Get Started to `/docs/#quick-start`, the theme
-toggle, all on screen down to 320 px) and the five links of the footer, and
+About, Docs, GitHub and the theme toggle, no Get Started button, all on
+screen down to 320 px) and the five links of the footer, and
 walks the skip link, site navigation, theme toggle, the workflow map of the
 docs (`/docs/#workflow-map`), the workflow radio groups, the workflow's step detail panel (from a station of the
 map and from the words list: its tabs, its close button and where the focus
@@ -47,8 +47,14 @@ page (`/examples/`) at 1440 px it checks that every disclosure starts
 closed, that the page opens with the cases, that it has two or three, each
 with 100 to 200 visible words, exactly one of the three labels and one image
 with alt text, that its old anchors resolve, that a link to a part of the
-evidence opens its disclosure, and that an old anchor of a case moved to
-Engineering records shows its one-line pointer only when it is the target. Native
+evidence opens its disclosure, and that an old anchor of a removed
+engineering case lands on the cases. It checks the order of the home
+sections, that Features has no illustrative example and "Learn from your runs"
+as its own section, that About links the History page once as "How Agent
+Codeyard began", that both "Coming soon" items of the home page are there,
+and that History opens with the owner's story with the old ids of its removed
+sections (`#history` among them) at the top, ends it with "What comes next",
+and has no period list or pull request links. Native
 summaries keep both navigation lists usable with JavaScript disabled.
 
 For Technical Documentation (#373) it checks that `/docs/` opens with Quick

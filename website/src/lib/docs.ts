@@ -40,10 +40,9 @@ export const sections: Section[] = [
   ] },
 ];
 
-/** The Appendix: pages of their own, linked from the navigation. */
+/** The Appendix: pages of their own, linked from the navigation. Engineering records left it (#390). */
 export const appendix = [
-  { path: "docs/engineering-records/", title: "Engineering records" },
-  { path: "docs/history/", title: "History and research" },
+  { path: "docs/history/", title: "How Agent Codeyard began" },
 ];
 
 /** Every topic, in the order of the navigation and of the previous and next links. */

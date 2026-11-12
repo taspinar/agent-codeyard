@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "73cf19c7e6475c82f002b9121d184f93141635e3",
+  "commit": {
+    "branch": "feature/390-website-drop-the-evidence",
+    "parent": "d8e5d80aa0b297f98c621112b7a80cc797d0637a",
+    "base": "30e089440c53d42eec78b86d51a747ff94f6f468"
+  },
+  "review": {
+    "round": 5,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the review could not confirm: The site's build, unit tests, link check, search test and browser check pass, at the widths they already use, in light and dark."
+  ],
+  "explanation": "Issue #390: Website: drop the evidence section and Engineering records, hide Projects, say what is coming, and tell how Codeyard began. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

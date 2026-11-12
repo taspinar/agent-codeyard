@@ -218,14 +218,20 @@ try {
       await tabTo('.skip');
       await page.keyboard.press('Enter');
       assert.equal(await page.evaluate(() => document.activeElement.id), 'main');
-      // The home page (#370): the six sections in order; the hero's primary
+      // The home page (#370, #390): the six sections in order; the hero's primary
       // action goes to the demo, the text link Get Started to Quick Start (#377), and the
       // headline, the lede and both actions are in view without scrolling.
       const hero = page.locator('.hero-grid');
       assert.deepEqual(await page.locator('main h1, main h2').allInnerTexts(), [
         'Build software with AI. Keep control of every change.', 'See how Agent Codeyard works', 'Why not just use Claude Code or Codex?',
-        'Built with the process it describes.', 'Built for developers who want more control over AI-generated software.', 'Give your coding agents a process.',
+        'From running features to overseeing them.', 'Built for developers who want more control over AI-generated software.', 'Give your coding agents a process.',
       ]);
+      // Both roadmap items of overseeing runs are planned work (#390, the owner's correction of 12 November).
+      assert.deepEqual(await page.locator('#oversee .rules li b').allInnerTexts(), ['Coming soon: a supervisor.', 'Coming soon: local models.']);
+      const comingSoon = await page.locator('#oversee .rules').innerText();
+      assert.match(comingSoon, /Start feature runs as their dependencies are met/);
+      assert.match(comingSoon, /OpenCode alongside Claude Code and Codex, with Ollama/);
+      assert.match(comingSoon, /read-only roles such as review and triage/);
       const primary = hero.locator('.actions a.btn');
       assert.equal(await primary.count(), 1);
       assert.equal(await primary.innerText(), 'Watch it work');
@@ -242,8 +248,8 @@ try {
         }
       }
       await page.setViewportSize({ width, height: 900 });
-      // The header (#377): the five destinations, GitHub and Get Started, in order, then the theme toggle.
-      assert.deepEqual(await page.locator('.top .nav a').allInnerTexts(), ['Home', 'Features', 'Projects', 'About', 'Docs', 'GitHub', 'Get Started']);
+      // The header (#377, #390): the four destinations and GitHub, in order, then the theme toggle.
+      assert.deepEqual(await page.locator('.top .nav a').allInnerTexts(), ['Home', 'Features', 'About', 'Docs', 'GitHub']);
       await page.goto(origin + base + '?theme=' + theme);
       await tabTo('.nav a[href="' + base + 'docs/"]');
       await page.keyboard.press('Enter');
@@ -427,16 +433,10 @@ try {
         await page.goto(origin + base + 'examples/?theme=' + theme + '#sources');
         assert(await page.locator('#evidence').evaluate(e => e.open), 'The old anchor /examples/#sources leaves the evidence closed');
         assert(await page.locator('#sources-h').isVisible(), 'The old anchor /examples/#sources shows no heading');
-        await page.goto(origin + base + 'examples/?theme=' + theme);
-        // A case that moved to Engineering records (#344): its old anchor shows
-        // one line with the link, and only when a visitor lands on it.
-        assert.equal(await page.locator('.moved-case:visible').count(), 0, 'A moved-case line shows without its anchor');
+        // The old anchor of a removed engineering case (#390) lands on the cases.
         await page.goto(origin + base + 'examples/?theme=' + theme + '#memory');
-        const pointer = page.locator('#memory');
-        assert(await pointer.isVisible(), 'The old anchor /examples/#memory shows no pointer');
-        assert.equal(await pointer.innerText(), 'This case moved to Engineering records.');
-        assert.equal(await pointer.locator('a').getAttribute('href'), base + 'docs/engineering-records/#memory');
-        assert(await pointer.evaluate(e => { const r = e.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }), 'The pointer of /examples/#memory is not in view');
+        assert.equal(await page.locator('#memory').evaluate(e => e.closest('section')?.id), 'products', 'The old anchor /examples/#memory does not land on the cases');
+        assert(await page.locator('#products-h').evaluate(e => { const r = e.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }), 'The cases are not in view at /examples/#memory');
         await page.goto(origin + base + 'examples/?theme=' + theme);
       }
       await tabTo('.contents a');
@@ -580,7 +580,7 @@ try {
       await opened('Planning terminal', `The planning log ${at}`);
       await p.keyboard.press('Escape');
       // Every old anchor of the home page lands in the section that took its content.
-      for (const [id, section] of [['example', 'demo'], ['roles', 'demo'], ['projects', 'evidence'], ['why', 'why'], ['who', 'who'], ['start', 'start']]) {
+      for (const [id, section] of [['example', 'demo'], ['roles', 'demo'], ['projects', 'oversee'], ['evidence', 'oversee'], ['why', 'why'], ['who', 'who'], ['start', 'start']]) {
         assert.equal(await p.evaluate(id => document.getElementById(id)?.closest('section')?.id, id), section, `#${id} ${at}`);
       }
       assert.deepEqual(errors, [], `JavaScript errors ${at}`);
@@ -680,9 +680,9 @@ try {
           }).map(e => e.textContent.trim());
           return nav.scrollWidth > nav.clientWidth ? ['the header scrolls', ...hidden] : hidden;
         }), [], `Header cut off: ${path} ${width}`);
-        // The same header and footer on every page (#377).
-        assert.deepEqual(await page.locator('.top .nav a').allInnerTexts(), ['Home', 'Features', 'Projects', 'About', 'Docs', 'GitHub', 'Get Started'], `Header: ${path}`);
-        assert.equal(await page.locator('.top .nav a.start').getAttribute('href'), base + 'docs/#quick-start');
+        // The same header and footer on every page (#377); no Get Started in it (#390).
+        assert.deepEqual(await page.locator('.top .nav a').allInnerTexts(), ['Home', 'Features', 'About', 'Docs', 'GitHub'], `Header: ${path}`);
+        assert.equal(await page.locator('.top .nav .btn').count(), 0, `Header: ${path} has a button link`);
         assert(await page.locator('.top .theme').isVisible(), `Theme toggle: ${path}`);
         assert.deepEqual(await page.locator('footer nav a').allInnerTexts(), ['Open source · MIT', 'GitHub / Source', 'Contributing', 'Security policy', 'Technical Documentation'], `Footer: ${path}`);
         const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
@@ -727,6 +727,39 @@ try {
           assert.equal(length.open, 0, `Disclosures open on ${path}`);
           assert(length.words <= 900, `${path} shows ${length.words} words, more than 900`);
           assert(length.height <= 6000, `${path} is ${length.height} px high at 1440 px, more than 6000`);
+          // No illustrative example; "Learn from your runs" is its own section after "Verify before you accept", and #learn lands there (#390).
+          const features = await page.evaluate(() => ({
+            sections: [...document.querySelectorAll('main section[id]')].map(section => section.id),
+            illustrative: [...document.querySelectorAll('main p')].filter(p => p.innerText.trim().startsWith('Illustrative example.')).length,
+            learn: ['learn-h', 'learn-t', 'learn-words'].map(id => document.getElementById(id)?.closest('section')?.id),
+          }));
+          assert.deepEqual(features.sections.slice(0, 4), ['agree', 'independent', 'verify', 'learn'], 'The sections of Features and their order');
+          assert.equal(features.illustrative, 0, 'Features still has an illustrative example');
+          assert.deepEqual(features.learn, ['learn', 'learn', 'learn'], 'The old ids of learning are not in its section');
+          assert.equal(await page.locator('#learn-h').innerText(), 'Learn from your runs');
+        }
+        // History (#390): the owner's story with "What comes next" first, then the research; the removed sections' ids,
+        // the period list's #history among them (the owner's correction of 12 November), at the top where the story starts.
+        if (path === base + 'docs/history/' && width === 1440) {
+          const history = await page.evaluate(() => ({
+            title: document.querySelector('main h1').innerText,
+            headings: [...document.querySelectorAll('.docs-body h2')].map(h => h.innerText),
+            toc: [...document.querySelectorAll('.docs-toc a')].map(a => a.innerText),
+            top: ['history', 'phases', 'principles', 'decisions'].map(id => document.getElementById(id)?.nextElementSibling?.tagName ?? 'missing'),
+            first: document.querySelector('.docs-body .prose > p')?.innerText,
+            timeline: document.querySelectorAll('main .timeline').length,
+            pulls: [...document.querySelectorAll('main a')].filter(a => a.href.includes('/pull/')).length,
+            next: [...document.querySelectorAll('#what-comes-next ~ p')].slice(0, 2).map(p => p.innerText),
+          }));
+          const parts = ['Giving each agent a job', 'Making the handoffs reliable', 'From an issue to a pull request', 'Learning from real projects', 'What comes next', 'Research'];
+          assert.equal(history.title, 'How Agent Codeyard began');
+          assert.deepEqual(history.headings, parts, 'The parts of History and their order');
+          assert.deepEqual(history.toc, parts, 'On this page of History');
+          assert.deepEqual(history.top, ['SPAN', 'SPAN', 'SPAN', 'P'], 'The old ids of the removed sections are not at the top of History');
+          assert(history.first?.startsWith('I started Agent Codeyard with a question'), 'History does not open with the story');
+          assert.equal(history.timeline + history.pulls, 0, 'History still has the period list with its pull requests');
+          assert(history.next[0]?.startsWith('Today I start each feature run myself.') && history.next[0].includes('I’m planning a supervisor'), 'What comes next: the supervisor');
+          assert(history.next[1]?.startsWith('I also want to use models that run on my own machine.') && history.next[1].includes('read-only roles such as review and triage'), 'What comes next: local models');
         }
         // About (#376): three parts in order, 300 to 500 visible words in <main>,
         // one link to History and research, and every old anchor in the page.
@@ -734,13 +767,15 @@ try {
           const about = await page.evaluate(() => ({
             parts: [...document.querySelectorAll('main section > .wrap h2')].map(h => h.closest('section').id),
             words: document.querySelector('main').innerText.split(/\s+/).filter(Boolean).length,
-            history: [...document.querySelectorAll('main a')].filter(a => new URL(a.href).pathname.endsWith('/docs/history/')).length,
+            history: [...document.querySelectorAll('main a')].filter(a => new URL(a.href).pathname.endsWith('/docs/history/')).map(a => a.innerText),
+            projects: [...document.querySelectorAll('main a')].filter(a => /\/(examples|docs\/engineering-records)\/$/.test(new URL(a.href).pathname)).length,
             missing: ['maker', 'maker-h', 'why', 'limits', 'limits-h', 'history', 'decisions', 'research', 'contribute', 'contribute-h', 'source', 'source-h', 'improvements'].filter(id => !document.getElementById(id)),
           }));
           console.log(`  ${path} ${theme} 1440 px: ${about.words} words.`);
           assert.deepEqual(about.parts, ['maker', 'why', 'contribute'], 'The parts of About and their order');
           assert(about.words >= 300 && about.words <= 500, `${path} shows ${about.words} words, not 300 to 500`);
-          assert.equal(about.history, 1, 'About links History and research once');
+          assert.deepEqual(about.history, ['How Agent Codeyard began'], 'About links the story on History once');
+          assert.equal(about.projects, 0, 'About links Projects or Engineering records');
           assert.deepEqual(about.missing, [], 'Every old anchor of About resolves');
         }
       }

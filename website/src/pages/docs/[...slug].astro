@@ -1,6 +1,7 @@
 ---
 // The retired docs routes (src/lib/redirects.ts): each is a redirect page into
-// its topic of /docs/, with every id the old page had. The ids of a topic are
+// its topic of /docs/, with every id the old page had, or, for a route with a
+// target (#390), to that target as its own table says. The ids of a topic are
 // those of its source, before the prefix of the one page (src/lib/docs.ts).
 import { getCollection } from "astro:content";
 import Redirect from "../../layouts/Redirect.astro";
@@ -12,7 +13,10 @@ export async function getStaticPaths() {
   const entries = await getCollection("docs");
   const reference = ["index", "parameters", ...stages.flatMap((stage) => [stage.id, ...stage.steps.flatMap((step) => [step.id, `${step.id}-h`])])];
   // The retired routes of the docs; /workflow/ and /faq/ have pages of their own.
-  return retired.filter((route) => route.topic).map((route) => {
+  const targets = retired.filter((route) => route.to && route.path.startsWith("docs/")).map((route) => (
+    { params: { slug: route.path.replace(/^docs\/|\/$/g, "") }, props: { route, label: route.label!, anchors: route.anchors! } }
+  ));
+  return [...targets, ...retired.filter((route) => route.topic).map((route) => {
     const topic = topics.find((t) => t.id === route.topic);
     if (!topic) throw new Error(`redirects: no topic ${route.topic}`);
     const html = topic.entry ? entries.find((entry) => entry.id === topic.entry)?.rendered?.html : undefined;
@@ -20,7 +24,7 @@ export async function getStaticPaths() {
     const ids = html ? [...html.matchAll(/<[a-z][a-z0-9]*\b[^>]*?\sid="([^"]+)"/g)].map((match) => match[1]) : reference;
     const anchors = Object.fromEntries([...layoutIds, ...ids].map((id) => [id, moved(route, id)]));
     return { params: { slug: route.path.replace(/^docs\/|\/$/g, "") }, props: { route, label: `Technical Documentation: ${topic.title}`, anchors } };
-  });
+  })];
 }
 const { route, label, anchors } = Astro.props;
 ---

@@ -1,11 +1,11 @@
 ---
 // Who built Agent Codeyard, why it exists, and how to take part, in 300 to
-// 500 words (#376). The maker's own projects are on /examples/; the history,
-// the design decisions and the research are on /docs/history/ in the Appendix
-// of the docs, linked once. Old anchors stay as aliases (website/design/
+// 500 words (#376). The story of how it began, the period list and the
+// research are on /docs/history/ in the Appendix of the docs, linked once
+// (#390). Old anchors stay as aliases (website/design/
 // INFORMATION-ARCHITECTURE.md, 3.3): #limits on "Why it exists"; #history,
-// #decisions and #research on the link to History and research; #source and
-// #improvements in "Open source and contributions".
+// #decisions and #research on the link to How Agent Codeyard began; #source
+// and #improvements in "Open source and contributions".
 import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Section from "../components/Section.astro";
@@ -22,15 +22,14 @@ import { href, repoFile } from "../lib/links";
   </PageHead>
 
   <Section id="maker" title="Who built Agent Codeyard?">
-    <p>Agent Codeyard is an open-source project by Ahmet Taspinar, founder of <a href="https://jidai.nl/">JIDAI</a>. Ahmet maintains it, decides what goes in and merges its pull requests. It grew from the maker's own work with AI coding tools, on the projects below.</p>
-    <p>The projects on <a href={href("examples/")}>Projects</a> are the maker's own: FightAnalytics, a platform for gyms; Physics by Construction, a physics course; and this repository, whose own records are in <a href={href("docs/engineering-records/")}>Engineering records</a>.</p>
+    <p>Agent Codeyard is an open-source project created and maintained by Ahmet Taspinar, founder of <a href="https://jidai.nl/">JIDAI</a>. It grew out of his experience building software with AI coding agents and wanting a repeatable way to use them in the software development lifecycle (SDLC), from clarifying requirements and planning changes to implementing, verifying, and reviewing them before a human decides whether to merge.</p>
   </Section>
 
   <Section id="why" title="Why it exists">
     <p><span id="limits"></span><span id="limits-h"></span>AI coding tools write working code quickly. What is harder to see afterwards is what was agreed, what was checked, and why a change was accepted.</p>
     <p>Software that AI generates still needs engineering you can reproduce and verify. Agent Codeyard keeps the requirements, the plan, the checks and the review of each change in the repository, so that you, a reviewer or the next session can follow them and run them again.</p>
     <p>The tools stay the same, and the decision to merge stays with you. What changes is that each change leaves evidence behind.</p>
-    <p id="history"><span id="decisions"></span><span id="research"></span>How it began, the design decisions and the research behind it are in the Appendix of the docs: <a href={href("docs/history/")}>History and research</a>.</p>
+    <p id="history"><span id="decisions"></span><span id="research"></span>The story of how it began, and the research behind it, are in the Appendix of the docs: <a href={href("docs/history/")}>How Agent Codeyard began</a>.</p>
   </Section>
 
   <Section id="contribute" title="Open source and contributions">

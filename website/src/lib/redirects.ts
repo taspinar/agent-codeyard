@@ -8,9 +8,10 @@
 // the ids of the layout to the topic itself. A route with a target (#377) is
 // retired too: its page is a redirect to that target, and its ids map as its
 // own table says, an unknown id to the target. A route with neither stays,
-// with its ids.
+// with its ids; an unlisted one (#390) is left out of the sitemap and the
+// search index, and no page links to it.
 
-export type Route = { path: string; title?: string; topic?: string; to?: string; label?: string; anchors?: Record<string, string> };
+export type Route = { path: string; title?: string; topic?: string; to?: string; label?: string; anchors?: Record<string, string>; unlisted?: boolean };
 
 /** The step ids of the workflow reference, which /workflow/ linked from "Every step in detail". */
 const steps = ["describe-the-idea", "clarify-the-requirements", "create-the-plan", "review-the-plan", "address-the-findings", "approve-the-plan", "merge-the-plan", "change-the-plan", "create-a-feature-issue", "implement-the-feature", "run-the-checks", "review-the-code", "decide-on-the-findings", "apply-the-fixes", "commit-the-feature", "open-the-pull-request", "merge", "run-unattended"];
@@ -28,7 +29,7 @@ const workflow: Record<string, string> = {
   "technical-h": "docs/#workflow-map",
   ...Object.fromEntries(explorer.map((id) => [id, `docs/#workflow-map/${id}`])),
   ...each(["ways"], () => "docs/#workflow-and-commands/step-by-step-or-unattended"),
-  ...each(["case"], () => "docs/engineering-records/#story"),
+  ...each(["case"], () => "docs/history/"),
   ...each(["steps"], () => "docs/#workflow-reference"),
   ...Object.fromEntries(steps.map((id) => [id, `docs/#workflow-reference/${id}`])),
 };
@@ -47,11 +48,17 @@ const faq: Record<string, string> = {
   ...each(["unattended"], () => "docs/#configuration/unattended"),
 };
 
+/** /docs/engineering-records/ (#390): the page was removed; every id of it leads to the top of History. */
+const records: Record<string, string> = Object.fromEntries(
+  ["main", "docs-query", "search-status", "search-results", "memory", "run-217-t", "run-217-words", "story", "run-241-t", "run-241-words", "tradeoff", "features", "owner", "repair", "short", "analysis", "levels", "absent", "sources"]
+    .map((id) => [id, "docs/history/"]),
+);
+
 export const routes: Route[] = [
   { path: "" },
   { path: "workflow/", title: "How it works", to: "#demo", label: "the workflow demo on the home page", anchors: workflow },
   { path: "features/" },
-  { path: "examples/" },
+  { path: "examples/", unlisted: true },
   { path: "about/" },
   { path: "faq/", title: "FAQ", to: "features/#faq", label: "the questions on Features", anchors: faq },
   { path: "docs/adopting/", title: "Adopting Agent Codeyard in an existing repository", topic: "adopting" },
@@ -68,7 +75,7 @@ export const routes: Route[] = [
   { path: "docs/updating/", title: "Updating an Agent Codeyard project", topic: "updating" },
   { path: "docs/verification-and-completion/", title: "Verification and completion", topic: "verification-and-review" },
   { path: "docs/reference/workflow/", title: "Workflow reference", topic: "workflow-reference" },
-  { path: "docs/engineering-records/" },
+  { path: "docs/engineering-records/", title: "Engineering records", to: "docs/history/", label: "How Agent Codeyard began", anchors: records },
   { path: "docs/history/" },
 ];
 
@@ -87,8 +94,11 @@ export const docsAliases: Record<string, string> = {
   "sources-and-scope": "technical-reference/sources-and-scope",
 };
 
-/** The routes that stay: the pages of the sitemap. */
+/** The routes that stay, each a page. */
 export const stays = routes.filter((route) => !route.topic && !route.to);
+
+/** The pages of the sitemap and the search index: the routes that stay, but for the unlisted. */
+export const listed = stays.filter((route) => !route.unlisted);
 
 /** The retired routes, each a redirect page. */
 export const retired = routes.filter((route) => route.topic || route.to);

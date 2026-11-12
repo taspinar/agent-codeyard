@@ -1,7 +1,8 @@
 ---
-// Why Codeyard next to Claude Code or Codex, for a beginner, in three themes
-// with one illustrative example each, and a short FAQ (#374, plan of #372,
-// section 2.3). The page names no script, setting, file or JSON: the technical
+// Why Codeyard next to Claude Code or Codex, for a beginner, in three themes,
+// what the runs teach, and a short FAQ (#374, plan of #372, section 2.3). The
+// illustrative examples left the themes; the demo on the home page tells that
+// story (#390). The page names no script, setting, file or JSON: the technical
 // detail is in the docs, linked from each theme and each answer. The old ids of
 // the eight features stay as aliases on the line that took over their content
 // (section 3.3 of the plan), and the FAQ questions keep the ids they have on
@@ -15,6 +16,7 @@ const themes = [
   { id: "agree", title: "Agree before you build" },
   { id: "independent", title: "Let agents work, independently" },
   { id: "verify", title: "Verify before you accept" },
+  { id: "learn", title: "Learn from your runs" },
 ];
 const title = Object.fromEntries(themes.map((theme) => [theme.id, theme.title]));
 
@@ -48,7 +50,6 @@ const old = (name: string) => [name, `${name}-h`, `${name}-t`, `${name}-words`];
       <li><b>Requirements are agreed before building.</b> They count once you approve them, and every feature is checked against them. When a feature reaches a decision only you can make, it stops and asks instead of guessing.</li>
       <li>{[...old("architecture"), "planning-t", "planning-words"].map((id) => <span id={id}></span>)}<b>You review and approve the plan.</b> A second AI reviews the architecture and the order of the features, and nothing is built until you approve them. A later change to the plan needs your approval again.</li>
     </ul>
-    <p><b>Illustrative example.</b> A gym wants an application where trainers record attendance for their classes and members see their own training history. Before anything is built, you are asked whether members may see each other's training history. You answer: only their own history. The plan then builds users and roles first, then classes and attendance, then the member's history view.</p>
   </Section>
 
   <Section id="independent" title={title.independent}>
@@ -61,7 +62,6 @@ const old = (name: string) => [name, `${name}-h`, `${name}-t`, `${name}-words`];
       <li>{old("unattended").map((id) => <span id={id}></span>)}<b>Unattended when you want.</b> One command takes a feature from its Issue to a proposed change without asking you anything, within fixed limits on sessions, repairs and review rounds. When it needs your decision, it stops with the question.</li>
     </ul>
     <p>Codeyard is not a scheduler that runs every feature of the plan in one batch: you start each run, and separate runs can work side by side.</p>
-    <p><b>Illustrative example.</b> Once users and roles exist, you start attendance in the evening, and beside it an unrelated feature, the gym's opening hours. In the morning, one is a proposed change with its checks and review; the other waits for one question of yours.</p>
   </Section>
 
   <Section id="verify" title={title.verify}>
@@ -72,10 +72,13 @@ const old = (name: string) => [name, `${name}-h`, `${name}-t`, `${name}-words`];
       <li>{[...old("review"), ...old("risk")].map((id) => <span id={id}></span>)}<b>Independent review by a different model,</b> where the risk policy asks for it: an AI of another provider, which cannot edit the change, reads it. As shipped, every change is reviewed; a project can let low-risk changes, such as a typo in the docs, skip the review, and their merge then asks for your approval.</li>
       <li><b>Findings are triaged, fixed and reviewed again.</b> Every finding gets a written decision: fix it now, move it to a new Issue, or accept it with a reason. Critical and major findings are always fixed, unless you make an exception yourself, and the fix is reviewed again.</li>
       <li>{old("authority").map((id) => <span id={id}></span>)}<b>The evidence, and your decision.</b> The proposed change carries the checks, the review and the decisions on the findings. No script merges: you do. A change to the project's own rules, design decisions or workflow is marked as needing your explicit approval.</li>
-      <li>{old("learn").map((id) => <span id={id}></span>)}<b>Learning from the runs.</b> Every run leaves a record on your machine, and an analysis you start proposes improvements to your rules and checks: <a href={href("docs/technical-reference/#learning-from-your-runs")}>Learning from your runs</a>.</li>
     </ul>
     <p>A check proves what it examines, no more: neither the checks nor the review promise that every problem is found.</p>
-    <p><b>Illustrative example.</b> The first version let every signed-in user open the history view. The reviewer reported it; the fix added the check “a member who requests another member's history is refused”, and the change was reviewed again before it reached you.</p>
+  </Section>
+
+  <Section id="learn" title={title.learn}>
+    {old("learn").slice(2).map((id) => <span id={id}></span>)}
+    <p>Every run leaves a record on your machine, and an analysis you start proposes improvements to your rules and checks: <a href={href("docs/technical-reference/#learning-from-your-runs")}>Learning from your runs</a>.</p>
   </Section>
 
   <Section id="faq" title="Questions">
@@ -94,7 +97,7 @@ const old = (name: string) => [name, `${name}-h`, `${name}-t`, `${name}-words`];
       <details id="cost">
         <summary id="cost-h">{question.cost}</summary>
         <p>Codeyard itself is free and open source, under the MIT licence. You pay for the AI models through your own Claude Code and Codex accounts, by subscription or paid API use, with their usage limits. The amount depends on the size of a change, the number of review rounds and the models you choose, so no price per feature can be given.</p>
-        <p class="needs">The models per role: <a href={href("docs/agent-roles/")}>Agent roles and models</a>; what a few recorded runs took: <a href={href("docs/engineering-records/#tradeoff")}>More rounds find more, and cost more</a>.</p>
+        <p class="needs">The models per role: <a href={href("docs/agent-roles/")}>Agent roles and models</a>.</p>
       </details>
       <details id="data">
         <summary id="data-h">{question.data}</summary>

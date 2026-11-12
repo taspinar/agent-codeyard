@@ -39,7 +39,8 @@ export default function searchIndex() {
           else if (entry.name === 'index.html') {
             const html = await readFile(path, 'utf8');
             const main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1];
-            if (!main) continue;
+            // An unlisted page (#390) stays reachable but is not searched.
+            if (!main || /<main\b[^>]*\bdata-unlisted\b/i.test(html)) continue;
             const page = relative(root, path).split(sep).join('/').replace(/index\.html$/, '');
             const article = main.match(/<article\b[^>]*\bdata-search\b[^>]*>([\s\S]*?)<\/article>/i)?.[1];
             const topics = topicsOf(article ?? '');
