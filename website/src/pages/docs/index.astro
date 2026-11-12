@@ -93,15 +93,19 @@ const routing = {
     var current;
     function show(hash, chosen) {
       var id = decodeURIComponent(hash.replace(/^#/, ""));
-      if (Object.prototype.hasOwnProperty.call(aliases, id)) {
+      var aliased = Object.prototype.hasOwnProperty.call(aliases, id);
+      if (aliased) {
         id = aliases[id];
         history.replaceState(history.state, "", "#" + id);
       }
       var place = id ? document.getElementById(id) : null;
       var holder = place && place.closest("[data-topic]");
       var topic = names.indexOf(id.split("/")[0]) >= 0 ? id.split("/")[0] : holder ? holder.dataset.topic : null;
+      // An old id that leads to a control of the layout, such as the search
+      // input: the browser looked for the old id, so the router goes there.
+      var control = aliased && place && !holder ? place : null;
       // An id of the layout, such as the target of the skip link: no topic changes.
-      if (!topic && place && current) return;
+      if (!topic && place && current) { if (control) control.focus(); return; }
       topic = topic || names[0];
       var title = topics[names.indexOf(topic)].title;
       if (topic !== current) {
@@ -120,6 +124,7 @@ const routing = {
       var picker = document.querySelector(".docs-picker");
       if (chosen && matchMedia("(max-width: 760px)").matches) picker.open = false;
       if (place && holder && place !== holder) place.scrollIntoView();
+      else if (control) control.focus();
       else if (chosen) document.getElementById(topic).querySelector("h2").focus();
     }
     show(location.hash, false);

@@ -120,6 +120,16 @@ try {
     await visit(origin + base + 'docs/#what-stays-with-you');
     assert.equal(new URL(p.url()).hash, '#configuration/the-limits-in-short', 'An old id of /docs/ goes on to its new place');
     assert(await inView('[id="configuration/the-limits-in-short"]'));
+    // An old id of /docs/ that leads to the search input: on a fresh load and
+    // followed on the open page, the input is in view and has the focus.
+    const searchFocused = () => p.evaluate(() => document.activeElement?.id === 'docs-query');
+    await visit(origin + base + 'docs/#find-a-command-or-setting');
+    assert.equal(new URL(p.url()).hash, '#docs-query', 'The old search anchor of /docs/ goes on to the search input');
+    assert(await inView('#docs-query') && await searchFocused(), 'The old search anchor of /docs/ lands on the search input');
+    await visit(origin + base + 'docs/#troubleshooting/a-check-fails');
+    await p.evaluate(() => { location.hash = 'find-a-command-or-setting'; });
+    await p.waitForFunction(() => document.activeElement?.id === 'docs-query', null, { timeout: 2000 }).catch(() => {});
+    assert(await inView('#docs-query') && await searchFocused(), 'The old search anchor followed on the open page lands on the search input');
     await visit(origin + base + 'docs/#no-such-topic');
     assert.deepEqual(await open(), ['quick-start'], 'An unknown hash opens Quick Start');
     // Search opens the right topic, also from /docs/ itself.
@@ -177,7 +187,19 @@ try {
     const q = await plain.newPage();
     await q.goto(origin + base + 'docs/#risk-policy/shipped-configuration');
     assert.deepEqual(await q.evaluate(() => [...document.querySelectorAll('.docs-topics > [data-topic]')].filter(s => s.checkVisibility()).map(s => s.id)), topics.map(t => t.id), 'Without JavaScript every topic is shown');
-    assert(await q.locator('[id="risk-policy/shipped-configuration"]').evaluate(e => { const r = e.getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight; }), 'Without JavaScript a deep link scrolls natively');
+    // The web fonts swap in after the first layout and move the target; the
+    // browser keeps its fragment anchor and scrolls again in the next frame.
+    // Measure once the fonts are in and the target has stayed put for three
+    // samples (no requestAnimationFrame without JavaScript), within 5 s.
+    const where = () => q.locator('[id="risk-policy/shipped-configuration"]').evaluate(e => ({ ready: document.readyState === 'complete' && document.fonts.status === 'loaded', top: e.getBoundingClientRect().top, header: document.querySelector('.top').getBoundingClientRect().bottom, height: innerHeight }));
+    let target = await where();
+    for (let stable = 0, start = Date.now(); stable < 3 && Date.now() - start < 5000;) {
+      await new Promise(r => setTimeout(r, 50));
+      const next = await where();
+      stable = next.ready && next.top === target.top ? stable + 1 : 0;
+      target = next;
+    }
+    assert(target.top >= target.header && target.top < target.height, `Without JavaScript a deep link scrolls natively, below the sticky header (${JSON.stringify(target)})`);
     await plain.close();
     console.log(`  Technical Documentation: ${sections.length} sections, ${topics.length} topics, ${retired.length} redirect pages walked with and without JavaScript.`);
   }
