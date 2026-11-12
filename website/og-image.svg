@@ -7,8 +7,8 @@
   <rect width="1200" height="630" fill="#f4f5f4"/>
   <circle cx="104" cy="152" r="19" fill="none" stroke="#00804a" stroke-width="9"/>
   <text x="146" y="182" font-family="Overpass" font-weight="800" font-size="88" letter-spacing="-3" fill="#141617">Agent Codeyard</text>
-  <text x="80" y="250" font-family="Overpass" font-weight="600" font-size="38" fill="#4c5357">Build software with AI,</text>
-  <text x="80" y="298" font-family="Overpass" font-weight="600" font-size="38" fill="#4c5357">with a clear plan and checks along the way.</text>
+  <text x="80" y="250" font-family="Overpass" font-weight="600" font-size="38" fill="#4c5357">Build software with AI.</text>
+  <text x="80" y="298" font-family="Overpass" font-weight="600" font-size="38" fill="#4c5357">Keep control of every change.</text>
 
   <path d="M475 440 V496 L501 522 H619 L645 496 V440" fill="none" stroke="#7a8186" stroke-width="4" stroke-dasharray="10 9" stroke-linejoin="round"/>
   <path d="M80 432 H1050" fill="none" stroke="#00804a" stroke-width="10" stroke-linecap="round"/>

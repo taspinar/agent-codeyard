@@ -74,18 +74,21 @@ try {
       await tabTo('.skip');
       await page.keyboard.press('Enter');
       assert.equal(await page.evaluate(() => document.activeElement.id), 'main');
-      // The hero of the home page (#329): plain words only, and the headline,
-      // the lede and both actions in view without scrolling.
+      // The home page (#370): the six sections in order; the hero's primary
+      // action goes to the demo, the text link to Getting started, and the
+      // headline, the lede and both actions are in view without scrolling.
       const hero = page.locator('.hero-grid');
-      const heroText = await hero.innerText();
-      for (const word of ['repository', 'pull request', 'triage', 'evidence', 'gate', 'merge', 'policy', 'script', 'worktree']) {
-        assert(!heroText.toLowerCase().includes(word), `The hero names "${word}"`);
-      }
+      assert.deepEqual(await page.locator('main h1, main h2').allInnerTexts(), [
+        'Build software with AI. Keep control of every change.', 'See how Agent Codeyard works', 'Why not just use Claude Code or Codex?',
+        'Built with the process it describes.', 'Built for developers who want more control over AI-generated software.', 'Give your coding agents a process.',
+      ]);
       const primary = hero.locator('.actions a.btn');
       assert.equal(await primary.count(), 1);
-      assert.equal(await primary.innerText(), 'See how it works');
-      assert.equal(await primary.getAttribute('href'), base + 'workflow/');
+      assert.equal(await primary.innerText(), 'Watch it work');
+      assert.equal(await primary.getAttribute('href'), '#demo');
       assert.equal(await hero.locator('.actions a:not(.btn)').getAttribute('href'), base + 'docs/getting-started/');
+      // The demo draws its route in two layouts and the screen shows one of them.
+      assert.equal(await page.locator('main svg').evaluateAll(es => es.filter(e => e.checkVisibility()).length), 1, 'One process diagram on the home page: the demo');
       for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
         await page.setViewportSize(viewport);
         await page.evaluate(() => scrollTo(0, 0));
@@ -301,6 +304,148 @@ try {
       // Reaching the final footer link walks every intervening content link too.
       await tabTo('footer nav a:last-child');
       report.keyboard.push({ theme, width, pages: ['home', 'workflow', 'docs', 'examples'], passed: true });
+    }
+  }
+  // The workflow demo of the home page (#370), at 1280 × 800, 390 × 844 and
+  // 320 × 640 in both themes: nothing plays on load; every moment shows a
+  // caption, the terminals and the tree, and the way back of its lane when it
+  // takes one; the merges come one at a time; on a phone the route is drawn
+  // top to bottom, whole within the viewport, with the same state as the
+  // horizontal map of the desktop; the controls and the dialogs work by
+  // keyboard, the dialogs take the focus and give it back; no error.
+  for (const theme of ['light', 'dark']) {
+    for (const [width, height] of [[1280, 800], [390, 844], [320, 640]]) {
+      const demoContext = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce' });
+      await demoContext.addInitScript(t => localStorage.setItem('act-theme', t), theme);
+      const p = await demoContext.newPage();
+      const errors = [];
+      p.on('pageerror', e => errors.push(e.message));
+      const at = `(demo ${theme} ${width})`;
+      await p.goto(origin + base);
+      const count = () => p.locator('[data-count]').innerText();
+      const press = async (selector) => { await p.locator(selector).locator('visible=true').first().focus(); await p.keyboard.press('Enter'); };
+      const orientation = width >= 1280 ? 'horizontal' : 'vertical';
+      assert.deepEqual(await p.locator('.demo-map').evaluateAll(es => es.filter(e => e.checkVisibility()).map(e => e.dataset.map)), [orientation], `The route ${orientation} ${at}`);
+      await p.waitForTimeout(3000);
+      assert.equal(await count(), 'Moment 1 of 19', `Nothing plays on load ${at}`);
+      assert.equal(await p.locator('.demo-map .track').first().evaluate(e => getComputedStyle(e).transitionDuration), '0s', `No transition under reduced motion ${at}`);
+      if (width === 1280) {
+        await p.locator('.hero .btn').click();
+        await p.waitForTimeout(500);
+        const box = await p.evaluate(() => ({ top: document.querySelector('.demo').getBoundingClientRect().top, bottom: document.querySelector('.demo-panels').getBoundingClientRect().bottom }));
+        assert(box.top >= 0 && box.bottom <= height, `After "Watch it work" the route, the terminals and the tree are in view ${at}: ${JSON.stringify(box)}`);
+      }
+      const merged = [];
+      for (let m = 0; m < 19; m++) {
+        if (m > 0) await press('[data-action="next"]');
+        assert.equal(await count(), `Moment ${m + 1} of 19`, at);
+        const state = await p.evaluate(() => {
+          const [map, other] = [...document.querySelectorAll('.demo-map')].sort((a, b) => b.checkVisibility() - a.checkVisibility());
+          // What each layout marks: the classes and the words of every station, lane and loop.
+          const marks = svg => [...svg.querySelectorAll('[data-milestone], [data-lane], [data-stage], [data-track], [data-loop], [data-main]')].map(e => `${e.getAttribute('class')}|${e.querySelector?.('[data-status]')?.textContent ?? ''}`);
+          const frame = map.getBoundingClientRect();
+          const parts = [...map.querySelectorAll('text, .sym, .demo-loop path')].filter(e => e.checkVisibility()).map(e => e.getBoundingClientRect()).filter(r => r.width);
+          return {
+            caption: document.querySelector('[data-title]').textContent.trim() && document.querySelector('[data-text]').textContent.trim(),
+            terminals: [...document.querySelectorAll('[data-term]')].filter(e => e.checkVisibility()).map(e => e.innerText.trim().length),
+            tree: document.querySelector('[data-tree]').innerText.trim().length,
+            loops: [...map.querySelectorAll('[data-loop]')].filter(e => getComputedStyle(e).display !== 'none' && e.getBBox().width > 0).map(e => e.dataset.loop),
+            merged: [...map.querySelectorAll('[data-track$="-main"].is-done')].map(e => e.dataset.track),
+            statuses: [...map.querySelectorAll('[data-status]')].map(e => e.textContent.trim()),
+            same: JSON.stringify(marks(map)) === JSON.stringify(marks(other)),
+            outside: parts.filter(r => r.left < Math.max(0, frame.left) - 0.5 || r.right > Math.min(innerWidth, frame.right) + 0.5).length,
+            mapScrolls: map.parentElement.scrollWidth > map.parentElement.clientWidth,
+            overflow: document.documentElement.scrollWidth > innerWidth,
+          };
+        });
+        assert(state.caption && state.tree > 0 && state.terminals.length > 0 && state.terminals.every(n => n > 0), `Empty panel at moment ${m + 1} ${at}`);
+        assert(state.same, `Both layouts of the route show the state of moment ${m + 1} ${at}`);
+        assert(state.statuses.length === 3 && state.statuses.every(Boolean), `Each lane's state in words at moment ${m + 1} ${at}`);
+        assert(state.outside === 0 && !state.mapScrolls, `The whole route within the viewport at moment ${m + 1} ${at}`);
+        assert.deepEqual(state.loops, m === 11 || m === 12 ? ['repair'] : m === 13 || m === 14 ? ['findings'] : [], `Way back at moment ${m + 1} ${at}`);
+        assert(!state.overflow, `Horizontal overflow at moment ${m + 1} ${at}`);
+        merged.push(state.merged.length);
+      }
+      assert.deepEqual(merged, [...Array(16).fill(0), 1, 2, 3], `The merges one at a time ${at}`);
+      // Play and pause, then restart.
+      await press('[data-action="restart"]');
+      await press('[data-action="play"]');
+      assert.equal(await p.locator('[data-action="play"]').innerText(), 'Pause');
+      await p.waitForTimeout(2900);
+      const playing = await count();
+      assert.notEqual(playing, 'Moment 1 of 19', `Play advances ${at}`);
+      await p.keyboard.press('Enter');
+      await p.waitForTimeout(2900);
+      assert.equal(await count(), playing, `Pause holds ${at}`);
+      await press('[data-action="restart"]');
+      assert.equal(await count(), 'Moment 1 of 19');
+      // The timeline, by keyboard.
+      await p.locator('[data-action="timeline"]').focus();
+      await p.keyboard.press('ArrowRight');
+      assert.equal(await count(), 'Moment 2 of 19', `The timeline moves ${at}`);
+      // The Plan dialog from its station: focus in, Escape out, focus back.
+      // A dialog opens and the focus moves a task after the key press: wait
+      // for the state that is expected, then assert it (no fixed delay).
+      const dialog = p.locator('[data-dialog]');
+      const opened = async (title, message) => {
+        await p.waitForFunction(t => { const d = document.querySelector('[data-dialog]'); return d.open && d.querySelector('[data-dialog-title]').textContent === t; }, title, { timeout: 5000 }).catch(() => {});
+        assert.equal(await p.locator('[data-dialog-title]').innerText(), title, message);
+        assert(await dialog.isVisible(), message);
+      };
+      const focused = async (selector, message) => {
+        await p.waitForFunction(s => document.activeElement?.matches(s), selector, { timeout: 5000 }).catch(() => {});
+        assert(await p.evaluate(s => document.activeElement?.matches(s), selector), message);
+      };
+      await press('[data-milestone="plan"]');
+      await opened('Inside Plan', `The Plan dialog ${at}`);
+      assert(await dialog.evaluate(d => d.contains(document.activeElement)), `The Plan dialog takes the focus ${at}`);
+      await p.keyboard.press('Escape');
+      assert(!await dialog.isVisible());
+      await focused('[data-milestone="plan"]', `Focus returns to Plan ${at}`);
+      // The feature dialog jumps to a moment.
+      await p.locator('[data-action="timeline"]').fill('12');
+      await press('[data-action="details"]');
+      await opened('Inside a feature', `The feature dialog ${at}`);
+      await press('[data-goto="13"]');
+      assert(!await dialog.isVisible());
+      assert.equal(await count(), 'Moment 14 of 19');
+      await focused('[data-action="details"]', `Focus returns to the feature steps ${at}`);
+      // Switching the active feature terminal by keyboard: the chosen tab keeps
+      // the focus through the redraw, Tab reaches the next tab right away, and
+      // a change of moment while a tab has the focus does not drop it.
+      await press('[data-select="f03"]');
+      assert.equal(await p.locator('[data-select="f03"]').getAttribute('aria-pressed'), 'true', `Terminal switch to f03 ${at}`);
+      await focused('[data-select="f03"]', `The chosen terminal tab keeps the focus ${at}`);
+      await p.keyboard.press('Tab');
+      await focused('[data-select="f04"]', `Tab reaches the next terminal tab ${at}`);
+      await p.keyboard.press(' ');
+      assert.equal(await p.locator('[data-select="f04"]').getAttribute('aria-pressed'), 'true', `Terminal switch ${at}`);
+      await focused('[data-select="f04"]', `The next terminal tab keeps the focus ${at}`);
+      await p.evaluate(() => document.querySelector('[data-action="next"]').click());
+      assert.equal(await count(), 'Moment 15 of 19');
+      await focused('[data-select="f04"]', `A change of moment keeps the focus on the terminal tab ${at}`);
+      assert.equal(await p.locator('[data-term].is-active').getAttribute('data-term'), 'f04');
+      if (width < 760) assert.equal(await p.locator('[data-term]').evaluateAll(es => es.filter(e => e.checkVisibility()).length), 1, `One terminal at a time on a phone ${at}`);
+      else assert.equal(await p.locator('[data-term]').evaluateAll(es => es.filter(e => e.checkVisibility()).length), 3, `Three terminals side by side ${at}`);
+      // A file, and the planning log.
+      const file = p.locator('[data-file]').first();
+      const path = (await file.innerText()).trim();
+      await press('[data-file]');
+      await opened(path, `The file dialog ${at}`);
+      assert((await p.locator('.demo-file').innerText()).trim().length > 0);
+      const results = await new AxeBuilder({ page: p }).include('.demo').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
+      assert.deepEqual(results.violations.filter(v => ['serious', 'critical'].includes(v.impact) || v.id === 'color-contrast'), [], `Accessibility of the demo with a dialog open ${at}`);
+      await p.keyboard.press('Escape');
+      await focused('[data-file]', `Focus returns to the file ${at}`);
+      await press('[data-action="log"]');
+      await opened('Planning terminal', `The planning log ${at}`);
+      await p.keyboard.press('Escape');
+      // Every old anchor of the home page lands in the section that took its content.
+      for (const [id, section] of [['example', 'demo'], ['roles', 'demo'], ['projects', 'evidence'], ['why', 'why'], ['who', 'who'], ['start', 'start']]) {
+        assert.equal(await p.evaluate(id => document.getElementById(id)?.closest('section')?.id, id), section, `#${id} ${at}`);
+      }
+      assert.deepEqual(errors, [], `JavaScript errors ${at}`);
+      await demoContext.close();
     }
   }
   // Disclosure breakpoint and no-JS fallback, including search-before-navigation.
