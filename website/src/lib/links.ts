@@ -25,7 +25,7 @@ export function pull(number: number): string {
 /** The sections of the site, in the order of the navigation. */
 export const sections = [
   { path: "workflow/", label: "How it works" },
-  { path: "features/", label: "Why Codeyard" },
+  { path: "features/", label: "Features" },
   { path: "examples/", label: "Projects" },
   { path: "docs/", label: "Docs", keep: true },
   { path: "about/", label: "About" },
