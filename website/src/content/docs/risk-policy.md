@@ -24,11 +24,11 @@ high: src/auth
 
 | The level decides | Under the shipped configuration |
 | --- | --- |
-| **The model** of the implementer and the fixer, by the lines of <a href="../agent-roles/#risk-levels">`.agents/agents.conf`</a> | `opus` at low and medium, `fable` at high |
+| **The model** of the implementer and the fixer, by the lines of <a href="#agent-roles/risk-levels">`.agents/agents.conf`</a> | `opus` at low and medium, `fable` at high |
 | **What the review rounds require**: the verification, whether a later round may review only the changes, and the triage, by the lines of the risk policy | The same at every level: every check, a review of the changes when a round can build on the one before, and the full triage |
 | **Whether a review may be skipped**: only at low, only when the policy says so | Not by the policy: every feature is reviewed. You can still finish a low-risk change without a review, with `--no-review "<reason>"`, and the commit records it |
 
-What a level does not change: under every level and profile the implementer, the full verification before the commit, the pull request, CI and your merge stay. The merge approval follows its own rules (<a href="../configuration-and-security/#gate">changes that need the owner</a>): a protected path needs you at any level.
+What a level does not change: under every level and profile the implementer, the full verification before the commit, the pull request, CI and your merge stay. The merge approval follows its own rules (<a href="#configuration/gate">changes that need the owner</a>): a protected path needs you at any level.
 
 <a id="three-settings"></a>
 
@@ -38,7 +38,7 @@ What a level does not change: under every level and profile the implementer, the
 | --- | --- | --- |
 | **Risk level** | Low, medium or high, computed per feature from the paths it changes | <a href="#risk">The risk level of a feature</a> |
 | **Workflow profile** | One line, `profile: light` or `profile: standard`, that fills in the rules the risk policy does not write | <a href="#workflow-profiles">Workflow profiles</a> |
-| **Permission profile** | Write, unattended or read-only: what an agent may do in a step. Unrelated to risk | <a href="../configuration-and-security/#profiles">Configuration and security</a> |
+| **Permission profile** | Write, unattended or read-only: what an agent may do in a step. Unrelated to risk | <a href="#configuration/profiles">Configuration and security</a> |
 
 <a id="risk"></a>
 
@@ -121,5 +121,5 @@ Some changes make a feature high whatever the classes say:
 | **Shared test fixtures** | Any change to the libraries many tests load (`test-fixtures`), also an added line or a new file | High, since such a file can change every test |
 | **The verification configuration** | A changed or removed line in `scripts/verify.conf` or `scripts/verify-workflow.conf` | High |
 | **Policies, prompts, schemas** | A change to an existing file under `.agents/policies/`, `.agents/prompts/`, or `.agents/schemas/` | High |
-| **Project skills** | A change to an existing file of a skill under `.agents/project-skills/` (<a href="../agent-roles/#skills">project skills</a>) | High |
+| **Project skills** | A change to an existing file of a skill under `.agents/project-skills/` (<a href="#agent-roles/skills">project skills</a>) | High |
 | **Manifests** | A change to an existing dependency or toolchain file that the policy names under `manifests` | High |

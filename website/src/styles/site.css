@@ -418,6 +418,27 @@ html:not(.js) .docs-search { display: none; }
 .prose .words.timeline { padding-left: var(--s-route-indent); }
 .prose .words.timeline li + li { margin-top: 0; }
 .nav-group { font: var(--w-bold) var(--t-xs) var(--sans); color: var(--ink-3); margin: var(--s-5) 0 0; }
+/* Technical Documentation (#373): the sections of the navigation, each a link
+   to its first topic, with its other topics below it; with JavaScript only the
+   open section shows them. The topics follow each other on one page; with
+   JavaScript only the open one is shown. A topic's title is its h2, so the
+   headings of its text are one level down, at the sizes of a docs page. */
+.docs-sections > li > a { font-weight: var(--w-semibold); }
+.docs-sections ul { margin: var(--s-2) 0 0; padding-left: var(--s-indent); font-size: var(--t-sm); }
+.docs-sections ul li + li { margin-top: var(--s-2); }
+html.js .docs-sections > li:not([data-open]) > ul { display: none; }
+.docs-toc [data-toc] > .nav-group:first-child { margin-top: 0; }
+.docs-topics > .topic { padding: 0; border-top: 0; }
+.docs-topics > .topic + .topic { margin-top: var(--s-8); padding-top: var(--s-6); border-top: 2px solid var(--ink); }
+html.js .docs-topics > .topic:not([data-open]) { display: none; }
+html.js .docs-topics > .topic + .topic { margin-top: 0; padding-top: 0; border-top: 0; }
+.topic > h2 { margin-bottom: var(--s-5); }
+.topic .prose h3 { font-size: var(--t-xl); margin-top: var(--s-7); }
+.topic .prose h4 { font-size: var(--t-lg); font-weight: var(--w-bold); letter-spacing: var(--track-snug); margin-top: var(--s-6); }
+.docs-scope { font-size: var(--t-md); }
+@media (min-width: 761px) {
+  .docs-sidebar { position: sticky; top: var(--s-sticky); max-height: calc(100vh - var(--s-sticky)); overflow-y: auto; }
+}
 /* Above 1100px "On this page" stays beside the text, sticky like the section
    header column; in one column it sits above the text. */
 @media (min-width: 1101px) {
@@ -431,9 +452,15 @@ html:not(.js) .docs-search { display: none; }
   .docs-layout { grid-template-columns: minmax(0, 1fr); }
   .docs-toc { border-top: 1px solid var(--rule); padding-top: var(--s-3); }
 }
-/* The workflow reference: stages are h2, every step a section under a hairline. */
+/* From 761 to 1100px two columns: the navigation beside "On this page" and
+   the text (#373). */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .docs-layout { grid-template-columns: 13rem minmax(0, 1fr); }
+  .docs-sidebar { grid-row: span 2; }
+}
+/* The workflow reference: stages are h3 of its topic, every step a section under a hairline. */
 .ref .ref-step { border-top: 1px solid var(--rule); padding: var(--s-4) 0 0; margin-top: var(--s-6); }
-.ref .ref-step h3 { margin-top: 0; }
+.ref .ref-step h4 { margin-top: 0; }
 .ref .what { margin-bottom: var(--s-2); }
 .moved-note { font-size: var(--t-sm); color: var(--ink-2); }
 /* An old anchor of content that moved (/examples/, #344; Home, #335): its one line shows

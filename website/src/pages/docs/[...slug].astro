@@ -1,16 +1,26 @@
 ---
-import { getCollection, render } from "astro:content";
-import DocsPage from "../../components/DocsPage.astro";
+// The retired docs routes (src/lib/redirects.ts): each is a redirect page into
+// its topic of /docs/, with every id the old page had. The ids of a topic are
+// those of its source, before the prefix of the one page (src/lib/docs.ts).
+import { getCollection } from "astro:content";
+import Redirect from "../../layouts/Redirect.astro";
+import { topics } from "../../lib/docs";
+import { layoutIds, moved, retired } from "../../lib/redirects";
+import { stages } from "../../lib/steps";
 
 export async function getStaticPaths() {
-  return (await getCollection("docs")).map(page => ({
-    params: { slug: page.id === "index" ? undefined : page.id }, props: { page },
-  }));
+  const entries = await getCollection("docs");
+  const reference = ["index", "parameters", ...stages.flatMap((stage) => [stage.id, ...stage.steps.flatMap((step) => [step.id, `${step.id}-h`])])];
+  return retired.map((route) => {
+    const topic = topics.find((t) => t.id === route.topic);
+    if (!topic) throw new Error(`redirects: no topic ${route.topic}`);
+    const html = topic.entry ? entries.find((entry) => entry.id === topic.entry)?.rendered?.html : undefined;
+    if (topic.entry && !html) throw new Error(`redirects: no rendered entry ${topic.entry}`);
+    const ids = html ? [...html.matchAll(/<[a-z][a-z0-9]*\b[^>]*?\sid="([^"]+)"/g)].map((match) => match[1]) : reference;
+    const anchors = Object.fromEntries([...layoutIds, ...ids].map((id) => [id, moved(route, id)]));
+    return { params: { slug: route.path.replace(/^docs\/|\/$/g, "") }, props: { route, label: `Technical Documentation: ${topic.title}`, anchors } };
+  });
 }
-const { page } = Astro.props;
-const { Content, headings } = await render(page);
-const toc = headings.filter(h => h.depth <= 3).map(({ slug, text }) => ({ slug, text }));
+const { route, label, anchors } = Astro.props;
 ---
-<DocsPage id={page.id} title={page.data.title} description={page.data.description} toc={toc}>
-  <Content />
-</DocsPage>
+<Redirect title={route.title!} to={moved(route)} label={label} anchors={anchors} />

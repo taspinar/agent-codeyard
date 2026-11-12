@@ -1,53 +1,77 @@
 ---
-// A page of the documentation: the search and the sidebar in groups
-// (src/lib/docs.ts), "On this page" (beside the text on wide screens, above it
-// in one column), the text, and the previous and next pages in the order of
-// the sidebar. Code blocks of the text get a copy button.
-import { getCollection } from "astro:content";
+// The frame of Technical Documentation (/docs/) and of its Appendix pages:
+// the search and the section navigation (src/lib/docs.ts), "On this page"
+// (beside the text above 1100 px, above it below), and the text. On narrow
+// screens the navigation is a section picker that names the open topic.
+// Code blocks of the text get a copy button.
+//
+// /docs/ passes its topics (one <section data-topic> each) and their "On this
+// page" lists in the slot "toc"; its router (src/pages/docs/index.astro)
+// shows one topic at a time. An Appendix page passes its text, its toc, and
+// gets previous and next links.
 import Base from "../layouts/Base.astro";
 import PageHead from "./PageHead.astro";
 import DocsSearch from "./DocsSearch.astro";
 import { href } from "../lib/links";
-import { path, sidebar } from "../lib/docs";
+import { appendix, first, sections, topics } from "../lib/docs";
 
 export type Heading = { slug: string; text: string; children?: Heading[] };
-interface Props { id: string; title: string; description: string; toc: Heading[]; class?: string }
-const { id, title, description, toc, class: kind } = Astro.props;
+interface Props {
+  title: string;
+  description: string;
+  /** The Appendix page this is, by its path; none on /docs/. */
+  page?: string;
+  toc?: Heading[];
+  class?: string;
+}
+const { title, description, page, toc = [], class: kind } = Astro.props;
 
-const groups = sidebar(await getCollection("docs"));
-const pages = groups.flatMap((group) => group.pages);
-const position = pages.findIndex((page) => page.id === id);
-const previous = pages[position - 1];
-const next = pages[position + 1];
-const link = (page: { id: string }) => href(path(page.id));
+// On /docs/ a topic is a place on the page; elsewhere a link to it.
+const link = (id: string) => (page ? href(`docs/#${id}`) : `#${id}`);
+const position = appendix.findIndex((item) => item.path === page);
+const previous = position === 0 ? { href: link(topics.at(-1)!.id), title: topics.at(-1)!.title } : appendix[position - 1] && { href: href(appendix[position - 1].path), title: appendix[position - 1].title };
+const next = appendix[position + 1] && { href: href(appendix[position + 1].path), title: appendix[position + 1].title };
+const picked = page ? appendix[position].title : first.title;
 ---
 <Base title={title} description={description}>
-  <PageHead title={title} lede={description} />
+  <PageHead title={title} lede={page ? description : undefined}><slot name="head" /></PageHead>
   <div class="wrap docs-layout">
     <aside class="docs-sidebar">
+      {!page && <a id="find-a-command-or-setting"></a>}
       <DocsSearch />
-      <details class="docs-disclosure">
-        <summary>Documentation pages</summary>
-      <nav aria-label="Documentation">
-        {groups.map((group) => <>
-          {group.label && <p class="nav-group">{group.label}</p>}
-          <ul>{group.pages.map((page) => <li><a href={link(page)} aria-current={page.id === id ? "page" : undefined}>{page.title}</a></li>)}</ul>
-        </>)}
-      </nav>
+      <details class="docs-disclosure docs-picker">
+        <summary>Section: <span data-picked>{picked}</span></summary>
+        <nav aria-label="Documentation">
+          <ul class="docs-sections">
+            {sections.map((section) => (
+              <li data-section={section.id} data-open={!page && section.id === first.id ? "" : undefined}>
+                <a href={link(section.id)} aria-current={!page && section.id === first.id ? "page" : undefined}>{section.label}</a>
+                {section.topics.length > 1 && <ul>{section.topics.slice(1).map((topic) => <li><a href={link(topic.id)}>{topic.title}</a></li>)}</ul>}
+              </li>
+            ))}
+          </ul>
+          <p class="nav-group">Appendix</p>
+          <ul>{appendix.map((item) => <li><a href={href(item.path)} aria-current={item.path === page ? "page" : undefined}>{item.title}</a></li>)}</ul>
+        </nav>
       </details>
     </aside>
-    {toc.length > 0 && <details class="docs-disclosure docs-toc">
+    <details class="docs-disclosure docs-toc">
       <summary>On this page</summary>
       <nav aria-label="On this page">
-      <ul>{toc.map((h) => <li><a href={`#${h.slug}`}>{h.text}</a>
-        {h.children?.length ? <ul>{h.children.map((c) => <li><a href={`#${c.slug}`}>{c.text}</a></li>)}</ul> : null}</li>)}</ul>
-    </nav></details>}
-    <div class="docs-body">
-      <article data-search><div class:list={["prose", kind]}><slot /></div></article>
-      <nav class="docs-pagination" aria-label="Previous and next pages">
-        {previous && <a rel="prev" href={link(previous)}>Previous: {previous.title}</a>}
-        {next && <a rel="next" href={link(next)}>Next: {next.title}</a>}
+        <slot name="toc">
+          <ul>{toc.map((h) => <li><a href={`#${h.slug}`}>{h.text}</a>
+            {h.children?.length ? <ul>{h.children.map((c) => <li><a href={`#${c.slug}`}>{c.text}</a></li>)}</ul> : null}</li>)}</ul>
+        </slot>
       </nav>
+    </details>
+    <div class="docs-body">
+      {page ? <>
+        <article data-search><div class:list={["prose", kind]}><slot /></div></article>
+        <nav class="docs-pagination" aria-label="Previous and next pages">
+          {previous && <a rel="prev" href={previous.href}>Previous: {previous.title}</a>}
+          {next && <a rel="next" href={next.href}>Next: {next.title}</a>}
+        </nav>
+      </> : <article data-search class="docs-topics"><slot /></article>}
     </div>
   </div>
 </Base>

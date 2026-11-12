@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "c75af2729cc952a66b12fbcd72c6e67d96856844",
+  "commit": {
+    "branch": "feature/373-one-technical-documentation-interface",
+    "parent": "4e607640f36dc78572b88d833939ab3e424c5e2a",
+    "base": "76c2c26d64bc9139fa2ce4949f490a08a5813c9f"
+  },
+  "review": {
+    "round": 5,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the independent review classified the impact on the architecture as major: The implementation changes the public documentation navigation and URL model, and adds shared redirect, search-index, and sitemap behavior in `website/src/lib/docs.ts`, `website/src/lib/redirects.ts`, the docs router, and related integrations. These changes align with the information architecture’s one-page docs design and its specified behavior with and without JavaScript. ",
+    "the review could not confirm: `website/check.sh --build` and `./scripts/verify.sh` pass; checks at 320, 390, 768, 1280 and 1440 px in both themes, with no JavaScript error."
+  ],
+  "explanation": "Issue #373: One Technical Documentation interface at /docs/ with Quick Start open by default (website IA step 2). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

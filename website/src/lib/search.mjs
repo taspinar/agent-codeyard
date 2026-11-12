@@ -1,25 +1,33 @@
-// Pages a visitor uses to do something; they rank above the other pages that
-// match the same words (#321).
-const tasks = ['docs/getting-started/', 'docs/adopting/', 'docs/troubleshooting/', 'docs/technical-reference/', 'docs/reference/'];
+// The topics of Technical Documentation a visitor uses to do something; they
+// rank above the other topics that match the same words (#321, #373).
+const tasks = ['quick-start', 'adopting', 'troubleshooting', 'technical-reference', 'workflow-reference'];
 
-/** The rank of a page by its path under the base: 0 a task page, 1 another docs page, 2 any other page. */
+/**
+ * The rank of a page by its path under the base: 0 a task topic of /docs/,
+ * 1 another topic, 2 another docs page (the Appendix), 3 any other page.
+ */
 export function pageRank(path) {
-  if (tasks.some(task => path.startsWith(task))) return 0;
-  return path.startsWith('docs/') ? 1 : 2;
+  const topic = path.match(/^docs\/#([^/]+)$/)?.[1];
+  if (topic) return tasks.includes(topic) ? 0 : 1;
+  return path.startsWith('docs/') ? 2 : 3;
 }
 
 function queryWords(query) {
   return query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
 }
 
-/** Match every query word against the page title and rendered text; task pages first. */
+/**
+ * Match every query word against the page title and rendered text; task
+ * topics first, and within a rank the pages whose title holds more of the words.
+ */
 export function searchPages(pages, query) {
   const words = queryWords(query);
   if (!words.length) return [];
+  const titled = page => -words.filter(word => page.title.toLocaleLowerCase().includes(word)).length;
   return pages.filter(page => words.every(word =>
     `${page.title} ${page.text}`.toLocaleLowerCase().includes(word)))
-    .map((page, order) => ({ page, order }))
-    .sort((a, b) => (a.page.rank ?? 2) - (b.page.rank ?? 2) || a.order - b.order)
+    .map((page, order) => ({ page, order, titled: titled(page) }))
+    .sort((a, b) => (a.page.rank ?? 3) - (b.page.rank ?? 3) || a.titled - b.titled || a.order - b.order)
     .map(({ page }) => page);
 }
 

@@ -9,7 +9,9 @@
 # - every link to a file of this repository on GitHub names a file that exists;
 # - every script a page names exists in scripts/;
 # - every page has a title, a description and a canonical address, and every
-#   address of sitemap.xml is a page of the output;
+#   address of sitemap.xml is a page of the output; a redirect page (a retired
+#   route: noindex and a refresh) is checked by its target instead, and a link
+#   to a place on it must be one that its table of old anchors maps;
 # - every colour, font and spacing value of the style sheets in src/styles/ is
 #   a design token (--tokens);
 # - the unit tests of the site's scripts pass (src/**/*.test.ts, --build);
@@ -68,6 +70,11 @@ resolve() {
   echo "$path"
 }
 
+# is_redirect <file>: whether the page is a redirect page of a retired route.
+is_redirect() {
+  grep -Fq '<meta name="robots" content="noindex">' "$1" && grep -Fq '<meta http-equiv="refresh" content="0; url=' "$1"
+}
+
 # check_tokens <style sheet>: reports each declaration of a rule that sets a
 # font or spacing value other than a token, 0 or a keyword, and each colour
 # literal. The tokens themselves are the :root blocks; @font-face describes
@@ -123,7 +130,11 @@ check_output() {
             problem "$name links to $target, which is not in the output"
           elif [[ "$target" == *"#"* ]]; then
             fragment="${target#*#}"
-            grep -Fq "id=\"$fragment\"" "$file" || problem "$name links to $target, which is not on that page"
+            if is_redirect "$file"; then
+              grep -Fq "\"$fragment\":" "$file" || problem "$name links to $target, which its redirect does not map"
+            else
+              grep -Fq "id=\"$fragment\"" "$file" || problem "$name links to $target, which is not on that page"
+            fi
           fi
           ;;
       esac
@@ -137,6 +148,16 @@ check_output() {
       fi
     done < <(sed 's/<[^>]*>/ /g' "$page" | grep -oE '([[:alnum:]_.-]+/)*[a-z][a-z-]*\.sh' | sort -u)
 
+    if is_redirect "$page"; then
+      target="$(grep -oE '<meta http-equiv="refresh" content="0; url=[^"]*"' "$page" | sed -E 's/.*url=//; s/"$//' | sed 's/&amp;/\&/g')"
+      file="$(resolve "$output" "$base" "$(dirname "$page")" "${target%%#*}")"
+      if [[ -z "$file" || ! -f "$file" ]]; then
+        problem "$name redirects to $target, which is not in the output"
+      elif [[ "$target" == *"#"* ]] && ! grep -Fq "id=\"${target#*#}\"" "$file"; then
+        problem "$name redirects to $target, which is not on that page"
+      fi
+      continue
+    fi
     grep -q '<title>[^<]' "$page" || problem "$name has no title"
     grep -q '<meta name="description" content="[^"]' "$page" || problem "$name has no description"
     grep -Fq "<link rel=\"canonical\" href=\"$site_url$base" "$page" || problem "$name has no canonical address under $site_url$base"

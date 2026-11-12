@@ -47,13 +47,13 @@ On the branch, before any change, when you decide to run your project's commands
 ./scripts/verify.sh --baseline
 ```
 
-It runs every check once and records in `.agents/verification-baseline` how each ended. A check that fails then is a pre-existing failure; [baseline exceptions](#baseline-exceptions) says how the verification treats it. <a href="../verification-and-completion/">Verification and completion</a> explains the verification.
+It runs every check once and records in `.agents/verification-baseline` how each ended. A check that fails then is a pre-existing failure; [baseline exceptions](#baseline-exceptions) says how the verification treats it. <a href="#verification-and-review">Verification and completion</a> explains the verification.
 
 ### After the merge
 
 - Ordinary features run as in any Codeyard project: `./scripts/run-feature.sh <issue> <name>`, with the review, the verification against the baseline, and the merge approval gate. `<issue>` is the number of the feature's Issue, and `<name>`, which you may leave out, a short name for its branch.
 - The planning documents stay *observed, not approved* until you approve them through the planning of the repository, `./scripts/start-planning.sh` and then `./scripts/finish-planning.sh`. This is when they are reviewed and approved: the planning review reads them like any planning, and you approve them with `finish-planning.sh`. The approved documents lose the mark, and the planning is not approved while a document still carries it. Creating features from the roadmap waits for that approval.
-- Later template changes come in with `./scripts/sync-template.sh`, as described in <a href="../updating/">Updating an Agent Codeyard project</a>. It changes only the workflow's files: your checks, your baseline, your CI and the files you kept stay yours.
+- Later template changes come in with `./scripts/sync-template.sh`, as described in <a href="#updating">Updating an Agent Codeyard project</a>. It changes only the workflow's files: your checks, your baseline, your CI and the files you kept stay yours.
 
 ## Existing files
 

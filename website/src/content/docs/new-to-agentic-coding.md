@@ -4,7 +4,7 @@ description: "One example from idea to a reviewed change: what a coding agent, a
 order: 1
 ---
 
-This page follows one small feature from the idea to the decision about it, and introduces each idea where the story needs it. If you already let a coding agent change code in your own repositories, skip ahead to <a href="../getting-started/">Getting started</a>, the practical guide.
+This page follows one small feature from the idea to the decision about it, and introduces each idea where the story needs it. If you already let a coding agent change code in your own repositories, skip ahead to <a href="#quick-start">Quick Start</a>, the practical guide.
 
 ## One feature, from idea to decision
 
@@ -38,7 +38,7 @@ For the attendance feature, the agent also writes a check, a small test that run
 
 The finished work is not put into the application directly. It becomes a change proposal: a **pull request**, a proposal to change the main version of the repository. The change is made on a separate *branch*, a copy of the code where work can happen without touching the main version. The pull request shows the difference, runs the automatic checks (*CI*), and waits until someone merges it.
 
-The pull request itself does not block other changes: the repository rules on GitHub must require that every change to the main version goes through a merged pull request, and <a href="../github-setup/">GitHub setup</a> shows how to switch them on.
+The pull request itself does not block other changes: the repository rules on GitHub must require that every change to the main version goes through a merged pull request, and <a href="#github-setup">GitHub setup</a> shows how to switch them on.
 
 ### A second agent reviews it
 
@@ -59,23 +59,23 @@ A coding agent on its own says "done" when it thinks it is done. Agent Codeyard 
 3. Your checks run, a reviewer of another provider reads the change, and the findings are fixed or recorded with a reason.
 4. A pull request is opened with all of that in its description. You merge it; no script merges for you.
 
-How strict the route is depends on the risk of the change: a change to the workflow's own rules always gets the full route, and a project can let documentation-only changes skip the review (their merge then needs you). <a href="../risk-policy/">Risk policy</a> explains how.
+How strict the route is depends on the risk of the change: a change to the workflow's own rules always gets the full route, and a project can let documentation-only changes skip the review (their merge then needs you). <a href="#risk-policy">Risk policy</a> explains how.
 
 ## When Codeyard is relevant
 
 Codeyard fits when:
 
-- you start a **new** project from the template. There is no installer: a project starts with `gh repo create --template`, and <a href="../getting-started/">Getting started</a> takes you through it. An existing repository can adopt the workflow instead, as <a href="../adopting/">Adopting Agent Codeyard in an existing repository</a> describes;
+- you start a **new** project from the template. There is no installer: a project starts with `gh repo create --template`, and <a href="#quick-start">Quick Start</a> takes you through it. An existing repository can adopt the workflow instead, as <a href="#adopting">Adopting Agent Codeyard in an existing repository</a> describes;
 - you want agents to do most of the work, and you want to decide what is merged;
 - you can run two coding agents of different providers, because the review needs the second one.
 
-It is less useful for a quick experiment that nobody will maintain, or when you want to write every line yourself with an agent as an assistant. It is also not a security boundary on its own: the agents run on your machine with your permissions, and an agent can have the same GitHub rights as you until agents get an identity of their own ([Issue 99](https://github.com/taspinar/agent-codeyard/issues/99)). <a href="../github-setup/">GitHub setup</a> shows the settings that let GitHub enforce who merges.
+It is less useful for a quick experiment that nobody will maintain, or when you want to write every line yourself with an agent as an assistant. It is also not a security boundary on its own: the agents run on your machine with your permissions, and an agent can have the same GitHub rights as you until agents get an identity of their own ([Issue 99](https://github.com/taspinar/agent-codeyard/issues/99)). <a href="#github-setup">GitHub setup</a> shows the settings that let GitHub enforce who merges.
 
 ## What to read next
 
-- <a href="../getting-started/">Getting started</a>: what you need, and your first feature from idea to pull request.
-- <a href="../detailed-workflow/">How the workflow works</a>: the route in more depth, with the choices along it.
-- <a href="../reference/workflow/">Workflow reference</a>: every step with its command, its inputs and outputs, and when it stops.
+- <a href="#quick-start">Quick Start</a>: what you need, and your first feature from idea to pull request.
+- <a href="#workflow-and-commands">How the workflow works</a>: the route in more depth, with the choices along it.
+- <a href="#workflow-reference">Workflow reference</a>: every step with its command, its inputs and outputs, and when it stops.
 
 ## Glossary
 

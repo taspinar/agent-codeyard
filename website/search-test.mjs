@@ -1,20 +1,25 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { plainText } from './integrations/search.mjs';
+import { plainText, topicsOf } from './integrations/search.mjs';
 import { pageRank, passage, resultPassage, searchPages } from './src/lib/search.mjs';
 import { feature, planning } from './src/lib/steps.ts';
+import { topics } from './src/lib/docs.ts';
+import { moved, routes, stays } from './src/lib/redirects.ts';
 
 assert.equal(plainText('<p>A &amp; B &#x3c; C</p><script>secret</script>'), 'A & B < C');
 const example = [{ title: 'Risk policy', text: 'verification: groups', url: '/docs/risk/' }];
 assert.equal(searchPages(example, 'RISK groups').length, 1);
 assert.equal(searchPages(example, 'risk absent').length, 0);
 assert.equal(searchPages(example, '  ').length, 0);
-// Task pages first, then the other docs, then the product pages, each in index order.
-const ranked = ['about/', 'docs/history/', 'docs/adopting/', 'examples/', 'docs/reference/workflow/']
+// Within a rank, a title that holds more of the words comes first (#373).
+assert.deepEqual(searchPages([{ title: 'Quick Start', text: 'an existing repository', rank: 0 }, { title: 'Adopting an existing repository', text: '', rank: 0 }], 'existing repository').map(p => p.title), ['Adopting an existing repository', 'Quick Start']);
+// Task topics first, then the other topics, then the Appendix, then the
+// product pages, each in index order (#373).
+const ranked = ['about/', 'docs/history/', 'docs/#updating', 'docs/#adopting', 'examples/', 'docs/#workflow-reference']
   .map(path => ({ title: path, text: 'existing repository', url: `/${path}`, rank: pageRank(path) }));
 assert.deepEqual(searchPages(ranked, 'existing repository').map(p => p.title),
-  ['docs/adopting/', 'docs/reference/workflow/', 'docs/history/', 'about/', 'examples/']);
+  ['docs/#adopting', 'docs/#workflow-reference', 'docs/#updating', 'docs/history/', 'about/', 'examples/']);
 // A passage around the matched words, with the words marked.
 const words = 'one two three four five six seven eight nine ten '.repeat(10) + 'adopt an Existing Repository here ' + 'eleven twelve '.repeat(20);
 const parts = passage(words, 'existing repository', 80);
@@ -34,50 +39,85 @@ if (process.argv[2]) {
   const [output, base] = process.argv.slice(2);
   const pages = JSON.parse(await readFile(join(output, 'search-index.json'), 'utf8'));
   const docs = pages.filter(p => p.url.startsWith(`${base}docs/`));
-  assert.equal(docs.length, 16);
+  // One entry per topic of Technical Documentation, and the two Appendix pages (#373).
+  assert.deepEqual(docs.map(p => p.url), [...topics.map(t => `${base}docs/#${t.id}`), `${base}docs/engineering-records/`, `${base}docs/history/`].sort((a, b) => docs.findIndex(p => p.url === a) - docs.findIndex(p => p.url === b)));
+  assert.equal(docs.length, topics.length + 2);
+  for (const topic of topics) assert.equal(docs.find(p => p.url === `${base}docs/#${topic.id}`)?.title, topic.title, `The search entry of ${topic.id}`);
   for (const [query, slug] of [['Troubleshooting', 'troubleshooting'], ['GitHub setup', 'github-setup']]) {
     const results = searchPages(docs, query);
-    assert(results.some(p => p.url === `${base}docs/${slug}/`));
+    assert(results.some(p => p.url === `${base}docs/#${slug}`));
     assert(results.length < docs.length, `Navigation leaked into search: ${query}`);
-    assert(!results.some(p => p.url === `${base}docs/agent-roles/`), `Sidebar-only match: ${query}`);
+    assert(!results.some(p => p.url === `${base}docs/#agent-roles`), `Navigation-only match: ${query}`);
   }
   // A visitor with an existing repository finds Adopting first, with a passage that shows the words (#321).
   const existing = searchPages(pages, 'existing repository');
-  assert.equal(existing[0]?.url, `${base}docs/adopting/`, `First for "existing repository": ${existing[0]?.url}`);
+  assert.equal(existing[0]?.url, `${base}docs/#adopting`, `First for "existing repository": ${existing[0]?.url}`);
+  assert.equal(searchPages(pages, 'existing project')[0]?.url, `${base}docs/#adopting`, 'First for "existing project"');
   assert(resultPassage(existing[0], 'existing repository').some(part => part.match), 'No matched words in the passage of Adopting');
   for (const product of ['about/', 'examples/']) {
     const at = existing.findIndex(p => p.url === `${base}${product}`);
-    for (const task of ['docs/getting-started/', 'docs/troubleshooting/']) {
+    for (const task of ['docs/#quick-start', 'docs/#troubleshooting']) {
       const before = existing.findIndex(p => p.url === `${base}${task}`);
       if (at >= 0 && before >= 0) assert(before < at, `${task} after ${product}`);
     }
   }
-  // The questions of a new visitor lead to a task page first (#334).
+  // The questions of a new visitor lead to a task topic first (#334, #373).
   for (const query of ['existing project', 'cost', 'planning', 'resume', 'risk', 'run-feature.sh']) {
     const results = searchPages(pages, query);
     assert.equal(pageRank(results[0]?.url.slice(base.length) ?? ''), 0, `First for "${query}": ${results[0]?.url}`);
   }
-  // The sitemap lists the pages outside the docs collection too.
+  // The table of old addresses (src/lib/redirects.ts) has a row for every
+  // route of the live site before #335: the 21 its Issue names and
+  // Engineering records (#344), 22 in all. The sitemap and the search index
+  // list the routes that stay; a retired route is a redirect page.
   const sitemap = await readFile(join(output, 'sitemap.xml'), 'utf8');
-  assert(sitemap.includes(`${base}docs/reference/workflow/</loc>`), 'The workflow reference is missing from the sitemap');
-  // The sitemap and the search index list exactly the routes of the live site
-  // before #335: the 21 its Issue names and Engineering records (#344), 22 in
-  // all. Every anchor of those pages still resolves.
   const legacy = JSON.parse(await readFile(new URL('./legacy-anchors.json', import.meta.url), 'utf8')).pages;
-  const routes = Object.keys(legacy).sort();
-  assert.equal(routes.length, 22);
+  assert.equal(Object.keys(legacy).length, 22);
+  assert.deepEqual(routes.map(r => r.path).sort(), Object.keys(legacy).sort(), 'The table of old addresses has other routes than the live site before #335');
   const located = [...sitemap.matchAll(/<loc>[^<]*?\/\/[^/<]+([^<]*)<\/loc>/g)].map(m => m[1].slice(base.length)).sort();
-  assert.deepEqual(located, routes, 'The sitemap lists other routes than the live site before #335');
-  assert.deepEqual(pages.map(p => p.url.slice(base.length)).sort(), routes, 'The search index lists other routes than the live site before #335');
-  for (const [route, ids] of Object.entries(legacy)) {
-    const html = await readFile(join(output, route, 'index.html'), 'utf8');
-    for (const id of ids) assert(html.includes(`id="${id}"`), `Old anchor lost: /${route}#${id}`);
+  assert.deepEqual(located, stays.map(r => r.path).sort(), 'The sitemap lists other routes than those that stay');
+  assert.deepEqual([...new Set(pages.map(p => p.url.slice(base.length).replace(/#.*/, '')))].sort(), stays.map(r => r.path).sort(), 'The search index lists other routes than those that stay');
+  // The walk of the table: every old anchor, and the two restored as pointers
+  // by #335, has a row whose target is in the build; the redirect page of a
+  // retired route maps it there.
+  const restored = [['', 'projects'], ['examples/', 'engineering']];
+  const anchors = [...Object.entries(legacy).flatMap(([route, ids]) => ids.map(id => [route, id])), ...restored];
+  for (const [path, id] of anchors) {
+    const route = routes.find(r => r.path === path);
+    const target = moved(route, id);
+    const [to, fragment] = target.split('#');
+    assert((await readFile(join(output, to, 'index.html'), 'utf8')).includes(`id="${fragment}"`), `Old anchor lost: /${path}#${id} → /${target}`);
+    const page = await readFile(join(output, path, 'index.html'), 'utf8');
+    if (route.topic) {
+      assert(page.includes('<meta name="robots" content="noindex">') && page.includes(`<meta http-equiv="refresh" content="0; url=${base}docs/#${route.topic}">`), `Not a redirect page: /${path}`);
+      assert(page.includes(`${JSON.stringify(id)}:${JSON.stringify(base + target)}`), `The redirect of /${path} does not map #${id} to /${target}`);
+      assert(!/<main\b/.test(page), `A redirect page has a <main>: /${path}`);
+    } else {
+      assert(page.includes(`id="${id}"`), `Old anchor lost on its route: /${path}#${id}`);
+    }
   }
-  // Anchors dropped by earlier steps of #328 and restored as pointers (#335).
-  for (const [route, id] of [['', 'projects'], ['examples/', 'engineering']]) {
-    assert((await readFile(join(output, route, 'index.html'), 'utf8')).includes(`id="${id}"`), `Old anchor lost: /${route}#${id}`);
+  // No heading and no code block of the docs pages before #373 is lost
+  // (docs-before.json): each is in its topic, the heading under its old id
+  // with the prefix of the topic. Three sections of the old /docs/ were
+  // removed by the plan as duplicates (website/design/INFORMATION-ARCHITECTURE.md, 2.7).
+  const removed = { 'docs/': ['what-stays-with-you', 'find-a-command-or-setting', 'more-to-read'] };
+  const before = JSON.parse(await readFile(new URL('./docs-before.json', import.meta.url), 'utf8')).pages;
+  const one = await readFile(join(output, 'docs/index.html'), 'utf8');
+  const article = one.match(/<article\b[^>]*\bdata-search\b[^>]*>([\s\S]*?)<\/article>/)[1];
+  const topicHtml = Object.fromEntries(article.split(/(?=<section\b[^>]*\bdata-topic=)/).map(part => [part.match(/^<section\b[^>]*\bdata-topic="([^"]+)"/)?.[1], part]));
+  assert.deepEqual(topicsOf(article).map(t => t.id), topics.map(t => t.id), 'The topics of /docs/ are those of src/lib/docs.ts, in order');
+  for (const [path, { headings, code }] of Object.entries(before)) {
+    const route = routes.find(r => r.path === path);
+    for (const [id, text] of headings) {
+      if (removed[path]?.includes(id)) continue;
+      const fragment = moved(route, id).split('#')[1];
+      const heading = one.match(new RegExp(`<h([2-6])\\b[^>]*\\bid="${fragment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*>([\\s\\S]*?)</h\\1>`));
+      assert.equal(heading && plainText(heading[2]), text, `Heading lost: /${path}#${id} (${text})`);
+    }
+    const blocks = [...(topicHtml[route.topic] ?? '').matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)].map(m => plainText(m[1]));
+    for (const block of code) assert(blocks.includes(block), `Code block lost from /${path}: ${block.slice(0, 60)}`);
   }
-  assert(searchPages(pages, 'LICENSE').some(p => p.url === `${base}docs/getting-started/`));
+  assert(searchPages(pages, 'LICENSE').some(p => p.url === `${base}docs/#quick-start`));
   // History and research moved from About to the docs (#319).
   assert(searchPages(docs, 'Physics by Construction').some(p => p.url === `${base}docs/history/`));
   // The engineering case studies moved from Projects to Engineering records (#344).
@@ -92,13 +132,13 @@ if (process.argv[2]) {
     assert(projects.includes(`<p id="${id}" class="moved-case">This case moved to <a href="${base}docs/engineering-records/#${id}">Engineering records</a>.</p>`), `Old anchor lost: /examples/#${id}`);
   }
   assert(!/When the reviewer did not know|What 41 recorded runs/.test(projects), 'An engineering case is still on Projects');
-  assert(searchPages(pages, 'owner-directed').some(p => p.url === `${base}docs/detailed-workflow/`));
+  assert(searchPages(pages, 'owner-directed').some(p => p.url === `${base}docs/#workflow-and-commands`));
   // Every step is in the workflow reference, and its old anchor on /workflow leads there.
-  const reference = await readFile(join(output, 'docs/reference/workflow/index.html'), 'utf8');
+  const reference = topicHtml["workflow-reference"];
   const workflow = await readFile(join(output, 'workflow/index.html'), 'utf8');
   assert(workflow.includes('id="steps"'), 'The section anchor of /workflow is gone');
   for (const { id } of [...planning, ...feature]) {
-    assert(reference.includes(`<section class="ref-step" id="${id}"`), `Not in the reference: ${id}`);
+    assert(reference.includes(`<section class="ref-step" id="workflow-reference/${id}"`), `Not in the reference: ${id}`);
     assert(workflow.includes(`<a id="${id}" href="${base}docs/reference/workflow/#${id}">`), `Old anchor lost: /workflow/#${id}`);
   }
   // The gym scenario of #328 says the same on every page that uses it (#335).
@@ -123,28 +163,29 @@ if (process.argv[2]) {
     'workflow/': Object.keys(parts),
     'features/': ['function', 'plan', 'check', 'finding'],
     'faq/': ['function'],
-    'docs/getting-started/': ['function'],
-    'docs/new-to-agentic-coding/': Object.keys(parts),
-    'docs/verification-and-completion/': ['function', 'check'],
+    'docs/#quick-start': ['function'],
+    'docs/#new-to-agentic-coding': Object.keys(parts),
+    'docs/#verification-and-review': ['function', 'check'],
   };
   const scenario = [];
   for (const page of pages) {
     const route = page.url.slice(base.length);
-    const text = plainText(await readFile(join(output, route, 'index.html'), 'utf8')).replace(/[‘’]/g, "'").replace(/\s+/g, ' ');
+    // A topic of /docs/ by its own text; any other page as a whole.
+    const text = (route.includes('#') ? page.text : plainText(await readFile(join(output, route, 'index.html'), 'utf8'))).replace(/[‘’]/g, "'").replace(/\s+/g, ' ');
     for (const [variant, canonical] of gym) assert(!variant.test(text), `${page.url}: the gym scenario differs from ${canonical}`);
     if (/\battendance\b/i.test(text)) scenario.push(route);
     for (const part of uses[route] ?? []) assert(parts[part].test(text), `${page.url}: the ${part} of the gym scenario is missing or reworded`);
   }
   assert.deepEqual(scenario.sort(), Object.keys(uses).sort(), 'Other pages use the gym scenario than search-test.mjs checks');
-  for (const page of pages) {
-    assert(page.url.startsWith(base));
-    const html = await readFile(join(output, page.url.slice(base.length), 'index.html'), 'utf8');
+  for (const url of new Set(pages.map(page => page.url.replace(/#.*/, '')))) {
+    assert(url.startsWith(base));
+    const html = await readFile(join(output, url.slice(base.length), 'index.html'), 'utf8');
     const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]);
-    assert.equal(new Set(ids).size, ids.length, `Duplicate anchors: ${page.url}`);
-    if (page.url.startsWith(`${base}docs/`)) {
+    assert.equal(new Set(ids).size, ids.length, `Duplicate anchors: ${url}`);
+    if (url.startsWith(`${base}docs/`)) {
       assert(html.includes('aria-label="Documentation"'));
       assert(html.includes('aria-current="page"'));
-      assert(html.includes('aria-label="Previous and next pages"'));
+      assert(html.includes('class="docs-pagination"'));
     }
   }
 }
