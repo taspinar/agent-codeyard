@@ -50,8 +50,9 @@ printf 'name: project-ci\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-lates
   >"$project/.github/workflows/ci.yml"
 # Its planning is approved: no self-test may need the draft the template
 # ships.
-sed -i -e 's/^Status: Draft$/Status: Approved/' -e 's/^Approved at: Not approved$/Approved at: 2026-01-05T09:00:00Z/' \
-  "$project/docs/PROJECT_REQUIREMENTS.md"
+sed -e 's/^Status: Draft$/Status: Approved/' -e 's/^Approved at: Not approved$/Approved at: 2026-01-05T09:00:00Z/' \
+  "$project/docs/PROJECT_REQUIREMENTS.md" >"$tmp/requirements.md"
+mv "$tmp/requirements.md" "$project/docs/PROJECT_REQUIREMENTS.md"
 grep -Fqx 'Status: Approved' "$project/docs/PROJECT_REQUIREMENTS.md" || fail "the fixture's requirements are not approved"
 printf '# 0001. Store orders in PostgreSQL\n\nStatus: Accepted\n\nThe project keeps its orders in PostgreSQL.\n' \
   >"$project/docs/decisions/0001-store-orders-in-postgresql.md"

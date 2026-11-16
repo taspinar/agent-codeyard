@@ -1,13 +1,13 @@
 {
   "schema": "approval-request/v1",
-  "content_tree": "712adeaf8d927f44045ea4e208d67c60d073d4e4",
+  "content_tree": "7320d6a7ed4e31d355fdf7bdaf070198c0baacd4",
   "commit": {
     "branch": "feature/392-start-planning-self-test",
-    "parent": "3ccb77b755c86625c8dc3cf58aff5d11fcdc544e",
+    "parent": "8b219bbfc78a3b4ddd9a6f938f84949a5b6e470b",
     "base": "3ccb77b755c86625c8dc3cf58aff5d11fcdc544e"
   },
   "review": {
-    "round": 1,
+    "round": 2,
     "verdict": "PASS",
     "reviewer": "codex (gpt-6-luna)"
   },
