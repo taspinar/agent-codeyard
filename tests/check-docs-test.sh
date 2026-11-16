@@ -25,8 +25,9 @@ fail() {
 setup_repo() {
   local repo="$tmp/$1"
 
-  mkdir -p "$repo/docs" "$repo/scripts" "$repo/.agents/reviews"
+  mkdir -p "$repo/docs" "$repo/scripts/lib" "$repo/.agents/reviews"
   cp "$source_root/scripts/check-docs.sh" "$repo/scripts/check-docs.sh"
+  cp "$source_root/scripts/lib/base.sh" "$source_root/scripts/lib/fingerprint.sh" "$repo/scripts/lib/"
   printf '.agents/reviews/\n' >"$repo/.gitignore"
   printf '# Workflow\n' >"$repo/docs/workflow.md"
   {
@@ -268,6 +269,94 @@ if [[ -f "$source_root/website/.codeyard-site" && -f "$source_root/.github/workf
   grep -Fq "names .github/workflows/pages.yml" "$repo.out" ||
     fail "the deleted website workflow was not reported"
 fi
+
+# A feature deletes a file that the planning names. Only a planning cycle may
+# change the documents of the product planning, so the feature could not
+# correct the reference there: such a reference is a note and the check
+# passes. The architecture, which a feature keeps up to date, still fails, and
+# so does a planning document that names a file that never existed or was
+# already gone at the base of the feature, and the same deletion outside a
+# feature.
+repo="$(setup_repo planning)"
+mkdir -p "$repo/docs/changes"
+printf '# Old tool\n' >"$repo/scripts/old-tool.md"
+printf '# Gone\n' >"$repo/scripts/gone.md"
+git -C "$repo" add .
+git -C "$repo" commit -qm "Add the tools"
+git -C "$repo" rm -q scripts/gone.md
+git -C "$repo" commit -qm "Remove a tool before the feature"
+mapfile -t planning_scope < <(
+  # shellcheck source=../scripts/lib/planning.sh
+  source "$source_root/scripts/lib/planning.sh"
+  printf '%s\n' "${PLANNING_PRODUCT_SCOPE[@]}"
+)
+[[ ${#planning_scope[@]} -gt 0 ]] || fail "scripts/lib/planning.sh names no product planning"
+planning_files=()
+for document in "${planning_scope[@]}"; do
+  [[ "$document" == *.md ]] || document="$document/remove-tool.md"
+  planning_files+=("$document")
+  up="$(dirname "$document" | sed 's|[^/]*|..|g')"
+  printf 'F01 deletes `scripts/old-tool.md`; see [it](%s/scripts/old-tool.md).\n' "$up" >"$repo/$document"
+done
+printf 'The architecture names `scripts/old-tool.md`.\n' >"$repo/docs/architecture.md"
+git -C "$repo" add .
+git -C "$repo" commit -qm "Plan the removal of the old tool"
+
+# Outside a feature, on the base branch, the deletion fails as before.
+git -C "$repo" rm -q scripts/old-tool.md
+printf 'The architecture describes the tools.\n' >"$repo/docs/architecture.md"
+check "$repo"
+[[ "$status" -eq 1 ]] || fail "a missing file named in the roadmap was accepted outside a feature ($status)"
+grep -Fq "check-docs: docs/roadmap.md names scripts/old-tool.md" "$repo.out" ||
+  fail "the roadmap was not reported outside a feature"
+grep -Fq "note:" "$repo.out" && fail "a note was printed outside a feature"
+git -C "$repo" reset -q --hard
+
+git -C "$repo" switch -q -c feature/1-remove-tool
+git -C "$repo" rm -q scripts/old-tool.md
+check "$repo"
+[[ "$status" -eq 1 ]] || fail "a missing file named in the architecture was accepted ($status)"
+grep -Fq "check-docs: docs/architecture.md names scripts/old-tool.md" "$repo.out" ||
+  fail "the architecture was not reported as a problem"
+grep -Fq "1 problem(s)" "$repo.out" || {
+  cat "$repo.out" >&2
+  fail "a planning document was counted as a problem"
+}
+printf 'The architecture describes the tools.\n' >"$repo/docs/architecture.md"
+check "$repo"
+[[ "$status" -eq 0 ]] || {
+  cat "$repo.out" >&2
+  fail "a file that a feature deleted failed the check through a planning document"
+}
+for document in "${planning_files[@]}"; do
+  grep -Fq "note: $document names scripts/old-tool.md" "$repo.out" ||
+    fail "the path in backticks in $document was not noted"
+  grep -Fq "note: $document links to " "$repo.out" ||
+    fail "the link in $document was not noted"
+done
+grep -Fq "$((2 * ${#planning_files[@]})) note(s)" "$repo.out" ||
+  fail "the notes were not summarized"
+
+# A really broken reference in a planning document still fails in the
+# feature: a path that never existed, and a file already gone at the base.
+for missing_path in scripts/never-was.md scripts/gone.md; do
+  for document in "${planning_files[@]}"; do
+    printf 'F02 uses `%s`.\n' "$missing_path" >>"$repo/$document"
+  done
+  check "$repo"
+  [[ "$status" -eq 1 ]] || fail "a planning document that names $missing_path was accepted ($status)"
+  for document in "${planning_files[@]}"; do
+    grep -Fq "check-docs: $document names $missing_path, which does not exist" "$repo.out" ||
+      fail "$missing_path in $document was not reported"
+  done
+  grep -Fq "${#planning_files[@]} problem(s)" "$repo.out" || {
+    cat "$repo.out" >&2
+    fail "the deleted file was counted as a problem next to $missing_path"
+  }
+  for document in "${planning_files[@]}"; do
+    sed -i '/^F02 /d' "$repo/$document"
+  done
+done
 
 # Refusals.
 repo="$(setup_repo refusals)"

@@ -54,6 +54,12 @@ the repository was created from,
 <https://github.com/taspinar/agent-codeyard>, so that a contributor
 can look them up. You may not change those files yourself.
 
+Name a file that a feature will delete or move in plain words, not as a path
+in backticks or a link: a feature may not change the roadmap, so the
+reference would stay behind after the file is gone. Where a planning document
+already names a file that no longer exists, correct the reference in the
+architecture and the roadmap.
+
 Prefer independently deliverable vertical slices when they fit the product.
 Do not create detailed implementation plans for every future feature.
 
