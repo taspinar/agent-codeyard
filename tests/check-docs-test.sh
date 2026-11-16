@@ -269,6 +269,52 @@ if [[ -f "$source_root/website/.codeyard-site" && -f "$source_root/.github/workf
     fail "the deleted website workflow was not reported"
 fi
 
+# A feature deletes a file that the planning names. Only a planning cycle may
+# change the documents of the product planning, so the feature could not
+# correct the reference there: such a reference is a note and the check
+# passes. The architecture, which a feature keeps up to date, still fails.
+repo="$(setup_repo planning)"
+mkdir -p "$repo/docs/changes"
+printf '# Old tool\n' >"$repo/scripts/old-tool.md"
+mapfile -t planning_scope < <(
+  # shellcheck source=../scripts/lib/planning.sh
+  source "$source_root/scripts/lib/planning.sh"
+  printf '%s\n' "${PLANNING_PRODUCT_SCOPE[@]}"
+)
+[[ ${#planning_scope[@]} -gt 0 ]] || fail "scripts/lib/planning.sh names no product planning"
+for document in "${planning_scope[@]}"; do
+  [[ "$document" == *.md ]] || document="$document/remove-tool.md"
+  up="$(dirname "$document" | sed 's|[^/]*|..|g')"
+  printf 'F01 deletes `scripts/old-tool.md`; see [it](%s/scripts/old-tool.md).\n' "$up" >"$repo/$document"
+done
+printf 'The architecture names `scripts/old-tool.md`.\n' >"$repo/docs/architecture.md"
+git -C "$repo" add .
+git -C "$repo" commit -qm "Plan the removal of the old tool"
+git -C "$repo" rm -q scripts/old-tool.md
+check "$repo"
+[[ "$status" -eq 1 ]] || fail "a missing file named in the architecture was accepted ($status)"
+grep -Fq "check-docs: docs/architecture.md names scripts/old-tool.md" "$repo.out" ||
+  fail "the architecture was not reported as a problem"
+grep -Fq "1 problem(s)" "$repo.out" || {
+  cat "$repo.out" >&2
+  fail "a planning document was counted as a problem"
+}
+printf 'The architecture describes the tools.\n' >"$repo/docs/architecture.md"
+check "$repo"
+[[ "$status" -eq 0 ]] || {
+  cat "$repo.out" >&2
+  fail "a file that a feature deleted failed the check through a planning document"
+}
+for document in "${planning_scope[@]}"; do
+  [[ "$document" == *.md ]] || document="$document/remove-tool.md"
+  grep -Fq "note: $document names scripts/old-tool.md" "$repo.out" ||
+    fail "the path in backticks in $document was not noted"
+  grep -Fq "note: $document links to " "$repo.out" ||
+    fail "the link in $document was not noted"
+done
+grep -Fq "$((2 * ${#planning_scope[@]})) note(s) on the planning" "$repo.out" ||
+  fail "the notes were not summarized"
+
 # Refusals.
 repo="$(setup_repo refusals)"
 check "$repo" --later

@@ -546,7 +546,13 @@ a tracked top-level directory and names a `.md`, `.sh`, `.conf`, `.json`,
 `.yml`, or `.yaml` file. It does not check anchors or external links, it
 skips a path with a placeholder and a path that Git ignores, and it does not
 read links that are shown as an example in a fenced code block or in inline
-code. Name the files
+code. A missing file that a document of the product planning names
+(`docs/PROJECT_DESCRIPTION.md`, `docs/changes/`, `docs/PROJECT_REQUIREMENTS.md`,
+`docs/roadmap.md`) is printed as a note and does not fail the check: only a
+planning cycle may change those documents, so a feature that deletes a file
+the roadmap names could not correct the reference, and the note leaves it to
+the next planning cycle. The architecture and the ADRs stay checked, since a feature updates
+them. Name the files
 that come later, or a directory that will hold them, after `--later`:
 
 ```text

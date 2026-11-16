@@ -22,6 +22,12 @@
 # with a placeholder ('<', '>', '*', '$', '{', '}', '...'), and a path that
 # Git ignores, which is a working file. A project also describes files that come later, such as the approval
 # of its planning: name those, or a directory that holds them, after --later.
+#
+# A missing file that a document of the product planning names (the
+# description, the change requests, the requirements, and the roadmap) is
+# reported as a note and does not fail the check: only a planning cycle may
+# change those documents, so a feature that deletes a file the planning names
+# could not correct the reference.
 
 set -euo pipefail
 
@@ -50,6 +56,21 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
   exit 2
 }
 cd "$root"
+
+# The documents that only a planning cycle may change, a directory covering
+# what is under it; PLANNING_PRODUCT_SCOPE in scripts/lib/planning.sh, which
+# this script does not need to run.
+planning_documents=(docs/PROJECT_DESCRIPTION.md docs/changes docs/PROJECT_REQUIREMENTS.md docs/roadmap.md)
+
+# planning_document <file>: whether only a planning cycle may change the file.
+planning_document() {
+  local entry
+
+  for entry in "${planning_documents[@]}"; do
+    [[ "$1" == "$entry" || "$1" == "$entry"/* ]] && return 0
+  done
+  return 1
+}
 
 # comes_later <path>: whether the caller named the path or a directory above it.
 comes_later() {
@@ -191,8 +212,17 @@ link_destinations() {
 
 top_levels="$(git ls-files | sed -n 's|/.*||p' | sort -u)"
 problems=0
+notes=0
 
+# problem <message>: a reference to correct; a missing file named in a
+# planning document is a note instead (see the head of this file). Reads
+# 'file'.
 problem() {
+  if planning_document "$file"; then
+    echo "check-docs: note: $*; only a planning cycle may change $file" >&2
+    notes=$((notes + 1))
+    return
+  fi
   echo "check-docs: $*" >&2
   problems=$((problems + 1))
 }
@@ -248,5 +278,9 @@ done < <(git ls-files '*.md')
 if [[ "$problems" -gt 0 ]]; then
   echo "check-docs: $problems problem(s). Correct the reference, or name the path after --later when the file comes later." >&2
   exit 1
+fi
+if [[ "$notes" -gt 0 ]]; then
+  echo "check-docs: the Markdown files name only files that exist, apart from $notes note(s) on the planning for its next cycle."
+  exit 0
 fi
 echo "check-docs: the Markdown files name only files that exist."
