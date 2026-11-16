@@ -9,6 +9,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/agent.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/scope.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/fingerprint.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/planning.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/inherited.sh"
 
 usage() {
   cat <<EOF
@@ -177,6 +178,14 @@ git -C "$repo_root" fetch origin main ||
 git -C "$repo_root" rev-parse --verify --quiet "refs/remotes/origin/main" \
   >/dev/null ||
   fail "origin/main is unavailable."
+
+# A shallow clone of a project lacks the root commit that tells which
+# approval requests and plans it inherited from the template
+# (lib/inherited.sh): the planning needs the full history to remove them.
+if inherited_shallow "$repo_root"; then
+  git -C "$repo_root" fetch --unshallow origin ||
+    fail "could not fetch the full history of this shallow clone, which tells the approval requests and plans inherited from the template. Run: git fetch --unshallow origin"
+fi
 
 set +e
 git -C "$repo_root" ls-remote --exit-code --heads origin "$branch" \
@@ -501,6 +510,26 @@ approve_requirements() {
     post_creation_fail "could not atomically record requirements approval."
   approval_tmp=""
 }
+
+# The approval requests and plans of the template's own Issues, which a
+# project got with "Use this template" (lib/inherited.sh), are removed in the
+# first planning of the project, so the planning pull request carries the
+# removal and no feature has to. The removal is staged before the scope
+# baselines are taken: it is no change of the planning agents. In the
+# template nothing is found.
+inherited="$(inherited_files "$worktree")"
+if [[ -n "$inherited" ]]; then
+  inherited_paths=()
+  while IFS= read -r path; do
+    inherited_paths+=("$path")
+  done <<<"$inherited"
+  git -C "$worktree" rm -q -- "${inherited_paths[@]}" ||
+    post_creation_fail "could not remove the approval requests and plans inherited from the template."
+  echo
+  echo "Removed ${#inherited_paths[@]} approval request(s) and plan(s) of the template's own Issues, which this"
+  echo "project inherited; the removal is staged and goes into the planning pull request:"
+  printf '  %s\n' "${inherited_paths[@]}"
+fi
 
 # Copy the description before the scope baselines are taken, so it is part of
 # the protected state of both phases instead of an out-of-scope change.

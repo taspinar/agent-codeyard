@@ -38,7 +38,10 @@ seconds (180 by default), and it is skipped with a warning when Codex is not
 installed, not logged in, or the script itself runs inside a Codex session.
 It also warns when a pull request into `main` can be merged while its checks
 fail, because no ruleset or branch protection requires a status check; see
-`docs/repository-setup.md`.
+`docs/repository-setup.md`. In a project, it warns once while approval
+requests or plans of the template's own Issues remain, with their count and
+the command that removes them, `./scripts/start-planning.sh` (see "Project
+bootstrap workflow"); it removes nothing itself.
 
 Keep `./scripts/verify.sh` as the stable verification entry point for humans,
 agents, and CI.
@@ -953,6 +956,29 @@ The script fetches `origin/main` and creates the planning branch from that
 remote ref without switching or modifying the primary checkout. It refuses a
 dirty checkout, unsafe name, missing agent or prompt, unavailable base,
 duplicate branch, or existing target path.
+
+"Use this template" on GitHub copies every committed file of the template,
+also its approval requests (`.agents/approval-requests/`) and plans
+(`.agents/plans/`). Their numbers are the template's Issues and collide with
+the project's: the reviewer of the project's Issue #2 would be shown the
+template's request `2.json`. The first `start-planning.sh` of a project
+(in a project that planned before, the next one) removes them in the
+planning worktree, says which files it removed, and
+stages the removal, so it goes into the planning pull request and no feature
+has to. A file is inherited when the project's root commit added it and no
+later commit touched it, not even to restore its first content; `.gitkeep`
+is not one, and the project's own
+requests and plans, which later commits add, stay. It happens only in a
+project: a repository whose `origin` is not the `repository:` of
+`.agents/template.conf` (compared as CI does, without a trailing `.git` or
+`/`), so in the template nothing is removed. The removal is staged before the
+planning sessions start and does not count as a change of theirs. A shallow
+clone of a project does not hold the root commit, so the script first fetches
+the full history (`git fetch --unshallow origin`); `doctor.sh` only warns
+there that it cannot tell. Removing an
+approval request needs no approval of the owner: the merge approval gate
+checks only the requests a change adds or changes. `scripts/lib/inherited.sh`
+finds the files; `doctor.sh` warns while they remain.
 
 Bootstrap has two separate interactive agent sessions:
 
