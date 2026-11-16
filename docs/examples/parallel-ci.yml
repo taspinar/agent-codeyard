@@ -1,6 +1,7 @@
 # An optional parallel CI: an example to adapt, not a workflow of this
 # repository. The default CI is .github/workflows/ci.yml, one job that runs
-# ./scripts/verify.sh --all; keep it until one job takes too long.
+# ./scripts/verify.sh (--all on main, nightly, and in the template on every
+# pull request); keep it until one job takes too long.
 #
 # docs/development.md, "A parallel CI", explains the recipe. To adopt it,
 # give the checks of scripts/verify.conf the groups below, copy this file

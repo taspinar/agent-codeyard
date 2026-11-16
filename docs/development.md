@@ -123,9 +123,11 @@ rule with `--only`: they run when a workflow file changed, or with `--all`.
 
 ### A parallel CI
 
-The CI of the template, `.github/workflows/ci.yml`, is one job that runs
-`./scripts/verify.sh --all`. That is the default and stays supported: it
-needs no mapping, no artifacts between jobs, and no aggregate check. A
+The CI of the template, `.github/workflows/ci.yml`, is one job, `verify`,
+that runs `./scripts/verify.sh`, after a small job `scope` that decides
+whether it adds `--all` (see "Workflow self-tests"). That is the default
+and stays supported: it needs no mapping, no artifacts between jobs, and no
+aggregate check. A
 parallel CI is an option for a project whose checks fall into independent,
 expensive groups. `docs/examples/parallel-ci.yml` is a complete example to
 adapt; it is not a workflow of the template.
@@ -573,7 +575,40 @@ from the base branch of the feature (`origin/<base>`, or `<base>`; see "The
 base branch of a feature"), counting uncommitted and
 untracked files, or when it cannot tell, for example outside a Git repository.
 Otherwise the summary reports them as `SKIP`. `./scripts/verify.sh --all`
-always runs them, and CI uses it, so every pull request runs the self-tests.
+always runs them.
+
+In CI, `.github/workflows/ci.yml` decides when to pass `--all`. Its job
+`scope` tells the template from a project by `.agents/template.conf`: the
+repository that its `repository:` names is the template, any other is a
+project.
+
+| Event | The template | A project |
+|---|---|---|
+| Pull request | `--all` | without `--all`: the self-tests run only when the pull request changes a workflow file, as a sync of the template does |
+| Push to `main` | `--all` | `--all` |
+| Every night (`schedule`) | no run | `--all` |
+
+The self-tests take far longer than the checks of most projects, and a
+pull request that changes no workflow file cannot break them, so a
+project's pull request reports in minutes. A sync of the template changes
+workflow files, so its pull request runs them, and `main` and the nightly
+run still catch a self-test that fails in the project for another reason,
+such as a new runner image. The template runs them on every pull request,
+since nearly every change there is a workflow change. The job `verify`
+checks out the full history (`fetch-depth: 0`): in a shallow clone
+`verify.sh` cannot see which files changed and runs every self-test. It
+compares with the project's base branch (`base:` in
+`.agents/template.conf`, else `main`). When the job `scope` fails, `verify`
+still runs, with `--all`; the nightly run uses the time in `cron:`, which a
+project may change, and GitHub turns off a schedule in a public repository without
+activity for 60 days. `paths:` lists `.github/workflows` as a whole (the template's CI
+workflows and a project's own), `.agents/policies`, `.agents/template.conf`,
+and `docs/examples/parallel-ci.yml`, which a self-test reads, too: a pull request that changes or adds only one of them, as a sync of the template does,
+runs the self-tests. `tests/sync-template-test.sh` runs the decision of
+`ci.yml` for both kinds of repository, and `verify.sh` in a checkout made as
+`actions/checkout` makes it for a pull request: with the full history it
+skips the self-tests for a pull request that changes no workflow file and
+runs them for one that does; in a shallow checkout it runs them.
 
 `scripts` is listed as a whole, so a new script is guarded until it is
 excluded with an entry `:(exclude)<path>`. `scripts/verify.conf` is excluded:

@@ -559,7 +559,7 @@ fi
 # success() are true. A condition with anything else cannot be evaluated and
 # fails the test.
 ci_condition_true() {
-  local checkout="$1" expression="$2" pattern found
+  local checkout="$1" expression="$2" pattern found equal
   expression="${expression#\$\{\{}"
   expression="${expression%\}\}}"
   while [[ "$expression" =~ hashFiles\(\'([^\']*)\'\) ]]; do
@@ -570,6 +570,13 @@ ci_condition_true() {
   done
   expression="${expression//always()/1}"
   expression="${expression//success()/1}"
+  expression="${expression//cancelled()/0}"
+  while [[ "$expression" =~ \'([^\']*)\'[[:space:]]*(==|!=)[[:space:]]*\'([^\']*)\' ]]; do
+    equal=0
+    [[ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[3]}" ]] || equal=1
+    [[ "${BASH_REMATCH[2]}" == "==" ]] || equal=$((1 - equal))
+    expression="${expression/"${BASH_REMATCH[0]}"/$equal}"
+  done
   expression="${expression//\'\'/0}"
   [[ "$expression" =~ ^[01[:space:]\&\|\!=\(\)]*$ ]] ||
     fail "cannot evaluate the ci.yml condition: $2"
@@ -615,5 +622,187 @@ if [[ -f "$ci_workflow" ]]; then
     fail "ci.yml has no website steps to check"
   fi
 fi
+
+# Prints the script of the 'run: |' block of the first step of ci.yml that
+# has a line containing $2, without its indentation.
+ci_step_script() {
+  awk -v marker="$2" '
+    function flush() { if (hit && !done) { printf "%s", body; done = 1 } hit = 0; body = ""; inrun = 0 }
+    /^[[:space:]]*steps:/ { flush(); indent = ""; next }
+    index($0, marker) { hit = 1 }
+    inrun {
+      match($0, /^[[:space:]]*/)
+      if ($0 ~ /^[[:space:]]*$/ || RLENGTH > runindent) { line = $0; sub(/^[[:space:]]+/, "", line); body = body line "\n"; next }
+      inrun = 0
+    }
+    match($0, /^[[:space:]]*- /) && (indent == "" || RLENGTH == indent) { flush(); indent = RLENGTH; hit = index($0, marker) > 0 }
+    /^[[:space:]]*(- )?run: \|[[:space:]]*$/ { inrun = 1; match($0, /^[[:space:]]*(- )?/); runindent = RLENGTH; next }
+    END { flush() }
+  ' "$1"
+}
+
+# Prints the job-level if: of the job $2 of ci.yml.
+ci_job_condition() {
+  awk -v job="$2" '
+    /^  [^[:space:]#]/ { injob = ($0 ~ "^  " job ":") }
+    injob && /^    if:/ { sub(/^    if:[[:space:]]*/, ""); print; exit }
+  ' "$1"
+}
+
+# The workflow self-tests: a project runs them on a pull request only when a
+# workflow file changed, and always on main and every night; the template
+# runs them on every pull request and needs no nightly run (Issue 395).
+# A project's own CI that does not run verify.sh is not the template's.
+if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
+  scope_script="$(ci_step_script "$ci_workflow" 'id: scope')"
+  [[ -n "$scope_script" ]] || fail "ci.yml has no step 'scope' that decides which checks run"
+  verify_script="$(ci_step_script "$ci_workflow" 'scripts/verify.sh')"
+  [[ -n "$verify_script" ]] || fail "ci.yml has no step that runs verify.sh"
+  mkdir -p "$tmp/ci-scope/template/.agents" "$tmp/ci-scope/project/.agents" "$tmp/ci-scope/bare"
+  printf 'repository: https://github.com/Owner/Template.git\n\npaths: scripts\n' >"$tmp/ci-scope/template/.agents/template.conf"
+  printf 'repository: https://github.com/owner/template\n\npaths: scripts\ncommit: 0123\n' >"$tmp/ci-scope/project/.agents/template.conf"
+
+  # ci_scope <checkout> <repository> <event>: the scope the step decides.
+  ci_scope() {
+    : >"$tmp/ci-scope/output"
+    (cd "$tmp/ci-scope/$1" && EVENT="$3" REPOSITORY="https://github.com/$2" GITHUB_OUTPUT="$tmp/ci-scope/output" \
+      bash -euo pipefail -c "$scope_script") >/dev/null || fail "the scope step of ci.yml failed in $1 on $3"
+    sed -n 's/^verify=//p' "$tmp/ci-scope/output"
+  }
+  expect_scope() {
+    local actual
+    actual="$(ci_scope "$1" "$2" "$3")"
+    [[ "$actual" == "$4" ]] || fail "ci.yml decides '$actual' for $1 on $3, expected '$4'"
+  }
+  expect_scope template owner/template pull_request all
+  expect_scope template owner/template push all
+  expect_scope template owner/template schedule none
+  expect_scope project owner/project pull_request changed
+  expect_scope project owner/project push all
+  expect_scope project owner/project schedule all
+  expect_scope bare owner/project pull_request changed
+
+  # The verify step: only 'changed' leaves out --all, also when the scope
+  # job gave nothing.
+  mkdir -p "$tmp/ci-verify/scripts"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "verify.sh $*" >"%s"\n' "$tmp/ci-verify/ran" >"$tmp/ci-verify/scripts/verify.sh"
+  chmod +x "$tmp/ci-verify/scripts/verify.sh"
+  for case in "changed:verify.sh " "all:verify.sh --all" ":verify.sh --all"; do
+    rm -f "$tmp/ci-verify/ran"
+    (cd "$tmp/ci-verify" && SCOPE="${case%%:*}" bash -euo pipefail -c "$verify_script") ||
+      fail "the verify step of ci.yml failed with the scope '${case%%:*}'"
+    [[ "$(cat "$tmp/ci-verify/ran" 2>/dev/null)" == "${case#*:}" ]] ||
+      fail "the verify step of ci.yml ran '$(cat "$tmp/ci-verify/ran" 2>/dev/null)' with the scope '${case%%:*}'"
+  done
+
+  # The verify job runs unless the scope is 'none', also when the scope job
+  # failed and gave nothing; a skipped required check would pass.
+  verify_condition="$(ci_job_condition "$ci_workflow" verify)"
+  for scope in all changed ''; do
+    ci_condition_true "$tmp/ci-verify" "${verify_condition//needs.scope.outputs.verify/\'$scope\'}" ||
+      fail "the verify job of ci.yml does not run with the scope '$scope': $verify_condition"
+  done
+  ! ci_condition_true "$tmp/ci-verify" "${verify_condition//needs.scope.outputs.verify/\'none\'}" ||
+    fail "the verify job of ci.yml runs with the scope 'none': $verify_condition"
+
+  # 'changed' needs the base branch in the checkout: in a shallow clone
+  # verify.sh cannot tell and runs every self-test. --all runs every night.
+  awk '/^  verify:/ { v = 1; next } /^  [^[:space:]]/ { v = 0 } v && /fetch-depth: 0/ { found = 1 } END { exit !found }' "$ci_workflow" ||
+    fail "the verify job of ci.yml checks out without the history verify.sh compares with"
+  grep -Eq '^[[:space:]]+schedule:' "$ci_workflow" || fail "ci.yml has no schedule for the nightly --all"
+fi
+
+# A pull request in a project, checked out as actions/checkout does it: a new
+# repository fetches the merge commit refs/pull/<n>/merge from the remote and
+# checks it out detached; with fetch-depth: 0 it fetches every branch too,
+# with the default depth only that one commit. verify.sh then runs as the
+# scope 'changed' runs it, with the paths: of scripts/verify-workflow.conf
+# and a stub for the self-tests. The template's CI files and a project's
+# own workflows (deploy.yml, changed, and release.yml, added), its policies,
+# .agents/template.conf, and the example CI that a self-test reads are
+# workflow files (Issue 395, criteria 7 and 9 to 12). main moves on with a
+# workflow change of its own, which must not count for the pull request.
+pr_root="$tmp/ci-pr"
+pr_paths="$(sed -n 's/^paths:[[:space:]]*//p' "$source_root/scripts/verify-workflow.conf")"
+mkdir -p "$pr_root/work/scripts/lib" "$pr_root/work/.github/workflows" "$pr_root/work/.agents/policies" "$pr_root/work/docs/examples" "$pr_root/work/src"
+cp "$source_root/scripts/verify.sh" "$pr_root/work/scripts/"
+cp "$source_root/scripts/lib/base.sh" "$pr_root/work/scripts/lib/"
+printf 'project: true\n' >"$pr_root/work/scripts/verify.conf"
+printf 'paths: %s\n\nself-test: echo ran >>"$SELF_TEST_LOG"\n' "$pr_paths" >"$pr_root/work/scripts/verify-workflow.conf"
+printf 'name: ci\n' >"$pr_root/work/.github/workflows/ci.yml"
+printf 'name: guardrails\n' >"$pr_root/work/.github/workflows/guardrails.yml"
+printf 'name: deploy\n' >"$pr_root/work/.github/workflows/deploy.yml"
+printf 'name: parallel\n' >"$pr_root/work/docs/examples/parallel-ci.yml"
+printf 'default: medium\n' >"$pr_root/work/.agents/policies/risk.conf"
+printf 'repository: https://github.com/owner/template\n\npaths: scripts\ncommit: 0123\n' >"$pr_root/work/.agents/template.conf"
+printf 'one\n' >"$pr_root/work/src/app.txt"
+printf 'one\n' >"$pr_root/work/scripts/tool.sh"
+git -C "$pr_root/work" init -q -b main
+commit_all "$pr_root/work" "A project"
+git init -q --bare "$pr_root/remote.git"
+pr_number=0
+
+# open_pr <file>: pushes a branch that changes <file> and its merge commit
+# refs/pull/<n>/merge into main, after main moved on with a workflow change
+# of its own, and prints <n>.
+open_pr() {
+  pr_number=$((pr_number + 1))
+  git -C "$pr_root/work" checkout -q -b "pr-$pr_number" main
+  printf 'change %s\n' "$pr_number" >>"$pr_root/work/$1"
+  commit_all "$pr_root/work" "Change $1"
+  git -C "$pr_root/work" checkout -q main
+  printf 'main %s\n' "$pr_number" >>"$pr_root/work/.agents/policies/tools.md"
+  commit_all "$pr_root/work" "Move main on"
+  git -C "$pr_root/work" checkout -q --detach main
+  git -C "$pr_root/work" -c user.name="Sync Test" -c user.email="sync-test@example.com" \
+    merge -q --no-ff -m "Merge pr-$pr_number into main" "pr-$pr_number"
+  git -C "$pr_root/work" push -q "file://$pr_root/remote.git" main "pr-$pr_number" "HEAD:refs/pull/$pr_number/merge"
+  git -C "$pr_root/work" checkout -q main
+}
+
+# check_out_pr <n> <depth>: the checkout of actions/checkout for the pull
+# request <n>, with fetch-depth: <depth>.
+check_out_pr() {
+  local checkout="$pr_root/checkout-$1-$2"
+  local refspecs=("+refs/pull/$1/merge:refs/remotes/pull/$1/merge")
+  local depth=()
+
+  if [[ "$2" -eq 0 ]]; then
+    refspecs=("+refs/heads/*:refs/remotes/origin/*" "${refspecs[@]}")
+  else
+    depth=("--depth=$2")
+  fi
+  git init -q "$checkout"
+  git -C "$checkout" remote add origin "file://$pr_root/remote.git"
+  git -C "$checkout" fetch -q --no-tags --prune --no-recurse-submodules "${depth[@]}" origin "${refspecs[@]}"
+  git -C "$checkout" checkout -q --force "refs/remotes/pull/$1/merge"
+  printf '%s\n' "$checkout"
+}
+
+# expect_pr <file> <depth> <ran|skipped> <note>: verify.sh in the checkout of
+# a pull request that changes <file>.
+expect_pr() {
+  local number checkout
+  open_pr "$1"
+  number="$pr_number"
+  checkout="$(check_out_pr "$number" "$2")"
+  rm -f "$pr_root/ran"
+  (cd "$checkout" && SELF_TEST_LOG="$pr_root/ran" ./scripts/verify.sh >"$pr_root/out.log" 2>&1) || {
+    cat "$pr_root/out.log" >&2
+    fail "verify.sh failed in the checkout of a pull request that changes $1"
+  }
+  case "$3" in
+    ran) [[ -f "$pr_root/ran" ]] || fail "a pull request that changes $1 (fetch-depth: $2) skips the self-tests: $(cat "$pr_root/out.log")" ;;
+    skipped) [[ ! -f "$pr_root/ran" ]] || fail "a pull request that changes $1 (fetch-depth: $2) runs the self-tests: $(cat "$pr_root/out.log")" ;;
+  esac
+  grep -Fq "$4" "$pr_root/out.log" || fail "verify.sh does not say '$4' for a pull request that changes $1 (fetch-depth: $2): $(cat "$pr_root/out.log")"
+}
+
+expect_pr src/app.txt 0 skipped "no workflow file differs from origin/main"
+for file in .github/workflows/ci.yml .github/workflows/guardrails.yml .github/workflows/deploy.yml .github/workflows/release.yml .agents/policies/risk.conf .agents/template.conf docs/examples/parallel-ci.yml scripts/tool.sh; do
+  expect_pr "$file" 0 ran "a workflow file differs from origin/main"
+done
+# In a shallow checkout verify.sh cannot tell, and runs them.
+expect_pr src/app.txt 1 ran "could not determine whether a workflow file changed"
 
 echo "sync-template tests passed"

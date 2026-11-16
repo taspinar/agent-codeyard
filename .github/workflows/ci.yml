@@ -3,12 +3,62 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: '17 3 * * *'
 
+# The workflow self-tests (scripts/verify-workflow.conf) take far longer than
+# most projects' own checks. The template runs them on every pull request. A
+# project runs them on a pull request only when it changes a workflow file
+# (verify.sh without --all decides; a sync of the template changes them), and
+# always on main and every night. The template is the repository that
+# .agents/template.conf names under 'repository:'; it needs no nightly run.
 jobs:
-  verify:
+  scope:
     runs-on: ubuntu-latest
+    outputs:
+      verify: ${{ steps.scope.outputs.verify }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .agents/template.conf
+          sparse-checkout-cone-mode: false
+      - name: Decide which checks run
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          REPOSITORY: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          # verify: 'all' (--all), 'changed' (the self-tests only when a
+          # workflow file changed), or 'none' (nothing to run).
+          template=""
+          if [[ -f .agents/template.conf ]]; then
+            template="$(sed -n 's/^repository:[[:space:]]*//p' .agents/template.conf | head -n 1 | sed 's/[[:space:]]*$//')"
+          fi
+          template="${template%/}"
+          template="${template%.git}"
+          if [[ "${template,,}" == "${REPOSITORY,,}" ]]; then
+            if [[ "$EVENT" == schedule ]]; then verify=none; else verify=all; fi
+          elif [[ "$EVENT" == pull_request ]]; then
+            verify=changed
+          else
+            verify=all
+          fi
+          echo "verify=$verify" >>"$GITHUB_OUTPUT"
+          echo "Verification scope: $verify"
+
+  verify:
+    needs: scope
+    # Runs also when the scope could not be decided, then with --all; only
+    # a cancelled run or the scope 'none' skips it.
+    if: ${{ !cancelled() && needs.scope.outputs.verify != 'none' }}
+    runs-on: ubuntu-latest
+    steps:
+      # The full history: verify.sh compares with the base branch to see
+      # whether a workflow file changed, and runs every self-test when it
+      # cannot tell, as in a shallow clone.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       # The website of the template is built by the verification
       # and needs the Node version it pins. The site is recognised by its
       # marker website/.codeyard-site: a project has no site, or a website/
@@ -24,7 +74,14 @@ jobs:
         working-directory: website
         run: npm ci --no-audit --no-fund && npx --no-install playwright install --with-deps chromium
       - name: Verify template/project
-        run: ./scripts/verify.sh --all
+        env:
+          SCOPE: ${{ needs.scope.outputs.verify }}
+        run: |
+          if [[ "$SCOPE" == changed ]]; then
+            ./scripts/verify.sh
+          else
+            ./scripts/verify.sh --all
+          fi
       - name: Attach website screenshots and reports
         id: website-artifact
         if: always() && hashFiles('website/.codeyard-site') != '' && hashFiles('website/reports/**') != ''
