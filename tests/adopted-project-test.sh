@@ -6,9 +6,10 @@ set -euo pipefail
 # template's own files: every check of scripts/verify-workflow.conf passes in
 # a fixture adopted project that has the state of a real one. The project
 # keeps its own CI and excludes it from the template's files, starts its
-# features from 'develop', has recorded its baseline, has its own ADRs and
-# an ignore rule that hides the workflow's JSON files (un-ignored again, as
-# the adoption does), and has no README.md or LICENSE.
+# features from 'develop', has approved its requirements, has recorded its
+# baseline, has its own ADRs and an ignore rule that hides the workflow's
+# JSON files (un-ignored again, as the adoption does), and has no README.md
+# or LICENSE.
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
@@ -47,6 +48,11 @@ mkdir -p "$project"
 mkdir -p "$project/.github/workflows" "$project/docs/decisions"
 printf 'name: project-ci\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make test\n' \
   >"$project/.github/workflows/ci.yml"
+# Its planning is approved: no self-test may need the draft the template
+# ships.
+sed -i -e 's/^Status: Draft$/Status: Approved/' -e 's/^Approved at: Not approved$/Approved at: 2026-01-05T09:00:00Z/' \
+  "$project/docs/PROJECT_REQUIREMENTS.md"
+grep -Fqx 'Status: Approved' "$project/docs/PROJECT_REQUIREMENTS.md" || fail "the fixture's requirements are not approved"
 printf '# 0001. Store orders in PostgreSQL\n\nStatus: Accepted\n\nThe project keeps its orders in PostgreSQL.\n' \
   >"$project/docs/decisions/0001-store-orders-in-postgresql.md"
 template_conf "$tmp/template.conf"

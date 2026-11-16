@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "712adeaf8d927f44045ea4e208d67c60d073d4e4",
+  "commit": {
+    "branch": "feature/392-start-planning-self-test",
+    "parent": "3ccb77b755c86625c8dc3cf58aff5d11fcdc544e",
+    "base": "3ccb77b755c86625c8dc3cf58aff5d11fcdc544e"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the review could not confirm: tests/start-planning-test.sh passes in a repository whose docs/PROJECT_REQUIREMENTS.md says Status: Approved",
+    "the review could not confirm: adopted-project passes for an adopted project with approved requirements"
+  ],
+  "explanation": "Issue #392: start-planning self-test fails once a project's requirements are approved. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
