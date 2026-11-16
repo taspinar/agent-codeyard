@@ -25,9 +25,13 @@
 #
 # A missing file that a document of the product planning names (the
 # description, the change requests, the requirements, and the roadmap) is
-# reported as a note and does not fail the check: only a planning cycle may
-# change those documents, so a feature that deletes a file the planning names
-# could not correct the reference.
+# reported as a note and does not fail the check when the current feature
+# removed it: the file existed at the base of the feature, where the feature
+# branched off its base branch. Only a planning cycle may change those
+# documents, so the feature could not correct the reference. Any other
+# missing file fails there as anywhere: a path that never existed, and a file
+# that was already gone at the base. Outside a feature (on the base branch, on
+# a detached HEAD, or when the base cannot be determined) nothing is noted.
 
 set -euo pipefail
 
@@ -57,6 +61,21 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
 }
 cd "$root"
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=lib/base.sh
+source "$script_dir/lib/base.sh"
+# shellcheck source=lib/fingerprint.sh
+source "$script_dir/lib/fingerprint.sh"
+
+# The commit where the current feature left its base branch, empty outside a
+# feature.
+feature_fork=""
+branch="$(git branch --show-current 2>/dev/null || true)"
+if [[ -n "$branch" ]] && base="$(branch_base "$root" 2>/dev/null)" && [[ "$branch" != "$base" ]] &&
+  lines="$(feature_base "$root" "$base")"; then
+  feature_fork="$(printf '%s\n' "$lines" | sed -n 2p)"
+fi
+
 # The documents that only a planning cycle may change, a directory covering
 # what is under it; PLANNING_PRODUCT_SCOPE in scripts/lib/planning.sh, which
 # this script does not need to run.
@@ -70,6 +89,12 @@ planning_document() {
     [[ "$1" == "$entry" || "$1" == "$entry"/* ]] && return 0
   done
   return 1
+}
+
+# removed_by_feature <path>: whether the file existed at the base of the
+# current feature, which therefore removed it.
+removed_by_feature() {
+  [[ -n "$feature_fork" ]] && git cat-file -e "$feature_fork:$1" 2>/dev/null
 }
 
 # comes_later <path>: whether the caller named the path or a directory above it.
@@ -214,12 +239,16 @@ top_levels="$(git ls-files | sed -n 's|/.*||p' | sort -u)"
 problems=0
 notes=0
 
-# problem <message>: a reference to correct; a missing file named in a
-# planning document is a note instead (see the head of this file). Reads
-# 'file'.
+# problem <path> <message>: a reference to correct; a file that the feature
+# removed, named in a planning document, is a note instead (see the head of
+# this file). <path> is the missing file from the root of the repository,
+# empty when the link leaves it. Reads 'file'.
 problem() {
-  if planning_document "$file"; then
-    echo "check-docs: note: $*; only a planning cycle may change $file" >&2
+  local path="$1"
+
+  shift
+  if [[ -n "$path" ]] && planning_document "$file" && removed_by_feature "$path"; then
+    echo "check-docs: note: $*; this feature removed it, and only a planning cycle may change $file" >&2
     notes=$((notes + 1))
     return
   fi
@@ -255,10 +284,10 @@ while IFS= read -r file; do
     if [[ -z "$resolved" ]]; then
       # The link leaves the repository, or is its root: nothing to exempt,
       # the destination has to be there.
-      [[ -e "$directory/$target" ]] || problem "$file links to $target, which does not exist"
+      [[ -e "$directory/$target" ]] || problem "" "$file links to $target, which does not exist"
       continue
     fi
-    ! missing "$resolved" || problem "$file links to $target, which does not exist"
+    ! missing "$resolved" || problem "$resolved" "$file links to $target, which does not exist"
   done < <(link_destinations "$file" || true)
 
   while IFS= read -r path; do
@@ -268,7 +297,7 @@ while IFS= read -r file; do
     esac
     [[ "$path" == */* ]] || continue
     grep -Fxq "${path%%/*}" <<<"$top_levels" || continue
-    ! missing "$path" || problem "$file names $path, which does not exist"
+    ! missing "$path" || problem "$path" "$file names $path, which does not exist"
   done < <(
     grep -oE '`[^` ]+`' "$file" | tr -d '`' | sed -E 's/[.,:;]+$//' |
       grep -E '\.(md|sh|conf|json|ya?ml)$' | sort -u || true
@@ -280,7 +309,7 @@ if [[ "$problems" -gt 0 ]]; then
   exit 1
 fi
 if [[ "$notes" -gt 0 ]]; then
-  echo "check-docs: the Markdown files name only files that exist, apart from $notes note(s) on the planning for its next cycle."
+  echo "check-docs: the Markdown files name only files that exist, apart from $notes note(s) on files this feature removed, for the next planning cycle."
   exit 0
 fi
 echo "check-docs: the Markdown files name only files that exist."

@@ -548,11 +548,16 @@ skips a path with a placeholder and a path that Git ignores, and it does not
 read links that are shown as an example in a fenced code block or in inline
 code. A missing file that a document of the product planning names
 (`docs/PROJECT_DESCRIPTION.md`, `docs/changes/`, `docs/PROJECT_REQUIREMENTS.md`,
-`docs/roadmap.md`) is printed as a note and does not fail the check: only a
-planning cycle may change those documents, so a feature that deletes a file
-the roadmap names could not correct the reference, and the note leaves it to
-the next planning cycle. The architecture and the ADRs stay checked, since a feature updates
-them. Name the files
+`docs/roadmap.md`) is printed as a note and does not fail the check when the
+current feature removed it: the file existed at the base of the feature,
+where its branch left the base branch. Only a planning cycle may change those
+documents, so the feature could not correct the reference, and the note
+leaves it to the next planning cycle. Every other missing file still fails:
+a path that never existed, a typo, a file that was already gone at the base.
+Outside a feature (on the base branch, on a detached HEAD, or when the base
+cannot be determined, as in a shallow checkout) a missing file fails
+everywhere. The architecture and the ADRs stay checked, since a feature
+updates them. Name the files
 that come later, or a directory that will hold them, after `--later`:
 
 ```text
