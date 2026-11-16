@@ -243,7 +243,10 @@ setup_repo() {
   printf 'project-grill: codex astra\nproject-planner: codex astra\n' >"$seed/.agents/agents.conf"
   cp "$root/.agents/prompts/project-grill.md" "$seed/.agents/prompts/project-grill.md"
   cp "$root/.agents/prompts/project-planner.md" "$seed/.agents/prompts/project-planner.md"
-  cp "$root/docs/PROJECT_REQUIREMENTS.md" "$seed/docs/PROJECT_REQUIREMENTS.md"
+  # The unapproved draft the template ships, not the requirements of the
+  # repository these tests run in, which are approved once its planning is.
+  printf '# Project Requirements\n\nStatus: Draft\nApproved at: Not approved\n\n## Project goal\n\n<!-- REQUIRED: Describe the product outcome and why it matters. -->\n' \
+    >"$seed/docs/PROJECT_REQUIREMENTS.md"
   cp "$root/.gitignore" "$seed/.gitignore"
 
   printf '# Agents\n' >"$seed/AGENTS.md"
