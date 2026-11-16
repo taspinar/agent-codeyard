@@ -6,7 +6,9 @@ set -euo pipefail
 # Uses only Bash builtins besides the tools it checks, except for the check
 # of the Codex sandbox, which lays out a scratch repository in a temporary
 # directory (mkdir, git init, rm), waits for the session (sleep) and removes
-# it again. Nothing of the project is changed.
+# it again, and the search for the approval requests and plans that a project
+# inherited from the template (lib/inherited.sh), which reads Git with sed,
+# grep, and sort. Nothing of the project is changed.
 
 script_dir="${BASH_SOURCE[0]%/*}"
 [[ "$script_dir" != "${BASH_SOURCE[0]}" ]] || script_dir="."
@@ -14,6 +16,7 @@ root="$script_dir/.."
 source "$script_dir/lib/agent.sh"
 source "$script_dir/lib/github.sh"
 source "$script_dir/lib/attribution.sh"
+source "$script_dir/lib/inherited.sh"
 
 failed=0
 gh_ready=0
@@ -377,6 +380,16 @@ if have git; then
     ok "current directory is inside a Git repository"
     if git remote get-url origin >/dev/null 2>&1; then
       ok "remote 'origin' is configured"
+      # The approval requests and plans of the template's own Issues, which
+      # "Use this template" copied into the project (lib/inherited.sh).
+      inherited="$(inherited_files "$root")"
+      if [[ -n "$inherited" ]]; then
+        warn "$(printf '%s\n' "$inherited" | grep -c .) approval request(s) and plan(s) of the template's own Issues remain in this project (.agents/approval-requests/, .agents/plans/); their numbers collide with this project's Issues" \
+          "Run ./scripts/start-planning.sh: it removes them in the planning pull request."
+      elif inherited_shallow "$root"; then
+        warn "this shallow clone does not hold the project's first commit, so whether approval requests or plans of the template's own Issues remain cannot be told" \
+          "Run: git fetch --unshallow origin. ./scripts/start-planning.sh fetches the full history itself."
+      fi
       # Never prompt and never wait indefinitely on an unresponsive remote.
       if GIT_TERMINAL_PROMPT=0 \
         GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes -o ConnectTimeout=10" \

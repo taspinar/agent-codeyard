@@ -225,8 +225,12 @@ AGENT
 cp "$tmp/bin/codex" "$tmp/bin/claude"
 chmod +x "$tmp/bin/codex" "$tmp/bin/claude"
 
+# setup_repo <label> [<function>]: a project whose first commit is the
+# seed; <function> runs with the seed directory before that commit and gets
+# 'later' after it, for the commits of the project.
 setup_repo() {
   local label="$1"
+  local seed_hook="${2:-}"
   local seed="$tmp/${label}-seed"
   local remote="$tmp/${label}-remote.git"
   local repo="$tmp/${label}-repo"
@@ -254,11 +258,18 @@ setup_repo() {
   printf '# Architecture\n\nTemplate.\n' >"$seed/docs/architecture.md"
   printf '# Roadmap\n\nTemplate.\n' >"$seed/docs/roadmap.md"
 
+  [[ -z "$seed_hook" ]] || "$seed_hook" "$seed" >/dev/null
+
   git -C "$seed" init -q -b main
   git -C "$seed" config user.name "Planning Test"
   git -C "$seed" config user.email "planning-test@example.com"
   git -C "$seed" add .
   git -C "$seed" commit -qm "Seed project"
+  if [[ -n "$seed_hook" ]]; then
+    "$seed_hook" "$seed" later >/dev/null
+    git -C "$seed" add .
+    git -C "$seed" diff --cached --quiet || git -C "$seed" commit -qm "Later work of the project"
+  fi
 
   git init -q --bare -b main "$remote"
   git -C "$seed" remote add origin "$remote"
@@ -333,6 +344,99 @@ fi
 if grep -Fq "No such file or directory" "$tmp/claude-success.err"; then
   fail "Claude happy path emitted a missing optional ADR directory error"
 fi
+
+# A project made with "Use this template" has the template's approval
+# requests and plans in its first commit. The first planning removes them,
+# stages the removal for the planning pull request, and keeps the project's
+# own request of a later commit; the planning agents' scope check does not
+# count it as their change.
+inherited_seed() {
+  mkdir -p "$1/.agents/approval-requests" "$1/.agents/plans"
+  if [[ "${2:-}" == "later" ]]; then
+    printf '{"issue": 9}\n' >"$1/.agents/approval-requests/9.json"
+  else
+    : >"$1/.agents/plans/.gitkeep"
+    printf '{"issue": 2}\n' >"$1/.agents/approval-requests/2.json"
+    printf '# Plan of a template Issue\n' >"$1/.agents/plans/313-growth-lessons.md"
+  fi
+}
+inherited_repo="$(setup_repo inherited inherited_seed)"
+inherited_output="$(
+  cd "$inherited_repo"
+  printf 'y\n' |
+    PATH="$tmp/bin:/usr/bin:/bin" \
+    MOCK_AGENT_LOG="$tmp/inherited.log" \
+    ./scripts/start-planning.sh --agent codex --model astra 2>"$tmp/inherited.err"
+)" || {
+  cat "$tmp/inherited.err" >&2
+  fail "the first planning of a project with inherited files failed"
+}
+inherited_worktree="$tmp/inherited-repo-planning-project-bootstrap"
+[[ "$(git -C "$inherited_worktree" diff --cached --name-status -- .agents)" == \
+  $'D\t.agents/approval-requests/2.json\nD\t.agents/plans/313-growth-lessons.md' ]] ||
+  fail "the first planning did not stage the removal of exactly the inherited files"
+for kept in .agents/approval-requests/9.json .agents/plans/.gitkeep; do
+  [[ -f "$inherited_worktree/$kept" ]] || fail "the first planning removed the project's own $kept"
+done
+[[ "$inherited_output" == *"Removed 2 approval request(s) and plan(s) of the template's own Issues"* &&
+  "$inherited_output" == *"  .agents/approval-requests/2.json"* &&
+  "$inherited_output" == *"  .agents/plans/313-growth-lessons.md"* ]] ||
+  fail "the first planning did not say which files it removed"
+[[ "$inherited_output" == *"Project bootstrap planning completed."* ]] ||
+  fail "the planning with removed inherited files did not complete"
+
+# A shallow clone of such a project does not hold its root commit: the first
+# planning deepens it to the full history and removes the same files.
+shallow_repo="$(setup_repo shallow inherited_seed)"
+rm -rf "$shallow_repo"
+git clone -q --depth 1 "file://$tmp/shallow-remote.git" "$shallow_repo"
+git -C "$shallow_repo" config user.name "Planning Test"
+git -C "$shallow_repo" config user.email "planning-test@example.com"
+[[ "$(git -C "$shallow_repo" rev-parse --is-shallow-repository)" == "true" ]] ||
+  fail "the shallow fixture is not a shallow clone"
+shallow_output="$(
+  cd "$shallow_repo"
+  printf 'y\n' |
+    PATH="$tmp/bin:/usr/bin:/bin" \
+    MOCK_AGENT_LOG="$tmp/shallow.log" \
+    ./scripts/start-planning.sh --agent codex --model astra 2>"$tmp/shallow.err"
+)" || {
+  cat "$tmp/shallow.err" >&2
+  fail "the first planning of a shallow project with inherited files failed"
+}
+shallow_worktree="$tmp/shallow-repo-planning-project-bootstrap"
+[[ "$(git -C "$shallow_worktree" diff --cached --name-status -- .agents)" == \
+  $'D\t.agents/approval-requests/2.json\nD\t.agents/plans/313-growth-lessons.md' ]] ||
+  fail "the first planning of a shallow clone did not stage the removal of exactly the inherited files"
+[[ -f "$shallow_worktree/.agents/approval-requests/9.json" ]] ||
+  fail "the first planning of a shallow clone removed the project's own request"
+[[ "$shallow_output" == *"Removed 2 approval request(s) and plan(s) of the template's own Issues"* ]] ||
+  fail "the first planning of a shallow clone did not say which files it removed"
+
+# In the template, whose origin is the repository of its template.conf,
+# nothing is removed, whatever its first commit holds.
+template_seed() {
+  [[ "${2:-}" != "later" ]] || return 0
+  inherited_seed "$1"
+  mkdir -p "$1/.agents"
+  printf 'repository: %s\n' "$tmp/template-remote.git" >"$1/.agents/template.conf"
+}
+template_repo="$(setup_repo template template_seed)"
+template_output="$(
+  cd "$template_repo"
+  printf 'y\n' |
+    PATH="$tmp/bin:/usr/bin:/bin" \
+    MOCK_AGENT_LOG="$tmp/template.log" \
+    ./scripts/start-planning.sh --agent codex --model astra 2>"$tmp/template.err"
+)" || {
+  cat "$tmp/template.err" >&2
+  fail "the planning in the template failed"
+}
+template_worktree="$tmp/template-repo-planning-project-bootstrap"
+[[ -z "$(git -C "$template_worktree" status --porcelain -- .agents)" ]] ||
+  fail "the planning in the template changed its approval requests or plans"
+[[ "$template_output" != *"of the template's own Issues"* ]] ||
+  fail "the planning in the template reported inherited files"
 
 decline_repo="$(setup_repo decline)"
 decline_log="$tmp/decline.log"

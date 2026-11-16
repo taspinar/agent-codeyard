@@ -121,7 +121,7 @@ The script checks that the tools above are installed and that the agents you con
 
 - **Where:** `my-project`.
 - **Input:** none.
-- **Result:** `All required prerequisites are available.` A warning that `main` accepts a merge while its checks fail stays until step 7 adds the check; if it is still there after step 7, check the plan and visibility of step 2; a line marked `FAILED` names what to fix before you go on.
+- **Result:** `All required prerequisites are available.` A warning that `main` accepts a merge while its checks fail stays until step 7 adds the check, and one about approval requests and plans of the template's own Issues until step 6 removes them; if it is still there after step 7, check the plan and visibility of step 2; a line marked `FAILED` names what to fix before you go on.
 - **Next:** choose your agents, or keep the shipped ones.
 
 ## 5. Choose your agents
@@ -156,7 +156,7 @@ Then start the planning with it; `path/to/idea.md` is the path of your file:
 ./scripts/start-planning.sh --description path/to/idea.md
 ```
 
-An agent asks you questions and writes the requirements for your approval. It then proposes an architecture and a roadmap in a planning worktree: a separate folder next to your repository, whose path the script prints. Go to that folder, then review the plan, address the findings, and approve it:
+The script first removes the template's own approval requests and plans, which your repository copied with the template, and says which; the planning pull request carries that removal. An agent then asks you questions and writes the requirements for your approval. It then proposes an architecture and a roadmap in a planning worktree: a separate folder next to your repository, whose path the script prints. Go to that folder, then review the plan, address the findings, and approve it:
 
 ```
 cd ../<repository>-planning-project-bootstrap
