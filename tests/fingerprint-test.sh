@@ -159,7 +159,8 @@ git -C "$repo" commit -qm "Change the code and the request"
 expected_list="$(printf '%s\n' "${FINGERPRINT_EXCLUDES[@]}")"
 [[ "$(fingerprint_excludes_at "$repo" HEAD)" == "$expected_list" ]] ||
   fail "the exclusion list read from HEAD is not the list of the library"
-sed -i 's|^FINGERPRINT_EXCLUDES=(\(.*\))$|FINGERPRINT_EXCLUDES=(\1 ".agents/extra")|' "$repo/scripts/lib/fingerprint.sh"
+sed -i.bak 's|^FINGERPRINT_EXCLUDES=(\(.*\))$|FINGERPRINT_EXCLUDES=(\1 ".agents/extra")|' "$repo/scripts/lib/fingerprint.sh"
+rm -f "$repo/scripts/lib/fingerprint.sh.bak"
 git -C "$repo" commit -qam "A feature extends the exclusion list"
 [[ "$(fingerprint_excludes_at "$repo" HEAD)" == "$expected_list"$'\n'".agents/extra" ]] ||
   fail "the exclusion list read from a commit is not the list of that commit"
