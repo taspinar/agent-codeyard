@@ -146,8 +146,10 @@ commit message and the pull request. In a team, turn it on.
 
 ## 4. Required status checks
 
-The template ships one CI job, `verify`, which runs
-`./scripts/verify.sh --all`. Add it to the `main` ruleset as a required status
+The template ships one CI job, `verify`, which runs `./scripts/verify.sh`
+(with `--all` on `main`, every night, and in the template on every pull
+request; see "Workflow self-tests" in [`docs/development.md`](development.md)),
+after a small job `scope` that is not a required check. Add `verify` to the `main` ruleset as a required status
 check: enable "Require status checks to pass" and add `verify`. GitHub lists a
 check only after it ran once, so open a first pull request before adding it.
 
@@ -205,8 +207,10 @@ An adopted repository keeps its own CI, and the adoption adds no CI
 workflow: its required checks stay what they were. The project's commands
 that CI runs are also the checks of `scripts/verify.conf`, so a feature runs
 them before its commit. To make `verify.sh` the gate on GitHub as well, add
-a step `./scripts/verify.sh --all` to the project's CI, in a reviewed change,
-and require that job. A known failure of the baseline fails that step too,
+a step `./scripts/verify.sh` to the project's CI, in a reviewed change,
+and require that job; run `./scripts/verify.sh --all` on `main` or on a
+schedule, as the template's `ci.yml` does, so that the workflow self-tests
+still run regularly. A known failure of the baseline fails that step too,
 until it is fixed or accepted ("The baseline of an adopted project" in
 [`docs/development.md`](development.md)).
 
