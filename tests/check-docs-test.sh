@@ -354,7 +354,8 @@ for missing_path in scripts/never-was.md scripts/gone.md; do
     fail "the deleted file was counted as a problem next to $missing_path"
   }
   for document in "${planning_files[@]}"; do
-    sed -i '/^F02 /d' "$repo/$document"
+    sed -i.bak '/^F02 /d' "$repo/$document"
+    rm -f "$repo/$document.bak"
   done
 done
 

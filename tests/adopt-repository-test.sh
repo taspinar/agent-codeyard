@@ -52,7 +52,8 @@ mkdir -p "$template/tests/unit" "$template/docs/decisions" "$template/docs/inter
 printf 'APP_URL=http://localhost:3000\n' >"$template/.env.example"
 printf '# 0001. A decision of the template\n' >"$template/docs/decisions/0001-template-choice.md"
 printf '{}\n' >"$template/docs/internal/notes.json"
-sed -i 's|^paths: .*|& :(exclude)docs/internal|' "$template/.agents/template.conf"
+sed -i.bak 's|^paths: .*|& :(exclude)docs/internal|' "$template/.agents/template.conf"
+rm -f "$template/.agents/template.conf.bak"
 git -C "$template" init -q -b main
 commit_all "$template" "Template"
 template_commit="$(git -C "$template" rev-parse HEAD)"
@@ -330,7 +331,8 @@ grep -Fq "is adopted already" "$repo.out" && [[ "$(git -C "$repo" symbolic-ref H
 grep -Fxq "  docs/example.md (example.md in docs/.gitignore:1)" "$repo.out" ||
   fail "a repeated adoption from main does not name the path that stays hidden: $(cat "$repo.out")"
 git -C "$repo" switch -q adopt/agent-codeyard
-sed -i '/^!\/\.agents\//d' "$repo/.gitignore"
+sed -i.bak '/^!\/\.agents\//d' "$repo/.gitignore"
+rm -f "$repo/.gitignore.bak"
 commit_all "$repo" "Drop the exceptions"
 git -C "$repo" switch -q main
 adopt "$repo" || { cat "$repo.out" >&2; fail "a repeated adoption from main without the exceptions failed"; }
@@ -455,7 +457,8 @@ printf '\nA new template instruction.\n' >>"$template/AGENTS.md"
 printf '# A new template check.\n' >>"$template/.github/workflows/guardrails.yml"
 printf '# A new template check.\n' >>"$template/.github/workflows/ci.yml"
 printf 'name: release\non: [push]\njobs: {}\n' >"$template/.github/workflows/release.yml"
-sed -i 's|^paths: |paths: .github/workflows/release.yml |' "$template/.agents/template.conf"
+sed -i.bak 's|^paths: |paths: .github/workflows/release.yml |' "$template/.agents/template.conf"
+rm -f "$template/.agents/template.conf.bak"
 commit_all "$template" "Template update"
 agents_before="$(cat "$repo/AGENTS.md")"
 workflows_before="$(cd "$repo" && find .github/workflows -type f | LC_ALL=C sort | xargs cksum)"

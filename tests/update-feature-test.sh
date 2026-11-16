@@ -275,7 +275,7 @@ grep -Fqx -- "- required from the project owner, for exactly this commit" "$repo
 # here the build of a site that the base renamed, is reported with its path
 # and the command that removes it. Nothing is deleted, verified, or pushed.
 repo="$(setup_repo leftover)"
-move_base "$repo" "Rename the site" 'git mv old-site site && sed -i "s|^old-site/build/$|site/build/|" .gitignore'
+move_base "$repo" "Rename the site" 'git mv old-site site && sed -i.bak "s|^old-site/build/$|site/build/|" .gitignore && rm -f .gitignore.bak'
 run_update "$repo" 12
 [[ "$status" -eq 1 ]] || { cat "$repo.out" >&2; fail "a leftover directory did not stop the update ($status)"; }
 grep -Fq "Left behind by a merge of the base" "$repo.out" || fail "the leftover was not reported as left behind"

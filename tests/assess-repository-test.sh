@@ -56,7 +56,8 @@ printf 'APP_URL=http://localhost:3000\n' >"$template/.env.example"
 printf '# Decisions\n' >"$template/docs/decisions/README.md"
 printf '# 0001. A decision of the template\n' >"$template/docs/decisions/0001-template-choice.md"
 printf '{}\n' >"$template/docs/internal/notes.json"
-sed -i 's|^paths: .*|& :(exclude)docs/internal|' "$template/.agents/template.conf"
+sed -i.bak 's|^paths: .*|& :(exclude)docs/internal|' "$template/.agents/template.conf"
+rm -f "$template/.agents/template.conf.bak"
 git -C "$template" init -q -b main
 commit_all "$template" "Template"
 

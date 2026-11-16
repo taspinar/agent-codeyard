@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "1d7ef827120bdf959e75cf00bd1cf88d082bdee5",
+  "commit": {
+    "branch": "feature/398-make-existing-shell-tests",
+    "parent": "4536acb9b9925e3d5ef9859b7eac24134b98fbfa",
+    "base": "4536acb9b9925e3d5ef9859b7eac24134b98fbfa"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the review could not confirm: The changed tests run on Linux, and on macOS where available; the pull request says which platform check is still missing."
+  ],
+  "explanation": "Issue #398: Make existing shell tests portable across macOS and Linux. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
