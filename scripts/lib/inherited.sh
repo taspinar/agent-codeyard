@@ -8,7 +8,7 @@
 # requests (.agents/approval-requests/) and plans (.agents/plans/). Their
 # numbers are Issues of the template, which collide with the project's own
 # Issues. A file under these directories that the root commit added, and that
-# no later commit changed, is such a leftover; the project's own requests and
+# no later commit touched, is such a leftover; the project's own requests and
 # plans come in later commits. .gitkeep is not one.
 #
 # Only a project has them: a repository whose origin is not the 'repository:'
@@ -69,9 +69,10 @@ inherited_files() {
   git -C "$root" rev-parse --verify --quiet "HEAD^{commit}" >/dev/null || return 0
 
   for commit in $(git -C "$root" rev-list --max-parents=0 HEAD); do
-    # What a later commit changed or removed is not left over: a changed
-    # file is the project's own now.
-    changed="$(git -C "$root" diff --name-only --no-renames "$commit" HEAD -- "${INHERITED_DIRECTORIES[@]}")"
+    # What any later commit touched is not left over: a changed file is the
+    # project's own now, also when a later commit restored its content, which
+    # a comparison of the root commit with HEAD alone would not show.
+    changed="$(git -C "$root" log --format= --name-only --no-renames "$commit..HEAD" -- "${INHERITED_DIRECTORIES[@]}")"
     git -C "$root" ls-tree -r --name-only "$commit" -- "${INHERITED_DIRECTORIES[@]}" |
       grep -v '/\.gitkeep$' |
       grep -vxF -f <(printf '%s\n' "$changed") || true

@@ -966,7 +966,8 @@ template's request `2.json`. The first `start-planning.sh` of a project
 planning worktree, says which files it removed, and
 stages the removal, so it goes into the planning pull request and no feature
 has to. A file is inherited when the project's root commit added it and no
-later commit changed it; `.gitkeep` is not one, and the project's own
+later commit touched it, not even to restore its first content; `.gitkeep`
+is not one, and the project's own
 requests and plans, which later commits add, stay. It happens only in a
 project: a repository whose `origin` is not the `repository:` of
 `.agents/template.conf` (compared as CI does, without a trailing `.git` or

@@ -88,6 +88,20 @@ commit "$own" "Feature 9 and 7"
 [[ "$(inherited_files "$own")" == $'.agents/approval-requests/2.json\n.agents/plans/313-growth-lessons.md' ]] ||
   fail "a project's own requests and plans are listed as inherited: $(inherited_files "$own")"
 
+# An inherited file that a later commit changed and another restored to its
+# first content is the project's own too, although the root commit and HEAD
+# do not differ; the untouched ones are still inherited.
+restored="$(make_project restored)"
+original="$(cat "$restored/.agents/approval-requests/7.json")"
+jq -n '{schema: "approval-request/v1", issue: 7, project: true}' >"$restored/.agents/approval-requests/7.json"
+commit "$restored" "Feature 7"
+printf '%s\n' "$original" >"$restored/.agents/approval-requests/7.json"
+commit "$restored" "Restore 7"
+git -C "$restored" diff --quiet "$(git -C "$restored" rev-list --max-parents=0 HEAD)" HEAD -- .agents ||
+  fail "the restored request differs from the root commit"
+[[ "$(inherited_files "$restored")" == $'.agents/approval-requests/2.json\n.agents/plans/313-growth-lessons.md' ]] ||
+  fail "a changed and restored request is listed as inherited: $(inherited_files "$restored")"
+
 # Once removed, nothing is left.
 removed="$(make_project removed)"
 git -C "$removed" rm -q -- $expected_inherited
