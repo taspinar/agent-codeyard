@@ -14,14 +14,17 @@
 #    path), any change under the shared test fixtures the policy names
 #    (test-fixtures, also an added line or file), a change to an existing
 #    file under .agents/policies/, .agents/prompts/, or .agents/schemas/
-#    (the policy itself among them), a change to an existing file of a
+#    (the policy itself among them), any change under the project's policy
+#    overrides (.agents/policy-overrides/, also an added file, since an
+#    override can lower every class), a change to an existing file of a
 #    project skill under .agents/project-skills/ (lib/skills.sh), which is
 #    agent instruction like a contract, and a change to an existing dependency
-#    or toolchain manifest the policy names. Apart from the test fixtures, an
-#    escalation reads only changed or removed existing lines and files: a
-#    file the feature adds, and the lines of a new file, never escalate by
-#    themselves, whatever they hold; a protected path keeps its high class by
-#    the path rule. No escalation reads the content of a line;
+#    or toolchain manifest the policy names. Apart from the test fixtures and
+#    the policy overrides, an escalation reads only changed or removed
+#    existing lines and files: a file the feature adds, and the lines of a
+#    new file, never escalate by themselves, whatever they hold; a protected
+#    path keeps its high class by the path rule. No escalation reads the
+#    content of a line;
 # 3. what an agent recorded: 'risk' in the implementer's completion record,
 #    and the independent reviewer's architecture_impact, of which major and
 #    breaking count as high; and the owner's hints: a risk label of the Issue
@@ -61,6 +64,12 @@ if ! declare -F guardrails_rules_refs >/dev/null; then
 fi
 
 RISK_CONFIG=".agents/policies/risk.conf"
+# The project's override of the policy: its own file, outside the template's
+# files, so a sync never touches it. It is combined with RISK_CONFIG by
+# risk_config_written and read from the base like the policy, and any change
+# under GUARDRAILS_POLICY_OVERRIDES, also adding the file, is high
+# (risk_classify) and protected (lib/guardrails.sh).
+RISK_OVERRIDE="$GUARDRAILS_POLICY_OVERRIDES/risk.conf"
 
 # A project whose base has no risk.conf gets what the template ships: every
 # feature is medium or high, with the files of the workflow and its gate as
@@ -94,7 +103,7 @@ RISK_DEFAULT_TRIAGE="full"
 # and AGENTS.md, lets a low feature go without a review, and gives low and
 # medium the light triage.
 RISK_PROFILES="light standard"
-RISK_PROFILE_HIGH=(docs/decisions .github/workflows .github/actions .github/CODEOWNERS .agents/policies .agents/prompts/reviewer.md .agents/schemas .agents/agents.conf
+RISK_PROFILE_HIGH=(docs/decisions .github/workflows .github/actions .github/CODEOWNERS .agents/policies .agents/policy-overrides .agents/prompts/reviewer.md .agents/schemas .agents/agents.conf
   scripts/check-guardrails.sh scripts/lib/guardrails.sh scripts/check-risk.sh scripts/lib/risk.sh scripts/lib/agent.sh scripts/lib/review-data.sh
   scripts/lib/review-run.sh scripts/lib/fingerprint.sh scripts/review-feature.sh scripts/finish-feature.sh scripts/publish-feature.sh scripts/run-feature.sh
   scripts/verify.conf scripts/verify-workflow.conf)
@@ -134,6 +143,42 @@ risk_config_exists() {
   git -C "$1" cat-file -e "$2:$RISK_CONFIG" 2>/dev/null
 }
 
+# risk_config_key
+# Prints an awk function: the key of a line of the policy, '<level>:<kind>:'
+# for a requirement line and the word before the first colon for any other.
+risk_config_key() {
+  printf '%s\n' 'function key(line, k) {' \
+    "  if (match(line, \"^(low|medium|high):[[:space:]]*($RISK_REQUIREMENT_KINDS):\")) {" \
+    '    k = substr(line, 1, RLENGTH)' \
+    '    gsub(/[[:space:]]/, "", k)' \
+    '    return k' \
+    '  }' \
+    '  return substr(line, 1, index(line, ":") - 1)' \
+    '}'
+}
+
+# risk_config_written <root> <ref>
+# Prints the policy of <ref> as the project wrote it: the lines of the
+# override (RISK_OVERRIDE), then the lines of RISK_CONFIG. A single value
+# the override writes ('default', 'profile', a requirement '<level>: <kind>')
+# replaces the line of that key in RISK_CONFIG; a path class or list (low,
+# medium, high, tests, test-fixtures, manifests) adds to the lines of
+# RISK_CONFIG, so an override can never drop a path from the high class the
+# template ships. Nothing without RISK_CONFIG: an override applies on top
+# of it.
+risk_config_written() {
+  local text
+  local override
+
+  text="$(git -C "$1" show "$2:$RISK_CONFIG" 2>/dev/null)" || return 0
+  override="$(git -C "$1" show "$2:$RISK_OVERRIDE" 2>/dev/null)" || override=""
+  { printf '%s\n' "$override"; echo "--policy--"; printf '%s\n' "$text"; } |
+    awk "$(risk_config_key)"'
+      $0 == "--policy--" { policy = 1; next }
+      !policy { print; if ($0 ~ /^[a-z]+:/ && key($0) !~ /^(low|medium|high|tests|test-fixtures|manifests)$/) written[key($0)] = 1; next }
+      !($0 ~ /^[a-z]+:/ && key($0) in written) { print }'
+}
+
 # risk_profile_preset <profile>
 # Prints the lines of the preset of a workflow profile, in the format of the
 # policy; nothing for a word that is not a profile.
@@ -168,10 +213,11 @@ risk_profile_preset() {
 }
 
 # risk_profile_written <root> <ref>
-# Prints the value of the first 'profile:' line of the policy of <ref>, as
-# written, with single spaces; nothing without the file or the line.
+# Prints the value of the first 'profile:' line of the policy of <ref> and
+# its override, as written, with single spaces; nothing without the file or
+# the line.
 risk_profile_written() {
-  git -C "$1" show "$2:$RISK_CONFIG" 2>/dev/null |
+  risk_config_written "$1" "$2" |
     sed -n 's/^profile:[[:space:]]*//p' | sed -n 1p | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//' || true
 }
 
@@ -191,26 +237,18 @@ risk_profile_applied() {
 }
 
 # risk_config_effective <root> <ref>
-# Prints the policy of <ref> as the rules apply it: the lines of the file,
-# then the lines of the preset of its profile whose key the file does not
-# write. The key of a requirement line is '<level>: <kind>', of any other
-# line the word before the first colon. Nothing without the file.
+# Prints the policy of <ref> as the rules apply it: the lines the project
+# wrote (risk_config_written), then the lines of the preset of its profile
+# whose key it does not write. Nothing without the file.
 risk_config_effective() {
   local text
   local profile
 
-  text="$(git -C "$1" show "$2:$RISK_CONFIG" 2>/dev/null)" || return 0
+  risk_config_exists "$1" "$2" || return 0
+  text="$(risk_config_written "$1" "$2")"
   profile="$(risk_profile_applied "$(risk_profile_written "$1" "$2")")"
   { printf '%s\n' "$text"; echo "--preset--"; risk_profile_preset "$profile"; } |
-    awk -v kinds="$RISK_REQUIREMENT_KINDS" '
-      function key(line, k) {
-        if (match(line, "^(low|medium|high):[[:space:]]*(" kinds "):")) {
-          k = substr(line, 1, RLENGTH)
-          gsub(/[[:space:]]/, "", k)
-          return k
-        }
-        return substr(line, 1, index(line, ":") - 1)
-      }
+    awk "$(risk_config_key)"'
       $0 == "--preset--" { preset = 1; next }
       !preset { print; if ($0 ~ /^[a-z]+:/) written[key($0)] = 1; next }
       !(key($0) in written) { print }'
@@ -223,7 +261,7 @@ risk_config_effective() {
 # 'raw'.
 risk_config_lines() {
   if [[ "${4:-}" == "raw" ]]; then
-    git -C "$1" show "$2:$RISK_CONFIG" 2>/dev/null
+    risk_config_written "$1" "$2"
   else
     risk_config_effective "$1" "$2"
   fi | sed -n "s/^$3:[[:space:]]*//p" || true
@@ -651,6 +689,14 @@ risk_classify() {
       printf 'high\t%s\t%s\n' "$path" "a policy, an agent contract, or a schema is changed"
     fi
   done < <(risk_existing_changed "$root" "$from" "$to" "${RISK_ESCALATION_DIRS[@]}")
+
+  # A policy override of the project, added, changed, or removed: it can
+  # lower every class, so it is high whatever the policy says, also when the
+  # feature adds it.
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    printf 'high\t%s\t%s\n' "$path" "a policy override of the project is added, changed, or removed"
+  done < <(guardrails_changed "$root" "$from" "$to" "$GUARDRAILS_POLICY_OVERRIDES" | sort -u)
 
   # An existing file of a project skill that is changed or removed: a new
   # version of the guidance the agents follow. A skill the feature adds keeps

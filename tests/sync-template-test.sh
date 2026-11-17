@@ -867,39 +867,52 @@ for workflow in .github/workflows/ci.yml docs/examples/parallel-ci.yml; do
   [[ "$setup_jobs" -gt 0 ]] || fail "no job of $workflow that runs verify.sh was found"
 done
 
-# A sync never takes over or changes .github/actions/: the template's list of
-# files does not name it, so the project's setup stays its own, also when the
-# template has a file at that path and changes it.
+# A sync never takes over or changes .github/actions/ or the project's policy
+# overrides in .agents/policy-overrides/: the template's list of files does
+# not name them, so they stay the project's own without an exclusion in
+# .agents/template.conf, also when the template has a file at that path and
+# changes it. The template's risk.conf is still synced.
 template_conf "$tmp/setup-template.conf"
 setup_template="$tmp/setup-template"
-mkdir -p "$setup_template/scripts" "$setup_template/.agents" "$setup_template/.github/workflows" "$setup_template/.github/actions/project-setup"
+mkdir -p "$setup_template/scripts" "$setup_template/.agents/policies" "$setup_template/.agents/policy-overrides" "$setup_template/.github/workflows" "$setup_template/.github/actions/project-setup"
 sed "s#^repository:.*#repository: $setup_template#" "$tmp/setup-template.conf" >"$setup_template/.agents/template.conf"
 cp "$source_root/scripts/sync-template.sh" "$setup_template/scripts/sync-template.sh"
 lines "name: CI" >"$setup_template/.github/workflows/ci.yml"
 lines "name: template setup" >"$setup_template/.github/actions/project-setup/action.yml"
+lines "default: medium" >"$setup_template/.agents/policies/risk.conf"
+lines "profile: standard" >"$setup_template/.agents/policy-overrides/risk.conf"
 git -C "$setup_template" init -q -b main
 commit_all "$setup_template" "Setup one"
 setup_one="$(git -C "$setup_template" rev-parse HEAD)"
 lines "name: CI" "# changed by the template" >"$setup_template/.github/workflows/ci.yml"
 lines "name: template setup, changed" >"$setup_template/.github/actions/project-setup/action.yml"
 lines "template only" >"$setup_template/.github/actions/project-setup/extra.txt"
+lines "default: medium" "# changed by the template" >"$setup_template/.agents/policies/risk.conf"
+lines "profile: standard" "default: high" >"$setup_template/.agents/policy-overrides/risk.conf"
+lines "template only" >"$setup_template/.agents/policy-overrides/other.conf"
 commit_all "$setup_template" "Setup two"
 project="$tmp/setup-project"
 mkdir -p "$project"
 git -C "$setup_template" archive "$setup_one" | tar -x -C "$project"
 lines "name: project setup" "runs:" "  using: composite" "  steps: []" >"$project/.github/actions/project-setup/action.yml"
 lines "uv" >"$project/.github/actions/project-setup/requirements.txt"
+lines "profile: light" >"$project/.agents/policy-overrides/risk.conf"
 git -C "$project" init -q -b main
 commit_all "$project" "Create the project with its own CI setup"
-setup_before="$(cd "$project" && find .github/actions -type f | LC_ALL=C sort | xargs cksum)"
+setup_before="$(cd "$project" && find .github/actions .agents/policy-overrides -type f | LC_ALL=C sort | xargs cksum)"
 run_sync "$project" --from "$setup_one" || {
   cat "$project.out" >&2
   fail "a sync with the project's own CI setup failed"
 }
 grep -Fqx "# changed by the template" "$project/.github/workflows/ci.yml" || fail "the template's ci.yml was not synced"
-[[ "$(cd "$project" && find .github/actions -type f | LC_ALL=C sort | xargs cksum)" == "$setup_before" ]] ||
-  fail "a sync changed the project's .github/actions/"
-if grep -Fq ".github/actions" "$project.out"; then fail "a sync reported a file under .github/actions/: $(cat "$project.out")"; fi
-[[ -z "$(git -C "$project" status --porcelain -- .github/actions)" ]] || fail "a sync left changes under .github/actions/"
+grep -Fqx "# changed by the template" "$project/.agents/policies/risk.conf" || fail "the template's risk.conf was not synced"
+[[ "$(cd "$project" && find .github/actions .agents/policy-overrides -type f | LC_ALL=C sort | xargs cksum)" == "$setup_before" ]] ||
+  fail "a sync changed the project's .github/actions/ or .agents/policy-overrides/"
+if grep -Fq -e ".github/actions" -e ".agents/policy-overrides" "$project.out"; then
+  fail "a sync reported a file under .github/actions/ or .agents/policy-overrides/: $(cat "$project.out")"
+fi
+[[ -z "$(git -C "$project" status --porcelain -- .github/actions .agents/policy-overrides)" ]] ||
+  fail "a sync left changes under .github/actions/ or .agents/policy-overrides/"
+if grep -Fq "policy-overrides" "$project/.agents/template.conf"; then fail "the project needed an exclusion for its policy overrides"; fi
 
 echo "sync-template tests passed"
