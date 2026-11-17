@@ -102,6 +102,33 @@ result_file="$tmp_work/result.json"
   GIT_INDEX_FILE="$tmp_work/fingerprint-files.index" git -C "$root" diff --cached --no-color "$merge_base" -- "${scope[@]}"
 } >"$context_file"
 
+# The owner's decisions on findings that the planner escalated in earlier
+# rounds (finish-planning.sh --resolve), each with the planning documents that
+# changed since it was made, so the reviewer can tell whether it still holds.
+resolutions="$(planning_resolutions "$root" "$name")"
+resolution_count="$(jq 'length' <<<"$resolutions")"
+if [[ "$resolution_count" -gt 0 ]]; then
+  {
+    echo
+    echo "## The owner's decisions on earlier findings"
+    echo
+    jq -c '.[]' <<<"$resolutions" | while IFS= read -r resolution; do
+      decided_tree="$(jq -r '.reviewed_tree' <<<"$resolution")"
+      if [[ "$decided_tree" == "$tree" ]]; then
+        changed="none"
+      else
+        changed="$(git -C "$root" diff-tree -r --name-only "$decided_tree" "$tree" 2>/dev/null | paste -sd, - | sed 's/,/, /g')"
+        [[ -n "$changed" ]] || changed="unknown (the planning documents changed)"
+      fi
+      jq -r --arg changed "$changed" '
+        "- Round \(.round), \(.finding_id) [\(.finding_severity)] \(.finding_title)",
+        "  Decision: \(.type), at \(.decided_at)",
+        "  Reason: \(.reason)",
+        "  Planning documents changed since the decision: \($changed)"' <<<"$resolution"
+    done
+  } >>"$context_file"
+fi
+
 review_number=1
 previous_review=""
 while true; do
@@ -150,6 +177,14 @@ This is a re-review. Read the previous review (JSON):
 .agents/reviews/$(basename "$previous_review")
 and any revision decisions next to it (*-revision.json). Check whether its
 findings have been resolved, but review the complete current planning."
+fi
+
+if [[ "$resolution_count" -gt 0 ]]; then
+  prompt+="
+
+The owner decided on $resolution_count finding(s) of earlier rounds that the
+planner escalated; standard input lists them under \"The owner's decisions on
+earlier findings\". Apply the \"Owner decisions\" rules of your contract."
 fi
 
 prompt+="

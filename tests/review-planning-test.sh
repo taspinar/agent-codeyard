@@ -203,4 +203,35 @@ repo="$(setup_repo no-change-cycle)"
 run_review "$repo" || fail "a first planning review failed"
 if grep -Fq "This is a change cycle" "$repo.log"; then fail "a first planning was reviewed as a change cycle"; fi
 
+# The reviewer of a later round receives the owner's decisions on escalated
+# findings (finish-planning.sh --resolve), with the planning documents that
+# changed since each; a decision that is no longer valid is left out.
+repo="$(setup_repo decisions)"
+run_review "$repo" || { cat "$repo.out" >&2; fail "the first round failed"; }
+if grep -Fq "The owner's decisions on earlier findings" "$repo.log.stdin"; then
+  fail "a first round was given decisions that do not exist"
+fi
+review="$repo/.agents/reviews/planning-project-bootstrap-review-01.json"
+jq --arg blob "$(git -C "$repo" hash-object -- "$review")" '{
+  schema: "planning-resolution/v1", type: "not-applicable", reason: "Offline use is the whole product.",
+  decided_at: "2026-01-02T00:00:00Z", branch, review: ".agents/reviews/planning-project-bootstrap-review-01.json",
+  review_blob: $blob, round, reviewed_tree, finding_id: "M1", finding_severity: "major",
+  finding_title: .findings[0].title, planner_rationale: "Needs the owner."}' "$review" \
+  >"$repo/.agents/reviews/planning-project-bootstrap-review-01-resolution-M1.json"
+jq '.reason = ""' "$repo/.agents/reviews/planning-project-bootstrap-review-01-resolution-M1.json" \
+  >"$repo/.agents/reviews/planning-project-bootstrap-review-01-resolution-M2.json"
+printf '\n## F02 — Sharing\n' >>"$repo/docs/roadmap.md"
+rm -f "$repo.log" "$repo.log.stdin"
+run_review "$repo" || { cat "$repo.out" >&2; fail "the round after a decision failed"; }
+grep -Fq "## The owner's decisions on earlier findings" "$repo.log.stdin" || fail "the reviewer did not receive the decisions"
+grep -Fq "Round 1, M1 [major] Roadmap omits offline use" "$repo.log.stdin" || fail "the decision does not name its finding"
+grep -Fq "Decision: not-applicable" "$repo.log.stdin" && grep -Fq "Reason: Offline use is the whole product." "$repo.log.stdin" ||
+  fail "the decision lacks its type or reason"
+grep -Fq "Planning documents changed since the decision: docs/roadmap.md" "$repo.log.stdin" ||
+  fail "the reviewer was not told what changed since the decision: $(cat "$repo.log.stdin")"
+grep -Fq '"Owner decisions" rules' "$repo.log" || fail "the reviewer was not pointed to the rules for decisions"
+if grep -Fq "Round 1, M2" "$repo.log.stdin"; then fail "an invalid decision was given to the reviewer"; fi
+grep -Fq "Ignored the decision .agents/reviews/planning-project-bootstrap-review-01-resolution-M2.json" "$repo.out" ||
+  fail "the invalid decision was not reported"
+
 echo "review-planning tests passed"

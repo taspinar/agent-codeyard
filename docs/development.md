@@ -1056,8 +1056,9 @@ runs a command may create or change them, and they are never reviewed or
 committed. A secret written into such a directory is therefore not reported.
 
 Escalated findings are listed with the next step: change the requirements
-through Project Grill and approve them again, or decide that the finding does
-not apply. When the write session fails, the approved decisions stay recorded;
+through Project Grill and approve them again, or record your decision that the
+finding does not apply or that you accept the planning as it is with it
+(`finish-planning.sh --resolve`, below). When the write session fails, the approved decisions stay recorded;
 while the review is still current, running the script again applies them
 without deciding again.
 
@@ -1074,14 +1075,15 @@ When the latest review round is resolved, approve the planning:
 
 The script refuses when a required document is missing, the requirements are
 not approved, there is no planning review, the latest review is stale, the
-latest round has a critical or major finding, a finding of the latest round
-has no revision decision, an adopted finding is not applied yet, or a finding
-of the latest round is escalated. It shows every rejected, deferred, and
-escalated finding of all rounds, also before a refusal. A finding escalated in
-an earlier round is not resolved by a newer review alone: you confirm that it
-was resolved, and the approval records that. The approval covers exactly the
-reviewed planning; a document that changes while the script waits for your
-answer is refused.
+latest round has a critical or major finding that was not escalated, a
+finding of the latest round has no revision decision, an adopted finding is
+not applied yet, or a finding of the latest round is escalated without your
+decision. It shows every rejected, deferred, and escalated finding of all
+rounds, with your decisions, also before a refusal. A finding escalated in an
+earlier round is not resolved by a newer review alone: you confirm that it was
+resolved, unless you recorded a decision on it, and the approval records
+that. The approval covers exactly the reviewed planning; a document that
+changes while the script waits for your answer is refused.
 
 In a project that adopted the workflow, the adoption may have written the
 planning documents as a reconstruction, each starting with the line
@@ -1094,8 +1096,8 @@ without passing through the planning.
 
 The approval is recorded in `docs/PLANNING_APPROVAL.md`, which is committed with
 the planning: the time, the planning branch, the final review round, the
-review rounds, the findings that were not adopted, and the fingerprint of the
-planning documents. Use it for the planning PR description, because review
+review rounds, the findings that were not adopted, your decisions on
+escalated findings, and the fingerprint of the planning documents. Use it for the planning PR description, because review
 and revision files are not committed.
 
 Whether the approval is still current:
@@ -1133,6 +1135,42 @@ after a change by hand that does not match, any difference counts as stale.
 Open and merge a planning PR before creating Issues for actionable roadmap
 features. The script never implements features, creates Issues, commits,
 pushes, opens or merges a PR, or deploys.
+
+#### Your decision on an escalated finding
+
+An escalated finding asks you to change the requirements or to decide that
+they stay as they are. For the second, a new review round is not needed:
+
+```bash
+./scripts/finish-planning.sh --resolve M1 --type not-applicable --reason "Sync is a non-goal of the requirements."
+```
+
+`--type not-applicable` says that the finding does not apply; `--type
+accepted` that you accept the planning as it is with it. The reason is one
+line. The command runs only at a terminal, never unattended or from a pipe: it
+shows the finding as the review states it, the planner's rationale for the
+escalation, and the record exactly as it will be stored, and asks once. It
+accepts one finding of the latest round that the planner escalated, of any
+severity, while that review is current, and one decision per finding.
+
+The decision is stored next to its review, as
+`.agents/reviews/<review>-resolution-<finding-id>.json`, which Git ignores like
+the review. It is bound to that review by the hash of its file, its round, and
+its reviewed tree, and resolves the finding in that round only:
+
+- `finish-planning.sh` approves a latest round whose escalated findings all
+  have a decision, also an escalated critical or major finding, and lists the
+  decisions of every round in `docs/PLANNING_APPROVAL.md` under "Escalations
+  resolved by the owner's decision". An escalation of an earlier round with a
+  decision is not asked about again.
+- A change of a planning document makes the review stale, and with it the
+  decision; an edited review voids it. A later round that raises the finding
+  again needs a decision of its own.
+- `review-planning.sh` gives the planning reviewer every decision of the
+  branch, with the planning documents that changed since it was made. The
+  reviewer does not raise such a finding again unless one of those changes
+  changed what it is about, and then names the decision
+  (`.agents/prompts/planning-reviewer.md`, "Owner decisions").
 
 ## Changing an approved planning
 

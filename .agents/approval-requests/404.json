@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "1c813f5e34aebc4ff2ef8533cd2e7c563233c2e2",
+  "commit": {
+    "branch": "feature/404-finish-planning-record-the",
+    "parent": "26a04b7695a32ddb6b79d9f0d18c24376c2641c6",
+    "base": "26a04b7695a32ddb6b79d9f0d18c24376c2641c6"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the independent review classified the impact on the architecture as major: The change adds a public planning command and a new review-bound decision record consumed by planning review and approval workflows. It also changes the planning reviewer contract. These are shared workflow interfaces, though they remain within the repository’s existing script-based architecture. "
+  ],
+  "explanation": "Issue #404: finish-planning: record the owner's decision that an escalated finding does not apply. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

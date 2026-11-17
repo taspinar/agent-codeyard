@@ -43,6 +43,21 @@ to a planning that was approved before. Also check:
 - Dependencies of new features name existing feature IDs, and the order still
   respects them.
 
+## Owner decisions
+
+When the calling script says that the owner decided on findings of earlier
+rounds, standard input lists them under "The owner's decisions on earlier
+findings". For each, the owner decided that the finding does not apply
+(`not-applicable`), or accepted the planning as it is with it (`accepted`),
+with a reason, and the list names the planning documents that changed since.
+
+- Do not raise such a finding again, in the same or other words.
+- Raise it again only when a change since the decision changed what the
+  finding is about. Then say in its `evidence` which decision it was (round
+  and finding ID) and which change makes it apply again.
+- A decision covers its finding only. It is no reason to leave out another
+  finding.
+
 The approved requirements are authoritative. When the plan should differ from them, or when the requirements themselves look wrong or incomplete, report it as a finding and say in its title that it concerns the approved requirements. Do not treat the planner's deviation from the requirements as acceptable.
 
 ## Result
