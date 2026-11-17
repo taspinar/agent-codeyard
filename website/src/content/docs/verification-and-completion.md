@@ -98,6 +98,26 @@ Checks can have a group, such as `code` or `build`. `./scripts/verify.sh --only 
 
 A check declared as a budget (`<name> budget: <command>`) measures something against a target: over the target it is reported as `BUDGET` with its output, the verification still passes, and nothing repairs it; the reviewer, the commit, and the pull request show the measurement for you to decide on. The full syntax is `<name> [<group>] budget: <command>`. Its nonzero result is a measurement, not a failed required check. Every check is timed, and a line `budget-seconds: <n>` sets a target for the duration of all checks of the file, reported the same way with the slowest checks when a run exceeds it. Neither a budget nor a duration target should trigger automatic repair. See [the verification reference](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#configuring-verification).
 
+<a id="project-ci-setup"></a>
+
+### Your project's tools in CI
+
+Your project installs its own tools in CI, such as Python with uv, Node.js, or Terraform, in a composite action of its own: the file `action.yml` in `.github/actions/project-setup/`. The template's CI runs it after the checkout and before `./scripts/verify.sh`, and only when the file exists, so you never edit `.github/workflows/ci.yml` and a sync of the template does not conflict with your changes. The template never touches `.github/actions/`. A change there runs before the verification, so it is treated like a change to the CI workflows: high risk, and your approval at the merge. For Python with uv:
+
+```yaml
+name: Project setup
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v6
+      with:
+        python-version: "3.12"
+    - run: uv sync --locked
+      shell: bash
+```
+
+The first CI run with the action shows that it works; the template's tests check only the structure of the workflow. See [the reference](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#the-projects-ci-setup).
+
 <a id="parallel-ci"></a>
 
 ### A parallel CI

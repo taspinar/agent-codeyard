@@ -20,6 +20,10 @@
 #
 # The required check of the branch protection stays 'verify': here it is the
 # aggregate job, which passes only when every group job succeeded.
+#
+# Every group job sets up the project after the checkout, as ci.yml does:
+# with the composite action .github/actions/project-setup, when the project
+# has one (docs/development.md, "The project's CI setup").
 
 name: CI
 on:
@@ -49,6 +53,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Set up the project
+        if: hashFiles('.github/actions/project-setup/action.yml') != ''
+        uses: ./.github/actions/project-setup
       - run: ./scripts/verify.sh --all --only "$VERIFY_GROUP"
 
   group-default:
@@ -57,6 +64,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Set up the project
+        if: hashFiles('.github/actions/project-setup/action.yml') != ''
+        uses: ./.github/actions/project-setup
       - run: ./scripts/verify.sh --all --only "$VERIFY_GROUP"
 
   # The producer. The artifact carries the run and the commit it was built
@@ -67,6 +77,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Set up the project
+        if: hashFiles('.github/actions/project-setup/action.yml') != ''
+        uses: ./.github/actions/project-setup
       - run: ./scripts/verify.sh --all --only "$VERIFY_GROUP"
       - name: Record where the build comes from
         run: printf '%s %s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" >dist/BUILT_BY
@@ -87,6 +100,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Set up the project
+        if: hashFiles('.github/actions/project-setup/action.yml') != ''
+        uses: ./.github/actions/project-setup
       - uses: actions/download-artifact@v4
         with:
           name: dist-${{ github.run_id }}

@@ -805,4 +805,101 @@ done
 # In a shallow checkout verify.sh cannot tell, and runs them.
 expect_pr src/app.txt 1 ran "could not determine whether a workflow file changed"
 
+# The project's CI setup (Issue 412): ci.yml and the parallel CI of
+# docs/examples call the composite action .github/actions/project-setup in
+# every job that runs verify.sh, after the checkout and before the
+# verification, and only when the project has the action. GitHub Actions
+# cannot run here, so this checks the structure of both files and evaluates
+# the condition with and without the action; the first CI run of a project
+# with the action is the end-to-end evidence.
+
+# Prints, for every job of the workflow $1 that runs verify.sh, one line
+# with tabs: the job, the position of its checkout step, of its project
+# setup step, and of its first step that runs verify.sh (0 when missing),
+# and the if: of the setup step.
+ci_setup_steps() {
+  awk '
+    function endstep() {
+      if (s_checkout && !checkout) checkout = n
+      if (s_setup && !setup) { setup = n; setupif = s_if }
+      if (s_verify && !verify) verify = n
+      s_checkout = 0; s_setup = 0; s_verify = 0; s_if = ""
+    }
+    function endjob() {
+      endstep()
+      if (job != "" && verify) print job "\t" checkout "\t" setup "\t" verify "\t" setupif
+      job = ""; n = 0; checkout = 0; setup = 0; verify = 0; setupif = ""
+    }
+    /^[[:space:]]*#/ { next }
+    /^jobs:/ { injobs = 1; next }
+    /^[^[:space:]]/ { if (injobs) endjob(); injobs = 0; next }
+    !injobs { next }
+    /^  [^[:space:]]/ { endjob(); job = $1; sub(/:.*/, "", job); next }
+    /^      - / { endstep(); n++ }
+    n && /uses:[[:space:]]*actions\/checkout@/ { s_checkout = 1 }
+    n && /uses:[[:space:]]*\.\/\.github\/actions\/project-setup[[:space:]]*$/ { s_setup = 1 }
+    n && /scripts\/verify\.sh/ { s_verify = 1 }
+    n && match($0, /^      (- |  )if:[[:space:]]*/) { s_if = substr($0, RLENGTH + 1) }
+    END { if (injobs) endjob() }
+  ' "$1"
+}
+
+mkdir -p "$tmp/ci-setup/with/.github/actions/project-setup" "$tmp/ci-setup/without/.github/actions/other"
+printf 'name: setup\nruns:\n  using: composite\n  steps: []\n' >"$tmp/ci-setup/with/.github/actions/project-setup/action.yml"
+printf 'name: other\n' >"$tmp/ci-setup/without/.github/actions/other/action.yml"
+for workflow in .github/workflows/ci.yml docs/examples/parallel-ci.yml; do
+  [[ -f "$source_root/$workflow" ]] || continue
+  # A project's own CI that does not run verify.sh is not the template's.
+  grep -Fq 'scripts/verify.sh' "$source_root/$workflow" || continue
+  setup_jobs=0
+  while IFS=$'\t' read -r job checkout setup verify condition; do
+    setup_jobs=$((setup_jobs + 1))
+    [[ "$checkout" -gt 0 ]] || fail "the job $job of $workflow runs verify.sh without a checkout"
+    [[ "$setup" -gt 0 ]] || fail "the job $job of $workflow does not set up the project with .github/actions/project-setup"
+    [[ "$setup" -gt "$checkout" ]] || fail "the job $job of $workflow sets up the project before the checkout"
+    [[ "$verify" -gt "$setup" ]] || fail "the job $job of $workflow sets up the project after the verification"
+    [[ -n "$condition" ]] || fail "the project setup of the job $job of $workflow has no if: and fails in a project without the action"
+    ci_condition_true "$tmp/ci-setup/with" "$condition" ||
+      fail "the project setup of the job $job of $workflow does not run with the action: $condition"
+    ! ci_condition_true "$tmp/ci-setup/without" "$condition" ||
+      fail "the project setup of the job $job of $workflow runs without the action: $condition"
+  done < <(ci_setup_steps "$source_root/$workflow")
+  [[ "$setup_jobs" -gt 0 ]] || fail "no job of $workflow that runs verify.sh was found"
+done
+
+# A sync never takes over or changes .github/actions/: the template's list of
+# files does not name it, so the project's setup stays its own, also when the
+# template has a file at that path and changes it.
+template_conf "$tmp/setup-template.conf"
+setup_template="$tmp/setup-template"
+mkdir -p "$setup_template/scripts" "$setup_template/.agents" "$setup_template/.github/workflows" "$setup_template/.github/actions/project-setup"
+sed "s#^repository:.*#repository: $setup_template#" "$tmp/setup-template.conf" >"$setup_template/.agents/template.conf"
+cp "$source_root/scripts/sync-template.sh" "$setup_template/scripts/sync-template.sh"
+lines "name: CI" >"$setup_template/.github/workflows/ci.yml"
+lines "name: template setup" >"$setup_template/.github/actions/project-setup/action.yml"
+git -C "$setup_template" init -q -b main
+commit_all "$setup_template" "Setup one"
+setup_one="$(git -C "$setup_template" rev-parse HEAD)"
+lines "name: CI" "# changed by the template" >"$setup_template/.github/workflows/ci.yml"
+lines "name: template setup, changed" >"$setup_template/.github/actions/project-setup/action.yml"
+lines "template only" >"$setup_template/.github/actions/project-setup/extra.txt"
+commit_all "$setup_template" "Setup two"
+project="$tmp/setup-project"
+mkdir -p "$project"
+git -C "$setup_template" archive "$setup_one" | tar -x -C "$project"
+lines "name: project setup" "runs:" "  using: composite" "  steps: []" >"$project/.github/actions/project-setup/action.yml"
+lines "uv" >"$project/.github/actions/project-setup/requirements.txt"
+git -C "$project" init -q -b main
+commit_all "$project" "Create the project with its own CI setup"
+setup_before="$(cd "$project" && find .github/actions -type f | LC_ALL=C sort | xargs cksum)"
+run_sync "$project" --from "$setup_one" || {
+  cat "$project.out" >&2
+  fail "a sync with the project's own CI setup failed"
+}
+grep -Fqx "# changed by the template" "$project/.github/workflows/ci.yml" || fail "the template's ci.yml was not synced"
+[[ "$(cd "$project" && find .github/actions -type f | LC_ALL=C sort | xargs cksum)" == "$setup_before" ]] ||
+  fail "a sync changed the project's .github/actions/"
+if grep -Fq ".github/actions" "$project.out"; then fail "a sync reported a file under .github/actions/: $(cat "$project.out")"; fi
+[[ -z "$(git -C "$project" status --porcelain -- .github/actions)" ]] || fail "a sync left changes under .github/actions/"
+
 echo "sync-template tests passed"

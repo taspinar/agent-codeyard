@@ -1,0 +1,23 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "c5449bb138232154d54dce6f83f29d4879892b29",
+  "commit": {
+    "branch": "feature/412-ci-setup-as-a",
+    "parent": "26a04b7695a32ddb6b79d9f0d18c24376c2641c6",
+    "base": "26a04b7695a32ddb6b79d9f0d18c24376c2641c6"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".agents/policies/guardrails.conf: the file defines or carries out the workflow and its gate",
+    ".github/CODEOWNERS: the file defines or carries out the workflow and its gate",
+    ".github/workflows/ci.yml: the file defines or carries out the workflow and its gate",
+    "scripts/lib/guardrails.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/risk.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The change adds a project-owned CI extension point that runs before verification and changes shared risk classification and merge-approval protection for that extension point. The workflow, risk and guardrail changes and their tests support the intended boundary. "
+  ],
+  "explanation": "Issue #412: CI setup as a project extension point: .github/actions/project-setup (step 1 of #409). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
