@@ -21,6 +21,14 @@ fail() {
 
 source "$source_root/tests/lib-fakes.sh"
 
+# shipped_policy: the lines of .agents/policies/risk.conf as the template
+# ships it, from the preset of standard without the requirement lines it
+# does not write. Not the file of the repository these tests run in: a
+# project's own policy may have a profile or classes of its own.
+shipped_policy() {
+  (source "$source_root/scripts/lib/risk.sh" && risk_profile_preset standard) | grep -Ev '^[a-z]+: (verification|review|triage):'
+}
+
 # A project with documentation, code, an existing test, a manifest, two
 # checks, and the workflow, on a feature branch without changes. The second
 # argument is the risk policy of the base: 'template' for the file the
@@ -34,7 +42,7 @@ setup_repo() {
   workflow_gitignore "$repo/.gitignore"
   cp "$source_root/.agents/policies/autonomy.md" "$repo/.agents/policies/autonomy.md"
   case "$2" in
-    template) cp "$source_root/.agents/policies/risk.conf" "$repo/.agents/policies/risk.conf" ;;
+    template) shipped_policy >"$repo/.agents/policies/risk.conf" ;;
     none) ;;
     *) printf '%s\n' "$2" >"$repo/.agents/policies/risk.conf" ;;
   esac
@@ -625,12 +633,11 @@ expect_level "$repo" low "a project's own classes apply without a profile"
 [[ "$(profile_of "$repo")" == "none" ]] || fail "a project's own policy was labelled with a profile: $(cat "$repo.out")"
 expect_requirements "$repo" "full | none | full" "a project's own lines without a profile"
 
-# The preset of standard is the shipped policy: the same classes, and the
-# requirements a level without a line gets.
-shipped_lines="$(grep -Ev '^(#|$)' "$source_root/.agents/policies/risk.conf" | sort)"
-standard_classes="$(source "$source_root/scripts/lib/risk.sh" && risk_profile_preset standard | grep -Ev '^[a-z]+: (verification|review|triage):' | sort)"
-[[ "$shipped_lines" == "$standard_classes" ]] ||
-  fail "the classes of the standard preset differ from the shipped policy: $(diff <(printf '%s\n' "$shipped_lines") <(printf '%s\n' "$standard_classes"))"
+# The preset of standard is the shipped policy (shipped_policy writes its
+# classes): its requirements are those a level without a line gets.
+standard_requirements="$(source "$source_root/scripts/lib/risk.sh" && risk_profile_preset standard | grep -E '^[a-z]+: (verification|review|triage):')"
+[[ "$standard_requirements" == "$(printf '%s: verification: full\n%s: review: delta\n%s: triage: full\n' low low low medium medium medium high high high)" ]] ||
+  fail "the standard preset does not give the requirements of a level without a line: $standard_requirements"
 light_high="$(source "$source_root/scripts/lib/risk.sh" && risk_profile_preset light | grep -E '^(high|default|tests|test-fixtures):')"
 standard_high="$(source "$source_root/scripts/lib/risk.sh" && risk_profile_preset standard | grep -E '^(high|default|tests|test-fixtures):')"
 [[ "$light_high" == "$standard_high" ]] || fail "the light preset changes the default, the high class, the test files, or what high requires"

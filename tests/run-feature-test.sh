@@ -182,6 +182,14 @@ esac
 GH
 chmod +x "$tmp/bin/gh"
 
+# shipped_policy: the lines of .agents/policies/risk.conf as the template
+# ships it, from the preset of standard without the requirement lines it
+# does not write. Not the file of the repository these tests run in: a
+# project's own policy may have a profile or classes of its own.
+shipped_policy() {
+  (source "$source_root/scripts/lib/risk.sh" && risk_profile_preset standard) | grep -Ev '^[a-z]+: (verification|review|triage):'
+}
+
 # Creates a project with a remote and prints the path of its clone. The
 # control directory of its fake agents and GitHub is '<clone>.control'.
 setup_repo() {
@@ -202,7 +210,7 @@ setup_repo() {
   if [[ -n "${RISK_CONF:-}" ]]; then
     printf '%s\n' "$RISK_CONF" >"$seed/.agents/policies/risk.conf"
   else
-    cp "$source_root/.agents/policies/risk.conf" "$seed/.agents/policies/risk.conf"
+    shipped_policy >"$seed/.agents/policies/risk.conf"
   fi
   printf '# Agents\n' >"$seed/AGENTS.md"
   git -C "$seed" init -q -b main
@@ -1583,7 +1591,7 @@ reply="The page is written."'
 triage_by_mode='if grep -Fq "## Triage mode" "$RUN_CONTROL/triage-$count.context"; then '"$defer_and_accept"'; else '"$fix_minor"'; fi'
 for profile in none standard light; do
   if [[ "$profile" == "none" ]]; then
-    policy="$(cat "$source_root/.agents/policies/risk.conf")"
+    policy="$(shipped_policy)"
   else
     policy="$(printf 'profile: %s\ndefault: medium' "$profile")"
   fi

@@ -6,10 +6,10 @@ set -euo pipefail
 # template's own files: every check of scripts/verify-workflow.conf passes in
 # a fixture adopted project that has the state of a real one. The project
 # keeps its own CI and excludes it from the template's files, starts its
-# features from 'develop', has approved its requirements, has recorded its
-# baseline, has its own ADRs and an ignore rule that hides the workflow's
-# JSON files (un-ignored again, as the adoption does), and has no README.md
-# or LICENSE.
+# features from 'develop', has approved its requirements, has a risk policy
+# of its own, has recorded its baseline, has its own ADRs and an ignore rule
+# that hides the workflow's JSON files (un-ignored again, as the adoption
+# does), and has no README.md or LICENSE.
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
@@ -54,6 +54,10 @@ sed -e 's/^Status: Draft$/Status: Approved/' -e 's/^Approved at: Not approved$/A
   "$project/docs/PROJECT_REQUIREMENTS.md" >"$tmp/requirements.md"
 mv "$tmp/requirements.md" "$project/docs/PROJECT_REQUIREMENTS.md"
 grep -Fqx 'Status: Approved' "$project/docs/PROJECT_REQUIREMENTS.md" || fail "the fixture's requirements are not approved"
+# Its risk policy is its own: the light profile and a class of its own. No
+# self-test may need the policy the template ships.
+printf '\nprofile: light\nhigh: src/billing\n' >>"$project/.agents/policies/risk.conf"
+grep -Fqx 'profile: light' "$project/.agents/policies/risk.conf" || fail "the fixture's risk policy is the template's"
 printf '# 0001. Store orders in PostgreSQL\n\nStatus: Accepted\n\nThe project keeps its orders in PostgreSQL.\n' \
   >"$project/docs/decisions/0001-store-orders-in-postgresql.md"
 template_conf "$tmp/template.conf"

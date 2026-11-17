@@ -635,11 +635,13 @@ The self-tests depend only on the files the template carries into a project,
 never on the state of the repository they run in: not on its
 `.agents/template.conf` (a test that needs the template's list of files takes
 it without the project's exclusions, `commit:`, and `base:`), its
-`.agents/verification-baseline`, its ADRs, or the rules of its `.gitignore`
-other than the workflow's lines for `.agents/`. `tests/adopted-project-test.sh`
-holds them to it: it builds a fixture adopted project from the template's
-files, with its own CI excluded from the template's files, `base: develop`, a
-recorded baseline, its own ADRs, an ignore rule `*.json` that the adoption's
+`.agents/verification-baseline`, its risk policy (a test of the policy the
+template ships writes it from the preset of `standard` in
+`scripts/lib/risk.sh`), its ADRs, or the rules of its `.gitignore` other than
+the workflow's lines for `.agents/`. `tests/adopted-project-test.sh` holds them
+to it: it builds a fixture adopted project from the template's files, with its
+own CI excluded from the template's files, `base: develop`, a risk policy with
+`profile: light` and a class of its own, a recorded baseline, its own ADRs, an ignore rule `*.json` that the adoption's
 section un-ignores again, and no `README.md` or `LICENSE`, and runs every
 other self-test there, four at a time; each has to pass.
 
