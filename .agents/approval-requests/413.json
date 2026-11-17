@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "9ba0acd893a4c67865d1267361578a471ceaf38b",
+  "commit": {
+    "branch": "feature/413-411-r01-min1-check",
+    "parent": "039301c07a6b32040454ccde41aeebdb237f2c9f",
+    "base": "039301c07a6b32040454ccde41aeebdb237f2c9f"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the review could not confirm: ./scripts/verify.sh passes."
+  ],
+  "explanation": "Issue #413: [#411][R01][MIN1] Check that the template's shipped risk.conf matches the standard preset. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

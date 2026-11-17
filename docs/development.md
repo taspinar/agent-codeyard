@@ -683,7 +683,10 @@ never on the state of the repository they run in: not on its
 it without the project's exclusions, `commit:`, and `base:`), its
 `.agents/verification-baseline`, its risk policy (a test of the policy the
 template ships writes it from the preset of `standard` in
-`scripts/lib/risk.sh`), its ADRs, or the rules of its `.gitignore` other than
+`scripts/lib/risk.sh`; only in the template itself, the repository whose
+origin is the `repository:` of `.agents/template.conf`, does
+`tests/risk-test.sh` check that its own `risk.conf` still matches that
+preset), its ADRs, or the rules of its `.gitignore` other than
 the workflow's lines for `.agents/`. `tests/adopted-project-test.sh` holds them
 to it: it builds a fixture adopted project from the template's files, with its
 own CI excluded from the template's files, `base: develop`, a risk policy with
