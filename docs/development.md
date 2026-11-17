@@ -124,6 +124,52 @@ verification. A failing partial run removes an
 existing record, like any failing run. The workflow self-tests keep their own
 rule with `--only`: they run when a workflow file changed, or with `--all`.
 
+### The project's CI setup
+
+A project installs its own toolchains and dependencies in CI (Python, uv,
+Node.js, Terraform, ...) without editing `.github/workflows/ci.yml`: that
+file stays the template's, so `./scripts/sync-template.sh` keeps updating it
+without conflicts. The extension point is a composite action that the
+project owns: the file `action.yml` in `.github/actions/project-setup/`. The
+verification job of `ci.yml` runs it after the checkout and before
+`./scripts/verify.sh`, and only when the file exists
+(`if: hashFiles('.github/actions/project-setup/action.yml') != ''`); every
+group job of `docs/examples/parallel-ci.yml` does the same. A project without
+the action runs as before. Name the file `action.yml`: an `action.yaml` is
+not found, and the step is skipped.
+
+For a Python project with uv:
+
+```yaml
+# .github/actions/project-setup/action.yml
+name: Project setup
+description: Installs Python, uv, and the dependencies of the project.
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v6
+      with:
+        python-version: "3.12"
+        enable-cache: true
+    - run: uv sync --locked
+      shell: bash
+```
+
+The template never ships or changes anything under `.github/actions/`: it is
+not in the `paths:` of `.agents/template.conf`, and a sync leaves it alone.
+The action runs before the verification, so it could replace `verify.sh` or
+the tests on the runner. A change under `.github/actions/` is therefore
+treated like a change to a CI workflow: it is `high` in
+`.agents/policies/risk.conf`, protected by the merge approval gate whatever
+`.agents/policies/guardrails.conf` says, and listed in `.github/CODEOWNERS`.
+A project gets no fewer approvals from it, only no conflicts.
+
+GitHub Actions cannot run locally. `tests/sync-template-test.sh` checks the
+structure of both workflow files (the step comes after the checkout and
+before the verification in every job that runs `verify.sh`) and evaluates its
+condition with and without the action; the first CI run of a project with
+the action is the end-to-end evidence that it works.
+
 ### A parallel CI
 
 The CI of the template, `.github/workflows/ci.yml`, is one job, `verify`,
@@ -2590,8 +2636,9 @@ finished with `--no-review`.
 - every ADR in `docs/decisions/` that is added, changed, or removed. A new
   ADR can replace an accepted one without touching its file, so no ADR passes
   without you. A feature writes a new ADR with the status `Proposed`;
-- the CI workflows, and the configuration, scripts, prompts, and schemas that
-  carry out the gate;
+- the CI workflows, the project's CI setup under `.github/actions/` (see
+  "The project's CI setup"), and the configuration, scripts, prompts, and
+  schemas that carry out the gate;
 - in `scripts/verify.conf` and `scripts/verify-workflow.conf`: a changed or
   removed line, which includes a check made a budget, a budget made a check,
   and a changed target (see "Budgets"), and an added `accepted-failure:`
@@ -2733,8 +2780,8 @@ test-fixtures: tests/lib-fakes.sh
 | `profile` | The workflow profile, `light` or `standard`: a named preset of the other keys (see "Workflow profiles" below). Without the key, none |
 
 The template ships the file with `default: medium`, the paths that the merge
-approval gate protects as the `high` class (the ADRs, the CI workflows, the
-scripts, prompts, schemas, and configuration of the gate, and the two
+approval gate protects as the `high` class (the ADRs, the CI workflows and
+the project's CI setup under `.github/actions/`, the scripts, prompts, schemas, and configuration of the gate, and the two
 verification configurations), and no `low` class: with it, every feature is
 `medium` or `high`, which is the behaviour of today, and of a project whose
 base has no file at all. A project adds its classes. For a web application,

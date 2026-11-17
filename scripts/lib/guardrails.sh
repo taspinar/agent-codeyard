@@ -12,10 +12,12 @@
 GUARDRAILS_CONFIG=".agents/policies/guardrails.conf"
 
 # Protected in every project: the ADRs, and the files that define or carry
-# out the gate.
+# out the gate. The project's CI setup (.github/actions) runs before the
+# verification in CI, so it is protected like the workflows.
 GUARDRAILS_BUILTIN_PROTECTED=(
   docs/decisions
   .github/workflows
+  .github/actions
   .github/CODEOWNERS
   "$GUARDRAILS_CONFIG"
   .agents/policies/autonomy.md

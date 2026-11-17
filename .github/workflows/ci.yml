@@ -59,6 +59,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # The project's own toolchains and dependencies (Python, uv, Node.js,
+      # ...): a composite action that the project owns and the template never
+      # ships, so this file stays the template's. It runs only when the
+      # project has it, before the verification. See docs/development.md,
+      # "The project's CI setup".
+      - name: Set up the project
+        if: hashFiles('.github/actions/project-setup/action.yml') != ''
+        uses: ./.github/actions/project-setup
       # The website of the template is built by the verification
       # and needs the Node version it pins. The site is recognised by its
       # marker website/.codeyard-site: a project has no site, or a website/

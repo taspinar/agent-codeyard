@@ -60,7 +60,7 @@ The template ships `default: medium`, the paths of the workflow and its gate as 
 
 ```text
 default: medium
-high: docs/decisions .github/workflows .github/CODEOWNERS .agents/policies .agents/prompts/reviewer.md .agents/schemas .agents/agents.conf scripts/check-guardrails.sh scripts/lib/guardrails.sh scripts/check-risk.sh scripts/lib/risk.sh scripts/lib/agent.sh scripts/lib/review-data.sh scripts/lib/review-run.sh scripts/lib/fingerprint.sh scripts/review-feature.sh scripts/finish-feature.sh scripts/publish-feature.sh scripts/run-feature.sh scripts/verify.conf scripts/verify-workflow.conf
+high: docs/decisions .github/workflows .github/actions .github/CODEOWNERS .agents/policies .agents/prompts/reviewer.md .agents/schemas .agents/agents.conf scripts/check-guardrails.sh scripts/lib/guardrails.sh scripts/check-risk.sh scripts/lib/risk.sh scripts/lib/agent.sh scripts/lib/review-data.sh scripts/lib/review-run.sh scripts/lib/fingerprint.sh scripts/review-feature.sh scripts/finish-feature.sh scripts/publish-feature.sh scripts/run-feature.sh scripts/verify.conf scripts/verify-workflow.conf
 tests: tests test
 test-fixtures: tests/lib-fakes.sh
 ```

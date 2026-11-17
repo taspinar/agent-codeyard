@@ -255,6 +255,26 @@ mkdir -p "$repo/.github/workflows"
 printf 'name: x\n' >"$repo/.github/workflows/extra.yml"
 expect_level "$repo" protected "a feature adds a CI workflow"
 
+# The project's CI setup runs before the verification in CI: it is protected
+# like the workflows, also when the project's guardrails.conf does not name
+# it (Issue 412). Added, changed, and removed.
+repo="$(setup_repo project-setup)"
+if grep -Fq '.github' "$repo/.agents/policies/guardrails.conf"; then fail "the fixture's guardrails.conf names .github"; fi
+mkdir -p "$repo/.github/actions/project-setup"
+printf 'name: setup\nruns:\n  using: composite\n  steps: []\n' >"$repo/.github/actions/project-setup/action.yml"
+expect_level "$repo" protected "a feature adds the project's CI setup"
+grep -Fq ".github/actions/project-setup/action.yml" "$repo.out" || fail "the added CI setup was not named"
+git -C "$repo" add -A
+git -C "$repo" commit -qm "Set up the project in CI"
+git -C "$repo" switch -q main
+git -C "$repo" merge -q --ff-only feature/5-thing
+git -C "$repo" switch -q -c feature/6-change
+printf '  # changed\n' >>"$repo/.github/actions/project-setup/action.yml"
+expect_level "$repo" protected "a feature changes the project's CI setup"
+git -C "$repo" checkout -q -- .github
+git -C "$repo" rm -q -r .github/actions
+expect_level "$repo" protected "a feature removes the project's CI setup"
+
 # The heaviest finding decides, and --fail-on-protected turns it into a status.
 repo="$(setup_repo mixed)"
 printf 'dependencies = ["y"]\n' >>"$repo/pyproject.toml"

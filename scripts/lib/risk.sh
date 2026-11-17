@@ -94,7 +94,7 @@ RISK_DEFAULT_TRIAGE="full"
 # and AGENTS.md, lets a low feature go without a review, and gives low and
 # medium the light triage.
 RISK_PROFILES="light standard"
-RISK_PROFILE_HIGH=(docs/decisions .github/workflows .github/CODEOWNERS .agents/policies .agents/prompts/reviewer.md .agents/schemas .agents/agents.conf
+RISK_PROFILE_HIGH=(docs/decisions .github/workflows .github/actions .github/CODEOWNERS .agents/policies .agents/prompts/reviewer.md .agents/schemas .agents/agents.conf
   scripts/check-guardrails.sh scripts/lib/guardrails.sh scripts/check-risk.sh scripts/lib/risk.sh scripts/lib/agent.sh scripts/lib/review-data.sh
   scripts/lib/review-run.sh scripts/lib/fingerprint.sh scripts/review-feature.sh scripts/finish-feature.sh scripts/publish-feature.sh scripts/run-feature.sh
   scripts/verify.conf scripts/verify-workflow.conf)

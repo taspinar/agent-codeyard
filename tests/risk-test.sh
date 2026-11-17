@@ -142,6 +142,24 @@ printf '\n# changed\n' >>"$repo/scripts/finish-feature.sh"
 expect_level "$repo" high "a project without a policy classifies a change to finish-feature.sh as high"
 expect_reason "$repo" "scripts/finish-feature.sh" "the path was not given as the reason"
 
+# The project's CI setup runs before the verification in CI, so a change to
+# it is high like a change to a CI workflow (Issue 412): added or changed,
+# by the template's policy and without a policy.
+for policy in template none; do
+  repo="$(setup_repo "project-setup-$policy" "$policy")"
+  mkdir -p "$repo/.github/actions/project-setup"
+  printf 'name: setup\nruns:\n  using: composite\n  steps: []\n' >"$repo/.github/actions/project-setup/action.yml"
+  expect_level "$repo" high "an added project CI setup is high (policy: $policy)"
+  expect_reason "$repo" ".github/actions/project-setup/action.yml" "the project CI setup was not given as the reason (policy: $policy)"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm "Set up the project in CI"
+  git -C "$repo" switch -q main
+  git -C "$repo" merge -q --ff-only feature/5-thing
+  git -C "$repo" switch -q -c feature/6-other
+  printf '  # changed\n' >>"$repo/.github/actions/project-setup/action.yml"
+  expect_level "$repo" high "a changed project CI setup is high (policy: $policy)"
+done
+
 # The classes of a project, and the maximum rule: a low path with a medium
 # path is medium.
 project_policy='default: medium
