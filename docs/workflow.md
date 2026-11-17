@@ -73,10 +73,12 @@ flowchart TD
 - When the planner rejects or defers every finding, nothing changes and you
   can finish directly.
 - A finding that the planner escalates needs your decision: either it does not
-  apply or you accept the planning as it is with it, which
-  `finish-planning.sh --resolve <finding-id> --type not-applicable|accepted
-  --reason "<why>"` records at a terminal for that review round, or the
-  approved requirements must change. There is no script yet that
+  apply or you accept the planning as it is with it, which, for a minor
+  finding only, `finish-planning.sh --resolve <finding-id> --type
+  not-applicable|accepted --reason "<why>"` records at a terminal for that
+  review round; or the approved requirements must change. A major or critical
+  finding needs a new review round after the planning changed, or a change of
+  the requirements. There is no script yet that
   runs Project Grill again in an existing planning worktree, and
   `start-planning.sh` always starts a fresh planning branch. To change the
   requirements, edit `docs/PROJECT_REQUIREMENTS.md` in the planning worktree,
@@ -311,7 +313,7 @@ exits with status 3.
 | `review-planning.sh` | `planning-reviewer` (read-only) | None | Planning review JSON and report | No | No |
 | `revise-planning.sh` | `project-planner` (read-only, then write) | Approve the decisions | Revision JSON and report; architecture, roadmap, ADRs | Documents yes, revision no | No |
 | `finish-planning.sh` | None | Confirm earlier escalations; approve the planning | `docs/PLANNING_APPROVAL.md` | Yes | No |
-| `finish-planning.sh --resolve` | None | Decide on one escalated finding, at a terminal | `.agents/reviews/<review>-resolution-<id>.json` | No | No |
+| `finish-planning.sh --resolve` | None | Decide on one escalated minor finding, at a terminal | `.agents/reviews/<review>-resolution-<id>.json` | No | No |
 | `create-feature-issue.sh` | None | Create the Issue | Feature Issue on GitHub | Not applicable | No |
 | `start-feature.sh` | `implementer` (write) | None | Code and tests; the handoff note, manual steps, summary of the changes, and completion record as working files | Code and tests, by `finish-feature.sh` | By the agent, after its last change |
 | `review-feature.sh` | `reviewer` (read-only) | None | Review JSON and report | No | Yes, unless it already passed for this content |
@@ -329,8 +331,8 @@ exits with status 3.
 | `start-planning.sh --change` | Also: `origin/main` has no approved planning, the change request name is taken, the planner changed nothing, removed or renumbered a feature ID, or deleted an ADR |
 | `review-planning.sh` | Not on a planning branch, a planning document is missing, or the requirements are not approved |
 | `revise-planning.sh` | The planning review is stale, or the planner leaves its file scope, commits, or changes nothing for adopted findings |
-| `finish-planning.sh` | No current review, a critical or major finding in the latest round that was not escalated, an undecided or unapplied finding, or an escalation without your decision (`--resolve`) or confirmation |
-| `finish-planning.sh --resolve` | No terminal, a finding that is not escalated in the latest round, a stale review, a decision on that finding exists, or the review or the planning changed while you decided |
+| `finish-planning.sh` | No current review, a critical or major finding in the latest round (escalated or not), an undecided or unapplied finding, or an escalation without your decision (`--resolve`) or confirmation |
+| `finish-planning.sh --resolve` | No terminal, a finding that is not escalated in the latest round or that the review rates major or critical, a stale review, a decision on that finding exists, or the review or the planning changed while you decided |
 | `finish-planning.sh --amend` | Anything but the architecture and the ADRs changed, an ADR was deleted, the planning on `main` has no current approval, the branch lacks the latest `main`, or a required planning document is missing |
 | `create-feature-issue.sh` | The planning approval is missing or stale, the feature ID is unknown, duplicated, or empty, or the feature already has an Issue |
 | `start-feature.sh` | Tracked files in the checkout are modified, or the feature branch or worktree exists. With `--resume`: no worktree, or more than one, is on a branch of the Issue |
@@ -355,7 +357,7 @@ exits with status 3.
 | `check-risk.sh [<base>]` | To see the risk level of the feature in the worktree, every reason for it, and what the level requires of the review rounds; exits 0, 1, or 2 for `low`, `medium`, or `high`, for a CI step |
 | `finish-planning.sh --check` | To see whether the planning approval still matches the planning documents |
 | `finish-planning.sh --amend "<reason>"` | To approve a change to the architecture and the ADRs only, on a `planning/<name>` branch, without a review round. Refuses any other planning change and a planning without a current approval |
-| `finish-planning.sh --resolve <finding-id> --type not-applicable\|accepted --reason "<why>"` | Only the owner, at a terminal: when an escalated finding of the latest planning round does not apply, or you accept the planning as it is with it. `finish-planning.sh` then accepts that round, the approval lists the decision, and later planning reviewers receive it |
+| `finish-planning.sh --resolve <finding-id> --type not-applicable\|accepted --reason "<why>"` | Only the owner, at a terminal: when an escalated minor finding of the latest planning round does not apply, or you accept the planning as it is with it. `finish-planning.sh` then accepts that round, the approval lists the decision, and later planning reviewers receive it |
 | `triage-review.sh --publish <triage-json>` | To repeat a failed publication of the review and triage reports |
 | `triage-review.sh <review-json> --decisions <file> --reason <text>` | When the agent's proposal is disproportionate and you decide yourself; recorded as owner-directed, see docs/development.md |
 | `record-exception.sh <review-json> --finding <id> --type not-applicable\|risk-accepted --reason <text> [--evidence <text>]` | Only the owner, at a terminal: when a critical or major finding of the latest review is wrong or its risk is accepted. It lets `finish-feature.sh` commit with that finding open, and the merge then needs your approval; see docs/development.md, "Owner exceptions to a blocking finding" |

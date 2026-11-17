@@ -17,7 +17,7 @@ usage() {
   echo "  $0 --check             Report whether the recorded approval still matches the documents."
   echo "  $0 --amend \"<reason>\"  Approve a small technical amendment without a review round."
   echo "  $0 --resolve <finding-id> --type not-applicable|accepted --reason \"<why>\""
-  echo "                         Record your decision on one escalated finding of the latest round."
+  echo "                         Record your decision on one escalated minor finding of the latest round."
   echo
   echo "--check exits 0 when the approval is current, 1 when it is missing or stale,"
   echo "and 2 on an error."
@@ -28,9 +28,11 @@ usage() {
   echo "to the existing approval. Anything else needs a change cycle:"
   echo "  ./scripts/start-planning.sh <name> --change <file>"
   echo
-  echo "--resolve records, for one finding that the planner escalated in the latest"
-  echo "review round, that it does not apply (not-applicable) or that you accept the"
-  echo "planning as it is with it (accepted). It runs only at a terminal, shows the"
+  echo "--resolve records, for one minor finding that the planner escalated in the"
+  echo "latest review round, that it does not apply (not-applicable) or that you"
+  echo "accept the planning as it is with it (accepted). It refuses a major or critical"
+  echo "finding: that needs a new review round after the planning documents changed,"
+  echo "or a change of the requirements. It runs only at a terminal, shows the"
   echo "finding and the record, and asks once. The decision is stored next to the"
   echo "review, counts for that round only while the review is current, is listed in"
   echo "$PLANNING_APPROVAL_FILE, and is given to the planning reviewer of later rounds."
@@ -341,6 +343,7 @@ resolve() {
   local pending="$tmp_work/resolution.json"
   local answer=""
   local errors
+  local severity
 
   [[ -f "$revision" ]] ||
     fail "the findings of round $round have no revision decisions. Run ./scripts/revise-planning.sh --review $latest_relative."
@@ -350,6 +353,10 @@ resolve() {
     fail "$latest_relative (round $round, the latest) has no finding $resolve_finding."
   [[ "$(jq -r --arg id "$resolve_finding" '.decisions[] | select(.finding_id == $id) | .decision' "$revision")" == "ESCALATE" ]] ||
     fail "finding $resolve_finding of round $round is not escalated: only a finding that the planner escalated needs your decision."
+  # The severity is the review's, never an argument's or the planner's.
+  severity="$(jq -r --arg id "$resolve_finding" '.findings[] | select(.id == $id) | .severity' "$latest")"
+  [[ "$severity" == "minor" ]] ||
+    fail "finding $resolve_finding of round $round is $severity in the review: a decision records the owner's answer to a minor finding only. A $severity finding is resolved by a new review round after the planning documents changed, or by a change of the requirements (Project Grill, or a change cycle with ./scripts/start-planning.sh <name> --change <file>). Nothing was stored."
   record="$(planning_resolution_file "$latest" "$resolve_finding")"
   record_relative="${record#"$root"/}"
   [[ ! -e "$record" && ! -L "$record" ]] ||
@@ -441,14 +448,11 @@ fi
 
 # 3. The latest round is resolved: no critical or major finding, every finding
 #    decided, nothing adopted but not yet applied, and nothing escalated
-#    without your decision. An escalated critical or major finding is
-#    resolved by your decision like any escalated finding.
-escalated_ids="$(jq -c --argjson round "$round" '[.[] | select(.round == $round and .decision == "ESCALATE") | .finding_id]' "$decisions_file")"
-blocking="$(jq --argjson escalated "$escalated_ids" '
-  [.findings[] | select((.severity == "critical" or .severity == "major") and (.id | IN($escalated[]) | not))] | length
-' "$latest")"
+#    without your decision. Your decision resolves a minor finding only, so
+#    an escalated critical or major finding still blocks.
+blocking="$(jq '[.findings[] | select(.severity == "critical" or .severity == "major")] | length' "$latest")"
 [[ "$blocking" -eq 0 ]] ||
-  fail "the latest planning review (round $round) has $blocking critical or major finding(s). Revise with ./scripts/revise-planning.sh and review again."
+  fail "the latest planning review (round $round) has $blocking critical or major finding(s). Revise with ./scripts/revise-planning.sh and review again, or change the requirements; a decision with --resolve is for minor findings only."
 
 if [[ "$(jq '.findings | length' "$latest")" -gt 0 ]]; then
   [[ -f "$revision" ]] ||

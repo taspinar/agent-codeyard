@@ -212,10 +212,13 @@ if grep -Fq "The owner's decisions on earlier findings" "$repo.log.stdin"; then
   fail "a first round was given decisions that do not exist"
 fi
 review="$repo/.agents/reviews/planning-project-bootstrap-review-01.json"
+# A decision resolves a minor finding only.
+jq '.findings[0].severity = "minor"' "$review" >"$repo.review.tmp"
+mv "$repo.review.tmp" "$review"
 jq --arg blob "$(git -C "$repo" hash-object -- "$review")" '{
   schema: "planning-resolution/v1", type: "not-applicable", reason: "Offline use is the whole product.",
   decided_at: "2026-01-02T00:00:00Z", branch, review: ".agents/reviews/planning-project-bootstrap-review-01.json",
-  review_blob: $blob, round, reviewed_tree, finding_id: "M1", finding_severity: "major",
+  review_blob: $blob, round, reviewed_tree, finding_id: "M1", finding_severity: "minor",
   finding_title: .findings[0].title, planner_rationale: "Needs the owner."}' "$review" \
   >"$repo/.agents/reviews/planning-project-bootstrap-review-01-resolution-M1.json"
 jq '.reason = ""' "$repo/.agents/reviews/planning-project-bootstrap-review-01-resolution-M1.json" \
@@ -224,7 +227,7 @@ printf '\n## F02 — Sharing\n' >>"$repo/docs/roadmap.md"
 rm -f "$repo.log" "$repo.log.stdin"
 run_review "$repo" || { cat "$repo.out" >&2; fail "the round after a decision failed"; }
 grep -Fq "## The owner's decisions on earlier findings" "$repo.log.stdin" || fail "the reviewer did not receive the decisions"
-grep -Fq "Round 1, M1 [major] Roadmap omits offline use" "$repo.log.stdin" || fail "the decision does not name its finding"
+grep -Fq "Round 1, M1 [minor] Roadmap omits offline use" "$repo.log.stdin" || fail "the decision does not name its finding"
 grep -Fq "Decision: not-applicable" "$repo.log.stdin" && grep -Fq "Reason: Offline use is the whole product." "$repo.log.stdin" ||
   fail "the decision lacks its type or reason"
 grep -Fq "Planning documents changed since the decision: docs/roadmap.md" "$repo.log.stdin" ||

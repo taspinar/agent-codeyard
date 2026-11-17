@@ -83,7 +83,7 @@ For an Issue with many parts, a technical plan in `.agents/plans/` holds the imp
 <a id="step-revise"></a>
 <a id="address-the-review-findings"></a>
 
-**Address the review findings.** The planning agent proposes a decision per finding: adopt, reject, defer, or escalate to you. You approve the decisions, and a changed plan is reviewed again, until a round changes nothing. For an escalated finding you either change the requirements, or record at a terminal that it does not apply or that you accept the plan as it is, with `./scripts/finish-planning.sh --resolve <finding-id> --type not-applicable|accepted --reason "<why>"`. That decision holds for this review round, the approval lists it, and the reviewer of a later round is given it so that it does not raise the same finding again unless the plan changed what it is about. <a href="#workflow-reference/address-the-findings">Reference</a>.
+**Address the review findings.** The planning agent proposes a decision per finding: adopt, reject, defer, or escalate to you. You approve the decisions, and a changed plan is reviewed again, until a round changes nothing. For an escalated finding you either change the requirements, or, for a minor finding only, record at a terminal that it does not apply or that you accept the plan as it is, with `./scripts/finish-planning.sh --resolve <finding-id> --type not-applicable|accepted --reason "<why>"`. That decision holds for this review round, the approval lists it, and the reviewer of a later round is given it so that it does not raise the same finding again unless the plan changed what it is about. <a href="#workflow-reference/address-the-findings">Reference</a>.
 
 <a id="step-finish-planning"></a>
 <a id="approve-the-plan"></a>

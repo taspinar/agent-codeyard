@@ -74,7 +74,7 @@ the website describes the current template.
 | `scripts/start-planning.sh` | Project Grill, requirements approval, and project planning in a planning worktree; the first planning of a project removes the approval requests and plans it inherited from the template |
 | `scripts/review-planning.sh` | Independent, read-only review of the planning documents |
 | `scripts/revise-planning.sh` | The planner's decision per planning finding, then the revision |
-| `scripts/finish-planning.sh` | Checks and records your approval of the planning; `--check` tests it; `--resolve` records your decision on an escalated finding, at a terminal |
+| `scripts/finish-planning.sh` | Checks and records your approval of the planning; `--check` tests it; `--resolve` records your decision on an escalated minor finding, at a terminal |
 | `scripts/create-feature-issue.sh` | Creates the Issue of one roadmap feature |
 | `scripts/start-feature.sh` | Creates the feature worktree and starts the implementer |
 | `scripts/review-feature.sh` | Independent, read-only review of the complete feature diff, or with `--changes` of what changed since the previous round |

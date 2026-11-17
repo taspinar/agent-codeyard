@@ -167,7 +167,8 @@ planning_approval_status() {
 # The owner's decisions on escalated findings of a planning review
 # (finish-planning.sh --resolve). A decision says that the finding does not
 # apply (not-applicable), or that the owner accepts the planning as it is with
-# it (accepted). It is stored next to its review, which Git ignores too, as
+# it (accepted), and only for a finding that the review rates minor. It is
+# stored next to its review, which Git ignores too, as
 # <review>-resolution-<finding-id>.json, and bound to that review by the hash
 # of its file, its round, its branch, and its reviewed tree. It resolves the
 # finding in its own round only: a changed planning makes the review stale,
@@ -212,7 +213,10 @@ planning_resolution_errors() {
        then "its round, branch, or reviewed tree differs from the review." else empty end),
       (if (.finding_id | type) == "string" and $file == ($review | sub(".*/"; "") | sub("\\.json$"; "")) + "-resolution-\(.finding_id).json"
        then empty else "its file name does not name its finding." end),
-      (. as $d | if any($rev.findings[]?; .id == $d.finding_id) then empty else "the review has no finding \($d.finding_id)." end)
+      (. as $d | ([$rev.findings[]? | select(.id == $d.finding_id)] | first) as $f
+       | if $f == null then "the review has no finding \($d.finding_id)."
+         elif $f.severity != "minor" then "the finding is \($f.severity) in the review; a decision resolves a minor finding only."
+         else empty end)
   ' "$record"
 }
 
