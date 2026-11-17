@@ -534,4 +534,157 @@ git -C "$repo" stash -q -u
 git -C "$repo" switch -q main
 if run_amend "$repo" y --amend "A reason."; then fail "an amendment on main was accepted"; fi
 
+# --- Decisions on escalated findings ----------------------------------------
+#
+# finish-planning.sh --resolve records the owner's decision on one escalated
+# finding of the latest round, at a terminal only.
+
+# at_terminal <repo> <answer> <command>...: runs the command in the repository
+# at a pseudo-terminal, answering <answer> to its question.
+at_terminal() {
+  local repo="$1"
+  local answer="$2"
+  local command
+
+  shift 2
+  command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:/usr/bin:/bin") $(printf '%q ' "$@")"
+  if script --version 2>/dev/null | grep -q util-linux; then
+    printf '%s\n' "$answer" | script -qec "$command" /dev/null
+  else
+    printf '%s\n' "$answer" | script -q /dev/null sh -c "$command"
+  fi
+}
+
+# resolve <repo> <answer> <argument>...: finish-planning.sh --resolve at a
+# terminal. A refusal inside the terminal does not reach the exit status of
+# every 'script', so the tests check what was stored.
+resolve() {
+  local repo="$1"
+  local answer="$2"
+
+  shift 2
+  at_terminal "$repo" "$answer" ./scripts/finish-planning.sh --resolve "$@" >"$repo.out" 2>&1 || true
+}
+
+resolution() {
+  printf '%s/%s/planning-project-bootstrap-review-%02d-resolution-%s.json\n' "$1" "$reviews" "$2" "$3"
+}
+
+# A minor finding that the planner escalated: the owner decides it does not
+# apply, and the planning can then be approved; the approval lists the decision.
+repo="$(setup_repo resolve)"
+add_review "$repo" 1 PASS_WITH_MINOR_FINDINGS "[$(finding MIN2 minor "Offline sync is unplanned"), $(finding MIN1 minor "Vague name")]"
+add_revision "$repo" 1 ESCALATE
+jq '.decisions[1].decision = "REJECT"' "$repo/$reviews/planning-project-bootstrap-review-01-revision.json" >"$tmp/revision.tmp"
+mv "$tmp/revision.tmp" "$repo/$reviews/planning-project-bootstrap-review-01-revision.json"
+expect_refused "$repo" "an escalated minor finding has no decision"
+grep -Fq -- "--resolve <finding-id>" "$repo.out" || fail "the refusal does not name the command that records a decision"
+
+# Without a terminal nothing is asked and nothing is stored.
+if run_finish "$repo" y --resolve MIN2 --type not-applicable --reason "Sync is a non-goal."; then
+  fail "a decision was recorded without a terminal"
+fi
+grep -Fq "must be a terminal" "$repo.out" || fail "the refusal without a terminal does not say why"
+[[ ! -e "$(resolution "$repo" 1 MIN2)" ]] || fail "a decision was stored without a terminal"
+if run_finish "$repo" y --resolve MIN2 --type not-applicable --reason "Sync is a non-goal." --unattended; then
+  fail "a decision was recorded unattended"
+fi
+[[ ! -e "$(resolution "$repo" 1 MIN2)" ]] || fail "a decision was stored unattended"
+
+# Only an escalated finding of the latest round, with a valid type and reason.
+resolve "$repo" y MIN1 --type not-applicable --reason "A reason."
+grep -Fq "is not escalated" "$repo.out" || fail "a rejected finding was not refused: $(cat "$repo.out")"
+resolve "$repo" y X9 --type not-applicable --reason "A reason."
+grep -Fq "has no finding X9" "$repo.out" || fail "an unknown finding was not refused"
+resolve "$repo" y MIN2 --type risk-accepted --reason "A reason."
+grep -Fq "must be not-applicable or accepted" "$repo.out" || fail "an unknown type was not refused"
+resolve "$repo" y MIN2 --type accepted --reason " "
+grep -Fq "needs a reason" "$repo.out" || fail "an empty reason was not refused"
+compgen -G "$repo/$reviews/*-resolution-*.json" >/dev/null && fail "a refused decision was stored"
+
+# Declining stores nothing.
+resolve "$repo" n MIN2 --type not-applicable --reason "Sync is a non-goal."
+grep -Fq "Offline sync is unplanned" "$repo.out" || fail "the finding was not shown before the question"
+[[ ! -e "$(resolution "$repo" 1 MIN2)" ]] || fail "a declined decision was stored"
+
+resolve "$repo" y MIN2 --type not-applicable --reason "Sync is a non-goal of the requirements."
+record="$(resolution "$repo" 1 MIN2)"
+[[ -f "$record" ]] || { cat "$repo.out" >&2; fail "the decision was not stored"; }
+jq -e '.schema == "planning-resolution/v1" and .type == "not-applicable" and .round == 1 and .finding_id == "MIN2"
+  and .finding_severity == "minor" and .reason == "Sync is a non-goal of the requirements."
+  and .review == ".agents/reviews/planning-project-bootstrap-review-01.json"' "$record" >/dev/null ||
+  fail "the stored decision lacks its fields: $(cat "$record")"
+grep -Fq '"planner_rationale": "Considered."' "$repo.out" || fail "the record was not shown as it is stored"
+resolve "$repo" y MIN2 --type accepted --reason "Again."
+grep -Fq "exists already" "$repo.out" || fail "a second decision on the same finding was not refused"
+[[ "$(jq -r .type "$record")" == "not-applicable" ]] || fail "a second decision replaced the first"
+
+run_finish "$repo" y || { cat "$repo.out" >&2; fail "a planning whose escalation was decided was not approved"; }
+grep -Fq "Your decision: not-applicable, Sync is a non-goal of the requirements." "$repo.out" ||
+  fail "the decision was not shown with the findings"
+approval="$repo/docs/PLANNING_APPROVAL.md"
+grep -Fqx "## Escalations resolved by the owner's decision" "$approval" || fail "the approval does not list the decisions"
+grep -Eq "^- Round 1: MIN2 \[minor\] Offline sync is unplanned\. Not applicable, decided by the project owner at [0-9T:Z-]+: Sync is a non-goal of the requirements\.$" "$approval" ||
+  fail "the approval does not record the decision: $(cat "$approval")"
+
+# A decision is for a minor finding only: an escalated major or critical
+# finding is refused with the severity of the review, and nothing is recorded.
+repo="$(setup_repo resolve-blocking)"
+add_review "$repo" 1 CHANGES_REQUIRED "[$(finding M1 major "Offline sync is unplanned"), $(finding C1 critical "No data model")]"
+add_revision "$repo" 1 ESCALATE
+resolve "$repo" y M1 --type not-applicable --reason "Sync is a non-goal."
+grep -Fq "M1 of round 1 is major in the review" "$repo.out" || fail "an escalated major finding was not refused: $(cat "$repo.out")"
+grep -Fq "a new review round after the planning documents changed" "$repo.out" && grep -Fq "change of the requirements" "$repo.out" ||
+  fail "the refusal of a major finding does not name the ways that remain"
+resolve "$repo" y C1 --type accepted --reason "The model follows later."
+grep -Fq "C1 of round 1 is critical in the review" "$repo.out" || fail "an escalated critical finding was not refused: $(cat "$repo.out")"
+compgen -G "$repo/$reviews/*-resolution-*.json" >/dev/null && fail "a decision on a major or critical finding was stored"
+expect_refused "$repo" "escalated major and critical findings block"
+grep -Fq "2 critical or major finding(s)" "$repo.out" || fail "the escalated blocking findings were not reported"
+# A record written by hand for a major finding resolves nothing.
+review="$repo/$reviews/planning-project-bootstrap-review-01.json"
+jq --arg blob "$(git -C "$repo" hash-object -- "$review")" '{
+  schema: "planning-resolution/v1", type: "accepted", reason: "By hand.", decided_at: "2026-01-02T00:00:00Z",
+  branch, review: ".agents/reviews/planning-project-bootstrap-review-01.json", review_blob: $blob, round,
+  reviewed_tree, finding_id: "M1", finding_severity: "minor", finding_title: "Offline sync is unplanned",
+  planner_rationale: "Considered."}' "$review" >"$(resolution "$repo" 1 M1)"
+expect_refused "$repo" "a decision written by hand for a major finding"
+grep -Fq "the finding is major in the review; a decision resolves a minor finding only." "$repo.out" ||
+  fail "the hand-written decision on a major finding was not reported as invalid: $(cat "$repo.out")"
+
+# A decision is bound to its review as it is: an edited review voids it.
+repo="$(setup_repo resolve-edited)"
+add_review "$repo" 1 PASS_WITH_MINOR_FINDINGS "[$(finding MIN1 minor "Sharing scope is open")]"
+add_revision "$repo" 1 ESCALATE
+resolve "$repo" y MIN1 --type accepted --reason "Sharing stays open for now."
+[[ -f "$(resolution "$repo" 1 MIN1)" ]] || { cat "$repo.out" >&2; fail "the decision on a minor escalation was not stored"; }
+jq '.limitations = "Edited."' "$repo/$reviews/planning-project-bootstrap-review-01.json" >"$tmp/review.tmp"
+mv "$tmp/review.tmp" "$repo/$reviews/planning-project-bootstrap-review-01.json"
+expect_refused "$repo" "the review was edited after the decision"
+grep -Fq "the review changed after the decision" "$repo.out" || fail "the void decision was not reported"
+
+# A decision is stale once the documents change: the review it belongs to is
+# stale, and a new round that raises the finding again needs its own decision.
+repo="$(setup_repo resolve-stale)"
+add_review "$repo" 1 PASS_WITH_MINOR_FINDINGS "[$(finding MIN1 minor "Sharing scope is open")]"
+add_revision "$repo" 1 ESCALATE
+resolve "$repo" y MIN1 --type accepted --reason "Sharing stays open for now."
+[[ -f "$(resolution "$repo" 1 MIN1)" ]] || fail "the decision was not stored"
+printf '\n## F02 — Sharing\n' >>"$repo/docs/roadmap.md"
+expect_refused "$repo" "the documents changed after the decision"
+grep -Fq "is stale" "$repo.out" || fail "the stale review was not reported"
+resolve "$repo" y MIN1 --type accepted --reason "Again."
+grep -Fq "is stale" "$repo.out" || fail "a decision on a stale review was not refused"
+add_review "$repo" 2 PASS_WITH_MINOR_FINDINGS "[$(finding MIN1 minor "Sharing scope is still open")]"
+add_revision "$repo" 2 ESCALATE
+expect_refused "$repo" "a later round escalated the finding again"
+grep -Fq "without your decision: MIN1" "$repo.out" || fail "the new escalation was not reported: $(cat "$repo.out")"
+# The decision of round 1 still resolves the escalation of round 1, without
+# the question for earlier escalations.
+resolve "$repo" y MIN1 --type not-applicable --reason "Sharing is decided in F02."
+run_finish "$repo" y || { cat "$repo.out" >&2; fail "approving after a decision in each round failed"; }
+if grep -Fq "Escalated in earlier rounds:" "$repo.out"; then fail "a decided earlier escalation was asked about again"; fi
+[[ "$(grep -c '^- Round [12]: MIN1 ' "$repo/docs/PLANNING_APPROVAL.md")" -eq 2 ]] ||
+  fail "the approval does not list the decision of each round"
+
 echo "finish-planning tests passed"

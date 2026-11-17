@@ -73,7 +73,7 @@ export const planning: Step[] = [
       ["who", "You and the planning agent"],
       ["script", "`./scripts/revise-planning.sh`"],
       ["where", "The planning worktree"],
-      ["your decision", "You approve the decisions; an escalated finding needs your answer"],
+      ["your decision", "You approve the decisions; an escalated finding needs your answer: change the requirements, or, for a minor finding, record your decision with `finish-planning.sh --resolve`"],
       ["repeat", "Review again after every change, until a round changes nothing"],
     ],
   },
@@ -87,7 +87,7 @@ export const planning: Step[] = [
       ["script", "`./scripts/finish-planning.sh`"],
       ["where", "The planning worktree"],
       ["result", "`docs/PLANNING_APPROVAL.md` and the planning commit"],
-      ["refused if", "The review is stale, the latest round has a critical or major finding, or a finding has no decision or is escalated"],
+      ["refused if", "The review is stale, the latest round has a critical or major finding, or a finding has no decision or is escalated without yours"],
     ],
   },
   {

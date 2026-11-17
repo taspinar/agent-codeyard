@@ -16,6 +16,8 @@ usage() {
   echo "  $0                     Check the planning and record your approval (planning worktree)."
   echo "  $0 --check             Report whether the recorded approval still matches the documents."
   echo "  $0 --amend \"<reason>\"  Approve a small technical amendment without a review round."
+  echo "  $0 --resolve <finding-id> --type not-applicable|accepted --reason \"<why>\""
+  echo "                         Record your decision on one escalated minor finding of the latest round."
   echo
   echo "--check exits 0 when the approval is current, 1 when it is missing or stale,"
   echo "and 2 on an error."
@@ -25,6 +27,15 @@ usage() {
   echo "decision. It shows the change, asks for your approval, and adds the amendment"
   echo "to the existing approval. Anything else needs a change cycle:"
   echo "  ./scripts/start-planning.sh <name> --change <file>"
+  echo
+  echo "--resolve records, for one minor finding that the planner escalated in the"
+  echo "latest review round, that it does not apply (not-applicable) or that you"
+  echo "accept the planning as it is with it (accepted). It refuses a major or critical"
+  echo "finding: that needs a new review round after the planning documents changed,"
+  echo "or a change of the requirements. It runs only at a terminal, shows the"
+  echo "finding and the record, and asks once. The decision is stored next to the"
+  echo "review, counts for that round only while the review is current, is listed in"
+  echo "$PLANNING_APPROVAL_FILE, and is given to the planning reviewer of later rounds."
   exit 2
 }
 
@@ -39,8 +50,43 @@ tmp_work="$(mktemp -d "${TMPDIR:-/tmp}/finish-planning.XXXXXX")"
 trap 'rm -rf "$tmp_work"' EXIT
 
 amend_reason=""
+resolve_finding=""
+resolve_type=""
+resolve_reason=""
 case "$#:${1:-}" in
   0:) ;;
+  *:--resolve | *:--type | *:--reason)
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --unattended)
+          fail "a decision on a finding needs your confirmation at a terminal and cannot run with --unattended."
+          ;;
+        --resolve | --type | --reason)
+          [[ $# -ge 2 ]] || fail "$1 requires a value."
+          case "$1" in
+            --resolve) resolve_finding="$2" ;;
+            --type) resolve_type="$2" ;;
+            --reason) resolve_reason="$2" ;;
+          esac
+          shift 2
+          ;;
+        *) usage ;;
+      esac
+    done
+    [[ -n "$resolve_finding" ]] || fail "name the finding: --resolve <finding-id>."
+    [[ "$resolve_finding" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "not a finding ID: $resolve_finding"
+    case "$resolve_type" in
+      not-applicable | accepted) ;;
+      "") fail "name the type: --type not-applicable or --type accepted." ;;
+      *) fail "the type must be not-applicable or accepted, not: $resolve_type" ;;
+    esac
+    [[ "$resolve_reason" =~ [^[:space:]] ]] || fail "a decision needs a reason: --reason \"<why>\"."
+    [[ "$resolve_reason" != *$'\n'* ]] || fail "the reason of a decision must be a single line."
+    # The decision is the owner's, at a terminal: never from a pipe, a file,
+    # or another program's output.
+    [[ -t 0 && -t 1 ]] ||
+      fail "a decision on a finding is confirmed at a terminal; standard input and output must be a terminal."
+    ;;
   2:--amend)
     [[ "$2" =~ [^[:space:]] ]] || fail "--amend requires a reason."
     [[ "$2" != *$'\n'* ]] || fail "the reason of an amendment must be a single line."
@@ -226,9 +272,10 @@ done
 grep -Fqx "Status: Approved" "$root/docs/PROJECT_REQUIREMENTS.md" ||
   fail "the project requirements are not approved."
 # A document that an adoption reconstructed is approved only as the planner
-# confirmed or rewrote it, without the mark (lib/planning.sh).
+# confirmed or rewrote it, without the mark (lib/planning.sh). A decision on
+# a finding approves nothing, so it does not need that.
 observed="$(planning_observed_documents "$root")"
-[[ -z "$observed" ]] ||
+[[ -z "$observed" || -n "$resolve_finding" ]] ||
   fail "these planning documents still carry the mark 'Observed, not approved' of a reconstruction: ${observed//$'\n'/, }. Confirm or rewrite them in the planning, remove the mark, and review again."
 
 # An amendment replaces the review of steps 2 to 4 by its own checks.
@@ -274,22 +321,139 @@ fi
 
 round="$(jq -r '.round' "$latest")"
 verdict="$(jq -r '.verdict' "$latest")"
+revision="${latest%.json}-revision.json"
+
+# Your decisions on escalated findings (--resolve), each joined to the
+# escalation it resolves. A decision on anything else resolves nothing.
+planning_resolutions "$root" "$name" >"$tmp_work/resolutions.json"
+jq --slurpfile resolutions "$tmp_work/resolutions.json" '
+  map(. as $d
+      | . + {resolution: (if $d.decision == "ESCALATE"
+                          then ([$resolutions[0][] | select(.round == $d.round and .finding_id == $d.finding_id)] | first)
+                          else null end)})
+' "$decisions_file" >"$tmp_work/decisions-resolved.json"
+mv "$tmp_work/decisions-resolved.json" "$decisions_file"
+
+# resolve: records your decision on one escalated finding of the latest
+# round, for exactly the review as it is now.
+resolve() {
+  local record
+  local record_relative
+  local review_blob
+  local pending="$tmp_work/resolution.json"
+  local answer=""
+  local errors
+  local severity
+
+  [[ -f "$revision" ]] ||
+    fail "the findings of round $round have no revision decisions. Run ./scripts/revise-planning.sh --review $latest_relative."
+  errors="$(revision_artifact_errors "$revision" "$latest")"
+  [[ -z "$errors" ]] || fail "the revision of round $round is invalid: ${errors//$'\n'/; }"
+  [[ "$(jq --arg id "$resolve_finding" '[.findings[] | select(.id == $id)] | length' "$latest")" -eq 1 ]] ||
+    fail "$latest_relative (round $round, the latest) has no finding $resolve_finding."
+  [[ "$(jq -r --arg id "$resolve_finding" '.decisions[] | select(.finding_id == $id) | .decision' "$revision")" == "ESCALATE" ]] ||
+    fail "finding $resolve_finding of round $round is not escalated: only a finding that the planner escalated needs your decision."
+  # The severity is the review's, never an argument's or the planner's.
+  severity="$(jq -r --arg id "$resolve_finding" '.findings[] | select(.id == $id) | .severity' "$latest")"
+  [[ "$severity" == "minor" ]] ||
+    fail "finding $resolve_finding of round $round is $severity in the review: a decision records the owner's answer to a minor finding only. A $severity finding is resolved by a new review round after the planning documents changed, or by a change of the requirements (Project Grill, or a change cycle with ./scripts/start-planning.sh <name> --change <file>). Nothing was stored."
+  record="$(planning_resolution_file "$latest" "$resolve_finding")"
+  record_relative="${record#"$root"/}"
+  [[ ! -e "$record" && ! -L "$record" ]] ||
+    fail "a decision on $resolve_finding of round $round exists already: $record_relative. One decision per finding; remove the file first to record it again."
+
+  # The review is shown and bound as it is now; the record is complete
+  # before it is shown, and stored as it is shown.
+  review_blob="$(git -C "$root" hash-object -- "$latest")"
+  jq --arg type "$resolve_type" --arg reason "$resolve_reason" --arg at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+    --arg review "$latest_relative" --arg blob "$review_blob" --arg schema "$PLANNING_RESOLUTION_SCHEMA" \
+    --arg id "$resolve_finding" --slurpfile revision "$revision" '
+    ([.findings[] | select(.id == $id)] | first) as $f
+    | ([$revision[0].decisions[] | select(.finding_id == $id)] | first) as $d
+    | {
+        schema: $schema,
+        type: $type,
+        reason: $reason,
+        decided_at: $at,
+        branch,
+        review: $review,
+        review_blob: $blob,
+        round,
+        reviewed_tree,
+        finding_id: $f.id,
+        finding_severity: $f.severity,
+        finding_title: $f.title,
+        planner_rationale: $d.rationale
+      }' "$latest" >"$pending"
+
+  echo "YOUR DECISION on an escalated finding of $latest_relative (round $round)."
+  echo "This decision comes from you, not from an agent."
+  echo
+  echo "The finding, as the review states it:"
+  jq -r --arg id "$resolve_finding" '
+    [.findings[] | select(.id == $id)] | first
+    | "  \(.id) (\(.severity)): \(.title)", "  Evidence: \(.evidence)", "  Impact: \(.impact)", "  Recommendation: \(.recommendation)"
+  ' "$latest"
+  jq -r '"  The planner escalated it: \(.planner_rationale)"' "$pending"
+  echo
+  echo "The decision, exactly as it will be stored as $record_relative:"
+  cat "$pending"
+  echo
+  echo "It resolves the finding in round $round only while that review is current:"
+  echo "a change of a planning document makes the review stale, and a later round"
+  echo "that raises the finding again needs a decision of its own. The planning"
+  echo "reviewer of later rounds receives it, and the approval lists it."
+  printf "Store exactly this decision? [y/N] "
+  read -r answer || true
+  case "$answer" in
+    y | Y | yes | YES) ;;
+    *)
+      echo "Declined; nothing was stored."
+      exit 0
+      ;;
+  esac
+
+  # The review is still the one shown, and still current.
+  [[ "$(git -C "$root" hash-object -- "$latest")" == "$review_blob" ]] ||
+    fail "$latest_relative changed while the question was open. Nothing was stored."
+  [[ "$(fingerprint_files "$root" "$tmp_work" "${PLANNING_SCOPE[@]}")" == "$(jq -r '.reviewed_tree' "$latest")" ]] ||
+    fail "a planning document changed while the question was open. Nothing was stored."
+  [[ ! -e "$record" && ! -L "$record" ]] || fail "$record_relative appeared while the question was open. Nothing was stored."
+  cp "$pending" "$record"
+  errors="$(planning_resolution_errors "$root" "$record" "$latest")"
+  if [[ -n "$errors" ]]; then
+    rm -f "$record"
+    fail "the decision would be invalid: ${errors//$'\n'/; }. Nothing was stored."
+  fi
+  records_intervention "recorded a decision ($resolve_type) on escalated planning finding $resolve_finding of round $round"
+
+  echo
+  echo "Stored $record_relative."
+  echo "Next: ./scripts/finish-planning.sh, once every escalated finding of round $round has a decision."
+}
+
+if [[ -n "$resolve_finding" ]]; then
+  resolve
+  exit 0
+fi
 
 # Show every finding that was not adopted before any refusal, so the reasons
 # are visible.
 if [[ "$(jq 'length' "$decisions_file")" -gt 0 ]]; then
   echo "Findings that were not adopted:"
-  jq -r '.[] | "- Round \(.round), \(.decision): \(.finding_id) [\(.severity)] \(.title)\n  Rationale: \(.rationale)"' "$decisions_file"
+  jq -r '.[] | "- Round \(.round), \(.decision): \(.finding_id) [\(.severity)] \(.title)\n  Rationale: \(.rationale)"
+    + (if .resolution != null then "\n  Your decision: \(.resolution.type), \(.resolution.reason)" else "" end)' "$decisions_file"
   echo
 fi
 
 # 3. The latest round is resolved: no critical or major finding, every finding
-#    decided, nothing adopted but not yet applied, and nothing escalated.
+#    decided, nothing adopted but not yet applied, and nothing escalated
+#    without your decision. Your decision resolves a minor finding only, so
+#    an escalated critical or major finding still blocks.
 blocking="$(jq '[.findings[] | select(.severity == "critical" or .severity == "major")] | length' "$latest")"
 [[ "$blocking" -eq 0 ]] ||
-  fail "the latest planning review (round $round) has $blocking critical or major finding(s). Revise with ./scripts/revise-planning.sh and review again."
+  fail "the latest planning review (round $round) has $blocking critical or major finding(s). Revise with ./scripts/revise-planning.sh and review again, or change the requirements; a decision with --resolve is for minor findings only."
 
-revision="${latest%.json}-revision.json"
 if [[ "$(jq '.findings | length' "$latest")" -gt 0 ]]; then
   [[ -f "$revision" ]] ||
     fail "the findings of round $round have no revision decisions. Run ./scripts/revise-planning.sh --review $latest_relative."
@@ -299,14 +463,17 @@ if [[ "$(jq '.findings | length' "$latest")" -gt 0 ]]; then
     fail "round $round has adopted findings that are not applied yet. Run ./scripts/revise-planning.sh --review $latest_relative and review again."
 fi
 
-escalated_now="$(jq --argjson round "$round" '[.[] | select(.round == $round and .decision == "ESCALATE")] | length' "$decisions_file")"
-[[ "$escalated_now" -eq 0 ]] ||
-  fail "round $round has $escalated_now escalated finding(s). Resolve them through Project Grill and a new review round, or decide that they do not apply."
+escalated_now="$(jq -r --argjson round "$round" '
+  [.[] | select(.round == $round and .decision == "ESCALATE" and .resolution == null) | .finding_id] | join(", ")
+' "$decisions_file")"
+[[ -z "$escalated_now" ]] ||
+  fail "round $round has escalated finding(s) without your decision: $escalated_now. Resolve each through Project Grill and a new review round, or record your decision that it does not apply or that you accept it: ./scripts/finish-planning.sh --resolve <finding-id> --type not-applicable|accepted --reason \"<why>\""
 
 # 4. Escalations of earlier rounds need an explicit resolution by the human;
-#    a newer review alone does not resolve them.
+#    a newer review alone does not resolve them. Your recorded decision on
+#    one is that resolution.
 earlier_escalations="$(jq -r --argjson round "$round" '
-  .[] | select(.round < $round and .decision == "ESCALATE") | "- Round \(.round): \(.finding_id) \(.title)"
+  .[] | select(.round < $round and .decision == "ESCALATE" and .resolution == null) | "- Round \(.round): \(.finding_id) \(.title)"
 ' "$decisions_file")"
 if [[ -n "$earlier_escalations" ]]; then
   echo "Escalated in earlier rounds:"
@@ -397,6 +564,15 @@ fi
     echo "## Escalations confirmed as resolved"
     echo
     printf '%s\n' "$earlier_escalations"
+    echo
+  fi
+  if [[ "$(jq '[.[] | select(.resolution != null)] | length' "$decisions_file")" -gt 0 ]]; then
+    echo "## Escalations resolved by the owner's decision"
+    echo
+    echo "Recorded with \`finish-planning.sh --resolve\`, each for its own review round."
+    echo
+    jq -r '.[] | select(.resolution != null) | .resolution
+      | "- Round \(.round): \(.finding_id) [\(.finding_severity)] \(.finding_title). \(if .type == "accepted" then "Accepted" else "Not applicable" end), decided by the project owner at \(.decided_at): \(.reason)"' "$decisions_file"
     echo
   fi
   echo "## Findings that were not adopted"

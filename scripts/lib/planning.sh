@@ -163,3 +163,83 @@ planning_approval_status() {
   echo "a planning document changed after the planning was approved."
   return 1
 }
+
+# The owner's decisions on escalated findings of a planning review
+# (finish-planning.sh --resolve). A decision says that the finding does not
+# apply (not-applicable), or that the owner accepts the planning as it is with
+# it (accepted), and only for a finding that the review rates minor. It is
+# stored next to its review, which Git ignores too, as
+# <review>-resolution-<finding-id>.json, and bound to that review by the hash
+# of its file, its round, its branch, and its reviewed tree. It resolves the
+# finding in its own round only: a changed planning makes the review stale,
+# and a later round that raises the finding again needs a decision of its own.
+PLANNING_RESOLUTION_SCHEMA="planning-resolution/v1"
+
+# planning_resolution_file <review-json> <finding-id>
+# Prints where the decision on that finding of that review is stored.
+planning_resolution_file() {
+  printf '%s-resolution-%s.json\n' "${1%.json}" "$2"
+}
+
+# planning_resolution_errors <root> <record> <review-json>
+# Prints why the record is not a valid decision on a finding of the review as
+# the review is now, one reason per line; prints nothing when it is.
+planning_resolution_errors() {
+  local root="$1"
+  local record="$2"
+  local review="$3"
+  local blob
+
+  if [[ ! -f "$record" || -L "$record" ]] || ! jq -es 'length == 1 and (.[0] | type) == "object"' "$record" >/dev/null 2>&1; then
+    echo "${record#"$root"/} is not a JSON object."
+    return 0
+  fi
+  if [[ ! -f "$review" ]] || ! jq -e 'type == "object"' "$review" >/dev/null 2>&1; then
+    echo "its review ${review#"$root"/} is missing or invalid."
+    return 0
+  fi
+  blob="$(git -C "$root" hash-object -- "$review")"
+  jq -r --arg schema "$PLANNING_RESOLUTION_SCHEMA" --arg review "${review#"$root"/}" --arg blob "$blob" \
+    --arg file "$(basename "$record")" --slurpfile r "$review" '
+    def nonempty: type == "string" and test("\\S");
+    $r[0] as $rev
+    | (if .schema != $schema then "unknown schema: \(.schema)" else empty end),
+      (if (.type | IN("not-applicable", "accepted")) then empty else "the type must be not-applicable or accepted." end),
+      (if (.reason | nonempty) and (.reason | test("\n") | not) then empty else "the reason must be a single line that is not empty." end),
+      (if (.decided_at | nonempty) then empty else "decided_at is missing." end),
+      (if .review != $review then "it belongs to \(.review), not to \($review)." else empty end),
+      (if .review_blob != $blob then "the review changed after the decision." else empty end),
+      (if .round != $rev.round or .branch != $rev.branch or .reviewed_tree != $rev.reviewed_tree
+       then "its round, branch, or reviewed tree differs from the review." else empty end),
+      (if (.finding_id | type) == "string" and $file == ($review | sub(".*/"; "") | sub("\\.json$"; "")) + "-resolution-\(.finding_id).json"
+       then empty else "its file name does not name its finding." end),
+      (. as $d | ([$rev.findings[]? | select(.id == $d.finding_id)] | first) as $f
+       | if $f == null then "the review has no finding \($d.finding_id)."
+         elif $f.severity != "minor" then "the finding is \($f.severity) in the review; a decision resolves a minor finding only."
+         else empty end)
+  ' "$record"
+}
+
+# planning_resolutions <root> <name>
+# Prints, as a JSON array ordered by round and finding, the valid decisions
+# on findings of the planning reviews of planning/<name>. A record that is not
+# valid is left out, and standard error says why.
+planning_resolutions() {
+  local root="$1"
+  local prefix="$1/.agents/reviews/planning-$2-review-"
+  local record
+  local review
+  local errors
+
+  shopt -s nullglob
+  for record in "$prefix"[0-9][0-9]-resolution-*.json; do
+    review="${record%-resolution-*.json}.json"
+    errors="$(planning_resolution_errors "$root" "$record" "$review")"
+    if [[ -n "$errors" ]]; then
+      echo "Ignored the decision ${record#"$root"/}: ${errors//$'\n'/ }" >&2
+      continue
+    fi
+    jq -c . "$record"
+  done | jq -s 'sort_by(.round, .finding_id)'
+  shopt -u nullglob
+}
