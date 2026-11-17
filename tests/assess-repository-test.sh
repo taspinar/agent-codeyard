@@ -121,18 +121,31 @@ YAML
   printf '%s\n' "$repo"
 }
 
-# snapshot <repo>: the content of every file, also under .git, and a marker
-# whose time a changed or added file would pass.
+# state <repo>: the content of every file of the working tree, and the state
+# of Git as Git reports it. Git changes files under .git by itself (a
+# maintenance lock, a refreshed index), so the test asks Git instead of
+# reading them.
+state() {
+  (cd "$1" && find . -path ./.git -prune -o -type f -print | LC_ALL=C sort | while IFS= read -r file; do cksum "$file"; done)
+  own_git -C "$1" --no-optional-locks rev-parse HEAD
+  own_git -C "$1" --no-optional-locks for-each-ref --format='%(objectname) %(refname)'
+  own_git -C "$1" --no-optional-locks ls-files --stage
+  own_git -C "$1" --no-optional-locks config --local --list
+  own_git -C "$1" --no-optional-locks status --porcelain=v1 --ignored --untracked-files=all
+}
+# snapshot <repo>: the state, and a marker whose time a changed or added file
+# of the working tree would pass.
 snapshot() {
-  (cd "$1" && find . -type f -print | LC_ALL=C sort | while IFS= read -r file; do cksum "$file"; done) >"$1.snapshot"
+  state "$1" >"$1.snapshot"
   touch "$1.marker"
 }
 unchanged() {
   local now
 
-  now="$(cd "$1" && find . -type f -print | LC_ALL=C sort | while IFS= read -r file; do cksum "$file"; done)"
+  now="$(state "$1")"
   [[ "$now" == "$(cat "$1.snapshot")" ]] || fail "$2: the content of the repository changed: $(diff <(printf '%s\n' "$now") "$1.snapshot" | head -n 5)"
-  [[ -z "$(find "$1" -newer "$1.marker" -print)" ]] || fail "$2: the repository was written: $(find "$1" -newer "$1.marker" -print | head -n 5)"
+  [[ -z "$(find "$1" -path "$1/.git" -prune -o -newer "$1.marker" -print)" ]] ||
+    fail "$2: the repository was written: $(find "$1" -path "$1/.git" -prune -o -newer "$1.marker" -print | head -n 5)"
   for marker in ran-postinstall ran-make ran-fsmonitor ran-filter; do
     [[ ! -e "$tmp/$marker" ]] || fail "$2: code of the repository ran ($marker)"
   done
@@ -173,6 +186,25 @@ result() {
     execution_needed: [{what: "npm ci", why: "The tests need the dependencies.", side_effects: "Runs the postinstall script of package.json."}]}
     | '"${2:-.}" "$1"
 }
+
+# ---------------------------------- the check of an unchanged repository
+# It must catch a changed tracked file, an added untracked file, a changed
+# ignored file, and a change that only Git records, also when the time of a
+# file does not give it away.
+repo="$(make_target probe)"
+snapshot "$repo"
+unchanged "$repo" "a repository nothing changed"
+cp "$repo/.env" "$tmp/probe.env"
+for change in "printf 'x\n' >>src/index.js" "printf 'x\n' >untracked.txt" "printf 'x\n' >>.env" "own_git branch probe"; do
+  snapshot "$repo"
+  (cd "$repo" && eval "$change")
+  # A marker in the future: no time gives the change away, the state must.
+  touch -t 209901010000 "$repo.marker"
+  if (unchanged "$repo" "probe") 2>/dev/null; then
+    fail "the check of an unchanged repository missed: $change"
+  fi
+  (cd "$repo" && own_git checkout -q -- src/index.js && rm -f untracked.txt && cp "$tmp/probe.env" .env && { own_git branch -q -D probe 2>/dev/null || true; })
+done
 
 # --------------------------------------------- a repository without collisions
 repo="$(make_target clean)"
