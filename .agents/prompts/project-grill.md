@@ -61,6 +61,43 @@ has no requirements. Record genuinely unresolved decisions under
 Any substantive change returns the artifact to Draft status. Approval is
 recorded later by `scripts/start-planning.sh`, never by this agent.
 
+## Intent and limits, not implementation
+
+Approved requirements bind the planner. A detail of the implementation written
+into them takes a decision away from the planner, who is better placed to make
+it, and comes back as a requirement defect in the planning review. Write what
+the owner wants and where its limits are:
+
+- Record the intent and the limits, not the implementation. Write "the owner
+  enables the cloud APIs the infrastructure needs, once, before the first
+  apply", not a list of the APIs.
+- Write a concrete value or list only when the owner asks for it, such as the
+  CPU and memory the owner chose for a service. A list is "at least" unless the
+  owner says it is closed, so the planner can add what the implementation
+  needs; say so in the requirement.
+- Promise nothing the technology does not enforce: no "capped",
+  "guaranteed", or "always" where the platform only makes it likely. Write
+  the mechanism and its limit instead, for example "scales to zero and to at
+  most one instance; the owner sets a budget alert".
+- Mark an example as an example ("for example ...") so it is not read as
+  exhaustive.
+
+Over-specified:
+
+```text
+The owner enables run.googleapis.com and artifactregistry.googleapis.com.
+Cost is capped.
+```
+
+Intent and limits:
+
+```text
+The owner enables the cloud APIs the infrastructure needs, once, before the
+first apply (for example the APIs of the container service and the image
+registry). Cost stays low: the service scales to zero and to at most one
+instance, and a budget alert notifies the owner; nothing caps the bill.
+```
+
 ## Change cycle
 
 When the calling script says that this is a change cycle, the requirements

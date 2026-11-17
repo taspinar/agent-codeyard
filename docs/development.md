@@ -1039,6 +1039,19 @@ Bootstrap has two separate interactive agent sessions:
    creates or updates `docs/architecture.md`, `docs/roadmap.md`, and only
    necessary ADRs under `docs/decisions/`.
 
+Project Grill records the owner's intent and its limits, not details of the
+implementation: approved requirements bind the planner, who is better placed
+to decide those. It writes a concrete value or list only when the owner asks
+for one, such as the CPU and memory the owner chose, and a list is "at least"
+unless the owner closes it. It promises nothing the technology does not
+enforce ("capped", "guaranteed", "always"), and it marks an example as an
+example. For instance, "the owner enables
+`run.googleapis.com` and `artifactregistry.googleapis.com`" leaves the planner
+no room when the service account turns out to need `iam.googleapis.com` too;
+"the owner enables the cloud APIs the infrastructure needs, once, before the
+first apply" records the same intent and leaves the list to the planner. The
+guidance and a full example are in `.agents/prompts/project-grill.md`.
+
 Declining requirements approval or an agent failure stops the workflow and
 leaves the planning worktree intact. Inspect or revise it there; the script
 never substitutes another model or removes user work automatically.
