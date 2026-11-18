@@ -652,7 +652,23 @@ expect_level "$repo" low "a project's own classes apply without a profile"
 expect_requirements "$repo" "full | none | full" "a project's own lines without a profile"
 
 # The preset of standard is the shipped policy (shipped_policy writes its
-# classes): its requirements are those a level without a line gets.
+# classes): the template's own .agents/policies/risk.conf holds exactly its
+# lines without the requirement lines, so a class changed in one and not the
+# other fails here. Only in the template, the repository whose origin is the
+# 'repository:' of .agents/template.conf, as CI tells it
+# (.github/workflows/ci.yml): a project's policy is its own and may have a
+# profile or classes of its own, and the fixtures never read it.
+if (source "$source_root/scripts/lib/inherited.sh" &&
+  origin="$(git -C "$source_root" remote get-url origin 2>/dev/null)" &&
+  template="$(sed -n 's/^repository:[[:space:]]*//p' "$source_root/.agents/template.conf" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')" &&
+  [[ -n "$template" && "$(inherited_normalize_url "$origin")" == "$(inherited_normalize_url "$template")" ]]); then
+  shipped_lines="$(grep -Ev '^[[:space:]]*(#|$)' "$source_root/.agents/policies/risk.conf" || true)"
+  [[ "$shipped_lines" == "$(shipped_policy)" ]] ||
+    fail "the template's .agents/policies/risk.conf does not match the standard preset of scripts/lib/risk.sh without its requirement lines: $(diff <(printf '%s\n' "$shipped_lines") <(shipped_policy) || true)"
+fi
+
+# The requirements of the standard preset are those a level without a line
+# gets.
 standard_requirements="$(source "$source_root/scripts/lib/risk.sh" && risk_profile_preset standard | grep -E '^[a-z]+: (verification|review|triage):')"
 [[ "$standard_requirements" == "$(printf '%s: verification: full\n%s: review: delta\n%s: triage: full\n' low low low medium medium medium high high high)" ]] ||
   fail "the standard preset does not give the requirements of a level without a line: $standard_requirements"
