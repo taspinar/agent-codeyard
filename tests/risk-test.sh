@@ -772,7 +772,8 @@ expect_requirements "$repo" "full | delta | full" "light and standard on the ref
 # The project's policy override, .agents/policy-overrides/risk.conf: the
 # project sets its choices there without editing the template's risk.conf or
 # .agents/template.conf. A single value it writes replaces that key of
-# risk.conf; a path class adds to the class of risk.conf.
+# risk.conf; a path class is matched on its own, next to the class of
+# risk.conf.
 # with_override <repo> <override>: commits the override to the base, where
 # the feature branch then starts.
 with_override() {
@@ -809,6 +810,25 @@ repo="$(setup_repo override-class-adds-src template)"
 with_override "$repo" "high: src"
 printf 'print("y")\n' >>"$repo/src/code.py"
 expect_level "$repo" high "the high class of the override was not applied"
+# The path classes of the override are matched with its own pathspecs: an
+# exclusion there narrows only the override's patterns, never a class or list
+# of risk.conf or of the preset of its profile.
+repo="$(setup_repo override-exclude-high template)"
+with_override "$repo" "high: :(exclude)scripts/run-feature.sh"
+printf '\n# changed\n' >>"$repo/scripts/run-feature.sh"
+expect_level "$repo" high "an exclusion in the override dropped a path from the high class of risk.conf"
+expect_reason "$repo" "scripts/run-feature.sh: listed as high in .agents/policies/risk.conf" \
+  "the high class of risk.conf was not applied apart from the override's exclusion"
+repo="$(setup_repo override-exclude-preset "profile: standard")"
+with_override "$repo" "high: src :(exclude)scripts/finish-feature.sh"
+printf '\n# changed\n' >>"$repo/scripts/finish-feature.sh"
+expect_level "$repo" high "a high class in the override dropped the high class of the preset"
+repo="$(setup_repo override-exclude-tests template)"
+with_override "$repo" "tests: :(exclude)tests/unit-test.sh"
+printf 'exit 1\n' >"$repo/tests/unit-test.sh"
+expect_level "$repo" high "an exclusion in the override's tests dropped a test file of risk.conf"
+expect_reason "$repo" "tests/unit-test.sh: an existing test file has removed or changed lines" \
+  "the tests of risk.conf were not applied apart from the override's exclusion"
 
 # A change to a policy override is high whatever the policy says, also when
 # the feature adds the file, and the feature is classified by the policy and

@@ -3173,17 +3173,23 @@ high: src/auth db/migrations
 manifests: package.json package-lock.json
 ```
 
-How the two files combine (`risk_config_written` in `scripts/lib/risk.sh`):
+How the two files combine (`risk_config_written` and `risk_classify` in
+`scripts/lib/risk.sh`):
 
 - A single value the override writes, `default`, `profile`, or a requirement
   `<level>: <kind>` ("What each level requires"), replaces the line of that
   key in `risk.conf`.
 - A path class or list, `low`, `medium`, `high`, `tests`, `test-fixtures`,
-  or `manifests`, adds to the lines of `risk.conf`. The override can
-  therefore never drop a path from the `high` class the template ships;
-  writing `high: src/auth` adds `src/auth` to it.
+  or `manifests`, is matched with its own pathspecs, next to the class of
+  `risk.conf` and of the preset, and a path gets the higher of the two. The
+  override can therefore never drop a path from the `high` class the
+  template ships: writing `high: src/auth` adds `src/auth` to it, and an
+  exclusion such as `high: :(exclude)scripts/run-feature.sh` narrows only
+  the override's own patterns.
 - The preset of the profile ("Workflow profiles") then supplies the keys
-  that neither file writes, as before.
+  that `risk.conf` does not write and, for a single value, the override
+  does not write either; a path class of the override never takes the place
+  of the preset's.
 
 The override applies on top of `risk.conf`: a base without `risk.conf` gets
 the built-in policy, and its override is not read.

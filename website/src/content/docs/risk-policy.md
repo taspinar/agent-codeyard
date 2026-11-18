@@ -82,7 +82,7 @@ profile: light
 high: src/auth db/migrations
 ```
 
-A single value you write there, the `default`, the `profile`, or a requirement of a level, replaces the one in `risk.conf`. A class of paths adds to the class in `risk.conf`, so `high: src/auth` adds to the high class and never removes the template's files from it. Your override can lower what features cost, so it gets the same care as the policy: any change to it, also adding it, is high risk and needs your approval at the merge, and it is read from the base branch, so the feature that changes it is classified by the override it had before.
+A single value you write there, the `default`, the `profile`, or a requirement of a level, replaces the one in `risk.conf`. A class of paths is matched on its own, next to the class in `risk.conf`, so `high: src/auth` adds to the high class, and an exclusion you write narrows only your own patterns: it never removes the template's files from it. Your override can lower what features cost, so it gets the same care as the policy: any change to it, also adding it, is high risk and needs your approval at the merge, and it is read from the base branch, so the feature that changes it is classified by the override it had before.
 
 ### Classes of paths
 
