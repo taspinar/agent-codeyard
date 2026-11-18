@@ -47,7 +47,7 @@ What a level does not change: under every level and profile the implementer, the
 Every feature has a risk level: low, medium, or high. The workflow computes it; you can raise it with the label `risk: high` or `risk: medium`, or `--risk`. Nobody can lower it. It is the highest of three things:
 
 - **The paths the feature changes**, by the classes of the risk policy. A path that no class names gets the default.
-- **Fixed escalations to high** that no policy turns off, such as a removed or changed line of an existing test, a changed or removed line of the verification configuration, a change to an existing file under `.agents/policies/`, `.agents/prompts/`, or `.agents/schemas/`, or a change to an existing project skill. An added file does not escalate by itself; protected paths remain high by their class. Any change to shared test fixtures, including an added line, escalates. The <a href="#escalations">fixed escalations</a> list them all.
+- **Fixed escalations to high** that no policy turns off, such as a removed or changed line of an existing test, a changed or removed line of the verification configuration, a change to an existing file under `.agents/policies/`, `.agents/prompts/`, or `.agents/schemas/`, any change to your policy override, or a change to an existing project skill. An added file does not escalate by itself; protected paths remain high by their class. Any change to shared test fixtures, including an added line, escalates. The <a href="#escalations">fixed escalations</a> list them all.
 - **What the agents say**: the implementer can record a higher level, and a reviewer who rates the impact on the architecture as major or breaking makes the feature high.
 
 The level can be raised, never lowered: a lower claim is ignored and reported. The rules are read from the base branch, so a feature cannot relax the rules it is classified by. The scripts print the level with its reasons, the commit and the pull request record it, and `./scripts/check-risk.sh` shows it for the current worktree.
@@ -60,7 +60,7 @@ The template ships `default: medium`, the paths of the workflow and its gate as 
 
 ```text
 default: medium
-high: docs/decisions .github/workflows .github/actions .github/CODEOWNERS .agents/policies .agents/prompts/reviewer.md .agents/schemas .agents/agents.conf scripts/check-guardrails.sh scripts/lib/guardrails.sh scripts/check-risk.sh scripts/lib/risk.sh scripts/lib/agent.sh scripts/lib/review-data.sh scripts/lib/review-run.sh scripts/lib/fingerprint.sh scripts/review-feature.sh scripts/finish-feature.sh scripts/publish-feature.sh scripts/run-feature.sh scripts/verify.conf scripts/verify-workflow.conf
+high: docs/decisions .github/workflows .github/actions .github/CODEOWNERS .agents/policies .agents/policy-overrides .agents/prompts/reviewer.md .agents/schemas .agents/agents.conf scripts/check-guardrails.sh scripts/lib/guardrails.sh scripts/check-risk.sh scripts/lib/risk.sh scripts/lib/agent.sh scripts/lib/review-data.sh scripts/lib/review-run.sh scripts/lib/fingerprint.sh scripts/review-feature.sh scripts/finish-feature.sh scripts/publish-feature.sh scripts/run-feature.sh scripts/verify.conf scripts/verify-workflow.conf
 tests: tests test
 test-fixtures: tests/lib-fakes.sh
 ```
@@ -70,6 +70,19 @@ test-fixtures: tests/lib-fakes.sh
 ## The risk policy
 
 The policy file, [`.agents/policies/risk.conf`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/policies/risk.conf), has one `<key>: <value>` per line with paths. Like the rules of the gate, it is always read from the base branch, so a feature that changes it is classified by the old one, and is high risk because it changed a policy.
+
+<a id="policy-override"></a>
+
+### Your own choices: the policy override
+
+`risk.conf` belongs to the template, and a sync of the template updates it. Write your project's choices into a file of your own instead: `risk.conf` in `.agents/policy-overrides/`, in the same format. The template never ships or touches anything under `.agents/policy-overrides/`, so you need no exclusion in `.agents/template.conf`. To select the light profile and add a high class:
+
+```text
+profile: light
+high: src/auth db/migrations
+```
+
+A single value you write there, the `default`, the `profile`, or a requirement of a level, replaces the one in `risk.conf`. A class of paths is matched on its own, next to the class in `risk.conf`, so `high: src/auth` adds to the high class, and an exclusion you write narrows only your own patterns: it never removes the template's files from it. Your override can lower what features cost, so it gets the same care as the policy: any change to it, also adding it, is high risk and needs your approval at the merge, and it is read from the base branch, so the feature that changes it is classified by the override it had before.
 
 ### Classes of paths
 
@@ -95,7 +108,7 @@ The policy can also say, per level, what the review rounds of `run-feature.sh` n
 
 The template writes no such line, so every level gets the full verification, reviews of the changes when a round can build on the one before, and the full triage: what the workflow always did. A value that is not allowed counts as the strictest one, and `check-risk.sh` reports it as refused.
 
-**Profiles.** One line, `profile: light` or `profile: standard`, fills in the rules the file does not write (<a href="#workflow-profiles">workflow profiles</a>). `light` makes documentation and process files low risk, commits a low-risk feature without a review, and gives low- and medium-risk features the light triage. No profile changes what a high-risk feature gets. The template ships no `profile:` line; to switch, change that one line and merge it.
+**Profiles.** One line, `profile: light` or `profile: standard`, fills in the rules the file does not write (<a href="#workflow-profiles">workflow profiles</a>). `light` makes documentation and process files low risk, commits a low-risk feature without a review, and gives low- and medium-risk features the light triage. No profile changes what a high-risk feature gets. The template ships no `profile:` line; to switch, write that one line in your override, the file `risk.conf` in `.agents/policy-overrides/` (<a href="#policy-override">the policy override</a>), and merge it.
 
 ### Workflow profiles
 
@@ -121,5 +134,6 @@ Some changes make a feature high whatever the classes say:
 | **Shared test fixtures** | Any change to the libraries many tests load (`test-fixtures`), also an added line or a new file | High, since such a file can change every test |
 | **The verification configuration** | A changed or removed line in `scripts/verify.conf` or `scripts/verify-workflow.conf` | High |
 | **Policies, prompts, schemas** | A change to an existing file under `.agents/policies/`, `.agents/prompts/`, or `.agents/schemas/` | High |
+| **Your policy override** | Any change under `.agents/policy-overrides/`, also adding the file | High, and your approval at the merge |
 | **Project skills** | A change to an existing file of a skill under `.agents/project-skills/` (<a href="#agent-roles/skills">project skills</a>) | High |
 | **Manifests** | A change to an existing dependency or toolchain file that the policy names under `manifests` | High |

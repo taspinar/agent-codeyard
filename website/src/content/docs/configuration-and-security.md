@@ -65,7 +65,7 @@ Before a feature is committed, `check-guardrails.sh` looks at which files it cha
 
 | Kind of change | Examples | What happens |
 | --- | --- | --- |
-| **Protected** | Decision records in `docs/decisions/`, CI workflows and the project's CI setup in `.github/actions/`, `CODEOWNERS`, the agent configuration, and the scripts and prompts that carry out the review | The pull request is opened and marked as needing the owner's approval. No script merges it |
+| **Protected** | Decision records in `docs/decisions/`, CI workflows and the project's CI setup in `.github/actions/`, your policy overrides in `.agents/policy-overrides/`, `CODEOWNERS`, the agent configuration, and the scripts and prompts that carry out the review | The pull request is opened and marked as needing the owner's approval. No script merges it |
 | **Sensitive** | `docs/architecture.md`, a new check in `scripts/verify.conf`, and paths you add yourself | Allowed; the reviewer is told to look at it closely |
 | Everything else | Ordinary feature work | No extra step |
 

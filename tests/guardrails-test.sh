@@ -275,6 +275,27 @@ git -C "$repo" checkout -q -- .github
 git -C "$repo" rm -q -r .github/actions
 expect_level "$repo" protected "a feature removes the project's CI setup"
 
+# The project's policy overrides lower what the template's policies require,
+# so they are protected like the policies whatever guardrails.conf says
+# (Issue 409). Added, changed, and removed.
+repo="$(setup_repo policy-override)"
+if grep -Fq 'policy-overrides' "$repo/.agents/policies/guardrails.conf"; then fail "the fixture's guardrails.conf names the policy overrides"; fi
+mkdir -p "$repo/.agents/policy-overrides"
+printf 'profile: light\n' >"$repo/.agents/policy-overrides/risk.conf"
+expect_level "$repo" protected "a feature adds a policy override"
+grep -Fq "protected: .agents/policy-overrides/risk.conf (a policy override of the project is added, changed, or removed)" "$repo.out" ||
+  { cat "$repo.out" >&2; fail "the added policy override was not named with its reason"; }
+git -C "$repo" add -A
+git -C "$repo" commit -qm "Select the light profile"
+git -C "$repo" switch -q main
+git -C "$repo" merge -q --ff-only feature/5-thing
+git -C "$repo" switch -q -c feature/6-change
+printf 'default: low\n' >>"$repo/.agents/policy-overrides/risk.conf"
+expect_level "$repo" protected "a feature changes a policy override"
+git -C "$repo" checkout -q -- .agents/policy-overrides
+git -C "$repo" rm -q -r .agents/policy-overrides
+expect_level "$repo" protected "a feature removes a policy override"
+
 # The heaviest finding decides, and --fail-on-protected turns it into a status.
 repo="$(setup_repo mixed)"
 printf 'dependencies = ["y"]\n' >>"$repo/pyproject.toml"
