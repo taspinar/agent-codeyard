@@ -10,16 +10,21 @@
 # the point where the feature left its base.
 
 GUARDRAILS_CONFIG=".agents/policies/guardrails.conf"
+# The project's overrides of the policies, its own files outside the
+# template's (lib/risk.sh, RISK_OVERRIDE).
+GUARDRAILS_POLICY_OVERRIDES=".agents/policy-overrides"
 
 # Protected in every project: the ADRs, and the files that define or carry
 # out the gate. The project's CI setup (.github/actions) runs before the
-# verification in CI, so it is protected like the workflows.
+# verification in CI, so it is protected like the workflows, and the
+# project's policy overrides like the policies they override.
 GUARDRAILS_BUILTIN_PROTECTED=(
   docs/decisions
   .github/workflows
   .github/actions
   .github/CODEOWNERS
   "$GUARDRAILS_CONFIG"
+  "$GUARDRAILS_POLICY_OVERRIDES"
   .agents/policies/autonomy.md
   .agents/prompts/reviewer.md
   .agents/schemas
@@ -114,6 +119,7 @@ guardrails_classify() {
     case "$path" in
       docs/decisions/*) printf 'protected\t%s\t%s\n' "$path" "an ADR is added, changed, or removed" ;;
       .agents/accepted-failures/*) printf 'protected\t%s\t%s\n' "$path" "a recorded list of accepted failures, which lets the verification pass while they fail, is added, changed, or removed" ;;
+      "$GUARDRAILS_POLICY_OVERRIDES"/*) printf 'protected\t%s\t%s\n' "$path" "a policy override of the project is added, changed, or removed" ;;
       .agents/verification-baseline) printf 'protected\t%s\t%s\n' "$path" "the baseline of the verification, the record of the failures before any change, is added, changed, or removed" ;;
       *) printf 'protected\t%s\t%s\n' "$path" "the file defines or carries out the workflow and its gate" ;;
     esac

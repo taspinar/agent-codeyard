@@ -132,8 +132,9 @@ Human approval can be added later for:
 ### Code owners
 
 `.github/CODEOWNERS` lists the paths that need the owner: the rules for
-agents, the policies, the CI workflows and the project's CI setup under
-`.github/actions/`, and the decision records. It ships
+agents, the policies and the project's policy overrides under
+`.agents/policy-overrides/`, the CI workflows and the project's CI setup
+under `.github/actions/`, and the decision records. It ships
 with the placeholder `@YOUR_GITHUB_USERNAME`. Replace it with your account,
 or with a team; until then the file names nobody and has no effect.
 

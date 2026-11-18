@@ -785,6 +785,90 @@ expect_level "$repo" medium "a documentation change is medium by the standard of
 [[ "$(profile_of "$repo")" == "light on main, standard on origin/main" ]] || fail "the profiles of both refs were not named: $(cat "$repo.out")"
 expect_requirements "$repo" "full | delta | full" "light and standard on the refs"
 
+# The project's policy override, .agents/policy-overrides/risk.conf: the
+# project sets its choices there without editing the template's risk.conf or
+# .agents/template.conf. A single value it writes replaces that key of
+# risk.conf; a path class is matched on its own, next to the class of
+# risk.conf.
+# with_override <repo> <override>: commits the override to the base, where
+# the feature branch then starts.
+with_override() {
+  git -C "$1" switch -q main
+  mkdir -p "$1/.agents/policy-overrides"
+  printf '%s\n' "$2" >"$1/.agents/policy-overrides/risk.conf"
+  git -C "$1" add .agents/policy-overrides
+  git -C "$1" commit -qm "The project's policy override"
+  git -C "$1" switch -q feature/5-thing
+  git -C "$1" merge -q --ff-only main
+}
+repo="$(setup_repo override-light template)"
+with_override "$repo" "profile: light"
+printf 'More.\n' >>"$repo/docs/guide.md"
+expect_level "$repo" low "'profile: light' in the override makes a documentation change low"
+[[ "$(profile_of "$repo")" == "light" ]] || fail "the profile of the override was not reported: $(cat "$repo.out")"
+expect_requirements "$repo" "full | none | light" "a low feature under light from the override"
+shipped_policy | cmp -s - "$repo/.agents/policies/risk.conf" || fail "the override test edited the shipped risk.conf"
+repo="$(setup_repo override-light-gate template)"
+with_override "$repo" "profile: light"
+printf '\n# changed\n' >>"$repo/scripts/finish-feature.sh"
+expect_level "$repo" high "the high class of risk.conf stays under a profile from the override"
+repo="$(setup_repo override-default "$(printf 'profile: light\ndefault: medium')")"
+with_override "$repo" "$(printf 'profile: standard\ndefault: low')"
+printf 'print("y")\n' >>"$repo/src/code.py"
+expect_level "$repo" low "the default of the override replaces the default of risk.conf"
+[[ "$(profile_of "$repo")" == "standard" ]] || fail "the profile of the override did not replace that of risk.conf: $(cat "$repo.out")"
+repo="$(setup_repo override-class-adds template)"
+with_override "$repo" "high: src"
+printf '\n# changed\n' >>"$repo/scripts/finish-feature.sh"
+expect_level "$repo" high "a high class in the override dropped the high class of risk.conf"
+expect_reason "$repo" "scripts/finish-feature.sh: listed as high" "the high class of risk.conf was not applied next to the override"
+repo="$(setup_repo override-class-adds-src template)"
+with_override "$repo" "high: src"
+printf 'print("y")\n' >>"$repo/src/code.py"
+expect_level "$repo" high "the high class of the override was not applied"
+# The path classes of the override are matched with its own pathspecs: an
+# exclusion there narrows only the override's patterns, never a class or list
+# of risk.conf or of the preset of its profile.
+repo="$(setup_repo override-exclude-high template)"
+with_override "$repo" "high: :(exclude)scripts/run-feature.sh"
+printf '\n# changed\n' >>"$repo/scripts/run-feature.sh"
+expect_level "$repo" high "an exclusion in the override dropped a path from the high class of risk.conf"
+expect_reason "$repo" "scripts/run-feature.sh: listed as high in .agents/policies/risk.conf" \
+  "the high class of risk.conf was not applied apart from the override's exclusion"
+repo="$(setup_repo override-exclude-preset "profile: standard")"
+with_override "$repo" "high: src :(exclude)scripts/finish-feature.sh"
+printf '\n# changed\n' >>"$repo/scripts/finish-feature.sh"
+expect_level "$repo" high "a high class in the override dropped the high class of the preset"
+repo="$(setup_repo override-exclude-tests template)"
+with_override "$repo" "tests: :(exclude)tests/unit-test.sh"
+printf 'exit 1\n' >"$repo/tests/unit-test.sh"
+expect_level "$repo" high "an exclusion in the override's tests dropped a test file of risk.conf"
+expect_reason "$repo" "tests/unit-test.sh: an existing test file has removed or changed lines" \
+  "the tests of risk.conf were not applied apart from the override's exclusion"
+
+# A change to a policy override is high whatever the policy says, also when
+# the feature adds the file, and the feature is classified by the policy and
+# the override of the base: it never lowers its own level.
+repo="$(setup_repo override-added "$(printf 'default: low\nlow: .agents')")"
+printf 'More.\n' >>"$repo/docs/guide.md"
+mkdir -p "$repo/.agents/policy-overrides"
+printf 'profile: light\n' >"$repo/.agents/policy-overrides/risk.conf"
+expect_level "$repo" high "a feature that adds a policy override is high"
+expect_reason "$repo" ".agents/policy-overrides/risk.conf: a policy override of the project is added, changed, or removed" \
+  "the added override was not given as the reason"
+[[ "$(profile_of "$repo")" == "none" ]] || fail "a profile was applied that the base does not have: $(cat "$repo.out")"
+repo="$(setup_repo override-self-lowering template)"
+with_override "$repo" "high: src"
+printf 'print("y")\n' >>"$repo/src/code.py"
+printf 'profile: light\ndefault: low\n' >"$repo/.agents/policy-overrides/risk.conf"
+expect_level "$repo" high "a feature that changes the override is high"
+expect_reason "$repo" "src/code.py: listed as high" "the feature's own override lowered the class of the base"
+[[ "$(profile_of "$repo")" == "none" ]] || fail "the profile of the feature's own override was applied: $(cat "$repo.out")"
+repo="$(setup_repo override-removed template)"
+with_override "$repo" "profile: standard"
+git -C "$repo" rm -q .agents/policy-overrides/risk.conf
+expect_level "$repo" high "a feature that removes the override is high"
+
 # Refusals.
 repo="$(setup_repo refusals template)"
 check "$repo" --fail-on-protected

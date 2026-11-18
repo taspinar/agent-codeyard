@@ -1,0 +1,22 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "01e160749ec1c714d1a09b4ee4a23663ebbf21fb",
+  "commit": {
+    "branch": "feature/409-project-extension-points-ci",
+    "parent": "77b2b384eecdbfa99df5c480dbfa8c87427daccf",
+    "base": "039301c07a6b32040454ccde41aeebdb237f2c9f"
+  },
+  "review": {
+    "round": 4,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".agents/policies/guardrails.conf: the file defines or carries out the workflow and its gate",
+    ".github/CODEOWNERS: the file defines or carries out the workflow and its gate",
+    "scripts/lib/guardrails.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/risk.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The override adds a project policy configuration interface and changes shared risk-policy loading and classification in scripts/lib/risk.sh, with matching protection in scripts/lib/guardrails.sh. The override is read from the base branch, and its pathspecs are evaluated separately from the template policy and profile presets. "
+  ],
+  "explanation": "Issue #409: Project extension points: CI setup and policy overrides outside the template's files. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

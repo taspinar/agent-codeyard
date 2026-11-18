@@ -430,7 +430,8 @@ state_before="$(state "$repo")"
 files_before="$(project_files "$repo")"
 : >"$tmp/edited.json"
 : >"$repo.out"
-outside_before="$(cd "$tmp" && find . -path ./traversal -prune -o -print | LC_ALL=C sort)"
+# The listing skips every .git, whose files Git changes by itself (#388).
+outside_before="$(cd "$tmp" && find . \( -path ./traversal -o -name .git \) -prune -o -print | LC_ALL=C sort)"
 for edit in '.additions += [{path: "../../outside.txt", ownership: "template"}]' \
   '.additions[0].path = "docs/../../outside.md"' \
   '.additions[0].path = "/tmp/outside.md"' \
@@ -442,7 +443,7 @@ for edit in '.additions += [{path: "../../outside.txt", ownership: "template"}]'
   grep -Fq "stops before any change" "$repo.out" || fail "an invalid path was not refused ($edit): $(cat "$repo.out")"
   [[ "$(state "$repo")" == "$state_before" && "$(project_files "$repo")" == "$files_before" ]] ||
     fail "a refused proposal with an invalid path changed the repository: $edit"
-  [[ "$(cd "$tmp" && find . -path ./traversal -prune -o -print | LC_ALL=C sort)" == "$outside_before" ]] ||
+  [[ "$(cd "$tmp" && find . \( -path ./traversal -o -name .git \) -prune -o -print | LC_ALL=C sort)" == "$outside_before" ]] ||
     fail "a refused proposal with an invalid path wrote outside the repository: $edit"
   [[ ! -e "$(dirname "$tmp")/outside.txt" ]] || fail "a refused proposal with an invalid path wrote outside the repository: $edit"
 done

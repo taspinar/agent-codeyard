@@ -14,14 +14,17 @@
 #    path), any change under the shared test fixtures the policy names
 #    (test-fixtures, also an added line or file), a change to an existing
 #    file under .agents/policies/, .agents/prompts/, or .agents/schemas/
-#    (the policy itself among them), a change to an existing file of a
+#    (the policy itself among them), any change under the project's policy
+#    overrides (.agents/policy-overrides/, also an added file, since an
+#    override can lower every class), a change to an existing file of a
 #    project skill under .agents/project-skills/ (lib/skills.sh), which is
 #    agent instruction like a contract, and a change to an existing dependency
-#    or toolchain manifest the policy names. Apart from the test fixtures, an
-#    escalation reads only changed or removed existing lines and files: a
-#    file the feature adds, and the lines of a new file, never escalate by
-#    themselves, whatever they hold; a protected path keeps its high class by
-#    the path rule. No escalation reads the content of a line;
+#    or toolchain manifest the policy names. Apart from the test fixtures and
+#    the policy overrides, an escalation reads only changed or removed
+#    existing lines and files: a file the feature adds, and the lines of a
+#    new file, never escalate by themselves, whatever they hold; a protected
+#    path keeps its high class by the path rule. No escalation reads the
+#    content of a line;
 # 3. what an agent recorded: 'risk' in the implementer's completion record,
 #    and the independent reviewer's architecture_impact, of which major and
 #    breaking count as high; and the owner's hints: a risk label of the Issue
@@ -61,6 +64,16 @@ if ! declare -F guardrails_rules_refs >/dev/null; then
 fi
 
 RISK_CONFIG=".agents/policies/risk.conf"
+# The project's override of the policy: its own file, outside the template's
+# files, so a sync never touches it. Its single values are combined with
+# RISK_CONFIG by risk_config_written, its path classes are matched on their
+# own (risk_override_values), it is read from the base like the policy, and
+# any change
+# under GUARDRAILS_POLICY_OVERRIDES, also adding the file, is high
+# (risk_classify) and protected (lib/guardrails.sh).
+RISK_OVERRIDE="$GUARDRAILS_POLICY_OVERRIDES/risk.conf"
+# The keys of the policy whose values are pathspecs: a path class or list.
+RISK_PATH_KEYS="low|medium|high|tests|test-fixtures|manifests"
 
 # A project whose base has no risk.conf gets what the template ships: every
 # feature is medium or high, with the files of the workflow and its gate as
@@ -94,7 +107,7 @@ RISK_DEFAULT_TRIAGE="full"
 # and AGENTS.md, lets a low feature go without a review, and gives low and
 # medium the light triage.
 RISK_PROFILES="light standard"
-RISK_PROFILE_HIGH=(docs/decisions .github/workflows .github/actions .github/CODEOWNERS .agents/policies .agents/prompts/reviewer.md .agents/schemas .agents/agents.conf
+RISK_PROFILE_HIGH=(docs/decisions .github/workflows .github/actions .github/CODEOWNERS .agents/policies .agents/policy-overrides .agents/prompts/reviewer.md .agents/schemas .agents/agents.conf
   scripts/check-guardrails.sh scripts/lib/guardrails.sh scripts/check-risk.sh scripts/lib/risk.sh scripts/lib/agent.sh scripts/lib/review-data.sh
   scripts/lib/review-run.sh scripts/lib/fingerprint.sh scripts/review-feature.sh scripts/finish-feature.sh scripts/publish-feature.sh scripts/run-feature.sh
   scripts/verify.conf scripts/verify-workflow.conf)
@@ -134,6 +147,53 @@ risk_config_exists() {
   git -C "$1" cat-file -e "$2:$RISK_CONFIG" 2>/dev/null
 }
 
+# risk_config_key
+# Prints an awk function: the key of a line of the policy, '<level>:<kind>:'
+# for a requirement line and the word before the first colon for any other.
+risk_config_key() {
+  printf '%s\n' 'function key(line, k) {' \
+    "  if (match(line, \"^(low|medium|high):[[:space:]]*($RISK_REQUIREMENT_KINDS):\")) {" \
+    '    k = substr(line, 1, RLENGTH)' \
+    '    gsub(/[[:space:]]/, "", k)' \
+    '    return k' \
+    '  }' \
+    '  return substr(line, 1, index(line, ":") - 1)' \
+    '}'
+}
+
+# risk_config_written <root> <ref>
+# Prints the policy of <ref> as the project wrote it: the single values of
+# the override (RISK_OVERRIDE), then the lines of RISK_CONFIG. A single value
+# the override writes ('default', 'profile', a requirement '<level>: <kind>')
+# replaces the line of that key in RISK_CONFIG. A path class or list of the
+# override (RISK_PATH_KEYS) is left out: risk_override_values prints it, and
+# risk_classify matches it with its own pathspecs, so an exclusion in the
+# override never narrows a class of the template. Nothing without
+# RISK_CONFIG: an override applies on top of it.
+risk_config_written() {
+  local text
+  local override
+
+  text="$(git -C "$1" show "$2:$RISK_CONFIG" 2>/dev/null)" || return 0
+  override="$(git -C "$1" show "$2:$RISK_OVERRIDE" 2>/dev/null)" || override=""
+  { printf '%s\n' "$override"; echo "--policy--"; printf '%s\n' "$text"; } |
+    awk "$(risk_config_key)"'
+      $0 == "--policy--" { policy = 1; next }
+      !policy && /^[a-z]+:/ && key($0) ~ /^('"$RISK_PATH_KEYS"')$/ { next }
+      !policy { print; if ($0 ~ /^[a-z]+:/) written[key($0)] = 1; next }
+      !($0 ~ /^[a-z]+:/ && key($0) in written) { print }'
+}
+
+# risk_override_values <root> <ref> <key>
+# Prints the pathspecs of a path class or list (RISK_PATH_KEYS) that the
+# override of <ref> writes, one per line; nothing without RISK_CONFIG, the
+# override, or the key. They are matched apart from those of RISK_CONFIG.
+risk_override_values() {
+  risk_config_exists "$1" "$2" || return 0
+  git -C "$1" show "$2:$RISK_OVERRIDE" 2>/dev/null | sed -n "s/^$3:[[:space:]]*//p" |
+    grep -Ev "^($RISK_REQUIREMENT_KINDS):" | tr -s '[:space:]' '\n' | grep . || true
+}
+
 # risk_profile_preset <profile>
 # Prints the lines of the preset of a workflow profile, in the format of the
 # policy; nothing for a word that is not a profile.
@@ -168,10 +228,11 @@ risk_profile_preset() {
 }
 
 # risk_profile_written <root> <ref>
-# Prints the value of the first 'profile:' line of the policy of <ref>, as
-# written, with single spaces; nothing without the file or the line.
+# Prints the value of the first 'profile:' line of the policy of <ref> and
+# its override, as written, with single spaces; nothing without the file or
+# the line.
 risk_profile_written() {
-  git -C "$1" show "$2:$RISK_CONFIG" 2>/dev/null |
+  risk_config_written "$1" "$2" |
     sed -n 's/^profile:[[:space:]]*//p' | sed -n 1p | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//' || true
 }
 
@@ -191,26 +252,18 @@ risk_profile_applied() {
 }
 
 # risk_config_effective <root> <ref>
-# Prints the policy of <ref> as the rules apply it: the lines of the file,
-# then the lines of the preset of its profile whose key the file does not
-# write. The key of a requirement line is '<level>: <kind>', of any other
-# line the word before the first colon. Nothing without the file.
+# Prints the policy of <ref> as the rules apply it: the lines the project
+# wrote (risk_config_written), then the lines of the preset of its profile
+# whose key it does not write. Nothing without the file.
 risk_config_effective() {
   local text
   local profile
 
-  text="$(git -C "$1" show "$2:$RISK_CONFIG" 2>/dev/null)" || return 0
+  risk_config_exists "$1" "$2" || return 0
+  text="$(risk_config_written "$1" "$2")"
   profile="$(risk_profile_applied "$(risk_profile_written "$1" "$2")")"
   { printf '%s\n' "$text"; echo "--preset--"; risk_profile_preset "$profile"; } |
-    awk -v kinds="$RISK_REQUIREMENT_KINDS" '
-      function key(line, k) {
-        if (match(line, "^(low|medium|high):[[:space:]]*(" kinds "):")) {
-          k = substr(line, 1, RLENGTH)
-          gsub(/[[:space:]]/, "", k)
-          return k
-        }
-        return substr(line, 1, index(line, ":") - 1)
-      }
+    awk "$(risk_config_key)"'
       $0 == "--preset--" { preset = 1; next }
       !preset { print; if ($0 ~ /^[a-z]+:/) written[key($0)] = 1; next }
       !(key($0) in written) { print }'
@@ -223,7 +276,7 @@ risk_config_effective() {
 # 'raw'.
 risk_config_lines() {
   if [[ "${4:-}" == "raw" ]]; then
-    git -C "$1" show "$2:$RISK_CONFIG" 2>/dev/null
+    risk_config_written "$1" "$2"
   else
     risk_config_effective "$1" "$2"
   fi | sed -n "s/^$3:[[:space:]]*//p" || true
@@ -475,21 +528,28 @@ risk_default() {
   risk_highest "$RISK_BUILTIN_DEFAULT" ${levels[@]+"${levels[@]}"}
 }
 
-# risk_union_values <root> <rules-refs> <key> <builtin>...
-# Prints the values of a key over all refs, one per line; the built-in
-# values when no ref has the key.
+# risk_union_values <root> <rules-refs> <source> <key> <builtin>...
+# Prints the values of a key over all refs, one per line. <source> 'policy'
+# reads RISK_CONFIG and prints the built-in values when no ref has the key;
+# 'override' reads the path classes of the override (risk_override_values)
+# and has no built-in values.
 risk_union_values() {
   local root="$1"
   local rules="$2"
-  local key="$3"
+  local source="$3"
+  local key="$4"
   local ref
   local values
 
-  shift 3
-  values="$(for ref in $rules; do risk_config_values "$root" "$ref" "$key"; done | grep . | sort -u || true)"
+  shift 4
+  if [[ "$source" == "override" ]]; then
+    values="$(for ref in $rules; do risk_override_values "$root" "$ref" "$key"; done | grep . | sort -u || true)"
+  else
+    values="$(for ref in $rules; do risk_config_values "$root" "$ref" "$key"; done | grep . | sort -u || true)"
+  fi
   if [[ -n "$values" ]]; then
     printf '%s\n' "$values"
-  elif [[ $# -gt 0 ]]; then
+  elif [[ "$source" == "policy" && $# -gt 0 ]]; then
     printf '%s\n' "$@"
   fi
 }
@@ -546,8 +606,10 @@ risk_existing_weakened() {
 # risk_classify <root> <rules-refs> <from> [<to>]
 # Prints one line per finding: '<level><TAB><path><TAB><reason>'. The path
 # classes of each ref are applied on their own and the findings are joined,
-# so a class in one ref is not cancelled by the other. Then the fixed
-# escalations.
+# so a class in one ref is not cancelled by the other; so are the path
+# classes and lists of RISK_CONFIG and of the override (RISK_OVERRIDE), each
+# with its own pathspecs, so an exclusion in the override never narrows a
+# class of the template. Then the fixed escalations.
 risk_classify() {
   local root="$1"
   local rules="$2"
@@ -563,6 +625,8 @@ risk_classify() {
   local all
   local classed
   local list
+  local source
+  local file
 
   all="$(guardrails_changed "$root" "$from" "$to" . "${RISK_EXCLUDES[@]}" | grep . | sort -u || true)"
 
@@ -579,14 +643,22 @@ risk_classify() {
         printf 'high\t%s\t%s\n' "$RISK_CONFIG" "the default of the policy is not a level: $value"
       fi
       for level in high medium low; do
-        specs=()
-        while IFS= read -r spec; do specs+=("$spec"); done < <(risk_config_values "$root" "$ref" "$level")
-        [[ "${#specs[@]}" -gt 0 ]] || continue
-        while IFS= read -r path; do
-          [[ -n "$path" ]] || continue
-          classed+="$path"$'\n'
-          printf '%s\t%s\t%s\n' "$level" "$path" "listed as $level in $RISK_CONFIG"
-        done < <(guardrails_changed "$root" "$from" "$to" "${specs[@]}" "${RISK_EXCLUDES[@]}" | sort -u)
+        for source in policy override; do
+          specs=()
+          if [[ "$source" == "override" ]]; then
+            file="$RISK_OVERRIDE"
+            while IFS= read -r spec; do specs+=("$spec"); done < <(risk_override_values "$root" "$ref" "$level")
+          else
+            file="$RISK_CONFIG"
+            while IFS= read -r spec; do specs+=("$spec"); done < <(risk_config_values "$root" "$ref" "$level")
+          fi
+          [[ "${#specs[@]}" -gt 0 ]] || continue
+          while IFS= read -r path; do
+            [[ -n "$path" ]] || continue
+            classed+="$path"$'\n'
+            printf '%s\t%s\t%s\n' "$level" "$path" "listed as $level in $file"
+          done < <(guardrails_changed "$root" "$from" "$to" "${specs[@]}" "${RISK_EXCLUDES[@]}" | sort -u)
+        done
       done
       while IFS= read -r path; do
         [[ -n "$path" ]] || continue
@@ -618,25 +690,31 @@ risk_classify() {
   # A removed or changed line of an existing test file, where an existing
   # test can be weakened; a file whose diff only adds lines (a new case, a
   # new helper) and a new, standalone test file are none.
-  specs=()
-  while IFS= read -r spec; do specs+=("$spec"); done < <(risk_union_values "$root" "$rules" tests "${RISK_BUILTIN_TESTS[@]}")
-  while IFS=$'\t' read -r level path; do
-    [[ -n "$path" ]] || continue
-    if [[ "$level" == "D" ]]; then
-      printf 'high\t%s\t%s\n' "$path" "an existing test file is removed"
-    else
-      printf 'high\t%s\t%s\n' "$path" "an existing test file has removed or changed lines"
-    fi
-  done < <(risk_existing_weakened "$root" "$from" "$to" "${specs[@]}" "${RISK_EXCLUDES[@]}")
+  for source in policy override; do
+    specs=()
+    while IFS= read -r spec; do specs+=("$spec"); done < <(risk_union_values "$root" "$rules" "$source" tests "${RISK_BUILTIN_TESTS[@]}")
+    [[ "${#specs[@]}" -gt 0 ]] || continue
+    while IFS=$'\t' read -r level path; do
+      [[ -n "$path" ]] || continue
+      if [[ "$level" == "D" ]]; then
+        printf 'high\t%s\t%s\n' "$path" "an existing test file is removed"
+      else
+        printf 'high\t%s\t%s\n' "$path" "an existing test file has removed or changed lines"
+      fi
+    done < <(risk_existing_weakened "$root" "$from" "$to" "${specs[@]}" "${RISK_EXCLUDES[@]}")
+  done
 
   # Any change under the shared test fixtures, also an added line or file:
   # a shared library of the tests can change every test.
-  specs=()
-  while IFS= read -r spec; do specs+=("$spec"); done < <(risk_union_values "$root" "$rules" test-fixtures "${RISK_BUILTIN_TEST_FIXTURES[@]}")
-  while IFS= read -r path; do
-    [[ -n "$path" ]] || continue
-    printf 'high\t%s\t%s\n' "$path" "a shared test fixture is changed"
-  done < <(guardrails_changed "$root" "$from" "$to" "${specs[@]}" "${RISK_EXCLUDES[@]}" | sort -u)
+  for source in policy override; do
+    specs=()
+    while IFS= read -r spec; do specs+=("$spec"); done < <(risk_union_values "$root" "$rules" "$source" test-fixtures "${RISK_BUILTIN_TEST_FIXTURES[@]}")
+    [[ "${#specs[@]}" -gt 0 ]] || continue
+    while IFS= read -r path; do
+      [[ -n "$path" ]] || continue
+      printf 'high\t%s\t%s\n' "$path" "a shared test fixture is changed"
+    done < <(guardrails_changed "$root" "$from" "$to" "${specs[@]}" "${RISK_EXCLUDES[@]}" | sort -u)
+  done
 
   # An existing policy, agent contract, or schema that is changed or removed.
   # A file the feature adds under these directories is new and does not
@@ -652,6 +730,14 @@ risk_classify() {
     fi
   done < <(risk_existing_changed "$root" "$from" "$to" "${RISK_ESCALATION_DIRS[@]}")
 
+  # A policy override of the project, added, changed, or removed: it can
+  # lower every class, so it is high whatever the policy says, also when the
+  # feature adds it.
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    printf 'high\t%s\t%s\n' "$path" "a policy override of the project is added, changed, or removed"
+  done < <(guardrails_changed "$root" "$from" "$to" "$GUARDRAILS_POLICY_OVERRIDES" | sort -u)
+
   # An existing file of a project skill that is changed or removed: a new
   # version of the guidance the agents follow. A skill the feature adds keeps
   # the class of its path.
@@ -665,9 +751,10 @@ risk_classify() {
   done < <(risk_existing_changed "$root" "$from" "$to" "${RISK_SKILL_DIRS[@]}")
 
   # An existing manifest the project names that is changed or removed.
-  specs=()
-  while IFS= read -r spec; do specs+=("$spec"); done < <(risk_union_values "$root" "$rules" manifests)
-  if [[ "${#specs[@]}" -gt 0 ]]; then
+  for source in policy override; do
+    specs=()
+    while IFS= read -r spec; do specs+=("$spec"); done < <(risk_union_values "$root" "$rules" "$source" manifests)
+    [[ "${#specs[@]}" -gt 0 ]] || continue
     while IFS=$'\t' read -r level path; do
       [[ -n "$path" ]] || continue
       if [[ "$level" == "D" ]]; then
@@ -676,7 +763,7 @@ risk_classify() {
         printf 'high\t%s\t%s\n' "$path" "a dependency or toolchain manifest is changed"
       fi
     done < <(risk_existing_changed "$root" "$from" "$to" "${specs[@]}")
-  fi
+  done
 }
 
 # risk_enumerable <root> <from> [<to>]

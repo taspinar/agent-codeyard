@@ -2700,8 +2700,9 @@ finished with `--no-review`.
   ADR can replace an accepted one without touching its file, so no ADR passes
   without you. A feature writes a new ADR with the status `Proposed`;
 - the CI workflows, the project's CI setup under `.github/actions/` (see
-  "The project's CI setup"), and the configuration, scripts, prompts, and
-  schemas that carry out the gate;
+  "The project's CI setup"), the project's policy overrides under
+  `.agents/policy-overrides/` (see "The project's policy override"), and the
+  configuration, scripts, prompts, and schemas that carry out the gate;
 - in `scripts/verify.conf` and `scripts/verify-workflow.conf`: a changed or
   removed line, which includes a check made a budget, a budget made a check,
   and a changed target (see "Budgets"), and an added `accepted-failure:`
@@ -2817,9 +2818,10 @@ did before, and nothing an agent can write counts as it.
 ### The risk level of a feature
 
 Every feature has a risk level, `low`, `medium`, or `high`, computed from one
-policy: `.agents/policies/risk.conf`. `.agents/policies/autonomy.md` says in
-prose what the levels mean and refers to the file as the one source of the
-rules. The level is computed, recorded with the feature, and read by the
+policy: `.agents/policies/risk.conf`, with the project's own choices in a
+`risk.conf` in `.agents/policy-overrides/` ("The project's policy override").
+`.agents/policies/autonomy.md` says in prose what the levels mean and refers
+to the file as the one source of the rules. The level is computed, recorded with the feature, and read by the
 workflow; the same policy says what each level requires of the review rounds
 ("What each level requires" below). The shipped policy changes nothing for a
 project until it adds its own classes or requirements.
@@ -2844,11 +2846,11 @@ test-fixtures: tests/lib-fakes.sh
 
 The template ships the file with `default: medium`, the paths that the merge
 approval gate protects as the `high` class (the ADRs, the CI workflows and
-the project's CI setup under `.github/actions/`, the scripts, prompts, schemas, and configuration of the gate, and the two
+the project's CI setup under `.github/actions/`, the project's policy overrides under `.agents/policy-overrides/`, the scripts, prompts, schemas, and configuration of the gate, and the two
 verification configurations), and no `low` class: with it, every feature is
 `medium` or `high`, which is the behaviour of today, and of a project whose
-base has no file at all. A project adds its classes. For a web application,
-for example:
+base has no file at all. A project adds its classes, in its policy override
+("The project's policy override"). For a web application, for example:
 
 ```text
 default: medium
@@ -2876,11 +2878,14 @@ authorization, a migration, the infrastructure, or a dependency file is
    shared library of the tests can change every test; a change to an
    existing file under
    `.agents/policies/`, `.agents/prompts/`, or `.agents/schemas/`, the policy
-   itself among them; a change to an existing file of a project skill under
+   itself among them; any change under `.agents/policy-overrides/`, also an
+   added file ("The project's policy override"); a change to an existing
+   file of a project skill under
    `.agents/project-skills/` ("Project skills"), which is agent instruction
    like a contract; and a change to an existing manifest the policy names.
-   Apart from the test fixtures, an escalation reads only changed or removed
-   existing lines and files, never their content: a file the feature adds,
+   Apart from the test fixtures and the policy overrides, an escalation
+   reads only changed or removed existing lines and files, never their
+   content: a file the feature adds,
    and the lines of a new file, never escalate by themselves, whatever they
    hold, and a protected path
    keeps its `high` class by the path rule. The template ships no detector of
@@ -3152,10 +3157,69 @@ leaves out are of two kinds, and the rule differs:
   bound the same way: the record names the tree it passed for, and
   `verify.sh --reuse` reuses it for that tree only.
 
+### The project's policy override
+
+`.agents/policies/risk.conf` is the template's file: a sync of the template
+(`./scripts/sync-template.sh`) updates it. A project keeps its own choices,
+its classes, its default, its profile, and its requirements, in its own
+file `risk.conf` in `.agents/policy-overrides/`, in the same format. The
+template never ships a file under `.agents/policy-overrides/`, and the
+directory is not in the `paths:` of `.agents/template.conf`, so a sync leaves
+it alone without an exclusion, and the template's `risk.conf` stays
+unchanged and keeps receiving the template's updates. For example, to select the light
+profile and add the classes of a web application:
+
+```text
+# .agents/policy-overrides/risk.conf
+profile: light
+high: src/auth db/migrations
+manifests: package.json package-lock.json
+```
+
+How the two files combine (`risk_config_written` and `risk_classify` in
+`scripts/lib/risk.sh`):
+
+- A single value the override writes, `default`, `profile`, or a requirement
+  `<level>: <kind>` ("What each level requires"), replaces the line of that
+  key in `risk.conf`.
+- A path class or list, `low`, `medium`, `high`, `tests`, `test-fixtures`,
+  or `manifests`, is matched with its own pathspecs, next to the class of
+  `risk.conf` and of the preset, and a path gets the higher of the two. The
+  override can therefore never drop a path from the `high` class the
+  template ships: writing `high: src/auth` adds `src/auth` to it, and an
+  exclusion such as `high: :(exclude)scripts/run-feature.sh` narrows only
+  the override's own patterns.
+- The preset of the profile ("Workflow profiles") then supplies the keys
+  that `risk.conf` does not write and, for a single value, the override
+  does not write either; a path class of the override never takes the place
+  of the preset's.
+
+The override applies on top of `risk.conf`: a base without `risk.conf` gets
+the built-in policy, and its override is not read.
+
+The override can lower what a feature costs, so it gets the scrutiny of the
+policy it overrides. It is read from the base branch like `risk.conf`: a
+feature that adds or changes it is classified by the policy and the override
+of the base, never by its own, so it cannot lower its own level. Any change
+under `.agents/policy-overrides/`, also adding the file, is `high`
+whatever the policy says, and it is protected by the merge approval gate
+whatever `.agents/policies/guardrails.conf` says, so it needs your approval;
+`.github/CODEOWNERS` lists the directory too. `tests/risk-test.sh` and
+`tests/guardrails-test.sh` check both, and `tests/sync-template-test.sh`
+checks that a sync leaves the directory alone.
+
+A project that already wrote its choices into `risk.conf` keeps working: the
+lines of `risk.conf` still count. To move them, write them into the
+override, restore `risk.conf` to the template's version, and remove an
+exclusion `:(exclude).agents/policies/risk.conf` from `.agents/template.conf`
+if it has one; the feature is `high` and needs your approval.
+
 ### Workflow profiles
 
 A workflow profile is one line of the risk policy that names a preset of
-the policy: `profile: light` or `profile: standard` in
+the policy: `profile: light` or `profile: standard`. A project writes it in
+its policy override, the file `risk.conf` in `.agents/policy-overrides/`
+("The project's policy override"), not in the template's
 `.agents/policies/risk.conf`. It is not a second mechanism: the preset
 supplies the lines of the keys that the file does not write (the classes,
 the `default`, the test files and fixtures, and the `<level>: <kind>` requirements of
@@ -3225,8 +3289,10 @@ a profile neither replaces nor skips it.
 exactly its behavior and is reported as `profile: none`, not as
 `standard`. Nothing migrates by itself.
 
-**Migration.** Set or change the one line in `.agents/policies/risk.conf`
-and merge it, for example from `light` to `standard` when the project grows:
+**Migration.** Set or change the one line in the project's policy override,
+the `risk.conf` in `.agents/policy-overrides/` ("The project's policy
+override"), and
+merge it, for example from `light` to `standard` when the project grows:
 
 ```text
 profile: standard
@@ -4004,8 +4070,9 @@ known.
    any project from the template.
 
 The workflow profile of the proposal is not applied: it is one line,
-`profile: light` or `profile: standard`, in `.agents/policies/risk.conf`,
-which you add when you want it ("Workflow profiles").
+`profile: light` or `profile: standard`, which you add to the project's
+policy override, the file `risk.conf` in `.agents/policy-overrides/`, when
+you want it ("Workflow profiles", "The project's policy override").
 
 `tests/adoption-test.sh` runs these steps on a synthetic fixture: the
 assessment, the adoption, a baseline with a failing linter that fails the

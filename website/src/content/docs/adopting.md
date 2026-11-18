@@ -89,7 +89,7 @@ Your Git history, application code, dependencies, CI workflows and deployment co
 
 - The assessment reads files. It does not understand your code, and its reconstruction is a starting point for the planning, not a description to rely on.
 - The baseline records how the checks ended on one machine. A missing tool is recorded as unavailable and still fails.
-- The workflow profile of the proposal is not applied; you add `profile: light` or `profile: standard` to `.agents/policies/risk.conf` when you want it.
+- The workflow profile of the proposal is not applied; you add `profile: light` or `profile: standard` to your policy override, the file `risk.conf` in `.agents/policy-overrides/`, when you want it.
 - Nothing fixes an existing defect, sets up a deployment or changes your CI. To make `./scripts/verify.sh` the required check on GitHub, add it to your CI in a reviewed change.
 - One real pilot so far: on 6 November 2026 the workflow was adopted in a private, existing application. Its report on [Issue 170](https://github.com/taspinar/agent-codeyard/issues/170) describes it in general terms; its records are private. Beyond that, the adoption is tested on synthetic repositories in the template's own tests.
 
