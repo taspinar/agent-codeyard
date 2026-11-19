@@ -308,8 +308,8 @@ exits with status 3.
 
 | Step | Agent: role (profile) | Your decision | Writes | Committed | `verify.sh` |
 |---|---|---|---|---|---|
-| `start-planning.sh` | `project-grill` (write), then `project-planner` (write) | Approve the requirements | Description, requirements, architecture, roadmap, ADRs | Yes, with the planning PR | No |
-| `start-planning.sh <name> --change <file>` | `project-planner` (write); with `--grill` first `project-grill` (write) | Approve changed requirements, with `--grill` | The change request; the roadmap, architecture, or ADRs; with `--grill` the requirements | Yes, with the planning PR | No |
+| `start-planning.sh` | `project-grill` (write), `planning-reviewer` (read-only) on the Draft requirements, then `project-planner` (write) | Per Draft review: resume Grill with the findings, approve, or mark findings not applicable | Description, requirements, architecture, roadmap, ADRs; the Draft review and your choices in `.agents/reviews/requirements-<name>-review-NN.json` | Documents yes, Draft review no | No |
+| `start-planning.sh <name> --change <file>` | `project-planner` (write); with `--grill` first `project-grill` (write) and the Draft review | With `--grill`, as above for the changed requirements | The change request; the roadmap, architecture, or ADRs; with `--grill` the requirements and the Draft review | Documents yes, Draft review no | No |
 | `review-planning.sh` | `planning-reviewer` (read-only) | None | Planning review JSON and report | No | No |
 | `revise-planning.sh` | `project-planner` (read-only, then write) | Approve the decisions | Revision JSON and report; architecture, roadmap, ADRs | Documents yes, revision no | No |
 | `finish-planning.sh` | None | Confirm earlier escalations; approve the planning | `docs/PLANNING_APPROVAL.md` | Yes | No |
@@ -327,7 +327,7 @@ exits with status 3.
 
 | Step | Refuses when |
 |---|---|
-| `start-planning.sh` | The checkout is dirty (except an uncommitted description or change request), the planning branch or worktree exists, or an agent leaves its file scope or commits |
+| `start-planning.sh` | The checkout is dirty (except an uncommitted description or change request), the planning branch or worktree exists, an agent leaves its file scope or commits, or the Draft reviewer changes a file or returns an invalid result twice |
 | `start-planning.sh --change` | Also: `origin/main` has no approved planning, the change request name is taken, the planner changed nothing, removed or renumbered a feature ID, or deleted an ADR |
 | `review-planning.sh` | Not on a planning branch, a planning document is missing, or the requirements are not approved |
 | `revise-planning.sh` | The planning review is stale, or the planner leaves its file scope, commits, or changes nothing for adopted findings |

@@ -30,13 +30,13 @@ export const planning: Step[] = [
     id: "clarify-the-requirements",
     title: "Clarify the requirements",
     summary: "Project Grill asks the questions that matter and drafts the requirements, which count only after you approve them.",
-    text: "Project Grill asks only the questions that materially affect the product or the technical direction: the goals, the users, the scope, the constraints. It writes the requirements as a draft; the script shows them and records them as approved only after you confirm.",
+    text: "Project Grill asks only the questions that materially affect the product or the technical direction: the goals, the users, the scope, the constraints. It writes the requirements as a draft. A read-only agent then reviews the draft for contradictions, constraints the technology cannot meet, promises it does not keep (\"capped\", \"always\") and criteria no one can measure, and proposes a wording for each finding. The script shows the requirements with the findings and records them as approved only after you confirm.",
     facts: [
       ["who", "You and Project Grill, in the planning worktree"],
       ["script", "`./scripts/start-planning.sh [name]`"],
       ["where", "A clean primary checkout; the script creates the planning worktree `<repository>-planning-<name>` next to it, on the branch `planning/<name>`"],
       ["result", "`docs/PROJECT_REQUIREMENTS.md`, approved"],
-      ["your decision", "You approve the requirements; declining stops the planning and keeps the worktree"],
+      ["your decision", "With findings: resume Project Grill with them, approve as they are, or mark single findings as not applicable; your choice is recorded. Declining stops the planning and keeps the worktree"],
     ],
   },
   {

@@ -90,7 +90,7 @@ type Word = { key: string; name: string; sub?: string; k?: boolean; cond?: strin
 const planningWords: Word[] = [
   { key: "p-idea", name: "Describe the idea", sub: "docs/PROJECT_DESCRIPTION.md", k: true, cond: "In your own words; no agent changes it." },
   { key: "p-req", name: "Clarify the requirements", sub: "start-planning.sh", k: true, cond: "Project Grill asks about the goals, the users, the scope and the constraints, then drafts docs/PROJECT_REQUIREMENTS.md." },
-  { key: "p-approve-req", name: "Approve the requirements", sub: "by you", you: true, cond: "The planning goes on only after your approval." },
+  { key: "p-approve-req", name: "Approve the requirements", sub: "by you", you: true, cond: "A read-only agent reviews the draft first; you resume Project Grill with its findings, approve, or mark findings as not applicable. The planning goes on only after your approval." },
   { key: "p-plan", name: "Create the plan", sub: "architecture, roadmap, ADRs", cond: "A fresh planning session writes docs/architecture.md, docs/roadmap.md and the ADRs that are needed." },
   { key: "p-review", name: "Review the plan", sub: "review-planning.sh", k: true, cond: "An independent, read-only reviewer. With findings, revise-planning.sh proposes a decision per finding, you approve them, and the plan is reviewed again, until a round changes nothing." },
   { key: "p-approve", name: "Approve the plan", sub: "finish-planning.sh", k: true, you: true, cond: "Records your approval with a fingerprint of the requirements and the roadmap; a later change to them makes it stale. Refused while the review is stale or a required decision is missing." },

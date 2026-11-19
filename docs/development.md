@@ -711,7 +711,7 @@ per line:
 | Role | Used by |
 |---|---|
 | `project-grill`, `project-planner` | `start-planning.sh` |
-| `planning-reviewer` | reserved for planning review |
+| `planning-reviewer` | `review-planning.sh`; the Draft review in `start-planning.sh` (read-only) |
 | `implementer` | `start-feature.sh` |
 | `reviewer` | `review-feature.sh` |
 | `triage` | `triage-review.sh` |
@@ -992,8 +992,9 @@ what it leaves unresolved. Neither planning phase may modify it, and it is
 committed with the planning branch as the recorded input. A missing, empty, or
 non-regular file fails before a branch or worktree is created.
 
-Project Grill uses role `project-grill` and the planning session uses role
-`project-planner`; `--agent` and `--model` override both. The optional name
+Project Grill uses role `project-grill`, the Draft review role
+`planning-reviewer`, and the planning session role `project-planner`;
+`--agent` and `--model` override all three. The optional name
 defaults to `project-bootstrap`. A custom planning cycle such as:
 
 ```bash
@@ -1036,8 +1037,10 @@ Bootstrap has two separate interactive agent sessions:
 1. Project Grill reads the project context, asks only questions that materially
    affect product or technical direction, and refines
    `docs/PROJECT_REQUIREMENTS.md` in Draft state.
-2. The script validates and displays the requirements. It records Approved
-   status and a UTC timestamp only after explicit human confirmation.
+2. The script validates and displays the requirements, and has a read-only
+   agent review the Draft before you approve it ("Draft review", below). It
+   records Approved status and a UTC timestamp only after explicit human
+   confirmation.
 3. A fresh project-planner session consumes the approved requirements and
    creates or updates `docs/architecture.md`, `docs/roadmap.md`, and only
    necessary ADRs under `docs/decisions/`.
@@ -1054,6 +1057,45 @@ no room when the service account turns out to need `iam.googleapis.com` too;
 "the owner enables the cloud APIs the infrastructure needs, once, before the
 first apply" records the same intent and leaves the list to the planner. The
 guidance and a full example are in `.agents/prompts/project-grill.md`.
+
+### Draft review
+
+The approved requirements bind the planner, who may not change them: a defect
+in them that the planning review finds costs planning rounds. So after
+Project Grill, and before it asks for your approval, `start-planning.sh` has
+the Draft reviewed. The reviewer uses role `planning-reviewer` with the
+`read-only` profile and `.agents/prompts/requirements-reviewer.md`; it gets
+the Draft, the project description, and in a change cycle the change request
+and the diff of the requirements. It reports four kinds of defect:
+statements that contradict each other (`inconsistency`), a constraint the
+named technology cannot meet or a closed list that misses what the goal needs
+(`infeasible`), a promise the technology does not keep, such as "capped",
+"guaranteed", or "always" (`unkept-promise`), and a criterion no one can check,
+such as "the smallest that serves" (`unmeasurable`). Each finding names the
+section, quotes the text, says the problem, and proposes a wording.
+
+The script shows the findings below the requirements, as `D1`, `D2`, and so
+on, and asks you to choose:
+
+- `g`: resume Project Grill with the findings. The new Grill session gets
+  them in its prompt and goes through them with you; the proposed wording is
+  a proposal, not a decision. The changed Draft is then reviewed again.
+- `a`: approve the requirements as they are, with the open findings.
+- `n`: mark findings as not applicable, with a reason. The remaining findings
+  are shown again; when none remains, the question is the plain approval.
+- `q`: stop without approving, as declining did before.
+
+A Draft without findings gets the plain approval question. Each round is
+stored as `.agents/reviews/requirements-<name>-review-NN.json`, which Git
+ignores: the findings with their identifiers, the findings you marked as not
+applicable with your reason and time (`not_applicable`), and your choice with
+the findings still open then (`decision`). The run records note each choice
+too. The reviewer must leave every file as it is and return a result that
+matches `.agents/schemas/requirements-review.schema.json`; an invalid result
+is retried once, and a second one, a changed file, or a failed session stops
+the planning before the approval and keeps the worktree. A change cycle
+without `--grill`, or whose Project Grill leaves the requirements unchanged,
+has no Draft and no Draft review.
 
 Declining requirements approval or an agent failure stops the workflow and
 leaves the planning worktree intact. Inspect or revise it there; the script
@@ -1277,7 +1319,8 @@ Without `--grill` the requirements keep their approval and only the planner
 runs. It changes what the change requires: the roadmap, the architecture, an
 ADR, or several of them. With `--grill`, Project Grill runs first and asks
 about the change only. When it changes the requirements, the script shows the
-difference and asks for your approval before the planner starts; when it finds
+difference, has the changed Draft reviewed ("Draft review", above), and asks
+for your approval before the planner starts; when it finds
 that the approved requirements already allow the change, it leaves them
 untouched and no approval is asked.
 

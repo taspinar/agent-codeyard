@@ -243,3 +243,41 @@ planning_resolutions() {
   done | jq -s 'sort_by(.round, .finding_id)'
   shopt -u nullglob
 }
+
+# The Draft review of start-planning.sh: a read-only reviewer
+# (.agents/prompts/requirements-reviewer.md) checks the Draft requirements
+# before the owner approves them. Each round is stored, with the identifiers
+# of its findings and the owner's decisions on them, as
+# .agents/reviews/requirements-<name>-review-NN.json, which Git ignores.
+PLANNING_DRAFT_REVIEW_SCHEMA="requirements-review/v1"
+
+# planning_draft_review_errors <result-file>
+# Prints why the reviewer's result does not match
+# .agents/schemas/requirements-review.schema.json, one reason per line;
+# prints nothing when it does. Needs review-data.sh.
+planning_draft_review_errors() {
+  review_data_is_json "$1" || {
+    echo "the result is not exactly one JSON value"
+    return 0
+  }
+  jq -r '
+    def nonempty: type == "string" and test("\\S");
+    if type != "object" then "the result is not a JSON object"
+    else
+      (keys - ["findings", "limitations"] | if length > 0 then "unknown field(s): \(join(", "))" else empty end),
+      (if (.limitations | type) == "string" then empty else "limitations must be a string." end),
+      (if (.findings | type) != "array" then "findings must be an array."
+       else .findings | to_entries[] | (.key + 1) as $n | .value |
+         if type != "object" then "finding \($n) is not an object."
+         else
+           (keys - ["category", "section", "quote", "problem", "proposed_wording"]
+            | if length > 0 then "finding \($n) has unknown field(s): \(join(", "))." else empty end),
+           (if (.category | IN("inconsistency", "infeasible", "unkept-promise", "unmeasurable")) then empty
+            else "finding \($n): category must be inconsistency, infeasible, unkept-promise, or unmeasurable." end),
+           (["section", "quote", "problem", "proposed_wording"][] as $field
+            | if (.[$field] | nonempty) then empty else "finding \($n): \($field) must be a non-empty string." end)
+         end
+       end)
+    end
+  ' "$1"
+}

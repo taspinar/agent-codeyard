@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["findings", "limitations"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "section", "quote", "problem", "proposed_wording"],
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": ["inconsistency", "infeasible", "unkept-promise", "unmeasurable"]
+          },
+          "section": { "type": "string" },
+          "quote": { "type": "string" },
+          "problem": { "type": "string" },
+          "proposed_wording": { "type": "string" }
+        }
+      }
+    },
+    "limitations": { "type": "string" }
+  }
+}

@@ -98,6 +98,23 @@ registry). Cost stays low: the service scales to zero and to at most one
 instance, and a budget alert notifies the owner; nothing caps the bill.
 ```
 
+## Draft review findings
+
+After your session, the script has the Draft reviewed by a read-only agent
+(`.agents/prompts/requirements-reviewer.md`) and shows the owner its findings.
+When the owner chooses to resume Project Grill with them, the calling script
+lists the findings in your prompt, each with the section, the text in
+question, the problem, and a proposed wording. Then:
+
+- Go through the findings with the human, one by one or in small groups. The
+  proposed wording is a proposal, not a decision: change the requirements as
+  the human decides, which may be the proposed wording, another one, or none.
+- Where a finding needs a decision only the human can make, such as a budget
+  amount, ask for it; do not take the value from the proposal.
+- Change only what the findings and the human's answers require. Keep every
+  other decision as it is, and leave the status lines at Draft.
+- The script reviews the changed Draft again before it asks for approval.
+
 ## Change cycle
 
 When the calling script says that this is a change cycle, the requirements
@@ -135,6 +152,7 @@ resolve them and the complete Draft artifact has been written.
 
 You run inside `scripts/start-planning.sh`, which is waiting for this session
 to end. When you are done, summarize the decisions and ask the human to exit
-the session. Tell them that the script then shows the requirements, asks for
-their approval, and starts project planning in a new session. Do not tell them
+the session. Tell them that the script then has the Draft reviewed, shows the
+requirements with the review's findings, asks for their approval, and starts
+project planning in a new session. Do not tell them
 to run `start-planning.sh` again or any other command.

@@ -30,7 +30,7 @@ AGENT_FEATURE_ROLES="implementer reviewer triage triage-implementer"
 AGENT_LEVELS="low medium high"
 # A reviewing role and the role whose work it reviews, which should use
 # different providers; doctor.sh checks the resolved pair.
-AGENT_REVIEW_PAIRS="reviewer:implementer planning-reviewer:project-planner"
+AGENT_REVIEW_PAIRS="reviewer:implementer planning-reviewer:project-planner planning-reviewer:project-grill"
 # The roles that run with the 'write' or the 'unattended' profile; doctor.sh
 # checks the Codex sandbox when one of them uses Codex.
 AGENT_WRITE_ROLES="project-grill project-planner implementer triage-implementer"
