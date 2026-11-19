@@ -120,6 +120,31 @@ printf '# Architecture\n\nLocal storage, as the planner confirmed it.\n' >"$repo
 add_review "$repo" 2 PASS "[]"
 run_finish "$repo" y || { cat "$repo.out" >&2; fail "a planning without the mark was not approved"; }
 
+# An amendment of the requirements that the owner confirmed in a revision
+# is listed in the approval with its finding and the confirmation, and not
+# as a finding that was not adopted.
+repo="$(setup_repo amended)"
+add_review "$repo" 1 CHANGES_REQUIRED "[$(finding M1 major "Cost is not capped")]"
+add_revision "$repo" 1 AMEND
+amend_diff=$'--- a/docs/PROJECT_REQUIREMENTS.md\n+++ b/docs/PROJECT_REQUIREMENTS.md\n@@ -1,1 +1,1 @@\n-# Project Requirements\n+# Project Requirements (cost limited)\n'
+jq --arg diff "$amend_diff" '
+  .decisions[0].amendment = {diff: $diff, confirmed_by: "owner", confirmed_at: "2026-01-02T00:00:01Z"}
+  | .amended_requirements = {before: ("a" * 40), after: ("b" * 40)}' \
+  "$repo/$reviews/planning-project-bootstrap-review-01-revision.json" >"$tmp/revision.tmp"
+mv "$tmp/revision.tmp" "$repo/$reviews/planning-project-bootstrap-review-01-revision.json"
+sed -i.bak '1s/.*/# Project Requirements (cost limited)/' "$repo/docs/PROJECT_REQUIREMENTS.md" && rm "$repo/docs/PROJECT_REQUIREMENTS.md.bak"
+add_review "$repo" 2 PASS "[]"
+run_finish "$repo" y || {
+  cat "$repo.out" >&2
+  fail "approving a planning with an amendment of the requirements failed"
+}
+approval="$repo/docs/PLANNING_APPROVAL.md"
+grep -Fqx "## Requirements amended with the owner's confirmation" "$approval" || fail "the approval does not list the amendments"
+grep -Fq "Round 1: M1 [major] Cost is not capped. Considered. Confirmed by the project owner at 2026-01-02T00:00:01Z." "$approval" ||
+  fail "the approval does not list the amendment with its finding and the confirmation: $(cat "$approval")"
+grep -Fq "  +# Project Requirements (cost limited)" "$approval" || fail "the approval does not show the confirmed diff"
+! grep -Fq "AMEND: M1" "$approval" || fail "an amended finding was listed as not adopted"
+
 # A planning whose latest round passed is approved after confirmation; the
 # approval lists the rounds and the findings that were not adopted.
 repo="$(setup_repo approve)"

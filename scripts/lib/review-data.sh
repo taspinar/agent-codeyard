@@ -196,13 +196,20 @@ _review_data_rules='
         elif ($d.finding_id | type) != "string" or ($severity | has($d.finding_id) | not) then
           "decision \($n) refers to an unknown finding: \($d.finding_id | tostring)"
         else
-          ($d | unexpected(["decision", "finding_id", "rationale"]; "decision \($n)")),
-          (if ($d.decision | IN("ADOPT", "REJECT", "DEFER", "ESCALATE")) then empty
+          ($d | unexpected(["amendment", "decision", "finding_id", "rationale"]; "decision \($n)")),
+          (if ($d.decision | IN("ADOPT", "REJECT", "DEFER", "ESCALATE", "AMEND")) then empty
            else "finding \($d.finding_id) has an invalid decision" end),
           (if ($d.rationale | nonempty) then empty
            else "finding \($d.finding_id) has no rationale" end),
           (if ($severity[$d.finding_id] | IN("critical", "major")) and ($d.decision | IN("REJECT", "DEFER")) then
-             "\($severity[$d.finding_id]) finding \($d.finding_id) must be adopted or escalated"
+             "\($severity[$d.finding_id]) finding \($d.finding_id) must be adopted, amended, or escalated"
+           else empty end),
+          # An amendment is a diff of the approved requirements; only AMEND has one.
+          (if $d.decision == "AMEND" then
+             (if ($d.amendment | nonempty) then empty
+              else "amended finding \($d.finding_id) needs a diff of the requirements" end)
+           elif $d.amendment != null then
+             "finding \($d.finding_id) is not amended and must not have an amendment"
            else empty end)
         end)
     end;
@@ -585,8 +592,8 @@ revision_artifact_errors() {
     if type != "object" or .schema != "revision/v1" then
       "the file is not a revision/v1 artifact"
     else
-      unexpected(["approved_at", "branch", "decisions", "planner", "review_round", "reviewed_tree",
-                  "schema", "source_review"]; "the revision"),
+      unexpected(["amended_requirements", "approved_at", "branch", "decisions", "planner", "review_round",
+                  "reviewed_tree", "schema", "source_review"]; "the revision"),
       (if (.approved_at | type) == "string"
           and (.approved_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) then empty
        else "the revision has no valid UTC approval timestamp" end),
@@ -598,12 +605,35 @@ revision_artifact_errors() {
       ($review[0].findings | map({key: .id, value: {severity, title}}) | from_entries) as $source
       | (if (.decisions | type) == "array" then
            (.decisions[] | objects |
-             unexpected(["decision", "finding_id", "rationale", "severity", "title"]; "the decision for \(.finding_id | tostring)"),
+             unexpected(["amendment", "decision", "finding_id", "rationale", "severity", "title"]; "the decision for \(.finding_id | tostring)"),
              (if $source[.finding_id] == null or {severity, title} == $source[.finding_id] then empty
-              else "the decision for \(.finding_id) does not match the severity and title in the review" end))
+              else "the decision for \(.finding_id) does not match the severity and title in the review" end),
+             # A recorded amendment holds the diff and the confirmation by the owner
+             # of exactly that diff.
+             (if .decision != "AMEND" then empty
+              elif (.amendment | type) != "object" then "amended finding \(.finding_id) has no recorded amendment"
+              else
+                (.amendment | unexpected(["confirmed_at", "confirmed_by", "diff"]; "the amendment of \(.finding_id)")),
+                (if .amendment.confirmed_by == "owner"
+                    and (.amendment.confirmed_at | type) == "string"
+                    and (.amendment.confirmed_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
+                 then empty
+                 else "the amendment of \(.finding_id) has no confirmation by the owner" end)
+              end))
          else empty end),
+      # The requirements as reviewed and as amended, when an amendment was applied.
+      (if ([.decisions[]? | objects | select(.decision == "AMEND")] | length) == 0 then
+         (if has("amended_requirements") then "the revision amends nothing and must not name amended requirements" else empty end)
+       elif (.amended_requirements | type) == "object"
+            and ([.amended_requirements.before, .amended_requirements.after]
+                 | all(type == "string" and test("^[0-9a-f]{40,64}$")))
+            and (.amended_requirements | keys) == ["after", "before"] then empty
+       else "the revision does not name the requirements before and after its amendments" end),
       ({decisions: (if (.decisions | type) == "array"
-                    then (.decisions | map(if type == "object" then {finding_id, decision, rationale} else . end))
+                    then (.decisions | map(if type == "object"
+                                           then {finding_id, decision, rationale,
+                                                 amendment: (if (.amendment | type) == "object" then .amendment.diff else .amendment end)}
+                                           else . end))
                     else .decisions end)}
        | revision_decision_rules($review[0].findings | map({key: .id, value: .severity}) | from_entries))
     end
@@ -626,7 +656,13 @@ revision_render_markdown() {
     group("ADOPT"; "Adopted") + "\n" +
     group("REJECT"; "Rejected") + "\n" +
     group("DEFER"; "Deferred") + "\n" +
-    group("ESCALATE"; "Escalated to the human")
+    group("ESCALATE"; "Escalated to the human") + "\n" +
+    "## Requirements amended with the owner'"'"'s confirmation\n\n" +
+    ([.decisions[] | select(.decision == "AMEND")] as $items
+     | if ($items | length) == 0 then "None.\n"
+       else ($items | map("### \(.finding_id). \(.title)\n\n- Severity: \(.severity)\n- Rationale: \(.rationale)\n" +
+                         "- Confirmed by the owner at: \(.amendment.confirmed_at)\n\n```diff\n\(.amendment.diff | rtrimstr("\n"))\n```\n")
+             | join("\n")) end)
   ' "$1"
 }
 

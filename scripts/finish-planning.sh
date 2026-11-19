@@ -312,11 +312,16 @@ shopt -s nullglob
 revisions=("$root/.agents/reviews/planning-${name}-review-"[0-9][0-9]-revision.json)
 shopt -u nullglob
 decisions_file="$tmp_work/decisions.json"
+# The amendments of the requirements that you confirmed, of every round.
+amendments_file="$tmp_work/amendments.json"
 if [[ "${#revisions[@]}" -gt 0 ]]; then
   jq -s '[.[] | .review_round as $round | .decisions[]
-          | select(.decision != "ADOPT") | . + {round: $round}]' "${revisions[@]}" >"$decisions_file"
+          | select(.decision != "ADOPT" and .decision != "AMEND") | . + {round: $round}]' "${revisions[@]}" >"$decisions_file"
+  jq -s '[.[] | .review_round as $round | .decisions[]
+          | select(.decision == "AMEND") | . + {round: $round}]' "${revisions[@]}" >"$amendments_file"
 else
   echo '[]' >"$decisions_file"
+  echo '[]' >"$amendments_file"
 fi
 
 round="$(jq -r '.round' "$latest")"
@@ -574,6 +579,15 @@ fi
     jq -r '.[] | select(.resolution != null) | .resolution
       | "- Round \(.round): \(.finding_id) [\(.finding_severity)] \(.finding_title). \(if .type == "accepted" then "Accepted" else "Not applicable" end), decided by the project owner at \(.decided_at): \(.reason)"' "$decisions_file"
     echo
+  fi
+  if [[ "$(jq 'length' "$amendments_file")" -gt 0 ]]; then
+    echo "## Requirements amended with the owner's confirmation"
+    echo
+    echo "Proposed by the planner for a finding (\`revise-planning.sh\`, decision AMEND),"
+    echo "applied to \`docs/PROJECT_REQUIREMENTS.md\` only after the project owner confirmed"
+    echo "exactly this diff at a terminal."
+    echo
+    jq -r '.[] | "- Round \(.round): \(.finding_id) [\(.severity)] \(.title). \(.rationale) Confirmed by the project owner at \(.amendment.confirmed_at).\n\n  ```diff\n\(.amendment.diff | rtrimstr("\n") | split("\n") | map("  " + .) | join("\n"))\n  ```\n"' "$amendments_file"
   fi
   echo "## Findings that were not adopted"
   echo

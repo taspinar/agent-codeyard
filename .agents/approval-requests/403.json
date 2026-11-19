@@ -1,0 +1,20 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "1f445346baf913071f10074cccd482cc5caa726c",
+  "commit": {
+    "branch": "feature/403-planning-revision-amend-the",
+    "parent": "a8a326fed0e316d42a649e61c650bc411086be28",
+    "base": "a8a326fed0e316d42a649e61c650bc411086be28"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".agents/schemas/revision.schema.json: the file defines or carries out the workflow and its gate",
+    "scripts/lib/review-data.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: This adds AMEND as a new decision in the planning workflow, changes the revision artifact contract, and introduces an owner-confirmed requirements update path that other planning steps consume. The change stays within the planning workflow described by the Issue, and the supplied tests cover acceptance, decline, invalid diffs, and resuming after a failed write session. "
+  ],
+  "explanation": "Issue #403: Planning revision: AMEND the approved requirements with the owner's confirmation of a diff. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
