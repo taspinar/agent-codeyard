@@ -1098,16 +1098,19 @@ review:
 It uses role `project-planner` in two phases:
 
 1. **Decide.** Read-only, the planner returns one decision per finding with a
-   rationale: `ADOPT`, `REJECT`, `DEFER` (belongs to a later feature), or
+   rationale: `ADOPT`, `REJECT`, `DEFER` (belongs to a later feature),
    `ESCALATE` (needs a human product decision or a change to the approved
-   requirements). Critical and major findings may only be adopted or
+   requirements), or `AMEND` (the approved requirements themselves are wrong,
+   and a small diff of them fixes it; "Amending the approved requirements",
+   below). Critical and major findings may only be adopted, amended, or
    escalated. The decisions are validated like review results, shown to you,
    and recorded only after your approval, as
    `.agents/reviews/<review>-revision.json` with a generated report.
-2. **Revise.** A write session resolves exactly the adopted findings. It may
-   change only `docs/architecture.md`, `docs/roadmap.md`, and direct Markdown
-   ADRs. Any other change, including to the requirements, the description, or
-   a review artifact, and any commit fails the run and keeps the worktree for
+2. **Revise.** A write session resolves exactly the adopted findings, and
+   aligns the planning with the amended requirements. It may change only
+   `docs/architecture.md`, `docs/roadmap.md`, and direct Markdown ADRs. Any
+   other change, including to the requirements, the description, or a review
+   artifact, and any commit fails the run and keeps the worktree for
    inspection.
 
 The scripts find such a change by recording the files of the worktree before
@@ -1128,6 +1131,46 @@ without deciding again.
 
 After a revision the review is stale by design. Run `review-planning.sh` for
 the next round, and repeat until the review passes.
+
+#### Amending the approved requirements
+
+Sometimes a finding's cause is the approved requirements: "cost is capped"
+where the design can only limit cost, or a closed list of APIs that misses
+one the requirements need. Escalating it would cost a hand edit and extra
+review rounds. The planner decides `AMEND` instead and returns, with its
+rationale, the minimal unified diff of `docs/PROJECT_REQUIREMENTS.md` that
+corrects it.
+
+- **Validated with the decisions.** The diff must change only
+  `docs/PROJECT_REQUIREMENTS.md`, not its `Status:` or `Approved at:` line,
+  and must apply cleanly, the amendments in the order of the decisions, to
+  the requirements as they are. A diff that does not is an invalid decision:
+  the planner gets one retry, then the run stops and nothing is recorded.
+- **Confirmed by you, one by one, at a terminal.** After you approve the
+  decisions, the script shows each amendment with its finding and its diff and
+  asks "Apply this change to the approved requirements? [y/N]". It runs only
+  at a terminal, never unattended or from a pipe.
+- **Applied exactly.** On yes the script applies exactly that diff and
+  refuses a result whose changed lines differ from it, sets `Approved at` to
+  the time of your confirmation, and records in the revision the diff, your
+  confirmation, and the requirements before and after. On no the finding
+  stays `ESCALATE`, as without the decision, and the requirements are
+  unchanged.
+- **Aligned in the same revision.** The write session receives the amended
+  findings with their diffs and brings the architecture, the roadmap, and the
+  ADRs in line with the amended wording. When it fails, running the script
+  again keeps the amended requirements and only repeats the write session.
+  The next review round reviews the amended requirements with the rest.
+- **Recorded in the approval.** `finish-planning.sh` lists every amendment
+  of every round in `docs/PLANNING_APPROVAL.md` under "Requirements amended
+  with the owner's confirmation", with its finding, the diff, and the time of
+  your confirmation.
+
+`AMEND` is for a small correction without which the requirements are
+infeasible or contradictory. A new or changed requirement, a different
+scope, or a product choice is not an amendment: it is escalated, and goes
+through Project Grill or a change cycle with `--change --grill` ("Changing an
+approved planning").
 
 ### Planning approval
 
@@ -1160,8 +1203,9 @@ without passing through the planning.
 
 The approval is recorded in `docs/PLANNING_APPROVAL.md`, which is committed with
 the planning: the time, the planning branch, the final review round, the
-review rounds, the findings that were not adopted, your decisions on
-escalated minor findings, and the fingerprint of the planning documents. Use it for the planning PR description, because review
+review rounds, the findings that were not adopted, the amendments of the
+requirements you confirmed, your decisions on escalated minor findings, and
+the fingerprint of the planning documents. Use it for the planning PR description, because review
 and revision files are not committed.
 
 Whether the approval is still current:
@@ -1259,6 +1303,7 @@ Which route a change needs:
 | New or changed requirement | Sharing between households when one household was agreed | Requirements, and usually architecture, roadmap, and ADRs | `--change --grill` |
 | Technical change only | From local storage to a server database | Architecture and an ADR that supersedes the old one | `--change` |
 | Small technical amendment | One ADR gets an addition | Architecture and ADRs only | `finish-planning.sh --amend`, without a review |
+| Correction of the requirements that a planning review finds | A closed list of APIs misses one the requirements need | Requirements, by a diff you confirm, and the planning aligned with it | `revise-planning.sh`, decision `AMEND` ("Amending the approved requirements") |
 
 Write the change down in a short file, in your own words, and start the cycle
 from a clean primary checkout:

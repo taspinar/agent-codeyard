@@ -203,6 +203,138 @@ MOCK_OUTPUT="$(jq '.decisions[0].decision = "ESCALATE"' <<<"$valid_decisions")" 
 }
 [[ "$(write_sessions "$repo")" -eq 0 ]] || fail "a write session started without adopted findings"
 
+# AMEND: a finding caused by the approved requirements. The planner proposes
+# a diff of them; it is applied only after the owner confirms it at a
+# terminal, and only that diff.
+amend_diff='--- a/docs/PROJECT_REQUIREMENTS.md
++++ b/docs/PROJECT_REQUIREMENTS.md
+@@ -7,3 +7,3 @@
+ ## MVP scope
+ 
+-Offline recipes.
++Offline recipes, stored on the device.
+'
+amend_decisions="$(jq --arg diff "$amend_diff" '
+  .decisions[0] = {finding_id: "M1", decision: "AMEND", amendment: $diff,
+                   rationale: "The requirements leave the storage of offline recipes open."}' <<<"$valid_decisions")"
+align_roadmap="printf '\\n## F02 — Offline storage\\n\\n- Goal: store recipes on the device.\\n' >>docs/roadmap.md"
+
+# at_terminal <repo> <answers> <argument>...: revise-planning.sh at a
+# pseudo-terminal, answering one line per question. A refusal inside the
+# terminal does not reach the exit status of every 'script', so the tests
+# check what was stored.
+at_terminal() {
+  local repo="$1"
+  local answers="$2"
+  local command
+
+  shift 2
+  command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:/usr/bin:/bin") MOCK_AGENT_LOG=$(printf '%q' "$repo.log") ./scripts/revise-planning.sh $(printf '%q ' "$@")"
+  if script --version 2>/dev/null | grep -q util-linux; then
+    printf '%s' "$answers" | script -qec "$command" /dev/null >"$repo.out" 2>&1 || true
+  else
+    printf '%s' "$answers" | script -q /dev/null sh -c "$command" >"$repo.out" 2>&1 || true
+  fi
+}
+
+requirements_blob() {
+  git -C "$1" hash-object docs/PROJECT_REQUIREMENTS.md
+}
+
+# Accept: the diff is applied exactly, Approved at is updated, the revision
+# records the owner's confirmation, and the same write session aligns the
+# planning documents.
+repo="$(setup_repo amend-accept)"
+original="$(cat "$repo/docs/PROJECT_REQUIREMENTS.md")"
+MOCK_OUTPUT="$amend_decisions" MOCK_WRITE_ACTION="$align_roadmap" at_terminal "$repo" $'y\ny\n' --review "$review"
+[[ -f "$repo/$revision.json" ]] || { cat "$repo.out" >&2; fail "an accepted amendment recorded no revision"; }
+grep -Fq "Apply this change to the approved requirements? [y/N]" "$repo.out" || fail "the amendment was not asked separately"
+grep -Fq -- "+Offline recipes, stored on the device." "$repo.out" || fail "the diff was not shown before the question"
+expected="$(printf '%s\n' "$original" | sed 's/^Offline recipes\.$/Offline recipes, stored on the device./')"
+[[ "$(sed '/^Approved at: /d' "$repo/docs/PROJECT_REQUIREMENTS.md")" == "$(printf '%s\n' "$expected" | sed '/^Approved at: /d')" ]] ||
+  fail "the requirements are not exactly the amended ones: $(cat "$repo/docs/PROJECT_REQUIREMENTS.md")"
+grep -Fqx "Status: Approved" "$repo/docs/PROJECT_REQUIREMENTS.md" || fail "the amended requirements are no longer approved"
+grep -Eq '^Approved at: 20[0-9]{2}-' "$repo/docs/PROJECT_REQUIREMENTS.md" &&
+  ! grep -Fqx "Approved at: 2026-01-01T00:00:00Z" "$repo/docs/PROJECT_REQUIREMENTS.md" ||
+  fail "Approved at was not updated for the amendment"
+[[ "$(jq -r '.decisions[0] | [.decision, .amendment.confirmed_by, .amendment.diff == $diff] | @tsv' \
+  --arg diff "$amend_diff" "$repo/$revision.json")" == $'AMEND\towner\ttrue' ]] ||
+  fail "the revision does not record the owner's confirmation of exactly the diff"
+[[ "$(jq -r '.amended_requirements.after' "$repo/$revision.json")" == "$(requirements_blob "$repo")" ]] ||
+  fail "the revision does not name the amended requirements"
+(source "$repo/scripts/lib/review-data.sh" && [[ -z "$(revision_artifact_errors "$repo/$revision.json" "$repo/$review")" ]]) ||
+  fail "the recorded revision with an amendment is invalid"
+grep -Fq "Requirements amended with the owner's confirmation" "$repo/$revision.md" || fail "the report does not list the amendment"
+[[ "$(write_sessions "$repo")" -eq 1 ]] || fail "the amendment did not lead to one write session"
+grep -Fq "Align the architecture, the" "$repo.log" || fail "the write session was not asked to align with the amended requirements"
+grep -Fq "F02 — Offline storage" "$repo/docs/roadmap.md" || fail "the write session did not align the roadmap"
+
+# A recorded amendment is the owner's: one without confirmation is invalid.
+jq '.decisions[0].amendment.confirmed_by = "planner"' "$repo/$revision.json" >"$tmp/forged.json"
+(source "$repo/scripts/lib/review-data.sh" && revision_artifact_errors "$tmp/forged.json" "$repo/$review") |
+  grep -Fq "no confirmation by the owner" || fail "an amendment without the owner's confirmation was valid"
+
+# A failed write session after the amendment: the decisions and the amended
+# requirements stay, and a re-run aligns the planning without asking again.
+repo="$(setup_repo amend-resume)"
+MOCK_OUTPUT="$amend_decisions" MOCK_WRITE_EXIT=5 at_terminal "$repo" $'y\ny\n' --review "$review"
+[[ -f "$repo/$revision.json" ]] || { cat "$repo.out" >&2; fail "the amendment was lost after a failed write session"; }
+amended_blob="$(requirements_blob "$repo")"
+rm -f "$repo.log"
+MOCK_WRITE_ACTION="$align_roadmap" run_revise "$repo" "" --review "$review" || {
+  cat "$repo.out" >&2
+  fail "resuming a revision with an amendment failed"
+}
+[[ "$(grep -c '^AGENT=' "$repo.log")" -eq 1 ]] || fail "resuming decided again instead of applying the recorded decisions"
+[[ "$(requirements_blob "$repo")" == "$amended_blob" ]] || fail "resuming changed the amended requirements"
+
+# Decline: the requirements stay as they are and the finding stays escalated.
+repo="$(setup_repo amend-decline)"
+before="$(requirements_blob "$repo")"
+MOCK_OUTPUT="$amend_decisions" MOCK_WRITE_ACTION="$add_offline_feature" at_terminal "$repo" $'y\nn\n' --review "$review"
+[[ -f "$repo/$revision.json" ]] || { cat "$repo.out" >&2; fail "the decisions were not recorded after declining the amendment"; }
+[[ "$(requirements_blob "$repo")" == "$before" ]] || fail "a declined amendment changed the requirements"
+[[ "$(jq -r '.decisions[0] | [.decision, has("amendment")] | @tsv' "$repo/$revision.json")" == $'ESCALATE\tfalse' ]] ||
+  fail "a declined amendment did not leave the finding escalated"
+jq -e 'has("amended_requirements") | not' "$repo/$revision.json" >/dev/null || fail "a declined amendment named amended requirements"
+grep -Fq "Escalated findings need your decision" "$repo.out" || fail "the declined amendment was not reported as escalated"
+[[ "$(write_sessions "$repo")" -eq 0 ]] || fail "a write session started without adopted or amended findings"
+
+# A diff that does not apply cleanly is an invalid decision: retried once and
+# refused, before anything is asked or recorded. Each case: the reason, then
+# the decisions.
+amend_invalid() {
+  printf '%s\t%s\n' "$1" "$(jq -c "$2" <<<"$amend_decisions")"
+}
+while IFS=$'\t' read -r reason invalid; do
+  repo="$(setup_repo "amend-invalid-$(grep -c . "$tmp/amend-count" 2>/dev/null || true)")"
+  echo x >>"$tmp/amend-count"
+  before="$(requirements_blob "$repo")"
+  MOCK_OUTPUT="$invalid" at_terminal "$repo" $'y\ny\n' --review "$review"
+  [[ ! -e "$repo/$revision.json" ]] || fail "an invalid amendment was recorded: $invalid"
+  [[ "$(requirements_blob "$repo")" == "$before" ]] || fail "an invalid amendment changed the requirements"
+  [[ "$(grep -c '^AGENT=' "$repo.log")" -eq 2 ]] || fail "an invalid amendment was not retried exactly once"
+  grep -Fq "$reason" "$repo.out" || fail "an invalid amendment was not refused with '$reason': $(cat "$repo.out")"
+done < <(
+  amend_invalid "does not apply cleanly" '.decisions[0].amendment |= sub("-Offline recipes."; "-Online recipes.")'
+  amend_invalid "and nothing else" '.decisions[0].amendment |= gsub("PROJECT_REQUIREMENTS"; "PROJECT_DESCRIPTION")'
+  amend_invalid "must not change the Status or Approved at line" \
+    '.decisions[0].amendment = "--- a/docs/PROJECT_REQUIREMENTS.md\n+++ b/docs/PROJECT_REQUIREMENTS.md\n@@ -3,2 +3,2 @@\n-Status: Approved\n+Status: Draft\n Approved at: 2026-01-01T00:00:00Z\n"'
+  amend_invalid "not a valid diff" '.decisions[0].amendment = "Store recipes on the device."'
+  amend_invalid "needs a diff of the requirements" '.decisions[0].amendment = null'
+  amend_invalid "must not have an amendment" '.decisions[1].amendment = .decisions[0].amendment'
+)
+
+# Without a terminal an amendment is not asked and nothing is recorded.
+repo="$(setup_repo amend-no-terminal)"
+before="$(requirements_blob "$repo")"
+if MOCK_OUTPUT="$amend_decisions" run_revise "$repo" y --review "$review"; then
+  fail "an amendment was accepted without a terminal"
+fi
+grep -Fq "must be a terminal" "$repo.out" || fail "the refusal without a terminal does not say why"
+[[ ! -e "$repo/$revision.json" && "$(requirements_blob "$repo")" == "$before" ]] ||
+  fail "something was recorded for an amendment without a terminal"
+
 # A stale review is refused even when it has no findings.
 repo="$(setup_repo stale-empty)"
 jq '.verdict = "PASS" | .findings = []' "$repo/$review" >"$repo/$review.tmp"

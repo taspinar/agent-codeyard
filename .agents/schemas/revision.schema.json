@@ -8,14 +8,20 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["finding_id", "decision", "rationale"],
+        "required": ["finding_id", "decision", "rationale", "amendment"],
         "properties": {
           "finding_id": { "type": "string" },
           "decision": {
             "type": "string",
-            "enum": ["ADOPT", "REJECT", "DEFER", "ESCALATE"]
+            "enum": ["ADOPT", "REJECT", "DEFER", "ESCALATE", "AMEND"]
           },
-          "rationale": { "type": "string" }
+          "rationale": { "type": "string" },
+          "amendment": {
+            "anyOf": [
+              { "type": "null" },
+              { "type": "string" }
+            ]
+          }
         }
       }
     }
