@@ -156,7 +156,7 @@ Then start the planning with it; `path/to/idea.md` is the path of your file:
 ./scripts/start-planning.sh --description path/to/idea.md
 ```
 
-The script first removes the template's own approval requests and plans, which your repository copied with the template, and says which; the planning pull request carries that removal. An agent then asks you questions and writes the requirements for your approval. It then proposes an architecture and a roadmap in a planning worktree: a separate folder next to your repository, whose path the script prints. Go to that folder, then review the plan, address the findings, and approve it:
+The script first removes the template's own approval requests and plans, which your repository copied with the template, and says which; the planning pull request carries that removal. An agent then asks you questions and writes the requirements, a second agent reviews them, and you see its findings when you approve. It then proposes an architecture and a roadmap in a planning worktree: a separate folder next to your repository, whose path the script prints. Go to that folder, then review the plan, address the findings, and approve it:
 
 ```
 cd ../<repository>-planning-project-bootstrap

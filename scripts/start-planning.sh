@@ -10,6 +10,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/scope.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/fingerprint.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/planning.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/inherited.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/review-data.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/review-run.sh"
 
 usage() {
   cat <<EOF
@@ -17,7 +19,14 @@ Usage: $0 [name] [--description <file>] [--agent <agent>] [--model <model>]
        $0 <name> --change <file> [--grill] [--agent <agent>] [--model <model>]
 
 The agent and model of each phase come from .agents/agents.conf (roles
-project-grill and project-planner). --agent and --model override both phases.
+project-grill and project-planner, and planning-reviewer for the read-only
+review of the Draft requirements). --agent and --model override all of them.
+
+After Project Grill, a read-only reviewer checks the Draft requirements. You
+see its findings next to the requirements and choose: resume Project Grill
+with the findings, approve the requirements as they are, or mark single
+findings as not applicable. The review and your choices are recorded in
+.agents/reviews/requirements-<name>-review-NN.json.
 
 --description copies an existing project description into the planning
 worktree as docs/PROJECT_DESCRIPTION.md. Project Grill reads it first.
@@ -133,6 +142,20 @@ planner_role="$AGENT_ROLE"
 [[ -f "$grill_prompt" ]] || fail "missing Project Grill prompt: $grill_prompt"
 [[ -f "$planner_prompt" ]] || fail "missing project-planner prompt: $planner_prompt"
 
+# The Draft review runs wherever Project Grill does: in the first planning,
+# and in a change cycle with --grill.
+draft_review_prompt="$repo_root/.agents/prompts/requirements-reviewer.md"
+draft_review_schema="$repo_root/.agents/schemas/requirements-review.schema.json"
+if [[ "$change_cycle" -eq 0 || "$with_grill" -eq 1 ]]; then
+  agent_resolve "$repo_root" planning-reviewer "$AGENT_CLI_PROVIDER" "$AGENT_CLI_MODEL"
+  reviewer_agent="$AGENT_PROVIDER"
+  reviewer_model="$AGENT_MODEL"
+  reviewer_role="$AGENT_ROLE"
+  [[ -f "$draft_review_prompt" ]] || fail "missing Draft requirements reviewer prompt: $draft_review_prompt"
+  [[ -f "$draft_review_schema" ]] || fail "missing Draft requirements review schema: $draft_review_schema"
+  review_data_require_jq
+fi
+
 # An uncommitted description inside the repository is the only change that
 # does not count as a dirty checkout.
 clean_paths=(.)
@@ -163,6 +186,7 @@ echo "  Branch:   $branch"
 echo "  Worktree: $worktree"
 if [[ "$change_cycle" -eq 0 || "$with_grill" -eq 1 ]]; then
   echo "  Grill:    $grill_agent ($grill_model)"
+  echo "  Reviewer: $reviewer_agent ($reviewer_model), read-only, of the Draft requirements"
 fi
 echo "  Planner:  $planner_agent ($planner_model)"
 if [[ -n "$description_source" ]]; then
@@ -346,6 +370,17 @@ The user supplied a project description as $description_relative.
 Read it before anything else. Do not modify it.
 EOF
   fi
+
+  if [[ "$phase" == "Project Grill" && -n "$grill_findings" ]]; then
+    cat <<EOF
+
+The owner resumes Project Grill with the findings of the Draft review
+(${draft_review#"$worktree"/}): follow the "Draft review findings" section of
+your contract. The open findings:
+
+$grill_findings
+EOF
+  fi
 }
 
 run_agent() {
@@ -511,6 +546,217 @@ approve_requirements() {
   approval_tmp=""
 }
 
+# run_grill <notice>: a Project Grill session, with the open findings of the
+# Draft review in its prompt when the owner resumes it with them (grill_findings).
+run_grill() {
+  snapshot_forbidden_paths "grill" "$grill_baseline"
+  run_agent "Project Grill" "$grill_prompt" "$grill_agent" "$grill_model" "$1" "$grill_role"
+  require_unchanged_head "Project Grill"
+  require_scope_unchanged "grill" "$grill_baseline" "Project Grill"
+
+  if [[ "$change_cycle" -eq 1 && "$(requirements_signature)" == "$base_requirements_signature" ]]; then
+    # Project Grill found that the change needs no requirement change.
+    requirements_changed=0
+    echo
+    echo "Project Grill left the approved requirements unchanged; no new approval is needed."
+  fi
+}
+
+# draft_review_context: what the Draft reviewer gets on standard input.
+draft_review_context() {
+  local path
+
+  echo "# Draft requirements review context ($branch)"
+  echo
+  for path in "$description_relative" "$change_relative" docs/PROJECT_REQUIREMENTS.md; do
+    [[ "$path" != "$change_relative" || "$change_cycle" -eq 1 ]] || continue
+    [[ -f "$worktree/$path" ]] || continue
+    echo "## $path"
+    echo
+    echo '````markdown'
+    cat "$worktree/$path"
+    echo '````'
+    echo
+  done
+  if [[ "$change_cycle" -eq 1 ]]; then
+    echo "## Diff of the requirements against the approved ones"
+    echo
+    git -C "$worktree" --no-pager diff --no-color "$base_head" -- docs/PROJECT_REQUIREMENTS.md
+  fi
+}
+
+# run_draft_review: one round of the read-only review of the Draft
+# requirements. Stores it as the next .agents/reviews/requirements-<name>-
+# review-NN.json, with an identifier per finding, and sets draft_review.
+run_draft_review() {
+  local scratch="$state_dir/draft-review"
+  local result="$scratch/result.json"
+  local round=1
+  local target
+  local prompt
+
+  while target="$worktree/.agents/reviews/requirements-$name-review-$(printf '%02d' "$round").json"; [[ -e "$target" || -L "$target" ]]; do
+    round=$((round + 1))
+  done
+  rm -rf "$scratch"
+  mkdir -p "$scratch"
+  draft_review_context >"$scratch/context.md" ||
+    post_creation_fail "could not prepare the Draft review."
+
+  prompt="Read and follow ${draft_review_prompt#"$repo_root"/}.
+
+Standard input contains the Draft requirements of $branch. Review them before
+the owner approves them."
+  if [[ "$change_cycle" -eq 1 ]]; then
+    prompt+="
+
+This is a change cycle: the requirements were approved before, and the human's
+change request is $change_relative. Review what the change alters."
+  fi
+  prompt+="
+
+You have read-only access. Do not modify, create, or delete any file.
+Return the review as JSON that matches the supplied schema. The calling
+script validates and stores it."
+
+  echo
+  echo "Starting the Draft review with $reviewer_agent ($reviewer_model), read-only..."
+  AGENT_ROLE="$reviewer_role"
+  (review_run_reviewer "$reviewer_agent" "$reviewer_model" "$worktree" "$prompt" "$scratch/context.md" \
+    "$draft_review_schema" "$result" "$scratch" planning_draft_review_errors) ||
+    post_creation_fail "the Draft review failed; the requirements were not approved."
+
+  mkdir -p "$worktree/.agents/reviews" &&
+    jq -n --slurpfile r "$result" \
+      --arg schema "$PLANNING_DRAFT_REVIEW_SCHEMA" \
+      --argjson round "$round" \
+      --arg branch "$branch" \
+      --arg blob "$(git -C "$worktree" hash-object "$requirements")" \
+      --arg agent "$reviewer_agent" \
+      --arg model "$reviewer_model" \
+      --arg created_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" '
+      {
+        schema: $schema,
+        round: $round,
+        branch: $branch,
+        requirements_blob: $blob,
+        reviewer: {agent: $agent, model: $model},
+        created_at: $created_at,
+        findings: [$r[0].findings | to_entries[] | {id: "D\(.key + 1)"} + .value],
+        limitations: $r[0].limitations,
+        not_applicable: [],
+        decision: null
+      }' >"$target" ||
+    post_creation_fail "could not store the Draft review."
+  draft_review="$target"
+}
+
+# draft_review_update <filter> [jq-arguments...]: records a decision of the
+# owner in the current Draft review.
+draft_review_update() {
+  local filter="$1"
+  shift
+
+  jq "$@" "$filter" "$draft_review" >"$draft_review.tmp" &&
+    mv "$draft_review.tmp" "$draft_review" ||
+    post_creation_fail "could not record the decision in ${draft_review#"$worktree"/}."
+}
+
+# The jq definition of the findings that are not marked as not applicable.
+draft_open_findings='def open_findings: [.not_applicable[].finding_id] as $marked | [.findings[] | select(.id | IN($marked[]) | not)];'
+
+draft_open_count() {
+  jq "$draft_open_findings"' open_findings | length' "$draft_review"
+}
+
+draft_open_ids() {
+  jq -r "$draft_open_findings"' open_findings[].id' "$draft_review"
+}
+
+# show_draft_findings: the open findings, each with its proposed wording.
+show_draft_findings() {
+  jq -r "$draft_open_findings"' open_findings[] |
+    "\(.id) [\(.category)] \(.section)",
+    "  Text:     \(.quote)",
+    "  Problem:  \(.problem)",
+    "  Proposed: \(.proposed_wording)",
+    ""' "$draft_review"
+}
+
+# mark_not_applicable: asks which open findings do not apply and why, and
+# records them.
+mark_not_applicable() {
+  local answer=""
+  local reason=""
+  local open_ids
+  local id
+  local ids=()
+
+  read -r -p "Finding(s) that do not apply, for example 'D1 D3': " answer || return 0
+  open_ids=" $(draft_open_ids | tr '\n' ' ')"
+  for id in $answer; do
+    id="$(tr '[:lower:]' '[:upper:]' <<<"$id")"
+    if [[ "$open_ids" != *" $id "* ]]; then
+      echo "There is no open finding $id; nothing was marked."
+      return 0
+    fi
+    [[ " ${ids[*]-} " == *" $id "* ]] || ids+=("$id")
+  done
+  if [[ "${#ids[@]}" -eq 0 ]]; then
+    echo "No finding named; nothing was marked."
+    return 0
+  fi
+  read -r -p "Why do they not apply? (one line): " reason || return 0
+  if [[ ! "$reason" =~ [^[:space:]] ]]; then
+    echo "A reason is required; nothing was marked."
+    return 0
+  fi
+  for id in "${ids[@]}"; do
+    draft_review_update '.not_applicable += [{finding_id: $id, reason: $reason, decided_at: $at}]' \
+      --arg id "$id" --arg reason "$reason" --arg at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  done
+  records_intervention "marked Draft review finding(s) ${ids[*]} as not applicable"
+  echo "Marked ${ids[*]} as not applicable."
+}
+
+# decide_on_draft_review: shows the open findings of the current Draft
+# review and asks the owner what to do. Sets decision to approve, decline, or
+# resume-grill. Without open findings, the question is the plain approval.
+decide_on_draft_review() {
+  local answer
+  local open_count
+
+  while true; do
+    open_count="$(draft_open_count)"
+    answer=""
+    if [[ "$open_count" -eq 0 ]]; then
+      read -r -p "Approve these project requirements and continue to architecture planning? [y/N] " answer || true
+      case "$answer" in
+        y | Y | yes | YES | Yes) decision="approve" ;;
+        *) decision="decline" ;;
+      esac
+      return 0
+    fi
+    echo
+    echo "The Draft review found $open_count open finding(s) in the requirements (${draft_review#"$worktree"/}):"
+    echo
+    show_draft_findings
+    echo "Choose:"
+    echo "  g  resume Project Grill with these findings; the changed Draft is reviewed again"
+    echo "  a  approve the requirements as they are; the open findings are recorded"
+    echo "  n  mark findings as not applicable, with a reason"
+    echo "  q  stop without approving"
+    read -r -p "Your choice [g/a/n/q]: " answer || answer="q"
+    case "$answer" in
+      g | G) decision="resume-grill"; return 0 ;;
+      a | A) decision="approve"; return 0 ;;
+      n | N) mark_not_applicable ;;
+      q | Q) decision="decline"; return 0 ;;
+      *) echo "Choose g, a, n, or q." ;;
+    esac
+  done
+}
+
 # The approval requests and plans of the template's own Issues, which a
 # project got with "Use this template" (lib/inherited.sh), are removed in the
 # first planning of the project, so the planning pull request carries the
@@ -556,10 +802,12 @@ if [[ "$change_cycle" -eq 1 ]]; then
   echo "Copied the change request to: $change_relative"
 fi
 
+# The Grill baseline is taken before each Grill session, and the planner's
+# after the approval: in between, this script records the Draft reviews under
+# .agents/reviews, which no agent may change.
 grill_baseline="$state_dir/grill-baseline.tsv"
 planner_baseline="$state_dir/planner-baseline.tsv"
-snapshot_forbidden_paths "grill" "$grill_baseline"
-snapshot_forbidden_paths "planner" "$planner_baseline"
+grill_findings=""
 
 base_requirements_signature="$(requirements_signature)"
 requirements_changed=1
@@ -581,19 +829,13 @@ phase 2 starts by itself: planning the change in a new session."
 After the session, this script shows the requirements and asks for your approval.
 When you approve, phase 2 starts by itself: project planning in a new session."
   fi
-  run_agent "Project Grill" "$grill_prompt" "$grill_agent" "$grill_model" "$grill_notice" "$grill_role"
-  require_unchanged_head "Project Grill"
-  require_scope_unchanged "grill" "$grill_baseline" "Project Grill"
-
-  if [[ "$change_cycle" -eq 1 && "$(requirements_signature)" == "$base_requirements_signature" ]]; then
-    # Project Grill found that the change needs no requirement change.
-    requirements_changed=0
-    echo
-    echo "Project Grill left the approved requirements unchanged; no new approval is needed."
-  fi
+  run_grill "$grill_notice"
 fi
 
-if [[ "$requirements_changed" -eq 1 ]]; then
+# The Draft is reviewed before the owner approves it. The owner resumes
+# Project Grill with the findings, which is reviewed again, approves the
+# requirements as they are, or marks single findings as not applicable.
+while [[ "$requirements_changed" -eq 1 ]]; do
   validate_requirements "Draft"
 
   echo
@@ -608,22 +850,50 @@ if [[ "$requirements_changed" -eq 1 ]]; then
   fi
   echo
 
-  answer=""
-  read -r -p "Approve these project requirements and continue to architecture planning? [y/N] " answer || true
-  case "$answer" in
-    y | Y | yes | YES | Yes) records_intervention "approved the project requirements" ;;
+  run_draft_review
+  if [[ "$(jq '.findings | length' "$draft_review")" -eq 0 ]]; then
+    echo
+    echo "The Draft review found no defect in the requirements (${draft_review#"$worktree"/})."
+  fi
+  limitations="$(jq -r '.limitations' "$draft_review")"
+  [[ -z "$limitations" ]] || printf '\nThe reviewer could not verify: %s\n' "$limitations"
+  echo
+
+  decision=""
+  decide_on_draft_review
+  open_count="$(draft_open_count)"
+  draft_review_update '.decision = {choice: $choice, decided_at: $at, open_findings: ['"$draft_open_findings"' open_findings[].id]}' \
+    --arg choice "$decision" --arg at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+  case "$decision" in
+    approve)
+      if [[ "$open_count" -eq 0 ]]; then
+        records_intervention "approved the project requirements"
+      else
+        records_intervention "approved the project requirements with $open_count open Draft review finding(s)"
+      fi
+      approve_requirements
+      break
+      ;;
+    resume-grill)
+      records_intervention "resumed Project Grill with $open_count Draft review finding(s)"
+      grill_findings="$(show_draft_findings)"
+      run_grill "Project Grill resumes with the findings of the Draft review. After the session,
+this script reviews the changed Draft and asks for your approval again."
+      grill_findings=""
+      ;;
     *)
       echo
       echo "Requirements were not approved; project planning did not start."
+      echo "The Draft review and your decision: ${draft_review#"$worktree"/}"
       echo "Planning worktree preserved at: $worktree"
       exit 2
       ;;
   esac
-
-  approve_requirements
-fi
+done
 validate_requirements "Approved"
 approved_requirements_signature="$(requirements_signature)"
+snapshot_forbidden_paths "planner" "$planner_baseline"
 
 if [[ "$change_cycle" -eq 1 ]]; then
   planner_notice="A new session changes the architecture, the roadmap, or the ADRs as far as the

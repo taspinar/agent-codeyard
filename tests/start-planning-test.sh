@@ -30,6 +30,31 @@ set -euo pipefail
 agent="$(basename "$0")"
 prompt="${!#}"
 
+# The read-only Draft review: MOCK_REVIEW_RESULT_<n> answers round <n>,
+# MOCK_REVIEW_RESULT every other round; no findings without either.
+if [[ "$prompt" == *"requirements-reviewer.md"* ]]; then
+  cat >"$MOCK_AGENT_LOG.review-stdin"
+  review_count="$(grep -c '^REVIEW=' "$MOCK_AGENT_LOG" 2>/dev/null || true)"
+  review_count=$((${review_count:-0} + 1))
+  {
+    echo "REVIEW=$review_count"
+    echo "REVIEW_ARGS=$*"
+  } >>"$MOCK_AGENT_LOG"
+  result_variable="MOCK_REVIEW_RESULT_$review_count"
+  result="${!result_variable:-}"
+  [[ -n "$result" ]] || result="${MOCK_REVIEW_RESULT:-}"
+  [[ -n "$result" ]] || result='{"findings": [], "limitations": ""}'
+  if [[ "$agent" == "codex" ]]; then
+    args=("$@")
+    for ((i = 0; i < ${#args[@]}; i++)); do
+      [[ "${args[$i]}" != "--output-last-message" ]] || printf '%s\n' "$result" >"${args[$((i + 1))]}"
+    done
+  else
+    printf '{"structured_output": %s}\n' "$result"
+  fi
+  exit 0
+fi
+
 if [[ "$prompt" == *"Project Grill phase"* ]]; then
   phase="grill"
 elif [[ "$prompt" == *"project planning phase"* ]]; then
@@ -45,6 +70,10 @@ fi
   echo "PWD=$PWD"
   echo "ARGS=$*"
 } >>"$MOCK_AGENT_LOG"
+if [[ "$phase" == "grill" && "$prompt" == *"Draft review findings"* ]]; then
+  echo "RESUMED_WITH=$(grep -o 'D[0-9] \[[a-z-]*\]' <<<"$prompt" | paste -sd, -)" >>"$MOCK_AGENT_LOG"
+  eval "${MOCK_RESUMED_GRILL:-:}"
+fi
 
 if [[ "$prompt" == *"This is a change cycle"* ]]; then
   echo "CHANGE=$phase" >>"$MOCK_AGENT_LOG"
@@ -247,6 +276,9 @@ setup_repo() {
   printf 'project-grill: codex astra\nproject-planner: codex astra\n' >"$seed/.agents/agents.conf"
   cp "$root/.agents/prompts/project-grill.md" "$seed/.agents/prompts/project-grill.md"
   cp "$root/.agents/prompts/project-planner.md" "$seed/.agents/prompts/project-planner.md"
+  cp "$root/.agents/prompts/requirements-reviewer.md" "$seed/.agents/prompts/requirements-reviewer.md"
+  mkdir -p "$seed/.agents/schemas"
+  cp "$root/.agents/schemas/requirements-review.schema.json" "$seed/.agents/schemas/"
   # The unapproved draft the template ships, not the requirements of the
   # repository these tests run in, which are approved once its planning is.
   printf '# Project Requirements\n\nStatus: Draft\nApproved at: Not approved\n\n## Project goal\n\n<!-- REQUIRED: Describe the product outcome and why it matters. -->\n' \
@@ -304,7 +336,7 @@ codex_worktree="$tmp/codex-repo-planning-project-bootstrap"
 # The run records name the role of each session, though both roles are
 # resolved before the first one starts.
 [[ "$(cat "$codex_repo"/.agents/run/records/*.jsonl 2>/dev/null |
-  jq -r -s '[.[] | select(.type == "agent-call") | .role] | join(",")')" == "project-grill,project-planner" ]] ||
+  jq -r -s '[.[] | select(.type == "agent-call") | .role] | join(",")')" == "project-grill,planning-reviewer,project-planner" ]] ||
   fail "the run records do not name the role of each planning session"
 grep -Fq -- "--model astra" "$codex_log" ||
   fail "Codex model was not forwarded"
@@ -319,6 +351,19 @@ grep -Eq '^Approved at: [0-9]{4}-[0-9]{2}-[0-9]{2}T' "$codex_worktree/docs/PROJE
 if grep -Fq "No such file or directory" "$tmp/codex-success.err"; then
   fail "Codex happy path emitted a missing optional ADR directory error"
 fi
+# A Draft without findings: one read-only review of the Draft, recorded with
+# the owner's approval, and the plain approval question.
+[[ "$(grep -c '^REVIEW=' "$codex_log")" -eq 1 ]] || fail "the Draft was not reviewed exactly once"
+grep '^REVIEW_ARGS=' "$codex_log" | grep -Fq -- "--sandbox read-only" ||
+  fail "the Draft reviewer did not run read-only"
+grep -Fq "Status: Draft" "$codex_log.review-stdin" && grep -Fq "## docs/PROJECT_REQUIREMENTS.md" "$codex_log.review-stdin" ||
+  fail "the Draft reviewer did not get the Draft requirements"
+jq -e '.schema == "requirements-review/v1" and .round == 1 and .findings == [] and .decision.choice == "approve"
+  and .decision.open_findings == [] and .reviewer == {agent: "codex", model: "astra"}' \
+  "$codex_worktree/.agents/reviews/requirements-project-bootstrap-review-01.json" >/dev/null ||
+  fail "the Draft review without findings and the approval were not recorded"
+[[ "$codex_output" == *"The Draft review found no defect in the requirements"* ]] ||
+  fail "the owner was not told that the Draft review found nothing"
 
 claude_repo="$(setup_repo claude)"
 claude_log="$tmp/claude.log"
@@ -344,6 +389,130 @@ fi
 if grep -Fq "No such file or directory" "$tmp/claude-success.err"; then
   fail "Claude happy path emitted a missing optional ADR directory error"
 fi
+grep '^REVIEW_ARGS=' "$claude_log" | grep -Fq -- "--tools Read,Glob,Grep" ||
+  fail "the Claude Draft reviewer did not run read-only"
+jq -e '.findings == [] and .decision.choice == "approve"' \
+  "$claude_worktree/.agents/reviews/requirements-architecture-refresh-review-01.json" >/dev/null ||
+  fail "the Claude Draft review was not recorded"
+
+# The Draft review with findings. The owner sees each with its proposed
+# wording and chooses; every choice is recorded in the review.
+draft_findings='{"findings": [
+  {"category": "unkept-promise", "section": "## Runtime and deployment constraints", "quote": "Cost is capped.",
+   "problem": "Nothing caps the bill.", "proposed_wording": "A budget alert notifies the owner; nothing caps the bill."},
+  {"category": "unmeasurable", "section": "## UX expectations", "quote": "the smallest that serves",
+   "problem": "No one can check it.", "proposed_wording": "At most one instance."}
+], "limitations": ""}'
+
+# run_review_case <label> <answers> [VARIABLE=value...]: a first planning
+# whose questions get <answers>, with the fakes configured by the variables.
+run_review_case() {
+  local label="$1"
+  local answers="$2"
+  local repo
+
+  shift 2
+  repo="$(setup_repo "$label")"
+  (
+    cd "$repo"
+    printf '%s' "$answers" |
+      env PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$tmp/$label.log" "$@" \
+      ./scripts/start-planning.sh --agent codex --model astra
+  ) >"$tmp/$label.out" 2>&1
+}
+
+draft_review_file() {
+  printf '%s\n' "$tmp/$1-repo-planning-project-bootstrap/.agents/reviews/requirements-project-bootstrap-review-$2.json"
+}
+
+draft_interventions() {
+  cat "$tmp/$1-repo"/.agents/run/records/*.jsonl | jq -r 'select(.type == "intervention") | .what'
+}
+
+# Approve as they are: the planner runs, the open findings are recorded.
+run_review_case review-approve $'a\n' MOCK_REVIEW_RESULT="$draft_findings" || {
+  cat "$tmp/review-approve.out" >&2
+  fail "approving the requirements with open Draft findings failed"
+}
+grep -Fq "D1 [unkept-promise] ## Runtime and deployment constraints" "$tmp/review-approve.out" &&
+  grep -Fq "Proposed: A budget alert notifies the owner; nothing caps the bill." "$tmp/review-approve.out" &&
+  grep -Fq "Project requirements proposed by Project Grill:" "$tmp/review-approve.out" ||
+  fail "the owner did not see the findings with their proposed wording next to the requirements"
+[[ "$(awk -F= '/^PHASE=/ { print $2 }' "$tmp/review-approve.log" | paste -sd, -)" == "grill,planner" ]] ||
+  fail "approving with open findings did not continue to the planner"
+grep -Fqx "Status: Approved" "$tmp/review-approve-repo-planning-project-bootstrap/docs/PROJECT_REQUIREMENTS.md" ||
+  fail "approving with open findings did not approve the requirements"
+jq -e '[.findings[].id] == ["D1", "D2"] and .decision.choice == "approve" and .decision.open_findings == ["D1", "D2"]' \
+  "$(draft_review_file review-approve 01)" >/dev/null || fail "the approval with open findings was not recorded"
+draft_interventions review-approve | grep -Fqx "approved the project requirements with 2 open Draft review finding(s)" ||
+  fail "the run records do not show the approval with open findings"
+
+# Mark single findings as not applicable: an unknown one is refused, a marked
+# one is no longer open, and the rest is approved.
+run_review_case review-not-applicable $'n\nD9\nn\nd2\nThe owner chose no size.\na\n' MOCK_REVIEW_RESULT="$draft_findings" || {
+  cat "$tmp/review-not-applicable.out" >&2
+  fail "marking a Draft finding as not applicable failed"
+}
+grep -Fq "There is no open finding D9; nothing was marked." "$tmp/review-not-applicable.out" ||
+  fail "an unknown finding was not refused"
+jq -e '(.not_applicable | map({finding_id, reason})) == [{finding_id: "D2", reason: "The owner chose no size."}]
+  and .decision.choice == "approve" and .decision.open_findings == ["D1"]' \
+  "$(draft_review_file review-not-applicable 01)" >/dev/null ||
+  fail "the finding marked as not applicable was not recorded"
+draft_interventions review-not-applicable | grep -Fqx "marked Draft review finding(s) D2 as not applicable" ||
+  fail "the run records do not show the finding marked as not applicable"
+
+# Once every finding is marked, the question is the plain approval.
+run_review_case review-all-marked $'n\nD1 D2\nBoth are what the owner wants.\ny\n' MOCK_REVIEW_RESULT="$draft_findings" || {
+  cat "$tmp/review-all-marked.out" >&2
+  fail "approving after marking every Draft finding failed"
+}
+jq -e '(.not_applicable | map(.finding_id)) == ["D1", "D2"] and .decision.choice == "approve" and .decision.open_findings == []' \
+  "$(draft_review_file review-all-marked 01)" >/dev/null || fail "marking every finding was not recorded"
+
+# Resume Project Grill: it gets the findings, and the changed Draft is
+# reviewed again before the owner approves it.
+run_review_case review-resume $'g\ny\n' MOCK_REVIEW_RESULT_1="$draft_findings" || {
+  cat "$tmp/review-resume.out" >&2
+  fail "resuming Project Grill with the Draft findings failed"
+}
+[[ "$(awk -F= '/^PHASE=/ { print $2 }' "$tmp/review-resume.log" | paste -sd, -)" == "grill,grill,planner" ]] ||
+  fail "Project Grill was not resumed before the planner"
+grep -Fqx "RESUMED_WITH=D1 [unkept-promise],D2 [unmeasurable]" "$tmp/review-resume.log" ||
+  fail "the resumed Project Grill did not get the findings"
+grep -Fq "  Proposed: A budget alert notifies the owner; nothing caps the bill." "$tmp/review-resume.log" ||
+  fail "the resumed Project Grill did not get the proposed wording"
+[[ "$(grep -c '^REVIEW=' "$tmp/review-resume.log")" -eq 2 ]] || fail "the changed Draft was not reviewed again"
+jq -e '.decision.choice == "resume-grill" and .decision.open_findings == ["D1", "D2"]' \
+  "$(draft_review_file review-resume 01)" >/dev/null || fail "resuming Project Grill was not recorded"
+jq -e '.round == 2 and .findings == [] and .decision.choice == "approve"' \
+  "$(draft_review_file review-resume 02)" >/dev/null || fail "the second Draft review was not recorded"
+draft_interventions review-resume | grep -Fqx "resumed Project Grill with 2 Draft review finding(s)" ||
+  fail "the run records do not show the resumed Project Grill"
+
+# Stop: nothing is approved, the planner does not run, and the stop is recorded.
+if run_review_case review-stop $'q\n' MOCK_REVIEW_RESULT="$draft_findings"; then
+  fail "stopping at the Draft findings returned success"
+fi
+[[ "$(awk -F= '/^PHASE=/ { print $2 }' "$tmp/review-stop.log" | paste -sd, -)" == "grill" ]] ||
+  fail "the planner ran after the owner stopped at the Draft findings"
+grep -Fqx "Status: Draft" "$tmp/review-stop-repo-planning-project-bootstrap/docs/PROJECT_REQUIREMENTS.md" ||
+  fail "the requirements did not stay Draft after the stop"
+jq -e '.decision.choice == "decline"' "$(draft_review_file review-stop 01)" >/dev/null ||
+  fail "the stop was not recorded"
+
+# A reviewer that returns an invalid result twice stops the planning before
+# the approval and stores no review.
+if run_review_case review-invalid $'a\n' MOCK_REVIEW_RESULT='{"findings": [{"category": "style"}], "limitations": ""}'; then
+  fail "an invalid Draft review returned success"
+fi
+[[ "$(grep -c '^REVIEW=' "$tmp/review-invalid.log")" -eq 2 ]] || fail "an invalid Draft review was not retried once"
+grep -Fq "the Draft review failed; the requirements were not approved." "$tmp/review-invalid.out" &&
+  grep -Fq "Planning worktree preserved at:" "$tmp/review-invalid.out" ||
+  fail "the failed Draft review was not reported"
+[[ ! -e "$(draft_review_file review-invalid 01)" ]] || fail "an invalid Draft review was stored"
+grep -Fqx "Status: Draft" "$tmp/review-invalid-repo-planning-project-bootstrap/docs/PROJECT_REQUIREMENTS.md" ||
+  fail "the requirements did not stay Draft after a failed review"
 
 # A project made with "Use this template" has the template's approval
 # requests and plans in its first commit. The first planning removes them,
@@ -1129,6 +1298,7 @@ change_worktree="$tmp/change-repo-planning-shopping-list"
 [[ "$(git -C "$change_worktree" branch --show-current)" == "planning/shopping-list" ]] ||
   fail "the change cycle did not get its own planning branch"
 [[ "$(phases "$tmp/change-roadmap.log")" == "planner" ]] || fail "a change without --grill did not run only the planner"
+! grep -q '^REVIEW=' "$tmp/change-roadmap.log" || fail "a change without --grill reviewed the requirements"
 grep -Fq "Planning change cycle completed." "$tmp/change-roadmap.out" || fail "the change cycle was not reported as completed"
 cmp -s "$change_request" "$change_worktree/docs/changes/shopping-list.md" ||
   fail "the change request was not copied to docs/changes/"
@@ -1192,6 +1362,10 @@ MOCK_CHANGE_GRILL="$change_requirements" MOCK_CHANGE_PLANNER="$add_feature" \
   fail "a change cycle with a requirement change failed"
 }
 [[ "$(phases "$tmp/change-grill.log")" == "grill,planner" ]] || fail "--grill did not run Project Grill before the planner"
+[[ "$(grep -c '^REVIEW=' "$tmp/change-grill.log")" -eq 1 ]] || fail "the changed Draft was not reviewed"
+grep -Fq "## docs/changes/with-grill.md" "$tmp/change-grill.log.review-stdin" &&
+  grep -Fq "+One complete vertical slice, and a shopping list." "$tmp/change-grill.log.review-stdin" ||
+  fail "the Draft reviewer of a change did not get the change request and the diff"
 grep -Fq "+One complete vertical slice, and a shopping list." "$tmp/change-grill.out" ||
   fail "the change to the requirements was not shown before the approval"
 grill_worktree="$tmp/change-repo-planning-with-grill"
@@ -1216,6 +1390,7 @@ MOCK_CHANGE_PLANNER="$add_feature" run_change "$change_repo" change-fits "" fits
   fail "a change that needs no requirement change failed"
 }
 [[ "$(phases "$tmp/change-fits.log")" == "grill,planner" ]] || fail "the planner did not run after an unchanged Project Grill"
+! grep -q '^REVIEW=' "$tmp/change-fits.log" || fail "unchanged approved requirements were reviewed as a Draft"
 grep -Fq "no new approval is needed" "$tmp/change-fits.out" || fail "the unchanged requirements were not reported"
 [[ "$(cat "$tmp/change-repo-planning-fits/docs/PROJECT_REQUIREMENTS.md")" == "$approved_requirements" ]] ||
   fail "unchanged requirements were touched"

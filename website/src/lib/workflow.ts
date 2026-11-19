@@ -314,7 +314,7 @@ function walk(state: State, models: Models): Step[] {
   if (part !== "feature") {
     reach("p-idea", "You describe the project in your own words, in docs/PROJECT_DESCRIPTION.md.");
     reach("p-req", `start-planning.sh: Project Grill (${agent(models, "project-grill", "medium")}) asks about the goals, the users, the scope and the constraints, and drafts the requirements.`);
-    reach("p-approve-req", "You approve the requirements; the planning goes on only after that.");
+    reach("p-approve-req", `${agent(models, "planning-reviewer", "medium")} reviews the draft requirements, read-only. You see its findings and resume Project Grill with them, approve, or mark findings as not applicable; the planning goes on only after your approval.`);
     reach("p-plan", `A fresh planning session (${agent(models, "project-planner", "medium")}) writes the architecture, the roadmap and the necessary ADRs.`);
     reach("p-review", `review-planning.sh: ${agent(models, "planning-reviewer", "medium")} reviews the plan, read-only. With findings, revise-planning.sh proposes a decision per finding, you approve them, and the plan is reviewed again.`);
     reach("p-approve", "finish-planning.sh records your approval with a fingerprint of the requirements and the roadmap; a later change to them makes it stale.");

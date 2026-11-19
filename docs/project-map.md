@@ -125,7 +125,7 @@ the website describes the current template.
 | `scripts/lib/risk.sh` | The risk level of a feature: the path classes of `.agents/policies/risk.conf` on the diff, the fixed escalations, and what the agents recorded, of which the highest counts; and what a level requires of the review rounds, by the same policy; the presets of the workflow profiles `light` and `standard` |
 | `scripts/lib/skills.sh` | The project skills: their metadata, the digest of their files, the selection in a plan, and the paragraph of the prompt that `start-feature.sh`, `review-feature.sh`, and `apply-triage.sh` give every role of the feature |
 | `scripts/lib/scope.sh` | File-scope enforcement for write sessions: a snapshot of the worktree before and after, which leaves out the directories Git ignores as a whole |
-| `scripts/lib/planning.sh` | The planning scope and the planning approval check |
+| `scripts/lib/planning.sh` | The planning scope, the planning approval check, and the result rules of the Draft requirements review |
 | `scripts/lib/inherited.sh` | The approval requests and plans of the template's own Issues that a project inherited with "Use this template", and whether the repository is a project |
 
 ## Agent contracts and schemas
@@ -134,6 +134,7 @@ the website describes the current template.
 |---|---|
 | `.agents/prompts/project-grill.md` | Project Grill in `start-planning.sh` |
 | `.agents/prompts/project-planner.md` | The project planner in `start-planning.sh` |
+| `.agents/prompts/requirements-reviewer.md` | The review of the Draft requirements in `start-planning.sh`, before the owner approves them |
 | `.agents/prompts/planning-reviewer.md` | `review-planning.sh` |
 | `.agents/prompts/planning-reviser.md` | `revise-planning.sh` |
 | `.agents/prompts/planner.md` | Optional feature plans in `.agents/plans/` |
@@ -143,6 +144,7 @@ the website describes the current template.
 | `.agents/prompts/triage-implementer.md` | `apply-triage.sh` |
 | `.agents/prompts/analyst.md` | `analyze-runs.sh` |
 | `.agents/prompts/assessor.md` | `assess-repository.sh` |
+| `.agents/schemas/requirements-review.schema.json` | Results of the Draft requirements review: findings with a proposed wording |
 | `.agents/schemas/review.schema.json` | Results of planning reviews |
 | `.agents/schemas/feature-review.schema.json` | Results of feature reviews: the same, with the reviewer's classification of the impact on the architecture |
 | `.agents/schemas/triage.schema.json` | Triage decisions |
