@@ -12,6 +12,17 @@ on:
 # (verify.sh without --all decides; a sync of the template changes them), and
 # always on main and every night. The template is the repository that
 # .agents/template.conf names under 'repository:'; it needs no nightly run.
+# The token of these jobs can read the repository and nothing else: the
+# checkout reads it, and the artifact upload and the npm cache use the
+# runner's own token. 'packages: read' keeps GitHub's read-only default for a
+# project's setup action that pulls from GitHub Packages. A project whose
+# setup action needs more keeps its own copy of this file: it excludes it from
+# the sync in .agents/template.conf (docs/development.md, "The project's CI
+# setup").
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   scope:
     runs-on: ubuntu-latest

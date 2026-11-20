@@ -164,6 +164,14 @@ treated like a change to a CI workflow: it is `high` in
 `.agents/policies/guardrails.conf` says, and listed in `.github/CODEOWNERS`.
 A project gets no fewer approvals from it, only no conflicts.
 
+The action runs with the token of `ci.yml`, which may read the repository
+and its packages and nothing else (`permissions:` with `contents: read` and
+`packages: read`). An action that needs more, for example `id-token: write`
+to sign in to a cloud provider, cannot get it through this extension point:
+the project then keeps its own `ci.yml`, with
+`:(exclude).github/workflows/ci.yml` in the `paths:` of
+`.agents/template.conf`, and merges later template changes to it by hand.
+
 GitHub Actions cannot run locally. `tests/sync-template-test.sh` checks the
 structure of both workflow files (the step comes after the checkout and
 before the verification in every job that runs `verify.sh`) and evaluates its
