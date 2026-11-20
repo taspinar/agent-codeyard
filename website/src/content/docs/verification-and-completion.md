@@ -76,6 +76,8 @@ A criterion the reviewer could not check at all, such as one that needs a servic
 
 A successful run is recorded for the exact content of the working tree that was checked, together with which checks ran. With `--reuse`, a later step skips the run only when that content is unchanged and the recorded run covered every check that is required now: a run that skipped the workflow tests does not count where they are required. Any change to the content means the checks run again.
 
+An agent session can write that record, so an unattended step trusts only a pass that a workflow script ran itself. `run-feature.sh` keeps the passes it made in `VERIFY_TRUSTED_TREES` and gives the list to the scripts of its steps, never to an agent; with the list, `--reuse` skips the run only for a pass in it. An unattended step without the list (`--unattended`, or `update-feature.sh`) runs every check itself. At a terminal nothing changes: any recorded pass for the content is reused. The run records say who started each verification and whether its pass counted; [`docs/development.md`](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md), "Recorded verification", has the contract.
+
 A review belongs to the content that was reviewed: a change to that content requires another review. New commits on the base branch alone do not make a review outdated.
 
 Separately, if the point where the feature branched off its base branch has changed, for example after you merged the base branch into the feature, any later review has to cover the complete feature and cannot be limited to the recent changes.

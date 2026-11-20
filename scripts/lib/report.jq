@@ -149,6 +149,12 @@ def report_subject($kind; $subject):
        count: length, seconds: (map(.seconds | number_or_null // 0) | add // 0),
        reused: (map(select(.reused == true)) | length),
        failed: (map(select(.status != 0)) | length),
+       # The trust contract (lib/verification.sh): the passes that counted as
+       # evidence, and who started each verification; an event recorded
+       # before the contract has neither and counts as 'not recorded'.
+       trusted: (map(select(.trusted == true)) | length),
+       origins: (map(.origin | if type == "string" then . else "not recorded" end) | group_by(.)
+                 | map({origin: first, count: length})),
        interrupted: (($events | map(select(.type == "verification-start")) | length) - length)}),
      agents: ($calls | group_by([.role, .agent, .model]) | map({
        role: first.role, agent: first.agent, model: first.model, calls: length,
@@ -292,6 +298,7 @@ def subject_markdown:
   + "| Input tokens | \(.input | token_text) |\n"
   + "| Output tokens | \(.output | token_text) |\n"
   + "| Verification | \(.verification.count) runs, \(.verification.seconds | duration), \(.verification.reused) reused, \(.verification.failed) failed\(if .verification.interrupted > 0 then ", \(.verification.interrupted) interrupted" else "" end) |\n"
+  + "| Trusted passes | \(.verification.trusted // 0) of \(.verification.count)\(if ((.verification.origins // []) | length) > 0 then "; started by: " + (.verification.origins | map("\(.origin) \(.count)") | join(", ")) else "" end) |\n"
   + "\n### Agents\n\n"
   + (if (.agents | length) == 0 then "No agent call was recorded.\n" else
       "| Role | Agent | Model | Calls | Time | Input tokens | Output tokens |\n|---|---|---|---|---|---|---|\n"

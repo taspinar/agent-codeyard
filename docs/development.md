@@ -393,9 +393,58 @@ result (`pass` or `budget`), separated by tabs.
 `./scripts/verify.sh --reuse` skips the run when the record matches the current
 content exactly, and says so. `review-feature.sh`, `apply-triage.sh`, and
 `finish-feature.sh` call it that way, so in a feature the checks run once per
-version of the content instead of once per step: the agent verifies its final
-result, and the scripts that follow reuse that pass. Plain
-`./scripts/verify.sh` always runs every check.
+version of the content instead of once per step: at a terminal, the agent
+verifies its final result, and the scripts that follow reuse that pass. Plain
+`./scripts/verify.sh` always runs every check. The record also says who
+started the run that wrote it (`origin`): `orchestrator` (`run-feature.sh`),
+`script` (another workflow script), `agent-session`, or `manual`.
+
+**The trust contract.** An agent session can write the record: an unattended
+Claude session has no filesystem sandbox. So a pass is evidence for an
+unattended review or commit only when the `verify.sh` that recorded it was
+started by a workflow script itself, never inside an agent session, and that
+script keeps the tree of the pass in its own memory:
+
+1. `run-feature.sh` keeps the list `VERIFY_TRUSTED_TREES`: after each of its
+   own calls of `verify.sh` that passes (the verification of an unreviewed
+   `low` feature, and the repeat of a failed verification), it adds the
+   `tree` of the record. The scripts of its steps get the list in their
+   environment.
+2. `verify.sh --reuse` with the variable set, also empty, reuses only a
+   record whose tree is in the list; otherwise it says so and runs every
+   check, and records the pass again.
+3. An unattended step without the list runs the verification itself and
+   reuses no record: `finish-feature.sh --unattended`,
+   `apply-triage.sh --unattended`, `review-feature.sh --unattended`,
+   `update-feature.sh` (which publishes without a question), and the
+   verification step of `run-feature.sh`. The pass such a step makes is its
+   own trusted tree, which the scripts it starts get (`update-feature.sh`
+   gives it to `publish-feature.sh`).
+4. No agent process gets the list: `scripts/lib/agent.sh` removes
+   `VERIFY_TRUSTED_TREES` (and `VERIFY_ORIGIN`, with which a script names
+   itself as the origin) from the environment of every agent and sets
+   `CODEYARD_AGENT_SESSION=1`, so a verification the agent runs records the
+   origin `agent-session`. An agent cannot change the list of the script
+   that started it, and cannot make a trusted pass for new content: a record
+   rewritten to name a tree of the list is harmless, since that tree really
+   passed, and the content must be that tree to match.
+5. The `verification` event of the run records says who started the
+   verification (`origin`) and whether its pass counted as evidence
+   (`trusted`); `./scripts/report-runs.sh` reports both (see "Run records").
+
+Interactive use is unchanged: without the variable, `verify.sh --reuse`, and
+`review-feature.sh`, `apply-triage.sh`, and `finish-feature.sh` without
+`--unattended`, reuse any record for exactly the current content, also one
+that an agent session recorded, as the owner at a terminal expects. CI runs
+every check on a clean checkout anyway, and `publish-feature.sh` and a
+ruleset on `main` make it the gate before a merge; the contract keeps the
+line `Verification: passed` of an unattended commit honest, and keeps an
+unattended run from spending its sessions on a forged pass.
+
+The contract costs time in an unattended run: a pass that a step's script
+made itself (a review, the fixes of a round) is not known to `run-feature.sh`,
+so the step after it verifies the same content again, and the implementer's
+own verification is not reused at all.
 
 Two limits:
 
@@ -403,13 +452,9 @@ Two limits:
   on ignored state, such as an installed dependency or a build cache, is not
   run again when only that state changed. CI runs every check on a clean
   checkout.
-- A run inside an agent session counts like any other. The implementer and
-  the triage implementer run the verification after their last change, and
-  the review, `apply-triage.sh`, and the commit that follow reuse that pass.
-  An agent could write the record instead of running the checks; that is
-  accepted, because CI runs every check on a clean checkout, and
-  `publish-feature.sh` and a ruleset on `main` make it the gate before a
-  merge.
+- The contract detects nothing and prevents nothing beyond the reuse: an
+  agent session can still change files, and the scripts that follow judge
+  the content as it is.
 
 A record made without the workflow self-tests does not stand in for a run that
 needs them, such as `--reuse --all`.
@@ -2477,9 +2522,10 @@ write over an untracked file, but a merge that is not a fast-forward
 replaces an ignored one without a word, even with `--no-overwrite-ignore`,
 which both scripts pass. The script names the paths; move each out of the
 worktree, or remove it once you know it is not needed, and run again. Then
-it runs the full verification, `./scripts/verify.sh --all --reuse`, since a
-review that was done before the merge covered the feature, not the merge; on
-a rerun the pass of the same content is reused. Last, it publishes again
+it runs the full verification, `./scripts/verify.sh --all`, since a
+review that was done before the merge covered the feature, not the merge. It
+reuses no recorded pass, which an agent session may have written, unless it
+is given the trusted passes of a run (see "Recorded verification"). Last, it publishes again
 with `publish-feature.sh`. Nothing is pushed when a step fails, and running
 the command again continues where it stopped. The same steps by hand are
 `git merge origin/main`, `./scripts/verify.sh --all`, and
@@ -3451,7 +3497,7 @@ brings the rules.
 | `run-end` | `status`: the exit status; 130 when the run was interrupted. For a status other than 0 also `step` and `reason`: those of the last `stop` of the run, so a failed run always says where and why it ended. A run without an end was killed and is incomplete, and a start without its end shows what was going on |
 | `stop` | `step` and `reason`: where a workflow script stops and the text it tells you. The `step` is the script (`finish-feature.sh`), or for `run-feature.sh` the step of the run (`implementation`, `commit`, ...). A command that fails under `set -e` records `unexpected exit` with the command and its line; a run that ends without a stop gets `exited with status <n> without a recorded reason`, an interruption `interrupted`. The experience record (`derived.stop`) and the Runs table of `report-runs.sh` show them |
 | `agent-start`, `agent-call` | an agent call begins (`id`, `role`, `profile`, `agent`, `model`, and `level` and `selection`: the risk level of the feature that selected the agent, `null` for a planning or an analysis, and where the selection came from, `command-line`, `level-line`, or `plain-line`; see "Configuring agents") and ends (the same, with `status`, `seconds`, `usage`) |
-| `verification-start`, `verification` | a verification begins (`id`, `groups`: always `all`, since a partial run with `--only` is not recorded) and ends (with `status`, `seconds`, `reused`: a recorded pass stood in for the run, and `budgets`: the budget checks of the run, each with `name`, `status` `exceeded` or `within`, `exit`, and `output`, and the target for the duration of a file's checks that the run exceeded, named `duration of <file>` with `exit` null; an empty list without one, and the recorded results for a reused pass; `checks`: the duration of every check that ran, each with `name`, `config` (the file that declares it), `seconds`, and `result` `pass`, `fail`, or `budget`; an empty list for a reused pass) |
+| `verification-start`, `verification` | a verification begins (`id`, `groups`: always `all`, since a partial run with `--only` is not recorded) and ends (with `status`, `seconds`, `reused`: a recorded pass stood in for the run, and `budgets`: the budget checks of the run, each with `name`, `status` `exceeded` or `within`, `exit`, and `output`, and the target for the duration of a file's checks that the run exceeded, named `duration of <file>` with `exit` null; an empty list without one, and the recorded results for a reused pass; `checks`: the duration of every check that ran, each with `name`, `config` (the file that declares it), `seconds`, and `result` `pass`, `fail`, or `budget`; an empty list for a reused pass; `origin`: who started the verification, `orchestrator`, `script`, `agent-session`, or `manual`; `trusted`: whether its pass counts as evidence under the trust contract, see "Recorded verification": a pass that a workflow script ran itself, or a reused one whose tree is in `VERIFY_TRUSTED_TREES`) |
 | `step-start`, `step` | a step of `run-feature.sh` begins (`id`, `name`) and ends (with `status` and `seconds`) |
 | `wait-start`, `wait` | the pause before a step is tried again: the `planned` seconds, and the `seconds` it really took |
 | `intervention` | `what` you did that a script saw: an approval, a resume by hand, `--implemented`, `--partial` |
@@ -3519,7 +3565,9 @@ agent time, the review rounds, the triage, and the repair sessions, for a
 feature the re-raised findings (unresolved and worsened), the tokens
 per role, model, and run, the calls, the time, and the tokens per risk level
 of the feature, model, and selection of the agent (for the calls that
-recorded a level, see "Configuring agents"), the verification, the five
+recorded a level, see "Configuring agents"), the verification (with the
+passes that counted as evidence under the trust contract, and who started
+the verifications: see "Recorded verification"), the five
 slowest checks of each verification that ran its checks (with the sum of the
 durations of all of them; a reused pass ran none, and a verification
 recorded before the durations has none), the steps of `run-feature.sh`, the

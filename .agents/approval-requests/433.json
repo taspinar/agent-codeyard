@@ -1,0 +1,22 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "9a8acfe8aa49cc0556d204ca6b82efb45b28cb47",
+  "commit": {
+    "branch": "feature/433-trust-contract-for-reused",
+    "parent": "608fd3bd4e698f6f02df6b25609df6a83b5382b5",
+    "base": "608fd3bd4e698f6f02df6b25609df6a83b5382b5"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/finish-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/agent.sh: the file defines or carries out the workflow and its gate",
+    "scripts/review-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The change establishes a shared verification trust contract across the workflow scripts, agent process boundary, and run-record data, which other workflow steps rely on. The trust-list propagation and agent environment filtering are consistent with the Issue’s provider-independent design. "
+  ],
+  "explanation": "Issue #433: Trust contract for reused verification passes: VERIFY_TRUSTED_TREES (part 1 of #423). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

@@ -53,7 +53,7 @@ done
 
 agent_parse_args ${arguments[@]+"${arguments[@]}"}
 if [[ "${#AGENT_POSITIONAL[@]}" -lt 1 || "${#AGENT_POSITIONAL[@]}" -gt 2 ]]; then
-  echo "Usage: $0 <issue-number> [base-branch] [--agent <agent>] [--model <model>] [--changes] [--checks <group>[,<group>...]] [--unverified \"<reason>\"]"
+  echo "Usage: $0 <issue-number> [base-branch] [--agent <agent>] [--model <model>] [--changes] [--checks <group>[,<group>...]] [--unverified \"<reason>\"] [--unattended]"
   echo
   echo "The agent and model come from role 'reviewer' in .agents/agents.conf"
   echo "unless --agent and --model are given."
@@ -62,6 +62,11 @@ if [[ "${#AGENT_POSITIONAL[@]}" -lt 1 || "${#AGENT_POSITIONAL[@]}" -gt 2 ]]; the
   echo "content; a pass that was already recorded for it is reused. --unverified"
   echo "reviews anyway, for a review that must help diagnose a failure; the reason"
   echo "is recorded in the review."
+  echo
+  echo "--unattended is for a review that no one started at a terminal: without the"
+  echo "trusted passes of a run (VERIFY_TRUSTED_TREES), it reuses no recorded pass and"
+  echo "runs the verification itself, since an agent session may have written the"
+  echo "record. Its pass is trusted for the scripts it starts."
   echo
   echo "--checks runs only the named groups of ./scripts/verify.sh (--only) before"
   echo "the review, as the risk policy may allow for an intermediate round of"
@@ -261,8 +266,10 @@ else
   verified_tree="$(fingerprint_worktree "$root" "$tmp_work")" ||
     fail "could not compute the fingerprint of the working tree."
   # Status 4 tells a caller that the verification failed, apart from every
-  # other reason for which no review was stored.
-  (cd "$root" && ./scripts/verify.sh --reuse) || {
+  # other reason for which no review was stored. With --unattended and
+  # without the trusted passes of a run (VERIFY_TRUSTED_TREES), no recorded
+  # pass is reused (lib/verification.sh).
+  verification_run "$root" script "$AGENT_UNATTENDED" || {
     echo "Error: verification failed; the review was not started. Fix the failing check, or review anyway with --unverified \"<reason>\"." >&2
     records_stop "${0##*/}" "verification failed; the review was not started. Fix the failing check, or review anyway with --unverified \"<reason>\"."
     exit 4

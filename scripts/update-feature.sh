@@ -19,8 +19,9 @@ usage() {
   echo "   the conflicting files and the commands that continue. So does a merge that"
   echo "   would write over an untracked file, also one that Git ignores, and staged"
   echo "   changes in the index: the files are named, and the index is left as it is;"
-  echo "2. runs the full verification, ./scripts/verify.sh --all --reuse: a run that"
-  echo "   passed for exactly this content is not repeated;"
+  echo "2. runs the full verification, ./scripts/verify.sh --all. A recorded pass is"
+  echo "   reused only when it is in VERIFY_TRUSTED_TREES, the passes a workflow script"
+  echo "   made itself, since an agent session may have written the record;"
   echo "3. publishes again with publish-feature.sh, which pushes the branch and takes"
   echo "   the description, the completion statement, and the approval request from"
   echo "   the finish commit: the merge of the base is passed over, so the approval"
@@ -56,6 +57,8 @@ done
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/records.sh"
+source "$script_dir/lib/fingerprint.sh"
+source "$script_dir/lib/verification.sh"
 source "$script_dir/lib/base.sh"
 source "$script_dir/lib/guardrails.sh"
 [[ "$issue" =~ ^[0-9]+$ ]] || fail "issue number must be numeric: $issue"
@@ -158,10 +161,13 @@ else
 fi
 
 # The full verification of the merged content, also the workflow's own
-# checks: a review covered the feature, not the merge.
+# checks: a review covered the feature, not the merge. The step publishes
+# without a question, so it counts as unattended for the trust contract
+# (lib/verification.sh): without the trusted passes of a run, no recorded
+# pass is reused, and its own pass goes to publish-feature.sh.
 echo
-echo "Verifying the merged content: ./scripts/verify.sh --all --reuse"
-(cd "$root" && ./scripts/verify.sh --all --reuse) ||
+echo "Verifying the merged content: ./scripts/verify.sh --all"
+verification_run "$root" script 1 --all ||
   fail "the verification fails after the merge of $base_ref. Repair it in a commit that changes only files the merge changed (publish-feature.sh passes over such a commit), or review and finish the feature again. Nothing was pushed."
 
 echo

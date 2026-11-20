@@ -1365,10 +1365,12 @@ grep -Fq "review on a partial check of the groups fast, round 2 of at most 5" "$
 grep -Fq "fixes for round 1 on a partial check of the groups fast" "$repo.out" || fail "the fixes were not verified on a partial check"
 grep -Fq "verify.sh --only fast" "$repo.control/fixes.args" || fail "the fixing agent was not told to run only the groups"
 # The full run of round 1, the partial check after the fixes and before
-# round 2, and the full verification before the closing round; the commit
-# reuses that pass.
-[[ "$(tr '\n' ' ' <"$repo-2-thing/.agents/run/verify-trace")" == "full fast fast fast full fast " ]] ||
-  fail "the checks did not run as full, partial, partial, full: $(tr '\n' ' ' <"$repo-2-thing/.agents/run/verify-trace")"
+# round 2, the full verification before the closing round, and the full
+# verification of the commit: the pass of review-feature.sh is not one that
+# the run made itself, so the commit does not reuse it (the trust contract,
+# lib/verification.sh).
+[[ "$(tr '\n' ' ' <"$repo-2-thing/.agents/run/verify-trace")" == "full fast fast fast full fast full fast " ]] ||
+  fail "the checks did not run as full, partial, partial, full, full: $(tr '\n' ' ' <"$repo-2-thing/.agents/run/verify-trace")"
 round2="$repo-2-thing/.agents/reviews/feature-2-thing-review-02.json"
 [[ "$(jq -c '[.scope.kind, .verification.status, .verification.groups]' "$round2")" == '["changes","partial",["fast"]]' ]] ||
   fail "round 2 does not record the delta review on a partial check: $(jq -c '[.scope, .verification]' "$round2")"
@@ -1465,6 +1467,14 @@ grep -Fqx "Review: not reviewed: Low risk by project policy (.agents/policies/ri
 grep -Fq "MERGE APPROVAL REQUIRED" "$repo.out" || fail "an unreviewed low-risk feature did not need the owner's approval"
 grep -Fqx "Risk: low" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" || fail "the commit does not record the low level"
 [[ -f "$repo-2-thing/.agents/verification/passed" ]] || fail "the unreviewed feature was committed without a recorded verification"
+# The trust contract: the run verifies the unreviewed feature itself, and
+# the commit reuses that pass, which the run gave it in VERIFY_TRUSTED_TREES.
+# A verification of an agent session counts for nothing.
+grep -Fqx "origin: orchestrator" "$repo-2-thing/.agents/verification/passed" ||
+  fail "the pass of the unreviewed feature was not made by the run: $(cat "$repo-2-thing/.agents/verification/passed")"
+trust_events="$(cat "$repo"/.agents/run/records/*.jsonl | jq -c -s 'sort_by(.epoch) | map(select(.type == "verification" and .origin != "agent-session") | {reused, trusted, origin})')"
+[[ "$trust_events" == '[{"reused":false,"trusted":true,"origin":"orchestrator"},{"reused":true,"trusted":true,"origin":"script"}]' ]] ||
+  fail "the commit did not reuse the trusted pass of the run: $trust_events"
 repo="$(RISK_CONF="$(printf 'default: medium\nlow: feature.txt\nlow: review: none')" setup_repo low-unreviewed-repaired)"
 printf '%s\n' 'if [[ "$count" -eq 1 ]]; then eval "$default"; printf "x\n" >broken.txt
 else grep -q "FAIL  *sound" ".agents/handoffs/$RUN_ISSUE.md" && rm -f broken.txt; reply="Repaired."; fi' \

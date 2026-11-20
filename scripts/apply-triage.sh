@@ -10,6 +10,7 @@ source "$script_dir/lib/agent.sh"
 source "$script_dir/lib/review-data.sh"
 source "$script_dir/lib/base.sh"
 source "$script_dir/lib/fingerprint.sh"
+source "$script_dir/lib/verification.sh"
 source "$script_dir/lib/skills.sh"
 source "$script_dir/lib/completion.sh"
 
@@ -372,9 +373,11 @@ if [[ "$triage_signature_before" != "$triage_signature_after" ]]; then
   protected_artifact_reason="implementation agent modified the approved triage artifact."
 fi
 
-# The fixed content must pass verification. A pass that the agent's own run
-# recorded for exactly this content is not repeated. With --checks only the
-# named groups run: a partial check, which records nothing.
+# The fixed content must pass verification. A pass recorded for exactly this
+# content is not repeated, except where the trust contract does not trust it
+# (lib/verification.sh): with the trusted passes of a run, only one of them;
+# with --unattended and without them, none. With --checks only the named
+# groups run: a partial check, which records nothing.
 echo
 set +e
 if [[ -n "$checks" ]]; then
@@ -385,10 +388,7 @@ if [[ -n "$checks" ]]; then
   )
 else
   echo "Checking repository verification..."
-  (
-    cd "$root"
-    ./scripts/verify.sh --reuse
-  )
+  verification_run "$root" script "$AGENT_UNATTENDED"
 fi
 verification_status=$?
 set -e

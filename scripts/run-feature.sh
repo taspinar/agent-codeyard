@@ -118,6 +118,12 @@ review_data_require_jq
 command -v gh >/dev/null 2>&1 || fail "GitHub CLI 'gh' is not installed."
 repo_root="$(git rev-parse --show-toplevel)"
 
+# The trust contract (lib/verification.sh): the trees of the passes that
+# this run made itself, with its own calls of verify.sh. The scripts of the
+# steps get the list and reuse only such a pass; lib/agent.sh removes it
+# from every agent process. A list given to this run is kept.
+export VERIFY_TRUSTED_TREES="${VERIFY_TRUSTED_TREES:-}"
+
 # find_worktree: prints the worktrees whose branch belongs to the Issue.
 find_worktree() {
   git -C "$repo_root" worktree list --porcelain |
@@ -482,7 +488,9 @@ repair_verification() {
   if [[ -n "${STEP_CHECKS:-}" ]]; then
     (cd "$worktree" && ./scripts/verify.sh --only "$STEP_CHECKS") >"$log" 2>&1 || repeat_status=$?
   else
-    (cd "$worktree" && ./scripts/verify.sh) >"$log" 2>&1 || repeat_status=$?
+    (cd "$worktree" && VERIFY_ORIGIN=orchestrator ./scripts/verify.sh) >"$log" 2>&1 || repeat_status=$?
+    # A pass of this run's own: the step done again reuses it.
+    [[ "$repeat_status" -ne 0 ]] || verification_trust "$(verification_field "$worktree" tree)"
   fi
   if [[ "$repeat_status" -eq 75 ]] || grep -q '^BUSY  ' "$log" 2>/dev/null; then
     note "$title" "busy" "$(sed -n 's/^BUSY  //p' "$log" | sed -n 1p)" "Stopping; nothing is repaired"
@@ -667,9 +675,11 @@ level_rank() {
 # verify_step
 # The verification as a step of the run, for a feature that is committed
 # without a review: a failure gets the status of a failed verification, so
-# the implementer repairs it like one that a review found.
+# the implementer repairs it like one that a review found. It reuses only a
+# pass of this run (VERIFY_TRUSTED_TREES); the step runs in a subshell, so
+# the caller adds its pass to the list.
 verify_step() {
-  ./scripts/verify.sh --reuse || return 4
+  verification_run . orchestrator 1 || return 4
 }
 
 # checks_for_round <groups>
@@ -1094,7 +1104,12 @@ if uncommitted; then
             "resolve what the output above reports"
         fi
         report_budgets "verification of the low-risk feature"
-        [[ "$repairs/$unstable/$base_merges" != "$attempts_before" ]] || break
+        if [[ "$repairs/$unstable/$base_merges" == "$attempts_before" ]]; then
+          # The pass of verify_step, with no session after it: the commit
+          # reuses it.
+          verification_trust "$(verification_field "$worktree" tree)"
+          break
+        fi
         continue
       fi
 

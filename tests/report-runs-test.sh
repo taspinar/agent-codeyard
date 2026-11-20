@@ -415,6 +415,34 @@ grep -Eq '^\| 1 \| run-feature.sh \| passed, [0-9]+s \| 1s \| slow 1s, medium 0s
 # Runs recorded before the durations have no slowest checks and no section.
 if grep -Fq "### Slowest checks" <<<"$(report "$tmp/basic" 12)"; then fail "runs without durations have a section of slowest checks"; fi
 
+# The trust contract: every verification event says who started it and
+# whether its pass counted as evidence, and the report counts both. Here a
+# run of the orchestrator, then a reuse of its pass at a terminal; an event
+# recorded before the contract has neither.
+repo="$(setup_repo trusted)"
+cp "$source_root/scripts/verify.sh" "$repo/scripts/"
+cp "$source_root/scripts/lib/fingerprint.sh" "$source_root/scripts/lib/verification.sh" "$repo/scripts/lib/"
+printf '%s\n' "fast: true" >"$repo/scripts/verify.conf"
+printf '.agents/\n' >"$repo/.gitignore"
+git -C "$repo" add -A
+git -C "$repo" -c user.name=Test -c user.email=test@example.com commit -qm "Initial commit"
+file="$repo/.agents/run/records/t1.jsonl"
+event "$file" t1 1000 run-start '{"kind":"feature","subject":"41","command":"run-feature.sh","seq":1,"versions":{}}'
+(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" RECORDS_RUN_ID=t1 RECORDS_FILE="$file" RECORDS_COMMAND=run-feature.sh \
+  RECORDS_KIND=feature RECORDS_SUBJECT=41 VERIFY_ORIGIN=orchestrator VERIFY_TRUSTED_TREES="" ./scripts/verify.sh --reuse >/dev/null 2>&1) ||
+  fail "verify.sh of the orchestrator failed inside a recorded run"
+(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" RECORDS_RUN_ID=t1 RECORDS_FILE="$file" RECORDS_COMMAND=run-feature.sh \
+  RECORDS_KIND=feature RECORDS_SUBJECT=41 ./scripts/verify.sh --reuse >/dev/null 2>&1) || fail "a reuse at a terminal failed inside a recorded run"
+event "$file" t1 1500 verification '{"status":0,"seconds":1,"reused":false,"groups":"all"}'
+event "$file" t1 2000 run-end '{"status":0}'
+[[ "$(jq -c -s 'map(select(.type == "verification") | [.origin, .trusted])' "$file")" == '[["orchestrator",true],["manual",false],[null,null]]' ]] ||
+  fail "the verification events lack origin and trusted: $(jq -c -s 'map(select(.type == "verification"))' "$file")"
+json="$(report "$repo" 41 --json)"
+[[ "$(jq -c '.subjects[0].verification | {trusted, origins}' <<<"$json")" == '{"trusted":1,"origins":[{"origin":"manual","count":1},{"origin":"not recorded","count":1},{"origin":"orchestrator","count":1}]}' ]] ||
+  fail "the report does not count the trusted passes and their origins: $(jq -c '.subjects[0].verification' <<<"$json")"
+grep -Fqx "| Trusted passes | 1 of 3; started by: manual 1, not recorded 1, orchestrator 1 |" <<<"$(report "$repo" 41)" ||
+  fail "the Markdown report does not show the trusted passes: $(report "$repo" 41)"
+
 # Re-raised findings: the finding events of the reviews that name an earlier
 # finding, per feature, by relation.
 repo="$(setup_repo reraises)"
