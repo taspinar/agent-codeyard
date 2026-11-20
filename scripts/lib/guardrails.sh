@@ -70,10 +70,15 @@ guardrails_rules_refs() {
 # guardrails_pathspecs <root> <rules-refs> <kind>
 # Prints the pathspecs of a kind ('protected' or 'sensitive') from the gate
 # configuration in each of <rules-refs> (separated by spaces), one per line.
-# Without the file there are none.
+# Without the file there are none. While lib/risk.sh classifies a feature,
+# the configuration it read for the classification serves
+# (risk_policy_pathspecs); otherwise each ref is read from Git.
 guardrails_pathspecs() {
   local ref
 
+  if declare -F risk_policy_pathspecs >/dev/null && risk_policy_pathspecs "$@"; then
+    return 0
+  fi
   for ref in $2; do
     git -C "$1" show "$ref:$GUARDRAILS_CONFIG" 2>/dev/null |
       sed -n "s/^$3:[[:space:]]*//p" | tr -s '[:space:]' '\n'

@@ -3003,7 +3003,11 @@ is never refused: a feature that was already in progress gets its level
 derived, recorded, and shown like any other. The rules are read from the base
 branch as it is now, like those of the gate, so a feature that adds its own
 paths to `low` is still classified by the base's file, and is `high` because
-it changed the policy. When the base of the feature cannot be determined, or
+it changed the policy. Each classification resolves the base to its commit
+once and reads the policy, the override, and the gate configuration of that
+commit once (`risk_policy_load` in `scripts/lib/risk.sh`); the next
+classification resolves the base again, so a base that moved in between is
+read with its new policy. When the base of the feature cannot be determined, or
 Git cannot enumerate its changes (a failed `git diff`), the level is `high`,
 never the default for a feature that changed nothing.
 

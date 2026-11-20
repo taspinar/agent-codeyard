@@ -142,8 +142,309 @@ risk_highest() {
   [[ -z "$best" ]] || printf '%s\n' "$best"
 }
 
+# The policy of a classification, read once. risk_policy_load reads, for each
+# ref of the rules, RISK_CONFIG, RISK_OVERRIDE, and the gate configuration
+# (GUARDRAILS_CONFIG) from the commit the ref names, and derives in Bash what
+# the lookups need: the lines the project wrote, the profile, and the lines
+# as the rules apply them. While a classification runs, the lookups
+# (risk_config_exists, risk_config_lines, risk_config_values,
+# risk_override_values, risk_requirement_value, risk_profile_written, and
+# guardrails_pathspecs) serve from it without Git; outside one they read Git
+# as before. What was read is kept per commit, whose files never change.
+# Which commit a ref names is resolved by every classification again: each
+# entry point (risk_computed, risk_classify, risk_requirements,
+# risk_requirement, risk_default, risk_profile, risk_profile_note,
+# risk_triage_mode) makes RISK_POLICY_REFS local, so a ref that moved
+# between two classifications is read again, and an entry point called by
+# another one shares its refs. Nothing is written to a file or exported.
+# Indexed arrays, not associative ones: Bash 3.2 has none.
+RISK_POLICY_COMMITS=()
+RISK_POLICY_EXISTS=()
+RISK_POLICY_WRITTEN=()
+RISK_POLICY_EFFECTIVE=()
+RISK_POLICY_PROFILE=()
+RISK_POLICY_OVERRIDE=()
+RISK_POLICY_GUARDRAILS=()
+# '<root><TAB><ref><TAB><commit>' per line: the refs this classification
+# resolved.
+RISK_POLICY_REFS=""
+
+# risk_policy_load <root> <rules-refs>
+# Resolves each ref of <rules-refs> that this classification has not
+# resolved yet to its commit, and reads the policy of a commit not read
+# before. A ref that names no commit stays unresolved, and its lookups read
+# Git. The caller makes RISK_POLICY_REFS local first.
+risk_policy_load() {
+  local root="$1"
+  local ref
+  local refs=()
+  local specs=()
+  local commits
+  local commit
+  local i=0
+
+  for ref in $2; do
+    risk_policy_of "$root" "$ref" || refs+=("$ref")
+  done
+  [[ "${#refs[@]}" -gt 0 ]] || return 0
+  for ref in "${refs[@]}"; do specs+=("$ref^{commit}"); done
+  # One call for all refs; when one of them names no commit, one per ref.
+  if commits="$(git -C "$root" rev-parse "${specs[@]}" 2>/dev/null)"; then
+    while IFS= read -r commit; do
+      [[ "$commit" =~ ^[0-9a-f]{40,64}$ ]] || break
+      i=$((i + 1))
+    done <<<"$commits"
+  fi
+  if [[ "$i" -eq "${#refs[@]}" ]]; then
+    i=0
+    while IFS= read -r commit; do
+      RISK_POLICY_REFS+="$root"$'\t'"${refs[i]}"$'\t'"$commit"$'\n'
+      risk_policy_read "$root" "$commit"
+      i=$((i + 1))
+    done <<<"$commits"
+    return 0
+  fi
+  for ref in "${refs[@]}"; do
+    commit="$(git -C "$root" rev-parse --verify --quiet "$ref^{commit}" 2>/dev/null)" || continue
+    RISK_POLICY_REFS+="$root"$'\t'"$ref"$'\t'"$commit"$'\n'
+    risk_policy_read "$root" "$commit"
+  done
+}
+
+# risk_policy_of <root> <ref>
+# Succeeds when this classification resolved <ref> and sets
+# RISK_POLICY_INDEX to the index of its commit in the RISK_POLICY_ arrays.
+risk_policy_of() {
+  local entry=$'\n'"$1"$'\t'"$2"$'\t'
+  local commit
+  local i
+
+  [[ $'\n'"$RISK_POLICY_REFS" == *"$entry"* ]] || return 1
+  commit=$'\n'"$RISK_POLICY_REFS"
+  commit="${commit#*"$entry"}"
+  commit="${commit%%$'\n'*}"
+  for ((i = 0; i < ${#RISK_POLICY_COMMITS[@]}; i++)); do
+    if [[ "${RISK_POLICY_COMMITS[i]}" == "$commit" ]]; then
+      RISK_POLICY_INDEX="$i"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# risk_policy_key <line>
+# Sets RISK_POLICY_KEY to the key of a line of the policy, as risk_config_key
+# gives it.
+risk_policy_key() {
+  local requirement="^(low|medium|high):[[:space:]]*($RISK_REQUIREMENT_KINDS):"
+
+  if [[ "$1" =~ $requirement ]]; then
+    RISK_POLICY_KEY="${BASH_REMATCH[1]}:${BASH_REMATCH[2]}:"
+  elif [[ "$1" == *:* ]]; then
+    RISK_POLICY_KEY="${1%%:*}"
+  else
+    RISK_POLICY_KEY=""
+  fi
+}
+
+# risk_policy_read <root> <commit>
+# Reads the policy of a commit, unless it was read before, and appends it to
+# the RISK_POLICY_ arrays: whether RISK_CONFIG exists, the lines as
+# risk_config_written and risk_config_effective print them, the profile as
+# risk_profile_written prints it, the text of the override, and the text of
+# the gate configuration.
+risk_policy_read() {
+  local root="$1"
+  local commit="$2"
+  local text=""
+  local override=""
+  local guardrails=""
+  local exists=0
+  local written=""
+  local effective=""
+  local profile=""
+  local applied
+  local keys=$'\n'
+  local line
+  local keyed='^[a-z]+:'
+  local i
+
+  for ((i = 0; i < ${#RISK_POLICY_COMMITS[@]}; i++)); do
+    [[ "${RISK_POLICY_COMMITS[i]}" != "$commit" ]] || return 0
+  done
+  if text="$(git -C "$root" show "$commit:$RISK_CONFIG" 2>/dev/null)"; then
+    exists=1
+    override="$(git -C "$root" show "$commit:$RISK_OVERRIDE" 2>/dev/null)" || override=""
+  else
+    text=""
+  fi
+  guardrails="$(git -C "$root" show "$commit:$GUARDRAILS_CONFIG" 2>/dev/null)" || guardrails=""
+
+  if [[ "$exists" -eq 1 ]]; then
+    # risk_config_written: the single values of the override, then the
+    # lines of the policy whose key the override does not write.
+    while IFS= read -r line; do
+      if [[ "$line" =~ $keyed ]]; then
+        risk_policy_key "$line"
+        [[ ! "$RISK_POLICY_KEY" =~ ^($RISK_PATH_KEYS)$ ]] || continue
+        keys+="$RISK_POLICY_KEY"$'\n'
+      fi
+      written+="$line"$'\n'
+    done <<<"$override"
+    while IFS= read -r line; do
+      if [[ "$line" =~ $keyed ]]; then
+        risk_policy_key "$line"
+        [[ "$keys" != *$'\n'"$RISK_POLICY_KEY"$'\n'* ]] || continue
+      fi
+      written+="$line"$'\n'
+    done <<<"$text"
+
+    # risk_profile_written: the first 'profile:' line, with single spaces.
+    risk_policy_lines "$written" profile
+    risk_policy_squeeze "${RISK_POLICY_LINES%%$'\n'*}"
+    profile="$RISK_POLICY_VALUE"
+
+    # risk_config_effective: the written lines, then those of the preset of
+    # the profile whose key they do not write.
+    effective="$written"
+    if [[ -z "$profile" ]]; then
+      applied="none"
+    elif [[ " $RISK_PROFILES " == *" $profile "* ]]; then
+      applied="$profile"
+    else
+      applied="standard"
+    fi
+    if [[ "$applied" != "none" ]]; then
+      keys=$'\n'
+      while IFS= read -r line; do
+        [[ ! "$line" =~ $keyed ]] || { risk_policy_key "$line"; keys+="$RISK_POLICY_KEY"$'\n'; }
+      done <<<"$written"
+      while IFS= read -r line; do
+        risk_policy_key "$line"
+        [[ "$keys" == *$'\n'"$RISK_POLICY_KEY"$'\n'* ]] || effective+="$line"$'\n'
+      done < <(risk_profile_preset "$applied")
+    fi
+  fi
+
+  i="${#RISK_POLICY_COMMITS[@]}"
+  RISK_POLICY_COMMITS[i]="$commit"
+  RISK_POLICY_EXISTS[i]="$exists"
+  RISK_POLICY_WRITTEN[i]="$written"
+  RISK_POLICY_EFFECTIVE[i]="$effective"
+  RISK_POLICY_PROFILE[i]="$profile"
+  RISK_POLICY_OVERRIDE[i]="$override"
+  RISK_POLICY_GUARDRAILS[i]="$guardrails"
+}
+
+# risk_policy_lines <text> <key>
+# Sets RISK_POLICY_LINES to the value of every line of <text> with the key,
+# as "sed -n 's/^<key>:[[:space:]]*//p'" prints them: one per line, each
+# ending in a newline.
+risk_policy_lines() {
+  local line
+  local value
+
+  RISK_POLICY_LINES=""
+  while IFS= read -r line; do
+    [[ "$line" == "$2:"* ]] || continue
+    value="${line#"$2:"}"
+    RISK_POLICY_LINES+="${value#"${value%%[![:space:]]*}"}"$'\n'
+  done <<<"$1"
+}
+
+# risk_policy_words <lines> [paths]
+# Sets RISK_POLICY_WORDS to the words of the lines, as
+# "tr -s '[:space:]' '\n' | grep ." prints them; with 'paths', a line that
+# is a requirement ('<kind>: ...') is left out first.
+risk_policy_words() {
+  local line
+  local words
+  local requirement="^($RISK_REQUIREMENT_KINDS):"
+
+  RISK_POLICY_WORDS=()
+  while IFS= read -r line; do
+    [[ "${2:-}" != "paths" || ! "$line" =~ $requirement ]] || continue
+    IFS=$' \t\n' read -r -a words <<<"${line//[$'\r\v\f']/ }"
+    [[ "${#words[@]}" -eq 0 ]] || RISK_POLICY_WORDS+=("${words[@]}")
+  done <<<"$1"
+}
+
+# risk_policy_squeeze <line>
+# Sets RISK_POLICY_VALUE to the line with single spaces and none around it,
+# as "tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//'" prints it.
+risk_policy_squeeze() {
+  local words
+  local IFS=$' \t\n'
+
+  read -r -a words <<<"${1//[$'\r\v\f']/ }"
+  IFS=" "
+  RISK_POLICY_VALUE="${words[*]-}"
+}
+
+# risk_policy_print_words
+# Prints RISK_POLICY_WORDS, one per line.
+risk_policy_print_words() {
+  [[ "${#RISK_POLICY_WORDS[@]}" -eq 0 ]] || printf '%s\n' "${RISK_POLICY_WORDS[@]}"
+}
+
+# risk_policy_values <root> <ref> <source> <key>
+# Sets RISK_POLICY_WORDS to the pathspecs of a path class or list of <ref>
+# that this classification read: of RISK_CONFIG with the preset of its
+# profile for <source> 'policy' (risk_config_values), of the override for
+# 'override' (risk_override_values). Fails when it did not read <ref>.
+risk_policy_values() {
+  risk_policy_of "$1" "$2" || return 1
+  RISK_POLICY_WORDS=()
+  [[ "${RISK_POLICY_EXISTS[RISK_POLICY_INDEX]}" -eq 1 ]] || return 0
+  if [[ "$3" == "override" ]]; then
+    risk_policy_lines "${RISK_POLICY_OVERRIDE[RISK_POLICY_INDEX]}" "$4"
+  else
+    risk_policy_lines "${RISK_POLICY_EFFECTIVE[RISK_POLICY_INDEX]}" "$4"
+  fi
+  risk_policy_words "$RISK_POLICY_LINES" paths
+}
+
+# risk_policy_requirement <root> <ref> <level> <kind> [raw]
+# Sets RISK_POLICY_VALUE to what risk_requirement_value prints, from what
+# this classification read. Fails when it did not read <ref>.
+risk_policy_requirement() {
+  risk_policy_of "$1" "$2" || return 1
+  if [[ "${5:-}" == "raw" ]]; then
+    risk_policy_lines "${RISK_POLICY_WRITTEN[RISK_POLICY_INDEX]}" "$3"
+  else
+    risk_policy_lines "${RISK_POLICY_EFFECTIVE[RISK_POLICY_INDEX]}" "$3"
+  fi
+  risk_policy_lines "$RISK_POLICY_LINES" "$4"
+  if [[ -n "$RISK_POLICY_LINES" ]]; then
+    risk_policy_squeeze "${RISK_POLICY_LINES%%$'\n'*}"
+  else
+    RISK_POLICY_VALUE=""
+  fi
+}
+
+# risk_policy_pathspecs <root> <rules-refs> <kind>
+# Prints what guardrails_pathspecs prints, from the gate configuration this
+# classification read. Fails, and prints nothing, when it did not read every
+# ref.
+risk_policy_pathspecs() {
+  local ref
+  local specs=()
+
+  for ref in $2; do
+    risk_policy_of "$1" "$ref" || return 1
+    risk_policy_lines "${RISK_POLICY_GUARDRAILS[RISK_POLICY_INDEX]}" "$3"
+    risk_policy_words "$RISK_POLICY_LINES"
+    [[ "${#RISK_POLICY_WORDS[@]}" -eq 0 ]] || specs+=("${RISK_POLICY_WORDS[@]}")
+  done
+  [[ "${#specs[@]}" -eq 0 ]] || printf '%s\n' "${specs[@]}" | sort -u
+}
+
 # risk_config_exists <root> <ref>
 risk_config_exists() {
+  if risk_policy_of "$1" "$2"; then
+    [[ "${RISK_POLICY_EXISTS[RISK_POLICY_INDEX]}" -eq 1 ]]
+    return
+  fi
   git -C "$1" cat-file -e "$2:$RISK_CONFIG" 2>/dev/null
 }
 
@@ -174,6 +475,10 @@ risk_config_written() {
   local text
   local override
 
+  if risk_policy_of "$1" "$2"; then
+    printf '%s' "${RISK_POLICY_WRITTEN[RISK_POLICY_INDEX]}"
+    return 0
+  fi
   text="$(git -C "$1" show "$2:$RISK_CONFIG" 2>/dev/null)" || return 0
   override="$(git -C "$1" show "$2:$RISK_OVERRIDE" 2>/dev/null)" || override=""
   { printf '%s\n' "$override"; echo "--policy--"; printf '%s\n' "$text"; } |
@@ -189,6 +494,10 @@ risk_config_written() {
 # override of <ref> writes, one per line; nothing without RISK_CONFIG, the
 # override, or the key. They are matched apart from those of RISK_CONFIG.
 risk_override_values() {
+  if risk_policy_values "$1" "$2" override "$3"; then
+    risk_policy_print_words
+    return 0
+  fi
   risk_config_exists "$1" "$2" || return 0
   git -C "$1" show "$2:$RISK_OVERRIDE" 2>/dev/null | sed -n "s/^$3:[[:space:]]*//p" |
     grep -Ev "^($RISK_REQUIREMENT_KINDS):" | tr -s '[:space:]' '\n' | grep . || true
@@ -232,6 +541,10 @@ risk_profile_preset() {
 # its override, as written, with single spaces; nothing without the file or
 # the line.
 risk_profile_written() {
+  if risk_policy_of "$1" "$2"; then
+    printf '%s' "${RISK_POLICY_PROFILE[RISK_POLICY_INDEX]}"
+    return 0
+  fi
   risk_config_written "$1" "$2" |
     sed -n 's/^profile:[[:space:]]*//p' | sed -n 1p | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//' || true
 }
@@ -259,6 +572,10 @@ risk_config_effective() {
   local text
   local profile
 
+  if risk_policy_of "$1" "$2"; then
+    printf '%s' "${RISK_POLICY_EFFECTIVE[RISK_POLICY_INDEX]}"
+    return 0
+  fi
   risk_config_exists "$1" "$2" || return 0
   text="$(risk_config_written "$1" "$2")"
   profile="$(risk_profile_applied "$(risk_profile_written "$1" "$2")")"
@@ -275,6 +592,15 @@ risk_config_effective() {
 # lines of the preset of its profile count unless the fourth argument is
 # 'raw'.
 risk_config_lines() {
+  if risk_policy_of "$1" "$2"; then
+    if [[ "${4:-}" == "raw" ]]; then
+      risk_policy_lines "${RISK_POLICY_WRITTEN[RISK_POLICY_INDEX]}" "$3"
+    else
+      risk_policy_lines "${RISK_POLICY_EFFECTIVE[RISK_POLICY_INDEX]}" "$3"
+    fi
+    printf '%s' "$RISK_POLICY_LINES"
+    return 0
+  fi
   if [[ "${4:-}" == "raw" ]]; then
     risk_config_written "$1" "$2"
   else
@@ -288,6 +614,10 @@ risk_config_lines() {
 # ('<level>: verification: ...', '<level>: review: ...') are not paths and
 # are left out.
 risk_config_values() {
+  if risk_policy_values "$1" "$2" policy "$3"; then
+    risk_policy_print_words
+    return 0
+  fi
   risk_config_lines "$1" "$2" "$3" |
     grep -Ev "^($RISK_REQUIREMENT_KINDS):" | tr -s '[:space:]' '\n' | grep . || true
 }
@@ -298,6 +628,10 @@ risk_config_values() {
 # file or the line is absent. The first such line counts. With 'raw', a line
 # of the preset of the profile does not count.
 risk_requirement_value() {
+  if risk_policy_requirement "$@"; then
+    printf '%s' "$RISK_POLICY_VALUE"
+    return 0
+  fi
   risk_config_lines "$1" "$2" "$3" "${5:-}" |
     sed -n "s/^$4:[[:space:]]*//p" | sed -n 1p | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//'
 }
@@ -324,9 +658,16 @@ risk_requirement() {
   local rank=-1
   local groups=""
   local problems=""
+  local RISK_POLICY_REFS="$RISK_POLICY_REFS"
+
+  risk_policy_load "$1" "$2"
 
   for ref in $rules; do
-    value="$(risk_requirement_value "$root" "$ref" "$level" "$kind")"
+    if risk_policy_requirement "$root" "$ref" "$level" "$kind"; then
+      value="$RISK_POLICY_VALUE"
+    else
+      value="$(risk_requirement_value "$root" "$ref" "$level" "$kind")"
+    fi
     case "$kind" in
       verification)
         if [[ -z "$value" || "$value" == "full" ]]; then
@@ -412,6 +753,9 @@ risk_requirements() {
   local verification
   local review
   local triage
+  local RISK_POLICY_REFS="$RISK_POLICY_REFS"
+
+  risk_policy_load "$1" "$2"
 
   verification="$(risk_requirement "$1" "$2" "$3" verification)"
   review="$(risk_requirement "$1" "$2" "$3" review)"
@@ -433,6 +777,9 @@ risk_triage_mode() {
   local refused
   local ref
   local written=""
+  local RISK_POLICY_REFS="$RISK_POLICY_REFS"
+
+  risk_policy_load "$1" "$2"
 
   requirement="$(risk_requirement "$1" "$2" "$3" triage)"
   mode="$(printf '%s\n' "$requirement" | sed -n 1p)"
@@ -468,6 +815,9 @@ risk_profile() {
   local names=""
   local per_ref=""
   local problems=""
+  local RISK_POLICY_REFS="$RISK_POLICY_REFS"
+
+  risk_policy_load "$1" "$2"
 
   for ref in $2; do
     written="$(risk_profile_written "$1" "$ref")"
@@ -495,6 +845,9 @@ risk_profile() {
 risk_profile_note() {
   local lines
   local profile
+  local RISK_POLICY_REFS="$RISK_POLICY_REFS"
+
+  risk_policy_load "$1" "$2"
 
   lines="$(risk_profile "$1" "$2")"
   profile="$(printf '%s\n' "$lines" | sed -n 1p)"
@@ -514,9 +867,16 @@ risk_default() {
   local ref
   local value
   local levels=()
+  local RISK_POLICY_REFS="$RISK_POLICY_REFS"
+
+  risk_policy_load "$1" "$2"
 
   for ref in $2; do
-    value="$(risk_config_values "$1" "$ref" default | head -n 1)"
+    if risk_policy_values "$1" "$ref" policy default; then
+      value="${RISK_POLICY_WORDS[0]-}"
+    else
+      value="$(risk_config_values "$1" "$ref" default | head -n 1)"
+    fi
     if [[ -z "$value" ]]; then
       levels+=("$RISK_BUILTIN_DEFAULT")
     elif risk_is_level "$value"; then
@@ -627,13 +987,20 @@ risk_classify() {
   local list
   local source
   local file
+  local RISK_POLICY_REFS="$RISK_POLICY_REFS"
+
+  risk_policy_load "$1" "$2"
 
   all="$(guardrails_changed "$root" "$from" "$to" . "${RISK_EXCLUDES[@]}" | grep . | sort -u || true)"
 
   for ref in $rules; do
     classed=""
     if risk_config_exists "$root" "$ref"; then
-      value="$(risk_config_values "$root" "$ref" default | head -n 1)"
+      if risk_policy_values "$root" "$ref" policy default; then
+        value="${RISK_POLICY_WORDS[0]-}"
+      else
+        value="$(risk_config_values "$root" "$ref" default | head -n 1)"
+      fi
       if [[ -z "$value" ]]; then
         default="$RISK_BUILTIN_DEFAULT"
       elif risk_is_level "$value"; then
@@ -647,9 +1014,14 @@ risk_classify() {
           specs=()
           if [[ "$source" == "override" ]]; then
             file="$RISK_OVERRIDE"
-            while IFS= read -r spec; do specs+=("$spec"); done < <(risk_override_values "$root" "$ref" "$level")
           else
             file="$RISK_CONFIG"
+          fi
+          if risk_policy_values "$root" "$ref" "$source" "$level"; then
+            [[ "${#RISK_POLICY_WORDS[@]}" -eq 0 ]] || specs=("${RISK_POLICY_WORDS[@]}")
+          elif [[ "$source" == "override" ]]; then
+            while IFS= read -r spec; do specs+=("$spec"); done < <(risk_override_values "$root" "$ref" "$level")
+          else
             while IFS= read -r spec; do specs+=("$spec"); done < <(risk_config_values "$root" "$ref" "$level")
           fi
           [[ "${#specs[@]}" -gt 0 ]] || continue
@@ -792,6 +1164,9 @@ risk_enumerable() {
 risk_computed() {
   local findings
   local level
+  local RISK_POLICY_REFS="$RISK_POLICY_REFS"
+
+  risk_policy_load "$1" "$2"
 
   if ! risk_enumerable "$1" "$3" "${4:-}"; then
     risk_undetermined "the changes of the feature could not be enumerated (git diff failed)"

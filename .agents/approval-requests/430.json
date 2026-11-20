@@ -1,0 +1,23 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "23f627fa151dddcbe115bd639527d135d71fe1be",
+  "commit": {
+    "branch": "feature/430-risk-sh-reads-the",
+    "parent": "f3c8fc2f23e1ce5eb815b908a08a2a62789fce45",
+    "base": "f3c8fc2f23e1ce5eb815b908a08a2a62789fce45"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/lib/guardrails.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/risk.sh: the file defines or carries out the workflow and its gate",
+    "the completion record leaves a criterion of the owner_approval gate pending: High risk: the merge needs the owner's approval.",
+    "the review could not confirm: ./scripts/check-risk.sh prints byte-identical output before and after on at least three different diffs (for example: no change; a High path; an override that adds a class; a profile `light` feature), compared in the pull request.",
+    "the review could not confirm: The process count of one `./scripts/check-risk.sh main` on the diff of the measurement drops from 542; target at most 150. The pull request reports the count and the `git show`/`git cat-file` counts before and after (strace, distinct PIDs).",
+    "the review could not confirm: The pull request reports the four numbers of #345 before and after on this host. The before-values are the after-values of #429 (main after step 1): self-tests sum 3449.3 s, local wall-clock of `./scripts/verify.sh --all` 3934 s, adopted-project 1306.8 s, 543 processes; do not measure the base again. Report also the duration of `run-feature` and of `risk` alone, and, if practical, the xtrace profile of the same `run-feature-test` case (19.3 s, `risk.sh` 10.4 s)."
+  ],
+  "explanation": "Issue #430: risk.sh reads the risk policy once per classification, not once per lookup (step 2 of #345). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
