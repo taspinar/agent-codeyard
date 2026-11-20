@@ -1258,6 +1258,19 @@ risk_hint_text() {
   esac
 }
 
+# risk_latest_review <root> <branch>
+# Prints the path of the latest review artifact of the feature of <branch>,
+# the one whose classification of the impact risk_decision counts; nothing
+# without one.
+risk_latest_review() {
+  local reviews
+
+  shopt -s nullglob
+  reviews=("$1/.agents/reviews/${2//\//-}-review-"[0-9][0-9].json)
+  shopt -u nullglob
+  [[ "${#reviews[@]}" -eq 0 ]] || printf '%s\n' "${reviews[${#reviews[@]}-1]}"
+}
+
 # risk_decision <computed-lines> <completion-record> <review-json> [<hints>]
 # The effective level: the computed one, raised by what the agents recorded
 # and by the owner's hints (risk_hints), never lowered. Prints the level on

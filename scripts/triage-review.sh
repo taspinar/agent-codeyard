@@ -269,8 +269,10 @@ triage_mode="full"
 triage_mode_reason="the risk level could not be determined; the full triage applies"
 risk_level=""
 risk_base="$(branch_base "$root")" || exit 1
+tmp_work="$(mktemp -d "${TMPDIR:-/tmp}/triage-review.XXXXXX")"
+trap 'rm -rf "$tmp_work"' EXIT
 risk_status=0
-risk_output="$( (cd "$root" && ./scripts/check-risk.sh "$risk_base" </dev/null) 2>/dev/null)" || risk_status=$?
+risk_output="$( (cd "$root" && ./scripts/check-risk.sh "$risk_base" </dev/null) 2>"$tmp_work/risk.err")" || risk_status=$?
 if [[ "$risk_status" -le 2 ]]; then
   risk_level="$(printf '%s\n' "$risk_output" | sed -n '1s/^risk: //p')"
   triage_mode="$(printf '%s\n' "$risk_output" | sed -n 's/^triage: //p' | sed -n 1p)"
@@ -279,16 +281,19 @@ if [[ "$risk_status" -le 2 ]]; then
   [[ -n "$triage_mode_reason" ]] || triage_mode_reason="the project policy for a $risk_level-risk feature"
 fi
 
-# The triage agent by the same level, never below the level an earlier
-# session of the feature ran at (lib/agent.sh); an owner-directed triage
-# starts no agent.
+# The triage agent by the same level, from the same run of check-risk.sh,
+# with its standard error first as agent_computed_level reads it, never
+# below the level an earlier session of the feature ran at (lib/agent.sh);
+# an owner-directed triage starts no agent.
 agent_level=""
 agent_level_why=""
 if [[ -n "$owner_decisions" ]]; then
   agent="owner"
   model="owner-directed"
 else
-  agent_computed="$(agent_computed_level "$root" "$risk_base")"
+  risk_merged="$risk_output"
+  [[ ! -s "$tmp_work/risk.err" ]] || risk_merged="$(cat "$tmp_work/risk.err")"$'\n'"$risk_output"
+  agent_computed="$(agent_risk_level "$risk_base" "$risk_status" "$risk_merged")"
   agent_selected="$(agent_feature_level "$(records_branch_issue)" "${agent_computed%%$'\t'*}" "${agent_computed#*$'\t'}")"
   agent_level="${agent_selected%%$'\t'*}"
   agent_level_why="${agent_selected#*$'\t'}"
@@ -311,9 +316,6 @@ if [[ "$source_issue_title" =~ (^|[^[:alnum:]])(F[0-9]+)([^[:alnum:]]|$) ]]; the
   provenance="[${BASH_REMATCH[2]}]"
 fi
 provenance+="[$review_ref]"
-
-tmp_work="$(mktemp -d "${TMPDIR:-/tmp}/triage-review.XXXXXX")"
-trap 'rm -rf "$tmp_work"' EXIT
 
 # find_later_review: sets later_review to a valid, later review round of the
 # same Issue, if there is one.

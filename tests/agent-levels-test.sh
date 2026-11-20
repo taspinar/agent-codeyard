@@ -846,4 +846,89 @@ refused_review "triage@low: copilot nope" "unsupported agent 'copilot' for role 
 refused_review "triage@low: claude --fallback" "for role 'triage@low' on line 3 of" "a level line of the triage names an invalid model"
 refused_review "triage@low: codex fable" "unsupported agent/model combination: codex + fable for role 'triage@low' on line 3 of" "a level line of the triage names a refused combination"
 
+# review-feature.sh classifies the feature once per call (#432), and
+# decides both levels from it: the agent with the latest review, as
+# check-risk.sh counts it, and the level the reviewer is told without it. A
+# classification that fails selects the agent of a high feature, as a
+# check-risk.sh that exits above 2 does. A git on PATH logs its calls: the
+# enumeration of the changes (risk_enumerable) runs once per
+# classification; and a check-risk.sh that logs its calls shows that the
+# review does not run it.
+repo_once="$tmp/review-once"
+mkdir -p "$repo_once/.agents/policies" "$tmp/once-bin" "$tmp/awk-bin"
+copy_workflow "$repo_once"
+workflow_gitignore "$repo_once/.gitignore"
+printf 'verify-count.log\ncheck-risk.calls\n' >>"$repo_once/.gitignore"
+printf 'implementer: codex sonnet\nreviewer: claude model-r\nreviewer@high: claude model-rh\n' >"$repo_once/.agents/agents.conf"
+printf 'default: low\nmedium: src/med\nhigh: src/auth\n' >"$repo_once/.agents/policies/risk.conf"
+printf 'count: echo run >>verify-count.log\n' >"$repo_once/scripts/verify.conf"
+mv "$repo_once/scripts/check-risk.sh" "$repo_once/scripts/check-risk.real.sh"
+printf '#!/usr/bin/env bash\necho call >>"$(dirname "$0")/../check-risk.calls"\nexec "$(dirname "$0")/check-risk.real.sh" "$@"\n' >"$repo_once/scripts/check-risk.sh"
+chmod +x "$repo_once/scripts/check-risk.sh"
+printf 'base\n' >"$repo_once/feature.txt"
+git -C "$repo_once" init -q -b main
+git -C "$repo_once" config user.name "Agent Levels Test"
+git -C "$repo_once" config user.email "agent-levels-test@example.com"
+git -C "$repo_once" add .
+git -C "$repo_once" commit -qm "Seed"
+git -C "$repo_once" switch -q -c feature/7-once
+printf 'changed\n' >"$repo_once/feature.txt"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s"\nexec %s "$@"\n' "$repo_once.git" "$(command -v git)" >"$tmp/once-bin/git"
+printf '#!/usr/bin/env bash\nfor argument in "$@"; do [[ "$argument" != level=* ]] || exit 3; done\nexec %s "$@"\n' "$(command -v awk)" >"$tmp/awk-bin/awk"
+chmod +x "$tmp/once-bin/git" "$tmp/awk-bin/awk"
+# review_once <impact> [<path-prefix>]: a review round whose reviewer
+# classifies the impact as <impact>; the run records of earlier rounds are
+# removed, so the level is not raised to theirs.
+review_once() {
+  rm -rf "$repo_once/.agents/run/records"
+  : >"$repo_once.log"
+  : >"$repo_once.git"
+  (
+    cd "$repo_once"
+    PATH="${2:-}$tmp/once-bin:$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo_once.log" \
+      MOCK_OUTPUT="{\"architecture_impact\": {\"level\": \"$1\", \"rationale\": \"The impact.\", \"checked_against\": []}, \"verdict\": \"PASS\", \"limitations\": \"\", \"findings\": []}" \
+      ./scripts/review-feature.sh 7 </dev/null
+  ) >"$repo_once.out" 2>&1
+}
+enumerations() {
+  grep -Ec -- "diff --name-only --no-renames [0-9a-f]{40} -- \.$" "$repo_once.git" || true
+}
+review_once minor "$tmp/awk-bin:" || { cat "$repo_once.out" >&2; fail "the review of a feature whose classification fails failed"; }
+started "$repo_once" claude model-rh "the review of a feature whose classification fails"
+grep -Fq "Level:    high (the level could not be determined (check-risk.sh exited with status 3); a feature that cannot be classified is high)" "$repo_once.out" ||
+  fail "a classification that fails did not select the agent of a high feature: $(cat "$repo_once.out")"
+grep -Fq "The effective risk level of this feature is low" "$repo_once.log.stdin" ||
+  fail "the reviewer was not told the level of the diff after a classification that fails"
+if jq -e -s 'any(.type == "stop")' "$repo_once"/.agents/run/records/*.jsonl >/dev/null; then
+  fail "a classification that fails was recorded as a stop of the review: $(cat "$repo_once"/.agents/run/records/*.jsonl)"
+fi
+review_once major || { cat "$repo_once.out" >&2; fail "the review of a low feature failed"; }
+started "$repo_once" claude model-r "the review of a low feature"
+grep -Fq "Level:    low (computed by check-risk.sh against main)" "$repo_once.out" || fail "the low level was not shown: $(cat "$repo_once.out")"
+[[ "$(enumerations)" -eq 1 ]] || fail "the review classified the feature $(enumerations) times, not once: $(cat "$repo_once.git")"
+review_once minor || { cat "$repo_once.out" >&2; fail "the review after a major impact failed"; }
+started "$repo_once" claude model-rh "the review after a round that classified the impact as major"
+grep -Fq "Level:    high (computed by check-risk.sh against main)" "$repo_once.out" ||
+  fail "the latest review did not raise the level that selects the agent: $(cat "$repo_once.out")"
+grep -Fq "The effective risk level of this feature is low" "$repo_once.log.stdin" ||
+  fail "the reviewer was told a level that counts the latest review: $(grep -F 'effective risk level' "$repo_once.log.stdin")"
+[[ "$(jq -r '.risk.level' "$repo_once/.agents/reviews/feature-7-once-review-03.json")" == "low" ]] ||
+  fail "the artifact does not record the level without the latest review"
+[[ "$(enumerations)" -eq 1 ]] || fail "the review after a major impact classified the feature $(enumerations) times, not once"
+[[ ! -e "$repo_once/check-risk.calls" ]] || fail "review-feature.sh ran check-risk.sh $(grep -c . "$repo_once/check-risk.calls") times"
+# A medium and a high feature are classified once, too: their valid levels
+# (check-risk.sh exits 1 and 2) reuse the classification as a low one does.
+mkdir -p "$repo_once/src/med" "$repo_once/src/auth"
+printf 'medium\n' >"$repo_once/src/med/file.txt"
+review_once minor || { cat "$repo_once.out" >&2; fail "the review of a medium feature failed"; }
+grep -Fq "Level:    medium (computed by check-risk.sh against main)" "$repo_once.out" || fail "the medium level was not shown: $(cat "$repo_once.out")"
+grep -Fq "The effective risk level of this feature is medium" "$repo_once.log.stdin" || fail "the reviewer was not told the medium level"
+[[ "$(enumerations)" -eq 1 ]] || fail "the review of a medium feature classified it $(enumerations) times, not once: $(cat "$repo_once.git")"
+printf 'high\n' >"$repo_once/src/auth/file.txt"
+review_once minor || { cat "$repo_once.out" >&2; fail "the review of a high feature failed"; }
+started "$repo_once" claude model-rh "the review of a high feature"
+grep -Fq "Level:    high (computed by check-risk.sh against main)" "$repo_once.out" || fail "the high level was not shown: $(cat "$repo_once.out")"
+grep -Fq "The effective risk level of this feature is high" "$repo_once.log.stdin" || fail "the reviewer was not told the high level"
+[[ "$(enumerations)" -eq 1 ]] || fail "the review of a high feature classified it $(enumerations) times, not once: $(cat "$repo_once.git")"
+
 echo "agent-levels tests passed"

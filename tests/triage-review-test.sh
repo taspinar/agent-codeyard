@@ -825,4 +825,55 @@ grep -Fqx "  Continues: C1 of round 1, unresolved: The branch still returns earl
   fail "the proposal does not show the predecessor: $(cat "$repo.out")"
 grep -Fq '"relation": "unresolved"' "$repo.log.stdin" || fail "the triage agent was not given the predecessor"
 
+# One run of check-risk.sh per triage gives the triage mode and the level
+# that selects the triage agent (#432), and the level is read as before: a
+# run that exits above 2 gives the full triage and the agent of a high
+# feature, and so does a run that writes to standard error before its
+# level, while the triage mode still comes from its standard output.
+# with_risk_stub <repo> <stub>: a check-risk.sh committed on main that logs
+# each call to check-risk.calls and does what <stub> says; the real one
+# stays as check-risk.real.sh.
+with_risk_stub() {
+  mv "$1/scripts/check-risk.sh" "$1/scripts/check-risk.real.sh"
+  printf '#!/usr/bin/env bash\necho call >>"$(dirname "$0")/../check-risk.calls"\n%s\n' "$2" >"$1/scripts/check-risk.sh"
+  chmod +x "$1/scripts/check-risk.sh"
+  printf 'check-risk.calls\n' >>"$1/.gitignore"
+  printf 'triage: claude model-t\ntriage@high: claude model-th\n' >"$1/.agents/agents.conf"
+  git -C "$1" add -A
+  git -C "$1" commit -qm "A check-risk.sh that counts its calls"
+  with_policy "$1" "$(printf 'default: medium\nmedium: triage: light')"
+}
+repo="$(setup_repo risk-once)"
+with_risk_stub "$repo" 'exec "$(dirname "$0")/check-risk.real.sh" "$@"'
+run_triage "$repo" y "$review" || {
+  cat "$repo.out" >&2
+  fail "the triage of a medium feature failed"
+}
+[[ "$(grep -c . "$repo/check-risk.calls")" -eq 1 ]] || fail "the triage ran check-risk.sh $(grep -c . "$repo/check-risk.calls") times, not once"
+grep -Fq "Triage mode: light" "$repo.out" || fail "the medium feature did not get the light triage: $(cat "$repo.out")"
+grep -Fq "Level:  medium (computed by check-risk.sh against main)" "$repo.out" || fail "the medium level did not select the agent: $(cat "$repo.out")"
+grep -Fq -- "--model model-t" "$repo.log" || fail "the triage agent of a medium feature was not the plain line: $(cat "$repo.log")"
+repo="$(setup_repo risk-fails)"
+with_risk_stub "$repo" 'echo "risk: low"; exit 3'
+run_triage "$repo" y "$review" || {
+  cat "$repo.out" >&2
+  fail "the triage of an unclassified feature failed"
+}
+[[ "$(grep -c . "$repo/check-risk.calls")" -eq 1 ]] || fail "the triage of an unclassified feature ran check-risk.sh more than once"
+[[ "$(jq -r '.triage.mode' "$repo/.agents/triage/feature-5-test-review-01-triage.json")" == "full" ]] ||
+  fail "a feature whose classification failed got the light triage"
+grep -Fq "Level:  high (the level could not be determined (check-risk.sh exited with status 3); a feature that cannot be classified is high)" "$repo.out" ||
+  fail "a failed classification did not select the agent of a high feature: $(cat "$repo.out")"
+grep -Fq -- "--model model-th" "$repo.log" || fail "the triage agent of an unclassified feature was not the high line: $(cat "$repo.log")"
+repo="$(setup_repo risk-stderr)"
+with_risk_stub "$repo" 'echo "a warning" >&2; exec "$(dirname "$0")/check-risk.real.sh" "$@"'
+run_triage "$repo" y "$review" || {
+  cat "$repo.out" >&2
+  fail "the triage with a warning of check-risk.sh failed"
+}
+grep -Fq "Triage mode: light" "$repo.out" || fail "a warning of check-risk.sh changed the triage mode: $(cat "$repo.out")"
+grep -Fq "Level:  high (the level could not be determined (check-risk.sh exited with status 1)" "$repo.out" ||
+  fail "a warning before the level did not select the agent of a high feature, as agent_computed_level reads it: $(cat "$repo.out")"
+grep -Fq -- "--model model-th" "$repo.log" || fail "the triage agent after a warning was not the high line: $(cat "$repo.log")"
+
 echo "triage-review tests passed"
