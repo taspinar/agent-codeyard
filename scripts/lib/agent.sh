@@ -316,21 +316,32 @@ agent_selection_text() {
 
 # agent_computed_level <worktree> <base>
 # Prints the effective risk level of the feature in <worktree> as
-# check-risk.sh computes it now, and after a tab where it comes from. A
-# level that cannot be determined is high, as the risk library has it: a
-# feature that cannot be classified never gets the agent of a lesser one.
+# check-risk.sh computes it now, and after a tab where it comes from, by
+# agent_risk_level.
 agent_computed_level() {
   local output
   local status=0
-  local level
 
   output="$( (cd "$1" && ./scripts/check-risk.sh "$2" </dev/null) 2>&1)" || status=$?
-  level="$(printf '%s\n' "$output" | sed -n '1s/^risk: //p')"
-  if [[ "$status" -gt 2 || -z "$level" ]]; then
-    printf 'high\tthe level could not be determined (check-risk.sh exited with status %s); a feature that cannot be classified is high\n' "$status"
+  agent_risk_level "$2" "$status" "$output"
+}
+
+# agent_risk_level <base> <status> <output>
+# Prints the level of an <output> of check-risk.sh against <base>, with its
+# standard error before the first line of its standard output as a run
+# with 2>&1 gives it, and its exit <status>; after a tab where the level
+# comes from. A level that cannot be determined is high, as the risk
+# library has it: a feature that cannot be classified never gets the agent
+# of a lesser one.
+agent_risk_level() {
+  local level
+
+  level="$(printf '%s\n' "$3" | sed -n '1s/^risk: //p')"
+  if [[ "$2" -gt 2 || -z "$level" ]]; then
+    printf 'high\tthe level could not be determined (check-risk.sh exited with status %s); a feature that cannot be classified is high\n' "$2"
     return 0
   fi
-  printf '%s\tcomputed by check-risk.sh against %s\n' "$level" "$2"
+  printf '%s\tcomputed by check-risk.sh against %s\n' "$level" "$1"
 }
 
 # agent_feature_level <issue> <level> <why>

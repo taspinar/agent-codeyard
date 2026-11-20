@@ -55,11 +55,7 @@ record=""
 review=""
 if [[ "$branch" =~ ^feature/([0-9]+)- ]]; then
   record="$(completion_record "$root" "${BASH_REMATCH[1]}")"
-  slug="${branch//\//-}"
-  shopt -s nullglob
-  reviews=("$root/.agents/reviews/${slug}-review-"[0-9][0-9].json)
-  shopt -u nullglob
-  [[ "${#reviews[@]}" -eq 0 ]] || review="${reviews[${#reviews[@]}-1]}"
+  review="$(risk_latest_review "$root" "$branch")"
 fi
 
 rules="$(guardrails_rules_refs "$root" "$base")"

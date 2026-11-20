@@ -109,11 +109,38 @@ if [[ "$branch" != feature/${issue}-* ]]; then
   exit 1
 fi
 
+# The risk of the feature is classified once, here, with the inputs of
+# check-risk.sh: the rules of the base on the diff from where the feature
+# left it, with uncommitted and untracked files. The subshell prints what
+# check-risk.sh would print first, with its standard error before it as
+# agent_computed_level reads it, and then the lines of risk_computed; it
+# stops at the first failing command, as check-risk.sh does, and as for
+# that separate process, its failure is no stop of this script for the run
+# records (records_trap_unexpected).
+set +e
+risk_now="$(
+  trap - ERR
+  set -e
+  exec 2>&1 </dev/null
+  risk_rules="$(guardrails_rules_refs "$root" "$base")"
+  if risk_from="$(feature_base "$root" "$base")"; then
+    risk_lines="$(risk_computed "$root" "$risk_rules" "$(printf '%s\n' "$risk_from" | sed -n 2p)" "")"
+  else
+    risk_lines="$(risk_undetermined "the base of this worktree could not be determined ($base)")"
+  fi
+  risk_agent_lines="$(risk_decision "$risk_lines" "$(completion_record "$root" "$issue")" "$(risk_latest_review "$root" "$branch")" "$(risk_hints "$root" "$branch")")"
+  echo "risk: $(printf '%s\n' "$risk_agent_lines" | sed -n 1p)"
+  printf '%s\n' "$risk_lines"
+)"
+risk_now_status=$?
+set -e
+
 # The agent of the reviewer by the risk level of the feature as it is now,
-# never below the level an earlier session of the feature ran at
-# (lib/agent.sh). The level the reviewer is told, below, is computed again
-# from the diff and the rules of the base, without that raise.
-agent_computed="$(agent_computed_level "$root" "$base")"
+# with the latest review, as check-risk.sh counts it, never below the level
+# an earlier session of the feature ran at (lib/agent.sh). The level the
+# reviewer is told, below, is decided from the same classification without
+# the latest review and without that raise.
+agent_computed="$(agent_risk_level "$base" "$risk_now_status" "$risk_now")"
 agent_selected="$(agent_feature_level "$issue" "${agent_computed%%$'\t'*}" "${agent_computed#*$'\t'}")"
 agent_level="${agent_selected%%$'\t'*}"
 agent_level_why="${agent_selected#*$'\t'}"
@@ -459,7 +486,16 @@ guardrails="$(printf '%s\n' "$guardrail_findings" |
 # diff, the fixed escalations, and what the implementer recorded, which can
 # raise it. The reviewer is told, and the artifact records it; the reviewer's
 # own classification of the impact can raise it further, never lower it.
-risk_lines="$(risk_decision "$(risk_computed "$root" "$guardrail_rules" "$merge_base")" "$(completion_record "$root" "$issue")" "" "$(risk_hints "$root" "$branch")")"
+# The classification above is reused when it was complete; the content and
+# the base are the ones it saw, as the verification and the merge base
+# above require. Otherwise it is computed here, and what it printed counts
+# whatever its status, as before.
+if [[ "$risk_now_status" -eq 0 && "$risk_now" == "risk: "* ]]; then
+  risk_feature="$(printf '%s\n' "$risk_now" | sed 1d)"
+else
+  risk_feature="$(risk_computed "$root" "$guardrail_rules" "$merge_base")" || true
+fi
+risk_lines="$(risk_decision "$risk_feature" "$(completion_record "$root" "$issue")" "" "$(risk_hints "$root" "$branch")")"
 risk_level="$(printf '%s\n' "$risk_lines" | sed -n 1p)"
 risk="$(printf '%s\n' "$risk_lines" | sed 1d |
   jq -Rn --arg level "$risk_level" '{level: $level, reasons: [inputs | select(length > 0)]}')"
