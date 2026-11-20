@@ -689,10 +689,14 @@ origin is the `repository:` of `.agents/template.conf`, does
 preset), its ADRs, or the rules of its `.gitignore` other than
 the workflow's lines for `.agents/`. `tests/adopted-project-test.sh` holds them
 to it: it builds a fixture adopted project from the template's files, with its
-own CI excluded from the template's files, `base: develop`, a risk policy with
-`profile: light` and a class of its own, a recorded baseline, its own ADRs, an ignore rule `*.json` that the adoption's
+own CI excluded from the template's files, `base: develop`, a risk policy of
+its own (`profile: light` and classes of its own in its policy override, "The
+project's policy override", and a class still written into the shipped
+`risk.conf`), a CI setup action ("The project's CI setup"), a recorded
+baseline, its own ADRs, an ignore rule `*.json` that the adoption's
 section un-ignores again, and no `README.md` or `LICENSE`, and runs every
-other self-test there, four at a time; each has to pass.
+other self-test there, four at a time, or `ADOPTED_PROJECT_JOBS` at a time
+when it is set (a lower value for a host with few cores); each has to pass.
 
 The self-tests start `jq`, `git`, and `bash` thousands of times. On an Apple
 Silicon Mac an x86_64 `jq`, such as the one Anaconda installs, runs under

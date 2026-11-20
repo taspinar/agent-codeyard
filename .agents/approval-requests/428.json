@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "2fdd76689efe16ceb2abc891f53fea2d79885ed6",
+  "commit": {
+    "branch": "feature/428-adoption-fixture-with-the",
+    "parent": "a4f04e1dea628da6c32f76fc95c02ddcc0c2f111",
+    "base": "a4f04e1dea628da6c32f76fc95c02ddcc0c2f111"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the completion record leaves a criterion of the owner_approval gate pending: Risk high: the merge needs the owner's approval."
+  ],
+  "explanation": "Issue #428: Adoption fixture with the extension points of #409 and #420 (step 1 of #345). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

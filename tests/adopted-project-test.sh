@@ -9,7 +9,14 @@ set -euo pipefail
 # features from 'develop', has approved its requirements, has a risk policy
 # of its own, has recorded its baseline, has its own ADRs and an ignore rule
 # that hides the workflow's JSON files (un-ignored again, as the adoption
-# does), and has no README.md or LICENSE.
+# does), and has no README.md or LICENSE. It uses both extension points of a
+# project (docs/development.md): a policy override in
+# .agents/policy-overrides/risk.conf and a CI setup in
+# .github/actions/project-setup/action.yml. It still edits the shipped
+# .agents/policies/risk.conf as well, so a project that keeps its choices
+# there and one that uses the override are both represented.
+#
+# ADOPTED_PROJECT_JOBS sets how many self-tests run at a time (default 4).
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
@@ -54,10 +61,21 @@ sed -e 's/^Status: Draft$/Status: Approved/' -e 's/^Approved at: Not approved$/A
   "$project/docs/PROJECT_REQUIREMENTS.md" >"$tmp/requirements.md"
 mv "$tmp/requirements.md" "$project/docs/PROJECT_REQUIREMENTS.md"
 grep -Fqx 'Status: Approved' "$project/docs/PROJECT_REQUIREMENTS.md" || fail "the fixture's requirements are not approved"
-# Its risk policy is its own: the light profile and a class of its own. No
-# self-test may need the policy the template ships.
-printf '\nprofile: light\nhigh: src/billing\n' >>"$project/.agents/policies/risk.conf"
-grep -Fqx 'profile: light' "$project/.agents/policies/risk.conf" || fail "the fixture's risk policy is the template's"
+# Its risk policy is its own: the light profile and classes of its own, in
+# its policy override, and a class of its own still written into the shipped
+# risk.conf, as a project did before the override. No self-test may need the
+# policy the template ships.
+printf '\nhigh: src/billing\n' >>"$project/.agents/policies/risk.conf"
+grep -Fqx 'high: src/billing' "$project/.agents/policies/risk.conf" || fail "the fixture does not edit the shipped risk policy"
+mkdir -p "$project/.agents/policy-overrides"
+printf '# The project'"'"'s risk policy.\nprofile: light\nhigh: src/payments\nmanifests: package.json package-lock.json\n' \
+  >"$project/.agents/policy-overrides/risk.conf"
+grep -Fqx 'profile: light' "$project/.agents/policy-overrides/risk.conf" || fail "the fixture has no policy override"
+# Its CI setup, the composite action that ci.yml runs before the verification.
+mkdir -p "$project/.github/actions/project-setup"
+printf 'name: Project setup\ndescription: Installs the dependencies of the project.\nruns:\n  using: composite\n  steps:\n    - run: make deps\n      shell: bash\n' \
+  >"$project/.github/actions/project-setup/action.yml"
+grep -Fqx '  using: composite' "$project/.github/actions/project-setup/action.yml" || fail "the fixture has no CI setup action"
 printf '# 0001. Store orders in PostgreSQL\n\nStatus: Accepted\n\nThe project keeps its orders in PostgreSQL.\n' \
   >"$project/docs/decisions/0001-store-orders-in-postgresql.md"
 template_conf "$tmp/template.conf"
@@ -96,6 +114,9 @@ rm -r "$project/.agents/approval-requests"
 [[ -s "$project/.agents/verification-baseline" ]] || fail "the fixture has no baseline"
 git -C "$project" add -A
 git -C "$project" -c user.name=Owner -c user.email=owner@example.com commit -qm "The adopted project"
+for path in .agents/policy-overrides/risk.conf .github/actions/project-setup/action.yml; do
+  git -C "$project" ls-files --error-unmatch -- "$path" >/dev/null 2>&1 || fail "the fixture does not track its $path"
+done
 git -C "$project" branch develop
 git -C "$project" switch -q develop
 git init -q --bare -b main "$tmp/project-remote.git"
@@ -105,14 +126,16 @@ for path in README.md LICENSE; do
   [[ ! -e "$project/$path" ]] || fail "the fixture has a $path"
 done
 
-# Every self-test, run from the fixture as ./scripts/verify.sh runs it, four
-# at a time.
+# Every self-test, run from the fixture as ./scripts/verify.sh runs it,
+# ADOPTED_PROJECT_JOBS at a time.
+jobs="${ADOPTED_PROJECT_JOBS:-4}"
+[[ "$jobs" =~ ^[1-9][0-9]*$ ]] || fail "ADOPTED_PROJECT_JOBS is not a positive number: $jobs"
 mkdir -p "$tmp/out"
 sed -nE 's/^([a-z0-9-]+)( \[[^]]*\])?( partition [^:]+)?: (.*)$/\1\t\4/p' "$project/scripts/verify-workflow.conf" |
   grep -Ev '^(paths|budget-seconds)\b' | grep -Fv "$self" >"$tmp/checks" || true
 [[ "$(wc -l <"$tmp/checks")" -gt 1 ]] || fail "no self-tests found in scripts/verify-workflow.conf"
 export project tmp
-tr '\n' '\0' <"$tmp/checks" | xargs -0 -P 4 -I{} bash -c '
+tr '\n' '\0' <"$tmp/checks" | xargs -0 -P "$jobs" -I{} bash -c '
   name="${1%%$'"'"'\t'"'"'*}"
   command="${1#*$'"'"'\t'"'"'}"
   if (cd "$project" && bash -eo pipefail -c "$command") >"$tmp/out/$name" 2>&1 </dev/null; then
