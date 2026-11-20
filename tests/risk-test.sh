@@ -869,6 +869,46 @@ with_override "$repo" "profile: standard"
 git -C "$repo" rm -q .agents/policy-overrides/risk.conf
 expect_level "$repo" high "a feature that removes the override is high"
 
+# A classification reads the policy of the commit of its base once, and the
+# next one resolves the base again: a base that moves between two classifications in
+# one shell is classified, and its requirements are read, with its new
+# policy, and a lookup outside a classification reads Git (Issue 430).
+repo="$(setup_repo policy-moves "$(printf 'default: medium\nlow: docs')")"
+git -C "$repo" switch -q -c moved main
+printf 'default: medium\nhigh: docs\nlow: review: full\n' >"$repo/.agents/policies/risk.conf"
+git -C "$repo" commit -qam "Move the policy"
+git -C "$repo" switch -q feature/5-thing
+printf 'More.\n' >>"$repo/docs/guide.md"
+(
+  cd "$repo"
+  source scripts/lib/risk.sh
+  reads="$repo.reads"
+  : >"$reads"
+  # Every read of the policy from Git, also in a subshell of the library.
+  git() {
+    [[ "$*" != *" show "*":$RISK_CONFIG" && "$*" != *" cat-file "*":$RISK_CONFIG" ]] || echo read >>"$reads"
+    command git "$@"
+  }
+  from="$(command git merge-base HEAD main)"
+  risk_computed "$repo" main "$from" "" >"$repo.before"
+  risk_requirements "$repo" main low >>"$repo.before"
+  # The files of a commit never change: a second classification of the same
+  # commit does not read them again.
+  [[ "$(grep -c read "$reads")" -eq 1 ]] || fail "the policy of one commit was read $(grep -c read "$reads") times, not once"
+  command git branch -f main moved
+  risk_computed "$repo" main "$from" "" >"$repo.after"
+  risk_requirements "$repo" main low >>"$repo.after"
+  [[ "$(grep -c read "$reads")" -eq 2 ]] || fail "the policy of the moved base was not read once: $(grep -c read "$reads") reads in all"
+  risk_config_values "$repo" main high >>"$repo.after"
+) || exit 1
+[[ "$(sed -n 1p "$repo.before")" == "low" ]] || fail "the policy before the move was not applied: $(cat "$repo.before")"
+grep -Fxq "review: delta" "$repo.before" || fail "the requirement before the move was not applied: $(cat "$repo.before")"
+[[ "$(sed -n 1p "$repo.after")" == "high" ]] || fail "a base that moved was classified with its old policy: $(cat "$repo.after")"
+grep -Fxq "docs/guide.md: listed as high in .agents/policies/risk.conf" "$repo.after" ||
+  fail "the reason of the new policy was not given: $(cat "$repo.after")"
+grep -Fxq "review: full" "$repo.after" || fail "the requirement of a base that moved was read from its old policy: $(cat "$repo.after")"
+[[ "$(tail -n 1 "$repo.after")" == "docs" ]] || fail "a lookup outside a classification did not read the moved base: $(cat "$repo.after")"
+
 # Refusals.
 repo="$(setup_repo refusals template)"
 check "$repo" --fail-on-protected
