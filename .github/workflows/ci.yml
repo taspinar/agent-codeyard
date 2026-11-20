@@ -6,6 +6,17 @@ on:
   schedule:
     - cron: '17 3 * * *'
 
+# The GITHUB_TOKEN of every job is read-only, whatever the repository's
+# default workflow permissions are: contents for the checkout, packages for a
+# project setup action that pulls from GitHub Packages. Nothing here writes
+# with it; the artifact upload and the npm cache use the runner's own token.
+# The setup action cannot widen it: a project whose setup needs more adds
+# the permission here and keeps the change at every sync of the template.
+# See docs/development.md, "The project's CI setup".
+permissions:
+  contents: read
+  packages: read
+
 # The workflow self-tests (scripts/verify-workflow.conf) take far longer than
 # most projects' own checks. The template runs them on every pull request. A
 # project runs them on a pull request only when it changes a workflow file

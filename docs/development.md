@@ -164,6 +164,16 @@ treated like a change to a CI workflow: it is `high` in
 `.agents/policies/guardrails.conf` says, and listed in `.github/CODEOWNERS`.
 A project gets no fewer approvals from it, only no conflicts.
 
+The action runs with the token of `ci.yml`, which declares read-only
+permissions at the top level: `contents: read` for the checkout and
+`packages: read` for a package pulled from GitHub Packages, nothing else,
+whatever the repository's default workflow permissions are. A composite
+action cannot widen them, and it cannot read the repository's secrets. A
+project whose setup needs more adds the permission (or passes a secret to
+the step) in its `ci.yml`, and keeps that change when
+`./scripts/sync-template.sh` updates the file; the change is a CI workflow
+change and needs the owner's approval like any other.
+
 GitHub Actions cannot run locally. `tests/sync-template-test.sh` checks the
 structure of both workflow files (the step comes after the checkout and
 before the verification in every job that runs `verify.sh`) and evaluates its
