@@ -332,6 +332,58 @@ self_tests_ran "$project" || fail "--all with --reuse did not run the self-tests
 expect_reused "$project" "the self-tests were included in the record" --reuse --all
 expect_reused "$project" "a complete record covers a plain run" --reuse
 
+# The trust contract (lib/verification.sh): with VERIFY_TRUSTED_TREES set,
+# --reuse reuses only a record whose tree is in the list. A record written
+# by hand, whatever its origin says, or by a run in an agent session, is
+# not reused then; without the variable it is, as before. The record says
+# who started the run that wrote it.
+project="$(setup_recorded_project trusted)"
+expect_checks_ran "$project" "nothing was recorded yet" --reuse
+grep -Fqx "origin: manual" "$project$record" || fail "a run at a terminal did not record the origin manual: $(cat "$project$record")"
+tree="$(sed -n 's/^tree: //p' "$project$record")"
+[[ -n "$tree" ]] || fail "the record names no tree"
+printf 'tree: %s\nworkflow-tests: none\nverified-at: 2026-01-01T00:00:00Z\norigin: orchestrator\n' "$tree" >"$project$record"
+VERIFY_TRUSTED_TREES="0123456789abcdef" expect_checks_ran "$project" "the forged record's tree is not in the list" --reuse
+grep -Fq "not by a workflow script of this run" "$project/out.log" || fail "the refused record was not reported: $(cat "$project/out.log")"
+printf 'tree: %s\nworkflow-tests: none\nverified-at: 2026-01-01T00:00:00Z\norigin: orchestrator\n' "$tree" >"$project$record"
+VERIFY_TRUSTED_TREES="" expect_checks_ran "$project" "the list is empty" --reuse
+CODEYARD_AGENT_SESSION=1 VERIFY_ORIGIN=script expect_checks_ran "$project" "--reuse was not given in an agent session"
+grep -Fqx "origin: agent-session" "$project$record" || fail "a run in an agent session did not record the origin agent-session: $(cat "$project$record")"
+VERIFY_TRUSTED_TREES="other" VERIFY_ORIGIN=script expect_checks_ran "$project" "a pass of an agent session is in no list" --reuse
+grep -Fqx "origin: script" "$project$record" || fail "a run of a workflow script did not record the origin script: $(cat "$project$record")"
+VERIFY_TRUSTED_TREES="other $tree" expect_reused "$project" "the tree is in the list" --reuse
+CODEYARD_AGENT_SESSION=1 expect_checks_ran "$project" "--reuse was not given in an agent session"
+expect_reused "$project" "without the list, any record for the content is reused" --reuse
+
+# Inside a recorded run, every verification event says who started it and
+# whether its pass counts as evidence.
+cp "$source_root/scripts/lib/records.sh" "$project/scripts/lib/records.sh"
+git -C "$project" add -A
+git -C "$project" commit -qm "Record runs"
+: >"$tmp/trust-run.jsonl"
+trust_run() {
+  RECORDS_RUN_ID=parent-run RECORDS_FILE="$tmp/trust-run.jsonl" RECORDS_COMMAND=scripts/run-feature.sh \
+    RECORDS_KIND=feature RECORDS_SUBJECT=1 PATH="$tmp/bin:/usr/bin:/bin" MOCK_TOOL_LOG="$1/tools.log" \
+    "$1/scripts/verify.sh" "${@:2}" >"$1/out.log" 2>&1
+}
+last_event() {
+  jq -c -s 'map(select(.type == "verification")) | last | {status, reused, trusted, origin}' "$tmp/trust-run.jsonl"
+}
+expect_event() {
+  [[ "$(last_event)" == "$1" ]] || fail "$2: $(last_event)"
+}
+CODEYARD_AGENT_SESSION=1 trust_run "$project" || fail "a run in an agent session failed"
+expect_event '{"status":0,"reused":false,"trusted":false,"origin":"agent-session"}' "a pass of an agent session counts as evidence"
+trust_run "$project" --reuse || fail "a reuse at a terminal failed"
+expect_event '{"status":0,"reused":true,"trusted":false,"origin":"manual"}' "a reuse without the list counts as evidence"
+VERIFY_ORIGIN=orchestrator VERIFY_TRUSTED_TREES="" trust_run "$project" --reuse || fail "a run of the orchestrator failed"
+expect_event '{"status":0,"reused":false,"trusted":true,"origin":"orchestrator"}' "a pass that the orchestrator ran is not trusted"
+tree="$(sed -n 's/^tree: //p' "$project$record")"
+VERIFY_ORIGIN=script VERIFY_TRUSTED_TREES="$tree" trust_run "$project" --reuse || fail "a reuse of a trusted pass failed"
+expect_event '{"status":0,"reused":true,"trusted":true,"origin":"script"}' "a reuse of a trusted pass is not trusted"
+VERIFY_ORIGIN=script MOCK_RUFF_EXIT=1 trust_run "$project" && fail "a failing run passed"
+expect_event '{"status":1,"reused":false,"trusted":false,"origin":"script"}' "a failed verification counts as evidence"
+
 project="$(setup_project unknown-option "lint: ruff check .")"
 if PATH="$tmp/bin:/usr/bin:/bin" "$project/scripts/verify.sh" --everything >"$project/out.log" 2>&1; then
   fail "an unknown option was accepted"

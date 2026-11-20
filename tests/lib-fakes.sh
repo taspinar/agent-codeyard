@@ -10,7 +10,11 @@
 # must not write their fake events into that run's record. A test of the
 # records sets what it needs after sourcing this file. It unsets
 # WORKFLOW_RISK_HINT too, the owner's --risk of a run that started the test,
-# which would raise every level that a test computes.
+# which would raise every level that a test computes. And it unsets the
+# trust contract of a run or an agent session that started the test
+# (VERIFY_TRUSTED_TREES, VERIFY_ORIGIN, CODEYARD_AGENT_SESSION,
+# lib/verification.sh): a verification that a test starts is a manual one
+# unless the test says otherwise.
 #
 # make_fake_agents <bin-dir>
 # Creates fake 'codex' and 'claude' executables that log their arguments and
@@ -20,6 +24,7 @@
 unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
 unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
 unset WORKFLOW_RISK_HINT
+unset VERIFY_TRUSTED_TREES VERIFY_ORIGIN CODEYARD_AGENT_SESSION
 
 make_fake_agents() {
   local bin="$1"

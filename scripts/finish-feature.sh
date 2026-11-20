@@ -214,9 +214,12 @@ if [[ "$attribution" == "disabled" ]]; then
 fi
 
 # 1. Verification passes. A pass that was already recorded for exactly this
-# content, by apply-triage.sh or review-feature.sh, is not repeated.
+# content, by apply-triage.sh or review-feature.sh, is not repeated, where
+# the trust contract trusts it (lib/verification.sh): with the trusted
+# passes of a run, only one of them; with --unattended and without them,
+# none.
 echo "Checking repository verification..."
-(cd "$root" && ./scripts/verify.sh --reuse) || fail "verification failed; nothing was committed."
+verification_run "$root" script "$unattended" || fail "verification failed; nothing was committed."
 echo
 # The budget results of that verification (lib/verification.sh): a budget
 # over its target passed the verification as a measurement, and the commit

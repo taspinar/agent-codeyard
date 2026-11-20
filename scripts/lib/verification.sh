@@ -29,14 +29,77 @@
 # The record is a working file that Git ignores. Without that ignore rule no
 # record is written, because the file would become part of the fingerprint.
 #
-# A run inside an agent session counts like any other: the record says which
-# content passed, whoever started the run. An agent could write the file
-# instead of running the checks; that is accepted, because CI runs every check
-# on a clean checkout before a merge.
+# The record also says who started the run that wrote it ('origin'), and an
+# agent could write the file instead of running the checks. So a pass is
+# trusted evidence for an unattended step only by the trust contract: the
+# workflow script that started verify.sh itself keeps the trees of its passes
+# in VERIFY_TRUSTED_TREES, which it gives to the scripts it starts and which
+# lib/agent.sh removes from every agent process. With the variable set,
+# 'verify.sh --reuse' reuses only a record whose tree is in it; an unattended
+# step without it does not reuse at all (verification_run). Without the
+# variable, outside an unattended step, any record for the content is reused,
+# as the owner at a terminal expects.
 
 VERIFICATION_RECORD=".agents/verification/passed"
 VERIFICATION_BUDGETS=".agents/verification/budgets"
 VERIFICATION_DURATIONS=".agents/verification/durations"
+
+# verification_origin
+# Prints who started this verification: 'agent-session' inside an agent
+# session (CODEYARD_AGENT_SESSION, which lib/agent.sh sets), 'orchestrator'
+# or 'script' when a workflow script says so in VERIFY_ORIGIN for its own
+# call, and 'manual' otherwise.
+verification_origin() {
+  if [[ "${CODEYARD_AGENT_SESSION:-}" == "1" ]]; then
+    echo agent-session
+  elif [[ "${VERIFY_ORIGIN:-}" == "orchestrator" || "${VERIFY_ORIGIN:-}" == "script" ]]; then
+    echo "$VERIFY_ORIGIN"
+  else
+    echo manual
+  fi
+}
+
+# verification_tree_trusted <tree>
+# Succeeds when <tree> is one of the trees in VERIFY_TRUSTED_TREES, separated
+# by spaces.
+verification_tree_trusted() {
+  [[ -n "$1" && " ${VERIFY_TRUSTED_TREES:-} " == *" $1 "* ]]
+}
+
+# verification_trust <tree>
+# Adds <tree> to VERIFY_TRUSTED_TREES and exports the list, so that the
+# scripts this one starts reuse that pass. An empty tree adds nothing.
+verification_trust() {
+  if [[ -n "$1" ]] && ! verification_tree_trusted "$1"; then
+    VERIFY_TRUSTED_TREES="${VERIFY_TRUSTED_TREES:+$VERIFY_TRUSTED_TREES }$1"
+  fi
+  [[ -z "${VERIFY_TRUSTED_TREES+set}" ]] || export VERIFY_TRUSTED_TREES
+}
+
+# verification_run <root> <origin> <unattended> [<option>...]
+# The verification of a workflow script: ./scripts/verify.sh --reuse of
+# <root> with the options, started as <origin> ('orchestrator' or 'script').
+# An unattended step (<unattended> 1) without VERIFY_TRUSTED_TREES has no
+# pass it can trust, so it runs every check instead of reusing one. A pass
+# of a step that has the list, or is unattended, is added to the list
+# (verification_trust): it was made by this script, not in an agent session.
+# Returns the status of verify.sh.
+verification_run() {
+  local root="$1"
+  local origin="$2"
+  local unattended="$3"
+  local reuse=(--reuse)
+
+  shift 3
+  if [[ "$unattended" -eq 1 && -z "${VERIFY_TRUSTED_TREES+set}" ]]; then
+    reuse=()
+    echo "An unattended step without a list of trusted passes (VERIFY_TRUSTED_TREES): every check runs, and no recorded pass is reused."
+  fi
+  (cd "$root" && VERIFY_ORIGIN="$origin" ./scripts/verify.sh ${reuse[@]+"${reuse[@]}"} "$@") || return $?
+  if [[ "$unattended" -eq 1 || -n "${VERIFY_TRUSTED_TREES+set}" ]]; then
+    verification_trust "$(verification_field "$root" tree)"
+  fi
+}
 
 # verification_recordable <root>
 # Succeeds when a record can be kept for the working tree at <root>.
@@ -47,8 +110,9 @@ verification_recordable() {
 }
 
 # verification_field <root> <field>
-# Prints the value of 'tree', 'workflow-tests', or 'verified-at' in the
-# record, or nothing when there is no record.
+# Prints the value of 'tree', 'workflow-tests', 'verified-at', or 'origin'
+# in the record, or nothing when there is no record (and no 'origin' in a
+# record written before it was kept).
 verification_field() {
   [[ -f "$1/$VERIFICATION_RECORD" ]] || return 0
   sed -n "s/^$2: //p" "$1/$VERIFICATION_RECORD" | head -n 1
@@ -59,11 +123,12 @@ verification_field() {
 # budget results of the run in the format of verification_budget_add; it is
 # kept with the record, and without one, or with an empty one, no budget
 # record is kept. <durations-file> holds the durations of the checks in the
-# format of verification_duration_add, kept the same way.
+# format of verification_duration_add, kept the same way. The record says
+# who started the run (verification_origin).
 verification_write() {
   mkdir -p "$(dirname "$1/$VERIFICATION_RECORD")" &&
-    printf 'tree: %s\nworkflow-tests: %s\nverified-at: %s\n' \
-      "$2" "$3" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >"$1/$VERIFICATION_RECORD" || return 1
+    printf 'tree: %s\nworkflow-tests: %s\nverified-at: %s\norigin: %s\n' \
+      "$2" "$3" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$(verification_origin)" >"$1/$VERIFICATION_RECORD" || return 1
   if [[ -n "${4:-}" && -s "$4" ]]; then
     cp "$4" "$1/$VERIFICATION_BUDGETS"
   else

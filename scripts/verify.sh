@@ -240,20 +240,36 @@ if [[ -z "${RECORDS_VERIFICATION:-}" && -z "${RECORDS_DISABLED:-}" && "$list_gro
     RECORDS_VERIFICATION="$records_mark" "$0" ${records_arguments[@]+"${records_arguments[@]}"} || records_status=$?
     records_reused=false
     [[ ! -e "$records_mark" ]] || records_reused=true
+    # Whether the pass counts as evidence under the trust contract
+    # (lib/verification.sh): one that a workflow script ran itself, or a
+    # reused one whose tree is in VERIFY_TRUSTED_TREES; never one of an agent
+    # session, of a run at a terminal, or a reuse without the list.
+    records_origin=manual
+    records_trusted=false
+    if [[ -f "$root/scripts/lib/verification.sh" ]]; then
+      source "$root/scripts/lib/verification.sh"
+      ! declare -F verification_origin >/dev/null || records_origin="$(verification_origin)"
+    fi
+    if [[ "$records_status" -eq 0 && "$records_origin" != "agent-session" ]]; then
+      if [[ "$records_reused" == true ]]; then
+        [[ -z "${VERIFY_TRUSTED_TREES+set}" ]] || records_trusted=true
+      elif [[ "$records_origin" != "manual" ]]; then
+        records_trusted=true
+      fi
+    fi
     # The budget results of the run, which the child writes next to the mark
     # (lib/verification.sh), also for a reused pass, and the durations of the
     # checks that ran, which a reused pass has none of.
     records_budgets='[]'
     records_checks='[]'
     if [[ -f "$root/scripts/lib/verification.sh" ]]; then
-      source "$root/scripts/lib/verification.sh"
       records_budgets="$(verification_budgets_json "$records_mark.budgets" 2>/dev/null)" || records_budgets='[]'
       if declare -F verification_durations_json >/dev/null; then
         records_checks="$(verification_durations_json "$records_mark.durations" 2>/dev/null)" || records_checks='[]'
       fi
     fi
     rm -f "$records_mark" "$records_mark.budgets" "$records_mark.durations" 2>/dev/null || true
-    records_verification "$records_status" "$(($(date +%s) - records_started))" "$records_reused" all "$records_call" "$records_budgets" "$records_checks"
+    records_verification "$records_status" "$(($(date +%s) - records_started))" "$records_reused" all "$records_call" "$records_budgets" "$records_checks" "$records_trusted" "$records_origin"
     exit "$records_status"
   fi
 fi
@@ -679,11 +695,17 @@ fi
 
 # With --reuse, a recorded pass for exactly this content stands in for a run.
 # A record made without the workflow self-tests does not cover a run that
-# needs them.
+# needs them. With VERIFY_TRUSTED_TREES set, the trust contract of the
+# workflow scripts (lib/verification.sh), only a pass whose tree is in the
+# list counts: any other record may have been written in an agent session.
 tree_before=""
 if [[ "$recordable" -eq 1 ]]; then
   tree_before="$(fingerprint_worktree "$root" "$scratch")" || tree_before=""
-  if [[ "$reuse" -eq 1 && -n "$tree_before" && "$(verification_field "$root" tree)" == "$tree_before" ]]; then
+  if [[ "$reuse" -eq 1 && -n "$tree_before" && "$(verification_field "$root" tree)" == "$tree_before" ]] &&
+    [[ -n "${VERIFY_TRUSTED_TREES+set}" ]] && ! verification_tree_trusted "$tree_before"; then
+    echo
+    echo "A pass is recorded for this content, but not by a workflow script of this run (VERIFY_TRUSTED_TREES); every check runs."
+  elif [[ "$reuse" -eq 1 && -n "$tree_before" && "$(verification_field "$root" tree)" == "$tree_before" ]]; then
     recorded_workflow="$(verification_field "$root" workflow-tests)"
     if [[ "$recorded_workflow" != "skipped" || ( -n "$workflow_skipped" && "$run_all" -eq 0 ) ]]; then
       echo

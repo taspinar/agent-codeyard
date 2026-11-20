@@ -31,6 +31,8 @@ set -euo pipefail
   echo "AGENT=$(basename "$0")"
   echo "PWD=$PWD"
   echo "ARGS=$*"
+  # The environment of the trust contract (lib/verification.sh).
+  echo "ENV=VERIFY_TRUSTED_TREES:${VERIFY_TRUSTED_TREES-unset} VERIFY_ORIGIN:${VERIFY_ORIGIN-unset} CODEYARD_AGENT_SESSION:${CODEYARD_AGENT_SESSION-unset}"
 } >>"$MOCK_AGENT_LOG"
 if [[ "$(basename "$0")" == "claude" ]]; then
   # With --output-format json the real CLI answers in a result envelope.
@@ -195,6 +197,25 @@ done
 agent_run read-only claude model-b "$workdir" "the prompt" "$tmp/report.txt"
 grep -Fq -- "--strict-mcp-config --permission-mode dontAsk --tools Read,Glob,Grep" "$MOCK_AGENT_LOG" ||
   fail "claude read-only run was not restricted to read tools"
+
+# No agent process gets the trusted passes of the script that starts it or
+# its origin, and every one is marked as an agent session: a verification it
+# runs cannot become evidence for the script (lib/verification.sh). The
+# script keeps its list.
+for provider in codex claude; do
+  for profile in write unattended read-only; do
+    : >"$MOCK_AGENT_LOG"
+    (
+      export VERIFY_TRUSTED_TREES="tree-a tree-b" VERIFY_ORIGIN=orchestrator
+      agent_run "$profile" "$provider" "model-$provider" "$workdir" "the prompt" "$tmp/final.txt" >/dev/null ||
+        fail "$provider $profile run failed"
+      [[ "$VERIFY_TRUSTED_TREES" == "tree-a tree-b" && "$VERIFY_ORIGIN" == orchestrator && -z "${CODEYARD_AGENT_SESSION+set}" ]] ||
+        fail "a $provider $profile run changed the environment of its script"
+    )
+    grep -Fqx "ENV=VERIFY_TRUSTED_TREES:unset VERIFY_ORIGIN:unset CODEYARD_AGENT_SESSION:1" "$MOCK_AGENT_LOG" ||
+      fail "the $provider $profile agent got the trust contract of its script: $(grep '^ENV=' "$MOCK_AGENT_LOG")"
+  done
+done
 
 # An unattended run has the reach of a write session without a terminal: it
 # gets the model, runs in the work directory, stores the final message, and

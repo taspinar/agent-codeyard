@@ -201,6 +201,40 @@ record_reviewed_tree "$repo" "$repo/$review"
 run_finish "$repo" 12 "Add the marker" || fail "finishing changed content failed"
 [[ "$(count_runs "$repo")" -eq 2 ]] || fail "changed content was committed without a new verification"
 
+# The trust contract (lib/verification.sh). A pass that a verification in an
+# agent session recorded is reused at a terminal, as before, but not by an
+# unattended finish without the trusted passes of a run: it runs every check
+# itself. With the list, only a listed pass is reused.
+repo="$(setup_repo agent-pass PASS "[]")"
+printf 'count: echo run >>verify-count.log\n' >"$repo/scripts/verify.conf"
+mkdir -p "$repo/.agents/summaries"
+printf -- '- Adds the marker.\n' >"$repo/.agents/summaries/12.md"
+record_reviewed_tree "$repo" "$repo/$review"
+(cd "$repo" && CODEYARD_AGENT_SESSION=1 PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh >/dev/null) || fail "the verification of the agent session failed"
+grep -Fqx "origin: agent-session" "$repo/.agents/verification/passed" || fail "the pass of an agent session does not say so"
+EDITOR_COMMAND=false run_finish "$repo" 12 "Add the marker" --unattended || {
+  cat "$repo.out" >&2
+  fail "finishing unattended after a pass of an agent session failed"
+}
+[[ "$(count_runs "$repo")" -eq 2 ]] || fail "an unattended finish without a list reused the pass of an agent session"
+grep -Fq "without a list of trusted passes" "$repo.out" || fail "the unattended finish did not say why it verifies again"
+grep -Fqx "origin: script" "$repo/.agents/verification/passed" || fail "the pass of finish-feature.sh does not name the script as its origin"
+
+repo="$(setup_repo listed-pass PASS "[]")"
+printf 'count: echo run >>verify-count.log\n' >"$repo/scripts/verify.conf"
+mkdir -p "$repo/.agents/summaries"
+printf -- '- Adds the marker.\n' >"$repo/.agents/summaries/12.md"
+record_reviewed_tree "$repo" "$repo/$review"
+(cd "$repo" && CODEYARD_AGENT_SESSION=1 PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh >/dev/null) || fail "the verification of the agent session failed"
+trusted_tree="$(sed -n 's/^tree: //p' "$repo/.agents/verification/passed")"
+VERIFY_TRUSTED_TREES="unrelated" EDITOR_COMMAND=false run_finish "$repo" 12 "Add the marker" --unattended ||
+  fail "finishing with a list that lacks the pass failed"
+[[ "$(count_runs "$repo")" -eq 2 ]] || fail "a finish reused a pass that is not in its list"
+git -C "$repo" reset -q --soft HEAD~1
+VERIFY_TRUSTED_TREES="$trusted_tree" EDITOR_COMMAND=false run_finish "$repo" 12 "Add the marker" --unattended ||
+  fail "finishing with the pass in its list failed"
+[[ "$(count_runs "$repo")" -eq 2 ]] || fail "a finish did not reuse the pass in its list"
+
 # A feature is committed on a review of the complete feature. A latest round
 # that reviewed only the changes since an earlier one confirms fixes; it does
 # not establish that the Issue is done, so it is refused.

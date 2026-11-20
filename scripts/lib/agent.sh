@@ -500,6 +500,22 @@ agent_run() {
   return "$status"
 }
 
+# agent_cli <command>...
+# Starts the CLI of an agent. Its process does not get the trusted passes of
+# the workflow script (VERIFY_TRUSTED_TREES) or its origin (VERIFY_ORIGIN),
+# and is marked as an agent session (CODEYARD_AGENT_SESSION=1): a
+# verification the agent runs records the origin 'agent-session', and an
+# agent cannot add to the list it would have to forge (lib/verification.sh).
+agent_cli() {
+  # A subshell, so that the script keeps its variables; no 'env', which a
+  # restricted PATH may lack.
+  (
+    unset VERIFY_TRUSTED_TREES VERIFY_ORIGIN
+    export CODEYARD_AGENT_SESSION=1
+    exec "$@"
+  )
+}
+
 # agent_run_session: agent_run without the record of the call.
 # agent_codex_errors <events-file>: the error messages of a Codex session,
 # from its JSON events, one per line; a message that is itself the JSON of an
@@ -664,7 +680,7 @@ agent_run_session() {
         # Codex asks the user instead of failing. Without a sandbox Codex has
         # no policy that asks per command, so that is not used. The runtime
         # directories under .agents/ are writable roots (codex_roots).
-        codex \
+        agent_cli codex \
           -c sandbox_workspace_write.network_access=true \
           -c "$codex_roots" \
           --sandbox workspace-write \
@@ -677,7 +693,7 @@ agent_run_session() {
     claude:write)
       (
         cd "$workdir"
-        claude \
+        agent_cli claude \
           --permission-mode acceptEdits \
           ${claude_settings[@]+"${claude_settings[@]}"} \
           --model "$model" \
@@ -690,7 +706,7 @@ agent_run_session() {
       status=0
       (
         cd "$workdir"
-        codex exec \
+        agent_cli codex exec \
           --ignore-user-config \
           -c sandbox_workspace_write.network_access=true \
           -c "$codex_roots" \
@@ -724,7 +740,7 @@ agent_run_session() {
       status=0
       (
         cd "$workdir"
-        claude \
+        agent_cli claude \
           --print \
           --permission-mode auto \
           --permission-prompts none \
@@ -753,7 +769,7 @@ agent_run_session() {
       if [[ -n "$schema_file" ]]; then
         codex_schema=(--output-schema "$schema_file")
       fi
-      codex exec \
+      agent_cli codex exec \
         --ignore-user-config \
         --sandbox read-only \
         --disable apps \
@@ -780,7 +796,7 @@ agent_run_session() {
         status=0
         (
           cd "$workdir"
-          claude "${claude_read_only[@]}" --model "$model" "$prompt"
+          agent_cli claude "${claude_read_only[@]}" --model "$model" "$prompt"
         ) <"$context_file" >"$output_file" 2>"$output_file.log" || status=$?
         # The ordinary answer is not an error message: only the error output.
         [[ "$status" -eq 0 ]] || agent_report_failure claude "$prompt" "$(cat "$output_file.log" 2>/dev/null)"
@@ -795,7 +811,7 @@ agent_run_session() {
       status=0
       (
         cd "$workdir"
-        claude "${claude_read_only[@]}" \
+        agent_cli claude "${claude_read_only[@]}" \
           --model "$model" \
           --output-format json \
           --json-schema "$(<"$schema_file")" \

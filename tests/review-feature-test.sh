@@ -28,6 +28,8 @@ if [[ "${1:-} ${2:-}" == "auth status" ]]; then
   exit "${MOCK_GH_AUTH_EXIT:-0}"
 fi
 if [[ "${1:-} ${2:-}" == "issue view" ]]; then
+  # The trusted passes this child of review-feature.sh was given.
+  [[ -z "${MOCK_GH_ENV:-}" ]] || printf 'VERIFY_TRUSTED_TREES=%s\n' "${VERIFY_TRUSTED_TREES-unset}" >>"$MOCK_GH_ENV"
   printf 'Title: Test feature\n\nThe marker file must exist.\n'
   exit 0
 fi
@@ -322,6 +324,38 @@ run_review "$repo" 7 || fail "a second review of the same content failed"
 printf 'another change\n' >>"$repo/feature.txt"
 run_review "$repo" 7 || fail "a review of changed content failed"
 [[ "$(verification_runs "$repo")" -eq 2 ]] || fail "verification did not run again for changed content"
+
+# The trust contract (lib/verification.sh). With --unattended and without
+# the trusted passes of a run, the review reuses no recorded pass, also not
+# one recorded for exactly this content: it runs the verification itself,
+# and gives the tree of its pass to the scripts it starts (here gh), never
+# to the reviewer, whose environment is marked as an agent session.
+repo="$(setup_repo unattended-verified)"
+(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh >/dev/null 2>&1) || fail "the first verification failed"
+[[ "$(verification_runs "$repo")" -eq 1 ]] || fail "the first verification did not run"
+run_review "$repo" 7 || fail "a review at a terminal failed"
+[[ "$(verification_runs "$repo")" -eq 1 ]] || fail "a review at a terminal did not reuse the pass, as before"
+rm -f "$repo/.agents/reviews/"*
+MOCK_GH_ENV="$repo.gh-env" MOCK_AGENT_ACTION='env >"$MOCK_AGENT_LOG.env"' run_review "$repo" 7 --unattended || {
+  cat "$repo.out" >&2
+  fail "an unattended review failed"
+}
+[[ "$(verification_runs "$repo")" -eq 2 ]] || fail "an unattended review without a list reused a recorded pass"
+tree="$(sed -n 's/^tree: //p' "$repo/.agents/verification/passed")"
+grep -Fqx "origin: script" "$repo/.agents/verification/passed" || fail "the pass of review-feature.sh does not name the script as its origin"
+grep -Fqx "VERIFY_TRUSTED_TREES=$tree" "$repo.gh-env" || fail "review-feature.sh did not give its pass to its children: $(cat "$repo.gh-env")"
+[[ -s "$repo.log.env" ]] || fail "the fake reviewer did not dump its environment"
+if grep -q '^VERIFY_TRUSTED_TREES=\|^VERIFY_ORIGIN=' "$repo.log.env"; then
+  fail "the reviewer received the trusted passes of the script: $(grep '^VERIFY_' "$repo.log.env")"
+fi
+grep -Fqx "CODEYARD_AGENT_SESSION=1" "$repo.log.env" || fail "the reviewer's environment is not marked as an agent session"
+# With the list of a run, only a pass in it is reused.
+rm -f "$repo/.agents/reviews/"*
+VERIFY_TRUSTED_TREES="$tree" run_review "$repo" 7 --unattended || fail "an unattended review with its pass in the list failed"
+[[ "$(verification_runs "$repo")" -eq 2 ]] || fail "an unattended review did not reuse the pass in its list"
+rm -f "$repo/.agents/reviews/"*
+VERIFY_TRUSTED_TREES="" run_review "$repo" 7 || fail "a review with an empty list failed"
+[[ "$(verification_runs "$repo")" -eq 3 ]] || fail "a review with an empty list reused a pass"
 
 # A partial run of one group is not a verification: the review still runs
 # every check before it starts.

@@ -296,6 +296,26 @@ MOCK_WRITE_ACTION="printf 'fixed\n' >>'$repo/feature.txt' && (cd '$repo' && ./sc
 [[ "$(verification_runs "$repo")" -eq 1 ]] || fail "the script verified again what the agent had verified"
 grep -Fq "already passed" "$repo.out" || fail "the reused verification was not reported"
 
+# The trust contract: an unattended fix session's own verification records
+# the origin agent-session, and the script reuses it neither without the
+# trusted passes of a run nor with a list that lacks it; it verifies itself.
+for list in none empty; do
+  repo="$(setup_counting_repo "session-verified-unattended-$list")"
+  printf '.agents/run/\n' >>"$repo/.gitignore"
+  git -C "$repo" commit -qam "Ignore the run files"
+  record_reviewed_tree "$repo" "$repo/$review" "$repo/$triage"
+  (
+    [[ "$list" == none ]] || export VERIFY_TRUSTED_TREES=""
+    MOCK_WRITE_ACTION="printf 'fixed\n' >>'$repo/feature.txt' && (cd '$repo' && ./scripts/verify.sh >/dev/null)" \
+      run_apply "$repo" "" "$triage" --unattended
+  ) || {
+    cat "$repo.out" >&2
+    fail "applying unattended fixes that the agent verified failed ($list list)"
+  }
+  [[ "$(verification_runs "$repo")" -eq 2 ]] || fail "the script reused the pass of an unattended agent session ($list list)"
+  grep -Fqx "origin: script" "$repo/.agents/verification/passed" || fail "the pass of apply-triage.sh does not name the script as its origin ($list list)"
+done
+
 # A change after the agent's run, or no run at all, is verified by the script.
 repo="$(setup_counting_repo session-changed-after)"
 MOCK_WRITE_ACTION="(cd '$repo' && ./scripts/verify.sh >/dev/null) && printf 'fixed later\n' >>'$repo/feature.txt'" \
