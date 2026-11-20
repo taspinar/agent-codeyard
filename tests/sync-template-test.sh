@@ -710,6 +710,18 @@ if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
   awk '/^  verify:/ { v = 1; next } /^  [^[:space:]]/ { v = 0 } v && /fetch-depth: 0/ { found = 1 } END { exit !found }' "$ci_workflow" ||
     fail "the verify job of ci.yml checks out without the history verify.sh compares with"
   grep -Eq '^[[:space:]]+schedule:' "$ci_workflow" || fail "ci.yml has no schedule for the nightly --all"
+
+  # The token is read-only whatever the repository's default (Issue 435):
+  # the top level grants contents and packages read and nothing else, and no
+  # job grants more.
+  ci_permissions="$(awk '
+    /^permissions:/ { p = 1; next }
+    p && /^[^[:space:]#]/ { p = 0 }
+    p && /^[[:space:]]+[^[:space:]#]/ { line = $0; sub(/^[[:space:]]+/, "", line); sub(/[[:space:]]*#.*$/, "", line); print line }
+  ' "$ci_workflow" | sort)"
+  [[ "$ci_permissions" == $'contents: read\npackages: read' ]] ||
+    fail "ci.yml does not declare exactly 'contents: read' and 'packages: read' at the top level: ${ci_permissions:-none}"
+  ! grep -Eq '^[[:space:]]+permissions:' "$ci_workflow" || fail "a job of ci.yml declares permissions of its own"
 fi
 
 # A pull request in a project, checked out as actions/checkout does it: a new

@@ -102,7 +102,7 @@ A check declared as a budget (`<name> budget: <command>`) measures something aga
 
 ### Your project's tools in CI
 
-Your project installs its own tools in CI, such as Python with uv, Node.js, or Terraform, in a composite action of its own: the file `action.yml` in `.github/actions/project-setup/`. The template's CI runs it after the checkout and before `./scripts/verify.sh`, and only when the file exists, so you never edit `.github/workflows/ci.yml` and a sync of the template does not conflict with your changes. The template never touches `.github/actions/`. A change there runs before the verification, so it is treated like a change to the CI workflows: high risk, and your approval at the merge. For Python with uv:
+Your project installs its own tools in CI, such as Python with uv, Node.js, or Terraform, in a composite action of its own: the file `action.yml` in `.github/actions/project-setup/`. The template's CI runs it after the checkout and before `./scripts/verify.sh`, and only when the file exists, so you never edit `.github/workflows/ci.yml` and a sync of the template does not conflict with your changes. The template never touches `.github/actions/`. A change there runs before the verification, so it is treated like a change to the CI workflows: high risk, and your approval at the merge. The action runs with a read-only token: `ci.yml` grants only `contents: read` and `packages: read`, whatever your repository's default, and the action cannot widen it. A setup that needs more adds the permission in your `ci.yml` and keeps that change at each sync. For Python with uv:
 
 ```yaml
 name: Project setup
