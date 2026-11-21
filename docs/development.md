@@ -949,6 +949,31 @@ the result again. `tests/agent-sandbox-test.sh` checks the grant with the
 real Codex CLI, when it is installed and logged in, and `doctor.sh` checks
 the Codex of your host the same way (see "Prerequisites").
 
+**The artifact manifest.** Every agent session, of every profile and
+provider, runs inside a manifest of the artifacts that an agent may only
+read (`agent_run` in `scripts/lib/agent.sh`, `fingerprint_manifest` in
+`scripts/lib/fingerprint.sh`). Before the session the path, the mode, and
+the content hash of every file under `.agents/reviews/`, `.agents/triage/`,
+`.agents/exceptions/`, and `.agents/approval-requests/` of the worktree are
+taken, and of the verification record (`.agents/verification/passed`,
+`budgets`, `durations`); after the session they are taken again. A session
+that changed, added, or removed one of those artifacts, also only its mode,
+or one whose mode or content the manifest could not read (an unread value
+cannot show that nothing changed), ends with status 5, whatever the agent's own status was, and the paths are
+named. `start-feature.sh` and `apply-triage.sh` then exit with status 5, a
+review stores nothing, and `run-feature.sh` stops without trying anything
+again, because a forged review without findings, for example, would
+otherwise go to the commit (`tests/agent-test.sh`, `tests/run-feature-test.sh`).
+A changed verification record is only reported: a reuse trusts no pass that
+an agent recorded (see "Recorded verification").
+
+The manifest detects; it does not prevent. The write has happened when it is
+found, and the worktree keeps it for you to look at. Only a sandbox prevents
+it: Codex mounts `.agents/` read-only, as described above, but an unattended
+Claude session in its `auto` mode has no filesystem sandbox. The manifest is
+the same for both providers, so the run stops the same way whichever agent
+wrote.
+
 **When a session fails.** A read-only or unattended session that fails says
 why, as the provider said it: its error messages, which Codex writes as JSON
 events, and its error output. A usage or rate limit is named as one ("This is
@@ -3299,12 +3324,14 @@ leaves out are of two kinds, and the rule differs:
   `gate-triage-field`). The artifacts are left out of the content tree so
   that the evidence cannot invalidate what it describes: editing one leaves
   the content tree, the recorded verification, and the currency of the
-  latest review unchanged, and the edit shows in the hash of the artifacts
-  (`fingerprint_artifacts` in `scripts/lib/fingerprint.sh`), which
-  `review-feature.sh`, `triage-review.sh`, `apply-triage.sh`, and
-  `analyze-runs.sh` take before they start an agent and compare after, and
-  refuse the result of an agent that changed or removed an artifact
-  (`tests/fingerprint-test.sh`, `tests/finish-feature-test.sh`). The
+  latest review unchanged, and the edit shows in the artifact manifest that
+  every agent session runs inside (see "Configuring agents"), which stops
+  the session of an agent that changed, added, or removed an artifact, and
+  in the hash of the artifacts (`fingerprint_artifacts` in
+  `scripts/lib/fingerprint.sh`), which `triage-review.sh` and
+  `analyze-runs.sh` also compare around their agents
+  (`tests/agent-test.sh`, `tests/fingerprint-test.sh`,
+  `tests/finish-feature-test.sh`). The
   verification record and the run records are left out the same way and
   bound the same way: the record names the tree it passed for, and
   `verify.sh --reuse` reuses it for that tree only.

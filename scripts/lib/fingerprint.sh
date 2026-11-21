@@ -45,8 +45,9 @@
 # a gate acts only on a current artifact that passes its schema; a triage
 # must name the reviewed tree and the verdict of its review. The artifacts
 # are left out so that the evidence cannot invalidate what it describes, and
-# the scripts that run an agent hash them (fingerprint_artifacts) and refuse
-# the result of an agent that changed or removed one. The verification record
+# every agent session is surrounded by their manifest (fingerprint_manifest,
+# lib/agent.sh), which stops the run of an agent that changed, added, or
+# removed one. The verification record
 # and the run records are left out and bound the same way: the record names
 # the tree it passed for.
 #
@@ -70,6 +71,13 @@ FINGERPRINT_APPROVAL_REQUESTS=".agents/approval-requests"
 # (lib/records.sh), and the state, logs, and risk notes of run-feature.sh
 # under .agents/run.
 FINGERPRINT_EXCLUDES=("${FINGERPRINT_ARTIFACTS[@]}" "$FINGERPRINT_APPROVAL_REQUESTS" ".agents/verification" ".agents/run" ".agents/records")
+# The artifact manifest around every agent session (fingerprint_manifest,
+# lib/agent.sh): the decision artifacts that an agent may only read, whose
+# change stops the run, and the record of the last passed verification, whose
+# change is only reported, because a reuse trusts no record that an agent
+# wrote (lib/verification.sh).
+FINGERPRINT_MANIFEST_GUARDED=("${FINGERPRINT_ARTIFACTS[@]}" ".agents/exceptions" "$FINGERPRINT_APPROVAL_REQUESTS")
+FINGERPRINT_MANIFEST_RECORDS=(".agents/verification/passed" ".agents/verification/budgets" ".agents/verification/durations")
 
 # fingerprint_feature_claims <issue>
 # Prints the files of the implementer's claims about a feature, one per line:
@@ -221,6 +229,66 @@ fingerprint_artifacts() {
         fi
       done
   ) | git hash-object --stdin
+}
+
+# fingerprint_manifest <root>
+# Prints the manifest of FINGERPRINT_MANIFEST_GUARDED and
+# FINGERPRINT_MANIFEST_RECORDS: one line per file, '<path><TAB><mode>
+# <hash>', or '<path><TAB>symlink <target>' for a link, sorted by path. The
+# contents are hashed with one Git call; a missing directory is an empty set.
+# A mode or hash that cannot be read is UNREADABLE. BSD stat gets no '--':
+# every path starts with '.agents/'.
+fingerprint_manifest() {
+  (
+    cd "$1" 2>/dev/null || exit 0
+    files=()
+    while IFS= read -r path; do
+      if [[ -L "$path" ]]; then
+        printf '%s\tsymlink %s\n' "$path" "$(readlink "$path")"
+      else
+        files+=("$path")
+      fi
+    done < <({ find "${FINGERPRINT_MANIFEST_GUARDED[@]}" "${FINGERPRINT_MANIFEST_RECORDS[@]}" \( -type f -o -type l \) 2>/dev/null || true; } | LC_ALL=C sort)
+    [[ "${#files[@]}" -gt 0 ]] || exit 0
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+      modes="$(stat -f '%Lp' "${files[@]}" 2>/dev/null)" || modes=""
+    else
+      modes="$(stat -c '%a' -- "${files[@]}" 2>/dev/null)" || modes=""
+    fi
+    hashes="$(printf '%s\n' "${files[@]}" | git hash-object --stdin-paths 2>/dev/null)" || hashes=""
+    # A file that cannot be read or that vanished makes the single calls
+    # fail; then each file is asked on its own, and what fails is named so.
+    if [[ "$(printf '%s\n' "$modes" | grep -c .)" -ne "${#files[@]}" ||
+          "$(printf '%s\n' "$hashes" | grep -c .)" -ne "${#files[@]}" ]]; then
+      modes=""
+      hashes=""
+      for path in "${files[@]}"; do
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+          mode="$(stat -f '%Lp' "$path" 2>/dev/null)" || mode="UNREADABLE"
+        else
+          mode="$(stat -c '%a' -- "$path" 2>/dev/null)" || mode="UNREADABLE"
+        fi
+        hash="$(git hash-object -- "$path" 2>/dev/null)" || hash="UNREADABLE"
+        modes+="$mode"$'\n'
+        hashes+="$hash"$'\n'
+      done
+    fi
+    paste <(printf '%s\n' "${files[@]}") <(printf '%s\n' "$modes" | grep .) <(printf '%s\n' "$hashes" | grep .) |
+      awk -F '\t' '{ printf "%s\t%s %s\n", $1, $2, $3 }'
+  ) | LC_ALL=C sort
+}
+
+# fingerprint_manifest_changes <manifest-before> <manifest-after>
+# Prints the paths whose line differs between two manifests of
+# fingerprint_manifest, one per line: changed, added, and removed files, and
+# the files whose mode or hash either manifest could not read, because an
+# unread value is the same before and after and cannot show that nothing
+# changed.
+fingerprint_manifest_changes() {
+  {
+    { printf '%s\n' "$1"; printf '%s\n' "$2"; } | grep . | LC_ALL=C sort | uniq -u | cut -f 1
+    { printf '%s\n' "$1"; printf '%s\n' "$2"; } | awk -F '\t' '$2 ~ /UNREADABLE/ { print $1 }'
+  } | LC_ALL=C sort -u
 }
 
 # fingerprint_review <root> <scratch-dir> <review-json>

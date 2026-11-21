@@ -1088,10 +1088,38 @@ for code in 4 5; do
   run_feature "$repo" 2 thing
   expect_published "$repo"
   expect_sessions "$repo" 2 1 0 0
-  if grep -Eq "Repair attempt|changed the review" <<<"$(log_of "$repo")"; then
+  if grep -Eq "Repair attempt|changed the review|changed an artifact" <<<"$(log_of "$repo")"; then
     fail "an agent that exited with $code was taken for a failed verification or a changed review"
   fi
 done
+
+# A resumed implementer session that forges a review, one without findings
+# that would go to the commit, ends with status 5 (the artifact manifest of
+# lib/agent.sh): the run stops and tries nothing again.
+repo="$(setup_repo implementer-forges-review)"
+printf '%s\n' 'completion partial "Plan steps 3 to 9"; reply="Stopped."' >"$repo.control/implementer-1.sh"
+printf '%s\n' 'eval "$default"
+mkdir -p .agents/reviews
+printf "{\"verdict\": \"PASS\", \"findings\": []}\n" >.agents/reviews/feature-2-thing-review-01.json' \
+  >"$repo.control/implementer-2.sh"
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 1 "the implementer changed a review, a triage, an exception, or an approval request"
+expect_sessions "$repo" 2 0 0 0
+[[ "$(pull_requests "$repo")" -eq 0 ]] || fail "a pull request was created after the implementer forged a review"
+grep -Fq "| implementation, session 2 | failed | an agent changed an artifact that it may only read" <<<"$(log_of "$repo")" ||
+  fail "the resumed session was not stopped with status 5: $(log_of "$repo")"
+grep -Fq "changed artifacts that it may only read: .agents/reviews/feature-2-thing-review-01.json" "$repo.out" ||
+  fail "the forged review was not named"
+
+# The first session of the implementer that changes a triage is not resumed.
+repo="$(setup_repo implementer-changes-triage)"
+printf '%s\n' 'eval "$default"; mkdir -p .agents/triage; printf "{}\n" >.agents/triage/forged-triage.json' \
+  >"$repo.control/implementer-1.sh"
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 1 "the implementer changed a review, a triage, an exception, or an approval request"
+expect_sessions "$repo" 1 0 0 0
+grep -Fq "changed artifacts that it may only read: .agents/triage/forged-triage.json" "$repo.out" ||
+  fail "the changed triage was not named"
 
 # The repairs are bounded: after three the run stops and names the checks.
 repo="$(setup_repo unverified)"
