@@ -36,6 +36,9 @@ usage() {
   echo "by itself, and its final message is stored and shown. The script exits 3 when"
   echo "the agent reports that it cannot continue without you."
   echo
+  echo "The script exits 5 when the session changed a review, a triage, an exception,"
+  echo "or an approval request under .agents/, which an agent may only read."
+  echo
   echo "Examples:"
   echo "  $0 3"
   echo "  $0 3 site-skeleton"
@@ -191,6 +194,16 @@ $AGENT_UNATTENDED_PROMPT" "$final_message" || agent_status=$?
   fi
 
   echo
+  # The artifact manifest of agent_run (lib/agent.sh): the session changed a
+  # review, a triage, an exception, or an approval request, which it may only
+  # read. Status 5; run-feature.sh tries nothing again.
+  if [[ -n "$AGENT_ARTIFACTS_CHANGED" ]]; then
+    echo "Error: the implementation agent changed artifacts that it may only read: ${AGENT_ARTIFACTS_CHANGED//$'\n'/, }." >&2
+    echo "The feature worktree is preserved at: $session_worktree" >&2
+    echo "Restore them (git status shows what changed), or review again; then continue with: $0 $issue --resume" >&2
+    records_stop "${0##*/}" "the implementation agent changed artifacts that it may only read: ${AGENT_ARTIFACTS_CHANGED//$'\n'/, }."
+    exit 5
+  fi
   if [[ "$agent_status" -eq 0 && -n "$blocked" ]]; then
     echo "The implementer stopped because it needs you: $blocked" >&2
     echo "The feature worktree is preserved at: $session_worktree" >&2
@@ -204,8 +217,8 @@ $AGENT_UNATTENDED_PROMPT" "$final_message" || agent_status=$?
     echo "Continue the work with: $0 $issue --resume" >&2
     records_stop "${0##*/}" "the implementation agent exited with status $agent_status."
     # The statuses 3, 4, and 5 have a meaning of their own in the workflow:
-    # a blocked session, a failed verification, and a changed review or
-    # triage. An agent that happens to exit with one of them just failed.
+    # a blocked session, a failed verification, and a changed artifact
+    # (above). An agent that happens to exit with one of them just failed.
     [[ "$agent_status" -lt 3 || "$agent_status" -gt 5 ]] || agent_status=1
     exit "$agent_status"
   fi

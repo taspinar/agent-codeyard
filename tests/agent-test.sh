@@ -49,6 +49,8 @@ else
     shift
   done
 fi
+# What the session does to the work directory, for the artifact manifest.
+[[ -z "${MOCK_AGENT_ACTION:-}" ]] || eval "$MOCK_AGENT_ACTION"
 exit "${MOCK_AGENT_EXIT:-0}"
 FAKE
   chmod +x "$tmp/bin/$provider"
@@ -577,5 +579,97 @@ fi
 [[ ! -s "$MOCK_AGENT_LOG" ]] || fail "claude was started although the attribution preference cannot be read"
 grep -Fq "unknown value 'maybe'" "$tmp/err.log" || fail "the unreadable preference was not explained"
 rm "$workdir/.agents/attribution.conf"
+
+# The artifact manifest around every session: one changed, added, or removed
+# file in each guarded directory gives status 5 with its path, whatever the
+# agent's own status; a changed verification record is only reported.
+manifest="$tmp/manifest"
+mkdir -p "$manifest/.agents/reviews" "$manifest/.agents/triage" "$manifest/.agents/exceptions" \
+  "$manifest/.agents/approval-requests" "$manifest/.agents/verification"
+git -C "$manifest" init -q
+for directory in reviews triage exceptions approval-requests; do
+  printf '{}\n' >"$manifest/.agents/$directory/artifact.json"
+done
+printf 'tree\n' >"$manifest/.agents/verification/passed"
+expect_artifact_change() {
+  local profile="$1"
+  local action="$2"
+  local path="$3"
+  local status=0
+
+  AGENT_ARTIFACTS_CHANGED=""
+  MOCK_AGENT_EXIT="${4:-0}" MOCK_AGENT_ACTION="$action" \
+    agent_run "$profile" claude model-b "$manifest" "the prompt" "$tmp/final.txt" >/dev/null 2>"$tmp/err.log" || status=$?
+  [[ "$status" -eq 5 ]] || fail "a $profile session that changed $path returned $status, not 5"
+  [[ "$AGENT_ARTIFACTS_CHANGED" == "$path" ]] || fail "a $profile session that changed $path named: $AGENT_ARTIFACTS_CHANGED"
+  grep -Fq "  $path" "$tmp/err.log" || fail "the change of $path was not reported: $(cat "$tmp/err.log")"
+}
+for directory in reviews triage exceptions approval-requests; do
+  for profile in write unattended; do
+    expect_artifact_change "$profile" "printf ' ' >>'$manifest/.agents/$directory/artifact.json'" \
+      ".agents/$directory/artifact.json"
+    printf '{}\n' >"$manifest/.agents/$directory/artifact.json"
+  done
+done
+expect_artifact_change unattended "printf '{}\\n' >'$manifest/.agents/triage/new.json'" ".agents/triage/new.json"
+rm "$manifest/.agents/triage/new.json"
+expect_artifact_change unattended "rm '$manifest/.agents/reviews/artifact.json'" ".agents/reviews/artifact.json"
+printf '{}\n' >"$manifest/.agents/reviews/artifact.json"
+expect_artifact_change unattended "chmod 600 '$manifest/.agents/exceptions/artifact.json'" ".agents/exceptions/artifact.json"
+chmod 644 "$manifest/.agents/exceptions/artifact.json"
+expect_artifact_change unattended "printf ' ' >>'$manifest/.agents/approval-requests/artifact.json'" \
+  ".agents/approval-requests/artifact.json" 9
+printf '{}\n' >"$manifest/.agents/approval-requests/artifact.json"
+# The reviewer's read-only session is inside the manifest too.
+expect_artifact_change read-only "printf ' ' >>'$manifest/.agents/reviews/artifact.json'" ".agents/reviews/artifact.json"
+printf '{}\n' >"$manifest/.agents/reviews/artifact.json"
+# A changed verification record, and files elsewhere, do not stop the session.
+AGENT_ARTIFACTS_CHANGED=""
+MOCK_AGENT_ACTION="printf 'forged\\n' >'$manifest/.agents/verification/passed'; printf 'x\\n' >'$manifest/work.txt'; mkdir -p '$manifest/.agents/handoffs'; printf 'x\\n' >'$manifest/.agents/handoffs/1.md'" \
+  agent_run unattended claude model-b "$manifest" "the prompt" "$tmp/final.txt" >/dev/null 2>"$tmp/err.log" ||
+  fail "a session that changed only the verification record and its own files failed"
+[[ -z "$AGENT_ARTIFACTS_CHANGED" ]] || fail "a changed verification record counted as a changed artifact"
+grep -Fq "  .agents/verification/passed" "$tmp/err.log" || fail "the changed verification record was not reported"
+# A mode-only change on macOS, without the stat of Linux: uname says Darwin and
+# stat takes only the BSD form, 'stat -f %Lp <path>...', without '--'.
+mkdir -p "$tmp/darwin-bin"
+cat >"$tmp/darwin-bin/uname" <<'FAKE'
+#!/usr/bin/env bash
+echo Darwin
+FAKE
+cat >"$tmp/darwin-bin/stat" <<FAKE
+#!/usr/bin/env bash
+[[ "\$1" == "-f" && "\$2" == "%Lp" ]] || { echo "stat: illegal option" >&2; exit 1; }
+shift 2
+for path in "\$@"; do
+  [[ "\$path" != -* ]] || { echo "stat: \$path: stat: No such file or directory" >&2; exit 1; }
+done
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  exec /usr/bin/stat -f %Lp "\$@"
+fi
+exec "$(command -v stat)" -c %a -- "\$@"
+FAKE
+chmod +x "$tmp/darwin-bin/uname" "$tmp/darwin-bin/stat"
+PATH="$tmp/darwin-bin:$PATH" expect_artifact_change unattended \
+  "chmod 600 '$manifest/.agents/exceptions/artifact.json'" ".agents/exceptions/artifact.json"
+chmod 644 "$manifest/.agents/exceptions/artifact.json"
+# A mode that cannot be read is no proof that nothing changed: with a stat
+# that fails, an unchanged artifact stops the session too.
+mkdir -p "$tmp/no-stat-bin"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$tmp/no-stat-bin/stat"
+chmod +x "$tmp/no-stat-bin/stat"
+rm "$manifest/.agents/reviews/artifact.json" "$manifest/.agents/triage/artifact.json" "$manifest/.agents/approval-requests/artifact.json"
+PATH="$tmp/no-stat-bin:$PATH" expect_artifact_change unattended \
+  "chmod 600 '$manifest/.agents/exceptions/artifact.json'" ".agents/exceptions/artifact.json"
+grep -Fq "or the manifest could not read them" "$tmp/err.log" || fail "an unreadable mode was not explained"
+PATH="$tmp/no-stat-bin:$PATH" expect_artifact_change unattended ":" ".agents/exceptions/artifact.json"
+chmod 644 "$manifest/.agents/exceptions/artifact.json"
+for directory in reviews triage approval-requests; do
+  printf '{}\n' >"$manifest/.agents/$directory/artifact.json"
+done
+# A session that changes nothing returns its own status.
+status=0
+MOCK_AGENT_EXIT=9 agent_run unattended claude model-b "$manifest" "the prompt" "$tmp/final.txt" >/dev/null 2>&1 || status=$?
+[[ "$status" -eq 9 && -z "$AGENT_ARTIFACTS_CHANGED" ]] || fail "a session that changed no artifact did not return its own status ($status)"
 
 echo "agent tests passed"

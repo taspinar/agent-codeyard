@@ -22,6 +22,7 @@ agent_library_dir="${BASH_SOURCE[0]%/*}"
 [[ "$agent_library_dir" != "${BASH_SOURCE[0]}" ]] || agent_library_dir="."
 source "$agent_library_dir/records.sh"
 source "$agent_library_dir/attribution.sh"
+source "$agent_library_dir/fingerprint.sh"
 
 AGENT_ROLES="project-grill project-planner planning-reviewer implementer reviewer triage triage-implementer analyst assessor"
 # The roles that run for a feature, with its risk level; a '<role>@<level>'
@@ -471,10 +472,26 @@ agent_session_notice() {
 # A profile that the provider cannot enforce is an error; the agent is never
 # started with broader permissions instead. Returns the agent's status; a
 # Claude session that reports an error returns 1 even when the CLI exits 0.
+#
+# Every session, of every profile and provider, runs inside an artifact
+# manifest (fingerprint_manifest, lib/fingerprint.sh): before the session
+# the path, mode, and content hash of every file under .agents/reviews,
+# .agents/triage, .agents/exceptions, and .agents/approval-requests of the
+# work directory, and of the verification record, are taken, and after it
+# again. A session that changed, added, or removed one of those artifacts
+# returns 5, whatever the agent's own status, and AGENT_ARTIFACTS_CHANGED
+# holds the paths, one per line: an agent changed what it may only read, and
+# nothing is tried again. An artifact whose mode or content the manifest could
+# not read counts as changed, since an unread value cannot show that it is
+# unchanged. A changed verification record is only reported,
+# because a reuse trusts no record that an agent wrote (lib/verification.sh).
+# This detects; it does not prevent: only a sandbox prevents the write, and
+# Claude's 'auto' mode has none.
 agent_run() {
   local started
   local call=""
   local status=0
+  local manifest_before
 
   started="$(date +%s)"
   # The start of the call, so that an interrupted one stays visible, and at
@@ -490,7 +507,10 @@ agent_run() {
   if declare -F experience_notes_hash >/dev/null; then
     notes_before="$(experience_notes_hash "$4")"
   fi
+  AGENT_ARTIFACTS_CHANGED=""
+  manifest_before="$(fingerprint_manifest "$4")"
   agent_run_session "$@" || status=$?
+  agent_artifacts_check "$4" "$manifest_before" || status=5
   if declare -F records_agent_call >/dev/null; then
     records_agent_call "${AGENT_ROLE:-unknown}" "$1" "$2" "$3" "$(($(date +%s) - started))" "$status" "${6:-}" "$call" "${AGENT_LEVEL:-}" "${AGENT_SELECTION:-}"
   fi
@@ -498,6 +518,40 @@ agent_run() {
     experience_notes_written "$4" "$notes_before" "$call" 2>/dev/null || true
   fi
   return "$status"
+}
+
+# agent_artifacts_check <workdir> <manifest-before>
+# Compares the artifact manifest of the work directory with the one taken
+# before the session (agent_run). Returns 1 and sets AGENT_ARTIFACTS_CHANGED
+# when an artifact of FINGERPRINT_MANIFEST_GUARDED changed; reports a changed
+# verification record without failing.
+agent_artifacts_check() {
+  local changes
+  local guarded=""
+  local records=""
+  local path
+  local directory
+
+  changes="$(fingerprint_manifest_changes "$2" "$(fingerprint_manifest "$1")")"
+  [[ -n "$changes" ]] || return 0
+  while IFS= read -r path; do
+    for directory in "${FINGERPRINT_MANIFEST_GUARDED[@]}"; do
+      if [[ "$path" == "$directory/"* ]]; then
+        guarded+="$path"$'\n'
+        continue 2
+      fi
+    done
+    records+="$path"$'\n'
+  done <<<"$changes"
+  if [[ -n "$records" ]]; then
+    echo "The agent session changed the record of the verification; a reuse does not trust a pass that an agent recorded:" >&2
+    printf '%s' "$records" | sed 's/^/  /' >&2
+  fi
+  [[ -n "$guarded" ]] || return 0
+  AGENT_ARTIFACTS_CHANGED="${guarded%$'\n'}"
+  echo "Error: the agent session changed artifacts that it may only read, or the manifest could not read them; the run stops and nothing is tried again:" >&2
+  printf '%s' "$guarded" | sed 's/^/  /' >&2
+  return 1
 }
 
 # agent_cli <command>...

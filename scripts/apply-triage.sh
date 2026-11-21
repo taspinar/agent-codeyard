@@ -285,32 +285,6 @@ cited as evidence in the completion record; the full verification runs
 before the commit."
 fi
 
-file_signature() {
-  local path="$1"
-  local mode
-  local content_hash
-  if [[ ! -e "$path" ]]; then
-    echo "MISSING"
-    return
-  fi
-  if [[ "$(uname -s)" == "Darwin" ]]; then
-    if ! mode="$(stat -f '%Lp' "$path" 2>/dev/null)"; then
-      mode="UNREADABLE"
-    fi
-  else
-    if ! mode="$(stat -c '%a' "$path" 2>/dev/null)"; then
-      mode="UNREADABLE"
-    fi
-  fi
-  if ! content_hash="$(git hash-object "$path" 2>/dev/null)"; then
-    content_hash="UNREADABLE"
-  fi
-  printf '%s:%s\n' "$content_hash" "$mode"
-}
-
-review_signature_before="$(file_signature "$source_review_path")"
-triage_signature_before="$(file_signature "$triage_path")"
-
 echo
 # The mark of a session that has started and not finished; --continue needs
 # it. It is removed when the fixes are made and verified.
@@ -356,21 +330,14 @@ else
 fi
 set -e
 
-review_signature_after="$(file_signature "$source_review_path")"
-triage_signature_after="$(file_signature "$triage_path")"
-
+# The session ran inside the artifact manifest of agent_run (lib/agent.sh),
+# which covers the review and the triage this session works from.
 protected_artifact_changed=0
 protected_artifact_reason=""
-if [[ "$review_signature_before" != "$review_signature_after" ]]; then
-  echo "Error: implementation agent modified the source review artifact."
+if [[ -n "$AGENT_ARTIFACTS_CHANGED" ]]; then
+  echo "Error: implementation agent modified artifacts that it may only read: ${AGENT_ARTIFACTS_CHANGED//$'\n'/, }."
   protected_artifact_changed=1
-  protected_artifact_reason="implementation agent modified the source review artifact."
-fi
-
-if [[ "$triage_signature_before" != "$triage_signature_after" ]]; then
-  echo "Error: implementation agent modified the approved triage artifact."
-  protected_artifact_changed=1
-  protected_artifact_reason="implementation agent modified the approved triage artifact."
+  protected_artifact_reason="implementation agent modified artifacts that it may only read: ${AGENT_ARTIFACTS_CHANGED//$'\n'/, }."
 fi
 
 # The fixed content must pass verification. A pass recorded for exactly this

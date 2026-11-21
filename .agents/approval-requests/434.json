@@ -1,0 +1,22 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "2ace1c4f290867a54ddb4d6b13ec777bdcd26897",
+  "commit": {
+    "branch": "feature/434-artifact-manifest-around-every",
+    "parent": "0b843b1e0b2db83fe9b0f65e5591d12414e98b99",
+    "base": "0b843b1e0b2db83fe9b0f65e5591d12414e98b99"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/lib/agent.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/fingerprint.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/review-run.sh: the file defines or carries out the workflow and its gate",
+    "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The change adds a manifest check to the shared agent-run path, so it affects all agent sessions and provides a workflow-wide integrity gate. The guarded paths and status propagation are consistent with the documented architecture; this shared infrastructure change warrants the major classification. "
+  ],
+  "explanation": "Issue #434: Artifact manifest around every writing agent session (part 2 of #423). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

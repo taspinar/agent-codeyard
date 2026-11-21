@@ -9,7 +9,8 @@
 # the rule violations of a result file and defaults to review_result_errors.
 # An invalid result is retried once, with the reasons for the rejection. Exits
 # the calling script when the agent fails, changes the working tree or the
-# review artifacts, creates a commit, or returns an invalid result twice.
+# review artifacts (which the artifact manifest of agent_run detects,
+# lib/agent.sh), creates a commit, or returns an invalid result twice.
 review_run_reviewer() {
   local agent="$1"
   local model="$2"
@@ -22,7 +23,6 @@ review_run_reviewer() {
   local validator="${9:-review_result_errors}"
   local head_before
   local tree_before
-  local artifacts_before
   local attempt_prompt="$prompt"
   local attempt
   local agent_status
@@ -34,7 +34,6 @@ review_run_reviewer() {
     echo "Error: could not compute the fingerprint of the working tree." >&2
     exit 1
   }
-  artifacts_before="$(fingerprint_artifacts "$root")"
 
   for attempt in 1 2; do
     : >"$result_file"
@@ -42,9 +41,9 @@ review_run_reviewer() {
     agent_run read-only "$agent" "$model" "$root" "$attempt_prompt" "$result_file" "$context_file" "$schema_file" ||
       agent_status=$?
 
-    if [[ "$(git -C "$root" rev-parse HEAD)" != "$head_before" ||
-          "$(fingerprint_worktree "$root" "$scratch")" != "$tree_before" ||
-          "$(fingerprint_artifacts "$root")" != "$artifacts_before" ]]; then
+    if [[ -n "$AGENT_ARTIFACTS_CHANGED" ||
+          "$(git -C "$root" rev-parse HEAD)" != "$head_before" ||
+          "$(fingerprint_worktree "$root" "$scratch")" != "$tree_before" ]]; then
       echo "Error: the reviewer modified the working tree or created a commit. No review was stored." >&2
       git -C "$root" status --short >&2
       exit 1

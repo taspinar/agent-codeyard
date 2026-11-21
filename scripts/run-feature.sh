@@ -305,9 +305,10 @@ retrying() {
     case "$step_status" in
       0 | 3 | 4) return 0 ;;
       5)
-        # An agent changed the review or the triage it works from: not a
-        # failure that a retry may pass over.
-        note "$title" "failed" "an agent changed the review or the approved triage" "Stopping; nothing is tried again"
+        # An agent changed a review, a triage, an exception, or an approval
+        # request, which it may only read (the artifact manifest of
+        # lib/agent.sh): not a failure that a retry may pass over.
+        note "$title" "failed" "an agent changed an artifact that it may only read: a review, a triage, an exception, or an approval request" "Stopping; nothing is tried again"
         return 0
         ;;
     esac
@@ -579,6 +580,8 @@ repair_verification() {
 #   3      blocked, when the handoff note holds an open question; otherwise
 #          the BLOCKED line is ignored and the step counts as completed
 #   4      the verification failed: repeated once, then repaired
+#   5      an agent changed an artifact that it may only read: not tried
+#          again
 #   other  temporary: tried again, RETRIES times, with a growing wait
 step() {
   local title="$1"
@@ -737,6 +740,11 @@ if [[ -z "$worktree" ]]; then
         "answer the question in the handoff note, or change the Issue"
     fi
     note "implementation" "completed" "the implementer ended with BLOCKED, but the handoff note holds no open question" "Going on"
+  elif [[ "$step_status" -eq 5 ]]; then
+    note "implementation" "failed" "the implementer changed an artifact that it may only read" "Stopping; nothing is tried again"
+    stop 1 "the implementer changed a review, a triage, an exception, or an approval request, which it may only read. Nothing was tried again." \
+      "cd \"$worktree\"" \
+      "git status    # look at what the session changed; restore the artifacts, then ./scripts/run-feature.sh $issue"
   elif [[ "$step_status" -ne 0 ]]; then
     [[ -n "$worktree" ]] ||
       stop 1 "the implementation failed before a worktree existed (start-feature.sh exited with status $step_status$limit)." \
@@ -843,6 +851,10 @@ await_completion() {
     if [[ "$step_status" -eq 3 ]]; then
       stop 3 "the implementer needs a decision of yours; its question is in the handoff note (.agents/handoffs/$issue.md)." \
         "answer the question in the handoff note, or change the Issue"
+    elif [[ "$step_status" -eq 5 ]]; then
+      stop 1 "the implementer changed a review, a triage, an exception, or an approval request, which it may only read. Nothing was tried again." \
+        "cd \"$worktree\"" \
+        "git status    # look at what the session changed; restore the artifacts, then ./scripts/run-feature.sh $issue"
     elif [[ "$step_status" -ne 0 ]]; then
       stop 1 "the implementation failed (start-feature.sh exited with status $step_status)." \
         "resolve what the output above reports"
