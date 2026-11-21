@@ -1,0 +1,22 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "95e381ae27bdbcadd9b73dfb01ea4eb7abe7104d",
+  "commit": {
+    "branch": "feature/424-run-the-full-verification",
+    "parent": "e771fd601330e0441591844de8081232b91cd06b",
+    "base": "e771fd601330e0441591844de8081232b91cd06b"
+  },
+  "review": {
+    "round": 7,
+    "verdict": "CHANGES REQUIRED",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/lib/agent.sh: the file defines or carries out the workflow and its gate",
+    "scripts/publish-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: This changes shared workflow orchestration, verification trust propagation, and the public `verify.sh --changed` interface across `scripts/run-feature.sh`, `scripts/verify.sh`, and related workflow scripts. The behavior is documented in development and workflow docs and the website. The architecture document is a template and no accepted ADR files were found. ",
+    "the owner recorded an exception (risk-accepted) to the blocking finding M1 of review round 7: .agents/exceptions/feature-424-run-the-full-verification-review-07-M1.json sha256 859946c9b4010ad80ed66affe2d58b7981d6c80b9c76241f5cbf9d125771e615"
+  ],
+  "explanation": "Issue #424: Run the full verification outside the agent session, and trigger the self-tests on the last trusted pass. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

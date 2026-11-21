@@ -479,4 +479,34 @@ grep -Fq '| finish-feature.sh | failed (1) at finish-feature.sh: the commit was 
 grep -Fq '| review-feature.sh | completed |' <<<"$markdown" || fail "a run that ended with status 0 is shown otherwise"
 grep -Fq '| run-feature.sh | failed (1) |' <<<"$markdown" || fail "a run without a recorded stop is shown otherwise"
 
+# The figures of the pull request: the implementer and triage-implementer
+# sessions, the full verifications (no reused pass, no partial run), and the
+# lead time to the first pull request step that succeeded, or to now before
+# there is one; numbers only.
+repo="$(setup_repo figures)"
+file="$repo/.agents/run/records/f1.jsonl"
+event "$file" f1 1000 run-start '{"kind":"feature","subject":"21","command":"run-feature.sh","seq":1,"versions":{}}'
+event "$file" f1 1500 agent-call '{"role":"implementer","agent":"codex","model":"model-r","status":0,"seconds":400,"note":"/home/someone/secret"}'
+event "$file" f1 1600 agent-call '{"role":"reviewer","agent":"codex","model":"model-r","status":0,"seconds":50}'
+event "$file" f1 1900 agent-call '{"role":"triage-implementer","agent":"codex","model":"model-r","status":0,"seconds":250}'
+event "$file" f1 2000 verification '{"status":0,"seconds":300,"reused":false,"groups":"all"}'
+event "$file" f1 2010 verification '{"status":0,"seconds":0,"reused":true,"groups":"all"}'
+event "$file" f1 2020 verification '{"status":0,"seconds":20,"reused":false,"groups":"docs"}'
+event "$file" f1 2400 verification '{"status":1,"seconds":300,"reused":false,"groups":"all"}'
+event "$file" f1 2500 step '{"name":"pull request","status":1,"seconds":5}'
+event "$file" f1 2900 step '{"name":"pull request","status":0,"seconds":5}'
+event "$file" f1 3000 step '{"name":"pull request","status":0,"seconds":5}'
+event "$file" f1 3100 run-end '{"status":0}'
+figures="$(report "$repo" --pull-request-figures 21)"
+grep -Fq "| Implementer and triage-implementer session time | 650 s (10m 50s) |" <<<"$figures" || fail "the figures lack the session time: $figures"
+grep -Fq "| Full verifications | 2 |" <<<"$figures" || fail "the figures do not count the full verifications alone: $figures"
+grep -Fq "| Lead time from the first run start to the pull request | 1900 s (31m 40s) |" <<<"$figures" ||
+  fail "the figures do not measure the lead time to the first pull request: $figures"
+if grep -Eq "/home|secret" <<<"$figures"; then fail "the figures hold text of the records"; fi
+repo="$(setup_repo figures-open)"
+run_file "$repo" o1 22 run-feature.sh 1000 - 0
+grep -Fq ", up to this publication |" <<<"$(report "$repo" --pull-request-figures 22)" ||
+  fail "the lead time before a pull request does not say that it runs to now"
+if report "$repo" --pull-request-figures 23 >/dev/null 2>&1; then fail "the figures of a feature without a record did not fail"; fi
+
 echo "report-runs tests passed"

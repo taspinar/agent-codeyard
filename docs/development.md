@@ -124,6 +124,20 @@ verification. A failing partial run removes an
 existing record, like any failing run. The workflow self-tests keep their own
 rule with `--only`: they run when a workflow file changed, or with `--all`.
 
+The other partial run is `./scripts/verify.sh --changed`, the targeted check
+of an unattended agent session: every check of `scripts/verify.conf`, and of
+the self-tests only those of the files changed since the base, the check that
+runs `tests/<x>-test.sh` when that file, `scripts/<x>.sh`, or
+`scripts/lib/<x>.sh` changed, or when `scripts/<x>.sh` or `scripts/lib/<x>.sh`
+names a changed file of `scripts/lib/` that is not a shell script as
+`lib/<name>`: a change to `scripts/lib/report.jq` selects `report-runs`, since
+`report-runs.sh` reads it. A self-test that runs no test file of its own
+is left to the full verification. It records nothing, takes neither `--only`,
+`--all`, nor `--reuse`, and the completion gate refuses it as evidence like
+`--only`. The implementer and the triage-implementer of `run-feature.sh` run
+it instead of the full suite; the run makes the full verification after the
+session (see "Recorded verification").
+
 ### The project's CI setup
 
 A project installs its own toolchains and dependencies in CI (Python, uv,
@@ -406,10 +420,18 @@ started by a workflow script itself, never inside an agent session, and that
 script keeps the tree of the pass in its own memory:
 
 1. `run-feature.sh` keeps the list `VERIFY_TRUSTED_TREES`: after each of its
-   own calls of `verify.sh` that passes (the verification of an unreviewed
-   `low` feature, and the repeat of a failed verification), it adds the
-   `tree` of the record. The scripts of its steps get the list in their
-   environment.
+   own calls of `verify.sh` that passes (the step `verification before round
+   <n>` after every session and before every review round on the full
+   verification, the verification of an unreviewed `low` feature, and the
+   repeat of a failed verification), it adds the `tree` of the record. The
+   scripts of its steps get the list in their environment, so the review, a
+   retry of it after a usage limit, and the commit reuse that pass: one full
+   run of the checks per distinct content of a run. A child script's own
+   pass stays in its own list; it never flows back. The fix step runs
+   `apply-triage.sh --caller-verifies`, which verifies nothing itself: the
+   run verifies the fixed content before the next round. A failure of the
+   run's verification goes to the implementer as a repair session, like one
+   a review found.
 2. `verify.sh --reuse` with the variable set, also empty, reuses only a
    record whose tree is in the list; otherwise it says so and runs every
    check, and records the pass again.
@@ -431,6 +453,13 @@ script keeps the tree of the pass in its own memory:
 5. The `verification` event of the run records says who started the
    verification (`origin`) and whether its pass counted as evidence
    (`trusted`); `./scripts/report-runs.sh` reports both (see "Run records").
+6. With the list set, the workflow self-tests run when a file under `paths:`
+   differs from the tree of the last trusted pass of the run (the last tree
+   of the list), not from the base: a fix that changes only documentation
+   after a pass that ran them skips them. A trusted pass ran them, or skipped
+   them because its workflow files were those of the base or of the pass
+   before it, so the same workflow files need no new run. Without a trusted
+   tree that Git knows, the base decides, as at a terminal.
 
 Interactive use is unchanged: without the variable, `verify.sh --reuse`, and
 `review-feature.sh`, `apply-triage.sh`, and `finish-feature.sh` without
@@ -3184,7 +3213,10 @@ strictest and is reported by `check-risk.sh` and the scripts: `full` before
 (`apply-triage.sh --checks`, which also tells the fixing agent to run only
 them) and the review of the round starts on them (`review-feature.sh
 --checks`); the groups run once after the fixes and once before the review,
-since a partial run records nothing that a later step could reuse. A partial
+since a partial run records nothing that a later step could reuse. They add
+to the full verification, they do not replace it: `run-feature.sh` runs the
+full verification of the tree after the fix session and before every review,
+also before a round on a partial check. A partial
 check never counts as a verification, whatever the policy says: `verify.sh
 --only` records no pass, the review of that round records
 `verification.status: partial` with the groups, the reviewer is told that
@@ -3267,8 +3299,8 @@ high: verification: groups unit lint
 
 With that file a feature that changes only such documentation is `low` and
 is committed without a review; a `high` feature gets a partial check of the
-groups `unit` and `lint` in its repair rounds and the full verification
-before its final review and its commit. Whether a partial check pays off
+groups `unit` and `lint` in its repair rounds, in addition to the full
+verification before every review and its commit. Whether a partial check pays off
 depends on the project: it saved about 55 minutes per repair round in
 Physics by Construction, and little in a project whose full run takes a few
 minutes, which is why the template ships `full`.
@@ -3654,7 +3686,14 @@ each direction. It is off by default, since a repository is often public. It is 
 from an explicit list of numeric fields, so no log, path, time of day, status
 reason, or other text of the records reaches it; a role or a model name that
 does not look like one is shown as `other`. It is one comment, replaced when
-the feature is published again, and a failure to post it only warns.
+the feature is published again, and a failure to post it only warns. At
+every publication, also without `--summary`, the description of the pull
+request shows the run figures of the feature after the manual steps (`./scripts/report-runs.sh
+--pull-request-figures 12`): the time of the implementer and
+triage-implementer sessions, the full verifications (a reused pass and a
+partial run count as none), and the lead time from the first run start to the
+first `pull request` step that succeeded, or up to this publication before
+there is one; numbers only, as for the summary.
 
 ### Experience records
 

@@ -53,7 +53,7 @@ Codeyard is scripts and files in your repository, and it runs on your machine or
 | **The AI provider of each tool**: Anthropic for Claude Code, OpenAI for Codex | The instructions of the step and whatever the agent reads: your code, the Issue with its comments, the project documents | The tool's own connection, under your account and that provider's terms. Which tool does which role is set in <a href="#agent-roles/shipped-configuration">`.agents/agents.conf`</a> |
 | **GitHub** | The commits and branches you push, the pull request with its evidence, and on the Issue the review and triage reports and the follow-up Issues | The `gh` command-line tool and Git, signed in as you |
 
-The run records stay on your machine: durations and tokens, never a prompt, an answer or a transcript. Only `publish-feature.sh --summary`, which you turn on yourself, posts the totals of a feature on its Issue, as numbers. Details in <a href="#technical-reference/records">what is recorded on your machine</a>.
+The run records stay on your machine: durations and tokens, never a prompt, an answer or a transcript. The pull request description shows three run figures of the feature, as numbers (session time, full verifications, lead time); only `publish-feature.sh --summary`, which you turn on yourself, also posts the totals of a feature on its Issue, as numbers. Details in <a href="#technical-reference/records">what is recorded on your machine</a>.
 
 ## GitHub rights
 

@@ -44,6 +44,11 @@ usage() {
   echo "model; no log, no paths, no times of day. It is one comment, replaced when"
   echo "the feature is published again. Off by default; a failure only warns."
   echo
+  echo "The description of the pull request always shows the run figures of the"
+  echo "feature after the manual steps, as numbers only: the session time of the"
+  echo "implementer and the triage-implementer, the full verifications, and the lead"
+  echo "time to the pull request. A feature without run records has none."
+  echo
   echo "A finish commit that lists the owner's exceptions to blocking review findings"
   echo "is published only when each record is still there with the SHA-256 the"
   echo "commit names and still valid for the latest review; the description then"
@@ -374,9 +379,15 @@ risk_recomputed() {
     END { if (!replaced) { print ""; print ENVIRON["RISK_BLOCK"] } }'
 }
 
-# The description is generated from the finish commit and the current manual
-# steps, also for a pull request that is already open: a fix round can change
-# both.
+# The run figures of the feature, at every publication: from its run records
+# (report-runs.sh --pull-request-figures), three numbers only, measured at this
+# publication, so no text of the records reaches a public repository. A
+# feature without a record has none, and the description leaves them out.
+run_figures="$("$root/scripts/report-runs.sh" --pull-request-figures "$issue" 2>/dev/null)" || run_figures=""
+
+# The description is generated from the finish commit, the current manual
+# steps, and the run figures, also for a pull request that is already open: a
+# fix round can change them.
 body="$(mktemp "${TMPDIR:-/tmp}/publish-feature-body.XXXXXX")"
 trap 'rm -f "$body"; rm -rf "$scratch"' EXIT
 # closing_allowed: copies standard input; in a description that may not close
@@ -406,6 +417,9 @@ closing_allowed() {
   echo
   printf '%s\n' "${manual_steps:-None.}" | closing_allowed
   echo
+  if [[ -n "$run_figures" ]]; then
+    printf '%s\n\n' "$run_figures"
+  fi
   # The decision of the merge approval gate was made for this commit; a
   # later commit on the branch needs a new decision by finish-feature.sh.
   if git -C "$root" log -1 --format=%b "$finish_commit" | grep -Fqx "Merge approval:"; then

@@ -6,6 +6,7 @@ usage() {
   echo "Usage: $0 [<issue> | planning:<name>]... [--all] [--since <date>] [--until <date>]"
   echo "          [--split <date>] [--json]"
   echo "       $0 --github-summary <issue>"
+  echo "       $0 --pull-request-figures <issue>"
   echo
   echo "Reports on the run records of features and planning cycles: the elapsed"
   echo "time, the time per step and per agent, the tokens per role, model, and run,"
@@ -22,6 +23,11 @@ usage() {
   echo "  --json            the report as JSON instead of Markdown"
   echo "  --github-summary  the totals of one feature for its GitHub Issue, as"
   echo "                    publish-feature.sh --summary posts them"
+  echo "  --pull-request-figures"
+  echo "                    the session time of the implementer and the"
+  echo "                    triage-implementer, the full verifications, and the"
+  echo "                    lead time to the pull request of one feature, as the"
+  echo "                    description of its pull request shows them"
   exit 1
 }
 
@@ -62,6 +68,12 @@ while [[ $# -gt 0 ]]; do
     --github-summary)
       [[ $# -eq 2 && "$2" =~ ^[0-9]+$ ]] || usage
       mode="summary"
+      subjects=("feature:$2")
+      shift
+      ;;
+    --pull-request-figures)
+      [[ $# -eq 2 && "$2" =~ ^[0-9]+$ ]] || usage
+      mode="figures"
       subjects=("feature:$2")
       shift
       ;;
@@ -137,7 +149,7 @@ result="$(jq -n -r \
   --argjson split "$split" --argjson declared "$declared" --arg mode "$mode" --argjson period "$([[ "$since$until" == nullnull ]] && echo false || echo true)" \
   '$active[0] as $active | $copies[0] as $copies | '"$(cat "$script_dir/lib/report.jq")")"
 
-if [[ "$mode" == "summary" && "$result" == "null" ]]; then
+if [[ ( "$mode" == "summary" || "$mode" == "figures" ) && "$result" == "null" ]]; then
   echo "Error: Issue #${subjects[0]#feature:} has no run record." >&2
   exit 1
 fi

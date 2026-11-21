@@ -111,11 +111,19 @@ in the handoff note, and end your final message with one line that starts with
 'BLOCKED: ' and gives the reason. Otherwise finish the work and end normally.
 
 BLOCKED is only for that. A verification is not a decision: when
-./scripts/verify.sh fails on something outside your work, does not finish
-within your session, or cannot run here, do not write a BLOCKED line. Say in
-your final message and in the handoff note what happened and what you checked
-instead, and end normally. The script that started you verifies the result
-after your session and stops the run when the verification really fails.
+./scripts/verify.sh --changed fails on something outside your work, does not
+finish within your session, or cannot run here, do not write a BLOCKED line.
+Say in your final message and in the handoff note what happened and what you
+checked instead, and end normally. The script that started you verifies the
+result after your session and stops the run when the verification really
+fails.
+
+Do not run the full ./scripts/verify.sh in this session: it runs after your
+session, outside it, and the review and the commit reuse that pass. Run
+./scripts/verify.sh --changed after your last change instead: every check of
+the project and the self-tests of the workflow files you changed, or the
+partial check that your task names instead. A failure of the full
+verification comes back to you as a repair session.
 
 Ending normally does not mean that the Issue is done. Before you end, write
 the completion record that the implementer contract describes under
