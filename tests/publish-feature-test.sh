@@ -744,6 +744,10 @@ summary_repo() {
   jq -cn '{schema: "run-record/v1", run: "s1", time: "2026-10-01T13:46:07Z", epoch: 1790000060, type: "agent-call",
     role: "reviewer", agent: "codex", model: "model-r", status: 0, seconds: 30,
     usage: {source: "codex-events", total_input: 1200, output_tokens: 34}, note: "/home/someone/secret"}' >>"$repo/.agents/run/records/s1.jsonl"
+  jq -cn '{schema: "run-record/v1", run: "s1", time: "2026-10-01T13:46:17Z", epoch: 1790000070, type: "agent-call",
+    role: "implementer", agent: "codex", model: "model-i", status: 0, seconds: 125}' >>"$repo/.agents/run/records/s1.jsonl"
+  jq -cn '{schema: "run-record/v1", run: "s1", time: "2026-10-01T13:46:27Z", epoch: 1790000080, type: "verification",
+    status: 0, seconds: 40, reused: false, groups: "all"}' >>"$repo/.agents/run/records/s1.jsonl"
   jq -cn '{schema: "run-record/v1", run: "s1", time: "2026-10-01T13:47:07Z", epoch: 1790000120, type: "run-end", status: 0}' \
     >>"$repo/.agents/run/records/s1.jsonl"
   printf '%s\n' "$repo"
@@ -753,8 +757,26 @@ repo="$(summary_repo summary-off)"
 run_publish "$repo" 12 || { cat "$repo.out" >&2; fail "publishing with run records failed"; }
 if grep -Eq "issue comment|issues/12/comments|--method" "$repo.gh"; then fail "a run summary was posted without --summary"; fi
 
+# The description reports the run figures of the feature after the manual
+# steps at every publication, also without --summary: numbers only.
+grep -Fqx "## Run figures" "$repo.gh.body" || { cat "$repo.gh.body" >&2; fail "the pull request lacks the run figures without --summary"; }
+grep -Fq "| Implementer and triage-implementer session time | 125 s (2m 5s) |" "$repo.gh.body" ||
+  fail "the pull request without --summary lacks the session time of the run records"
+grep -Fq "| Full verifications | 1 |" "$repo.gh.body" || fail "the pull request without --summary lacks the full verifications"
+if grep -Eq "/home|secret|13:4" "$repo.gh.body"; then fail "the pull request holds text of the records"; fi
+
 repo="$(summary_repo summary-new)"
 run_publish "$repo" 12 --summary || { cat "$repo.out" >&2; fail "publishing with --summary failed"; }
+# With --summary the description still reports the run figures after the
+# manual steps.
+grep -Fqx "## Run figures" "$repo.gh.body" || { cat "$repo.gh.body" >&2; fail "the pull request lacks the run figures"; }
+grep -Fq "| Implementer and triage-implementer session time | 125 s (2m 5s) |" "$repo.gh.body" ||
+  fail "the pull request lacks the session time of the run records"
+grep -Fq "| Full verifications | 1 |" "$repo.gh.body" || fail "the pull request lacks the full verifications"
+grep -Fq "| Lead time from the first run start to the pull request | " "$repo.gh.body" || fail "the pull request lacks the lead time"
+[[ "$(grep -A4 -Fx "## Manual steps" "$repo.gh.body" | tail -n 1)" == "## Run figures" ]] ||
+  fail "the run figures do not follow the manual steps"
+
 grep -Fq "issue comment 12 --body-file" "$repo.gh" || fail "the run summary was not posted as a comment"
 grep -Fq "| reviewer | model-r | 1 | 1200 | 34 |" "$repo.gh.comment" || fail "the run summary lacks the tokens"
 if grep -Eq "/home|secret|13:4" "$repo.gh.comment"; then fail "the run summary holds text of the records"; fi

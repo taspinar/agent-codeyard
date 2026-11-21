@@ -259,7 +259,9 @@ Before declaring the issue complete:
 4. Record the manual steps, the summary of the changes, and the completion
    record with status `complete`, as described here and below.
 5. Finish every edit to a file that Git tracks, including the plan.
-6. Run `./scripts/verify.sh` as the last thing that touches the repository.
+6. Run the checks as the last thing that touches the repository: in an
+   unattended session `./scripts/verify.sh --changed`, at a terminal the full
+   `./scripts/verify.sh` (see below).
 7. Report the result, with compact verification evidence and unresolved
    issues or risks, in your final message.
 
@@ -270,6 +272,17 @@ plan about the verification itself, makes the record stale and costs another
 full run. Evidence of the final run therefore belongs in your final message
 or in the handoff note, which Git ignores, not in a tracked file. While you
 work, run the single checks you need; the full run is for the end.
+
+An unattended session (its prompt says so) does not run the full
+verification at all. It runs `./scripts/verify.sh --changed`: every check of
+`scripts/verify.conf` and the self-tests of the workflow files it changed.
+That is a partial run, which records nothing and is no evidence in the
+completion record. `run-feature.sh` makes the full verification itself after
+the session and before the review; the review and the commit reuse that
+pass, and a failure comes back to you as a repair session. For a criterion
+that the full verification passes, the evidence is that pass of
+`run-feature.sh`, which exists before anything is reviewed; the targeted run
+is not.
 
 A manual step is something only the human can do and without which the
 feature does not work after the merge: a repository or account setting, a

@@ -200,6 +200,8 @@ setup_repo() {
 
   mkdir -p "$seed" "$repo.control"
   copy_workflow "$seed"
+  # report-runs.sh reads it for the run figures of the pull request.
+  cp "$source_root/scripts/lib/report.jq" "$seed/scripts/lib/"
   workflow_gitignore "$seed/.gitignore"
   printf 'implementer: codex model-i\nreviewer: claude model-r\ntriage: codex model-t\ntriage-implementer: codex model-f\n' \
     >"$seed/.agents/agents.conf"
@@ -337,6 +339,15 @@ grep -Fqx "Completion: complete" <<<"$(git -C "$repo-2-thing" log -1 --format=%B
   fail "the commit does not carry the completion statement"
 grep -Fqx "Closes #2" "$repo.control/pr-body" || fail "the pull request of a complete feature does not close the Issue"
 if grep -Fq -- "--draft" "$repo.control/gh.log"; then fail "the pull request of a complete feature is a draft"; fi
+# The run's own publication, without --summary, reports the run figures from
+# the run records: the orchestrator's one full verification, reused by the
+# commit, and the lead time up to this publication.
+grep -Fqx "## Run figures" "$repo.control/pr-body" || { cat "$repo.control/pr-body" >&2; fail "the pull request of the run lacks the run figures"; }
+grep -Fqx "| Full verifications | 1 |" "$repo.control/pr-body" || fail "the pull request of the run does not report one full verification"
+grep -Eq '^\| Implementer and triage-implementer session time \| [0-9]+ s ' "$repo.control/pr-body" ||
+  fail "the pull request of the run lacks the session time"
+grep -Eq '^\| Lead time from the first run start to the pull request \| [0-9]+ s .*, up to this publication \|$' "$repo.control/pr-body" ||
+  fail "the pull request of the run lacks the lead time"
 grep -Fq "## Completion record of the implementer" "$repo.control/reviewer-1.context" ||
   fail "the reviewer was not given the completion record"
 grep -Fq '"status": "complete"' "$repo.control/reviewer-1.context" || fail "the reviewer was not shown what the record says"
@@ -843,6 +854,74 @@ expect_sessions "$repo" 1 2 0 0
 grep -Eq "\| temporary \| the step exited with status [0-9]+ \| Retry 1 of 3" <<<"$(log_of "$repo")" ||
   fail "the retry of the review is not in the log of the feature"
 
+# The full verification is the run's own, after the session and before the
+# review (lib/verification.sh): the sessions are told to run only the checks
+# of what they changed, and the review, a retry of it, the fixes, and the
+# commit reuse that pass. One full run of the checks per distinct content.
+# full_verifications <repo>: the verifications that ran every check, outside
+# an agent session.
+full_verifications() {
+  cat "$1"/.agents/run/records/*.jsonl |
+    jq -s '[.[] | select(.type == "verification" and .reused == false and .origin != "agent-session")] | length'
+}
+repo="$(setup_repo one-verification)"
+run_feature "$repo" 2 thing
+expect_published "$repo"
+expect_sessions "$repo" 1 1 0 0
+[[ "$(full_verifications "$repo")" -eq 1 ]] ||
+  fail "a run without findings made $(full_verifications "$repo") full verifications instead of one"
+steps="$(cat "$repo"/.agents/run/records/*.jsonl | jq -r -s 'sort_by(.epoch) | map(select(.type == "step") | .name) | join(" | ")')"
+[[ "$steps" == *"implementation | verification before round 1 | review, round 1 of at most 5 | "* ]] ||
+  fail "the run did not verify after the session and before the review: $steps"
+trust_events="$(cat "$repo"/.agents/run/records/*.jsonl | jq -c -s 'sort_by(.epoch) | map(select(.type == "verification" and .origin != "agent-session") | [.reused, .trusted, .origin])')"
+[[ "$trust_events" == '[[false,true,"orchestrator"],[true,true,"script"],[true,true,"script"]]' ]] ||
+  fail "the review and the commit did not reuse the pass of the run: $trust_events"
+grep -Fq "Do not run the full ./scripts/verify.sh in this session" "$repo.control/implementer.args" ||
+  fail "the unattended implementer was not told to leave the full verification"
+grep -Fq "./scripts/verify.sh --changed after your last change" "$repo.control/implementer.args" ||
+  fail "the unattended implementer was not told what to run instead"
+
+# A review step that fails on a usage limit and is tried again verifies
+# nothing again: the retry reuses the pass of the run.
+repo="$(setup_repo review-usage-limit)"
+printf '%s\n' 'echo "Error: 429 Too Many Requests: rate limit exceeded" >&2; exit 1' >"$repo.control/reviewer-1.sh"
+run_feature "$repo" 2 thing
+expect_published "$repo"
+expect_sessions "$repo" 1 2 0 0
+grep -Fq "a usage limit of claude, reported by the agent" <<<"$(log_of "$repo")" ||
+  fail "the usage limit of the reviewer is not in the log of the feature: $(log_of "$repo" | grep temporary)"
+[[ "$(full_verifications "$repo")" -eq 1 ]] ||
+  fail "the retried review made $(full_verifications "$repo") full verifications instead of one"
+
+# A full verification that fails after the session goes to the implementer
+# as a repair session, as one a review found; the review follows the repair.
+repo="$(setup_repo verification-after-session)"
+printf '%s\n' 'if [[ "$count" -eq 1 ]]; then eval "$default"; printf "x\n" >broken.txt
+else grep -q "FAIL  *sound" ".agents/handoffs/$RUN_ISSUE.md" && rm -f broken.txt; reply="Repaired."; fi' \
+  >"$repo.control/implementer.sh"
+run_feature "$repo" 2 thing
+expect_published "$repo"
+expect_sessions "$repo" 2 1 0 0
+grep -Fq "| verification before round 1 | failed | checks failed in two verification runs: sound | Repair attempt 1 of 3 by the implementer" <<<"$(log_of "$repo")" ||
+  fail "the failed verification after the session was not repaired: $(log_of "$repo")"
+[[ "$(jq -r '.verification.status' "$repo-2-thing/.agents/reviews/feature-2-thing-review-01.json")" == "passed" ]] ||
+  fail "the review after the repair was not made on a passed verification"
+
+# A round with fixes: the fix session is not verified by apply-triage.sh
+# (--caller-verifies); the run verifies the fixed content once before the
+# next round, and the review of the changes and the closing review of the
+# complete feature, both on that content, reuse it: each of the two
+# contents is verified once.
+repo="$(setup_repo verification-per-tree)"
+printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
+run_feature "$repo" 2 thing
+expect_published "$repo"
+expect_sessions "$repo" 1 3 1 1
+grep -Fq "the caller verifies the result (--caller-verifies)" "$repo.out" ||
+  fail "the fixes were not left to the run to verify"
+[[ "$(full_verifications "$repo")" -eq 2 ]] ||
+  fail "a run with one round of fixes made $(full_verifications "$repo") full verifications instead of two"
+
 # The retries are bounded: a session that keeps failing stops the run, and
 # the next run starts where it stopped.
 repo="$(setup_repo implementer-keeps-failing)"
@@ -1173,14 +1252,15 @@ grep -Eq "repair of the verification, attempt 1 of 3 \| temporary" <<<"$(log_of 
   fail "the failed repair after the fixes is not in the log of the feature"
 
 # A repair after the fixes that keeps failing stops the run, which names the
-# script that failed, not apply-triage.sh.
+# script that failed, not apply-triage.sh: the fixed content fails the
+# verification of the run before round 2.
 repo="$(setup_repo fixes-break-repair-exhausted)"
 printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
 printf '%s\n' 'printf "fixed\n" >>feature.txt; printf "x\n" >broken.txt; reply="Fixed."' >"$repo.control/fixes.sh"
 printf '%s\n' 'if [[ "$count" -eq 1 ]]; then eval "$default"; else printf "tried\n" >>feature.txt; exit 9; fi' \
   >"$repo.control/implementer.sh"
 run_feature "$repo" 2 thing
-expect_stopped "$repo" 1 "the fixes for round 1 failed (start-feature.sh exited with status 9, also after the retries)"
+expect_stopped "$repo" 1 "the repair of the verification before round 2 failed (start-feature.sh exited with status 9, also after the retries)"
 if grep -Fq -- "--continue" "$repo.out"; then fail "an exhausted repair was given --continue"; fi
 
 # A fixing agent that changed a file and then failed is continued with the
@@ -1392,13 +1472,18 @@ grep -Fq "run-feature.sh: risk level before round 2: high" "$repo.out" || fail "
 grep -Fq "review on a partial check of the groups fast, round 2 of at most 5" "$repo.out" || fail "round 2 did not run on a partial check"
 grep -Fq "fixes for round 1 on a partial check of the groups fast" "$repo.out" || fail "the fixes were not verified on a partial check"
 grep -Fq "verify.sh --only fast" "$repo.control/fixes.args" || fail "the fixing agent was not told to run only the groups"
-# The full run of round 1, the partial check after the fixes and before
-# round 2, the full verification before the closing round, and the full
-# verification of the commit: the pass of review-feature.sh is not one that
-# the run made itself, so the commit does not reuse it (the trust contract,
+# The full run of the run before round 1, the partial check after the fixes,
+# the full verification of the run after the fix session and before round 2,
+# and the partial check of round 2: the closing round, on the same tree, and
+# the commit reuse the full pass of the run (the trust contract,
 # lib/verification.sh).
-[[ "$(tr '\n' ' ' <"$repo-2-thing/.agents/run/verify-trace")" == "full fast fast fast full fast full fast " ]] ||
-  fail "the checks did not run as full, partial, partial, full, full: $(tr '\n' ' ' <"$repo-2-thing/.agents/run/verify-trace")"
+[[ "$(tr '\n' ' ' <"$repo-2-thing/.agents/run/verify-trace")" == "full fast fast full fast fast " ]] ||
+  fail "the checks did not run as full, partial, full, partial: $(tr '\n' ' ' <"$repo-2-thing/.agents/run/verify-trace")"
+steps="$(cat "$repo"/.agents/run/records/*.jsonl | jq -r -s 'sort_by(.epoch) | map(select(.type == "step") | .name) | join(" | ")')"
+[[ "$steps" == *"fixes for round 1 on a partial check of the groups fast | verification before round 2 | review on a partial check of the groups fast, round 2 of at most 5 | "* ]] ||
+  fail "the run did not make the full verification after the fix session and before the partial-check round: $steps"
+[[ "$(full_verifications "$repo")" -eq 2 ]] ||
+  fail "the run made $(full_verifications "$repo") full verifications instead of one per distinct tree (two)"
 round2="$repo-2-thing/.agents/reviews/feature-2-thing-review-02.json"
 [[ "$(jq -c '[.scope.kind, .verification.status, .verification.groups]' "$round2")" == '["changes","partial",["fast"]]' ]] ||
   fail "round 2 does not record the delta review on a partial check: $(jq -c '[.scope, .verification]' "$round2")"
@@ -1730,9 +1815,9 @@ expect_sessions "$repo" 0 0 0 0
 # its target is a measurement, never a repair order: the verification passes,
 # no repair session starts, and the result goes to the handoff note, the log
 # and the run record, the reviewer's context, the commit message, and the
-# pull request. Here the implementer does not verify itself, so the budget is
-# first measured by the verification of the review, and the handoff note gets
-# it after the commit, when no review has to stay current.
+# pull request. The implementer does not verify itself, as the unattended
+# contract asks: the budget is measured by the run's own verification after
+# the session, and goes to the handoff note before the review.
 budget_conf=$'sound: test ! -e broken.txt\nperf budget: echo "1.4 s, target 1.0 s"; false'
 repo="$(VERIFY_CONF="$budget_conf" setup_repo budget)"
 run_feature "$repo" 2 thing
@@ -1740,7 +1825,7 @@ expect_published "$repo"
 expect_sessions "$repo" 1 1 0 0
 if grep -Fq "Repair attempt" <<<"$(log_of "$repo")"; then fail "a repair was started for a budget over its target"; fi
 if grep -Fq "## Verification failed" "$repo-2-thing/.agents/handoffs/2.md"; then fail "a budget was recorded as a failed verification"; fi
-grep -Fq "| commit | budget | budget perf exceeded: 1.4 s, target 1.0 s |" <<<"$(log_of "$repo")" ||
+grep -Fq "| review, round 1 | budget | budget perf exceeded: 1.4 s, target 1.0 s |" <<<"$(log_of "$repo")" ||
   fail "the budget is not in the log of the feature: $(log_of "$repo")"
 grep -Fq "## Budget exceeded" "$repo-2-thing/.agents/handoffs/2.md" || fail "the budget was not recorded in the handoff note"
 grep -Fqx -- "- budget perf exceeded: 1.4 s, target 1.0 s" "$repo-2-thing/.agents/handoffs/2.md" ||
@@ -1760,9 +1845,9 @@ cat "$repo"/.agents/run/records/*.jsonl | jq -e -s 'any(.type == "note" and .out
   fail "the budget is not noted in the run record"
 [[ "$(grep -c "## Budget exceeded" "$repo-2-thing/.agents/handoffs/2.md")" -eq 1 ]] || fail "the budget was recorded more than once"
 
-# When the implementer verifies its own result, as the contract asks, the
-# budget is recorded before the review, which then covers the handoff note
-# and stays current; the same measurement is not recorded again.
+# When the implementer verifies its own result as well, the budget is
+# recorded before the review, which then covers the handoff note and stays
+# current; the same measurement is not recorded again.
 repo="$(VERIFY_CONF="$budget_conf" setup_repo budget-measured)"
 printf '%s\n' 'eval "$default"; ./scripts/verify.sh >/dev/null 2>&1 || reply="The verification failed."' >"$repo.control/implementer.sh"
 run_feature "$repo" 2 thing
@@ -1799,7 +1884,7 @@ expect_published "$repo"
 expect_sessions "$repo" 1 1 0 0
 if grep -Fq "Repair attempt" <<<"$(log_of "$repo")"; then fail "a repair was started for a duration over its target"; fi
 if grep -Fq "## Verification failed" "$repo-2-thing/.agents/handoffs/2.md"; then fail "a duration over its target was recorded as a failed verification"; fi
-grep -Fq "| commit | budget | budget duration of scripts/verify.conf exceeded |" <<<"$(log_of "$repo")" ||
+grep -Fq "| review, round 1 | budget | budget duration of scripts/verify.conf exceeded |" <<<"$(log_of "$repo")" ||
   fail "the duration over its target is not in the log of the feature: $(log_of "$repo")"
 grep -Fqx -- "- budget duration of scripts/verify.conf exceeded:" "$repo-2-thing/.agents/handoffs/2.md" &&
   grep -Eq '^  slow [0-9.]+s$' "$repo-2-thing/.agents/handoffs/2.md" ||

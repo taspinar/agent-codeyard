@@ -391,6 +391,26 @@ MOCK_OUTPUT="C1 is fixed." MOCK_WRITE_ACTION="printf 'fixed\n' >>'$repo/feature.
 [[ "$status" -eq 4 ]] || fail "a failing partial check did not exit with the status of a failed verification ($status)"
 if run_apply "$repo" "" "$triage" --unattended --checks "Fast"; then fail "a group name with a capital was accepted"; fi
 
+# --caller-verifies runs no verification after the session: run-feature.sh
+# makes the full verification itself before the next round. The agent is
+# told to run the targeted check instead; the flag excludes --checks.
+repo="$(setup_counting_repo caller-verifies)"
+printf '.agents/run/\n' >>"$repo/.gitignore"
+printf 'broken: false\n' >>"$repo/scripts/verify.conf"
+git -C "$repo" commit -qam "A check that would fail"
+record_reviewed_tree "$repo" "$repo/$review" "$repo/$triage"
+MOCK_OUTPUT="C1 is fixed." MOCK_WRITE_ACTION="printf 'fixed\n' >>'$repo/feature.txt'" \
+  run_apply "$repo" "" "$triage" --unattended --caller-verifies || {
+  cat "$repo.out" >&2
+  fail "applying fixes that the caller verifies failed"
+}
+[[ "$(verification_runs "$repo")" -eq 0 ]] || fail "apply-triage.sh verified although the caller verifies"
+[[ ! -e "$repo/.agents/verification/passed" ]] || fail "apply-triage.sh recorded a pass although it verified nothing"
+grep -Fq "the caller verifies the result (--caller-verifies)" "$repo.out" || fail "the deferred verification was not reported: $(cat "$repo.out")"
+grep -Fq "verify.sh --changed" "$repo.log" || fail "the unattended agent was not told to run the targeted check"
+grep -Fq "Do not run the full ./scripts/verify.sh" "$repo.log" || fail "the unattended agent was not told to leave the full verification"
+if run_apply "$repo" "" "$triage" --unattended --caller-verifies --checks fast; then fail "--caller-verifies was combined with --checks"; fi
+
 # A handoff note, which may hold your answer to an earlier question, is named
 # to the agent; without a note nothing is said about one.
 if grep -Fq ".agents/handoffs/13.md" "$repo.log"; then fail "a handoff note that does not exist was named"; fi

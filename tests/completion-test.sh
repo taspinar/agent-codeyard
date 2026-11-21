@@ -60,7 +60,10 @@ expect_errors "an unknown status" "$(printf '%s' "$complete" | sed 's/"complete"
   "status must be complete, awaiting_evidence, partial, or blocked"
 # A partial run of the checks is not a verification, so it is no evidence.
 expect_errors "evidence that cites a partial run" "$(printf '%s' "$complete" | sed 's#tests/test_search.py#./scripts/verify.sh --only unit passed#')" \
-  "criterion 1 cites a partial run of the checks (verify.sh --only) as evidence, which is not a verification"
+  "criterion 1 cites a partial run of the checks (verify.sh --only or --changed) as evidence, which is not a verification"
+# Nor is the targeted check of an agent session.
+expect_errors "evidence that cites the targeted check of a session" "$(printf '%s' "$complete" | sed 's#tests/test_search.py#./scripts/verify.sh --changed passed#')" \
+  "criterion 1 cites a partial run of the checks (verify.sh --only or --changed) as evidence, which is not a verification"
 expect_errors "evidence that cites the full run" "$(printf '%s' "$complete" | sed 's#tests/test_search.py#./scripts/verify.sh passed#')"
 expect_errors "no criteria" '{"schema": "completion/v1", "status": "complete", "criteria": [], "remaining": []}' \
   "criteria must list at least one acceptance criterion"

@@ -9,7 +9,18 @@ records_arguments=("$@")
 # The required checks of the project are declared in scripts/verify.conf.
 # The self-tests of the workflow scripts are declared in
 # scripts/verify-workflow.conf and run only when a workflow file changed,
-# or always with --all.
+# or always with --all. Changed means: since the last trusted pass of the
+# run of a workflow script (the last tree in VERIFY_TRUSTED_TREES,
+# lib/verification.sh), when there is one; otherwise since the base branch.
+#
+# --changed is the targeted check of an agent session: every check of
+# scripts/verify.conf, and of the self-tests only those of the files that
+# changed since the base: the check that runs tests/<x>-test.sh when that
+# file, scripts/<x>.sh, or scripts/lib/<x>.sh changed, or when a changed file
+# of scripts/lib/ that is not a shell script (a jq program, for one) is named
+# by scripts/<x>.sh or scripts/lib/<x>.sh as 'lib/<name>'. Like --only it is a
+# partial run, never a verification: it records nothing. The full
+# verification runs after the session (run-feature.sh).
 #
 # A run in which every check passed is recorded for the content it verified
 # (scripts/lib/verification.sh). With --reuse, a second run on identical
@@ -100,13 +111,24 @@ default_group="default"
 usage() {
   echo "Usage: $0 [--all] [--reuse]"
   echo "       $0 [--all] --only <group>[,<group>...]"
+  echo "       $0 --changed"
   echo "       $0 --baseline"
   echo "       $0 --groups"
   echo "       $0 --partitions"
   echo
   echo "Runs the checks in scripts/verify.conf. The workflow self-tests in"
   echo "scripts/verify-workflow.conf run only when a file listed under 'paths:' in"
-  echo "that file differs from the base branch. --all runs them regardless."
+  echo "that file differs from the base branch. --all runs them regardless. Within a"
+  echo "run of a workflow script that keeps trusted passes (VERIFY_TRUSTED_TREES), they"
+  echo "are compared with the tree of its last trusted pass instead of the base branch."
+  echo
+  echo "--changed runs every check of scripts/verify.conf and, of the self-tests, only"
+  echo "those of the files changed since the base branch: the check that runs"
+  echo "tests/<x>-test.sh when that file, scripts/<x>.sh, or scripts/lib/<x>.sh changed,"
+  echo "or when a changed file of scripts/lib/ that is not a shell script is named by"
+  echo "scripts/<x>.sh or scripts/lib/<x>.sh as 'lib/<name>'."
+  echo "It is the targeted check of an agent session: a partial run, which records"
+  echo "nothing; the full verification runs after the session."
   echo
   echo "--reuse skips the run when verification already passed for exactly the"
   echo "current content, as recorded by an earlier run."
@@ -175,6 +197,7 @@ list_groups=0
 list_partitions=0
 only=""
 partial=0
+changed_mode=0
 baseline_mode=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -186,6 +209,10 @@ while [[ $# -gt 0 ]]; do
       list_groups=1
       list_partitions=1
       ;;
+    --changed)
+      changed_mode=1
+      partial=1
+      ;;
     --only)
       [[ $# -ge 2 && "$2" =~ ^[a-z0-9][a-z0-9-]*(,[a-z0-9][a-z0-9-]*)*$ ]] || usage
       only="$2"
@@ -196,8 +223,12 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+if [[ "$changed_mode" -eq 1 && ( -n "$only" || "$run_all" -eq 1 ) ]]; then
+  echo "Error: --changed selects the checks itself; it takes neither --only nor --all." >&2
+  exit 1
+fi
 if [[ "$partial" -eq 1 && "$reuse" -eq 1 ]]; then
-  echo "Error: --only cannot be combined with --reuse: a partial run is not a verification, so there is nothing to reuse." >&2
+  echo "Error: --only and --changed cannot be combined with --reuse: a partial run is not a verification, so there is nothing to reuse." >&2
   exit 1
 fi
 if [[ "$list_groups" -eq 1 && ( "$partial" -eq 1 || "$reuse" -eq 1 || "$run_all" -eq 1 ) ]]; then
@@ -535,15 +566,41 @@ feature_base() {
   return 1
 }
 
+# trusted_base
+# Prints the tree of the last trusted pass of the run (lib/verification.sh):
+# the last tree in VERIFY_TRUSTED_TREES, which only a workflow script adds
+# to, for its own passes. Fails without one, without the tree of the content
+# now (tree_before), or when Git does not know that tree.
+trusted_base() {
+  local trusted=()
+
+  [[ -n "$tree_before" ]] || return 1
+  read -r -a trusted <<<"${VERIFY_TRUSTED_TREES:-}"
+  [[ "${#trusted[@]}" -gt 0 ]] || return 1
+  git -C "$root" cat-file -e "${trusted[${#trusted[@]} - 1]}^{tree}" 2>/dev/null || return 1
+  printf '%s\n' "${trusted[${#trusted[@]} - 1]}"
+}
+
 # workflow_files_changed
-# Exits 0 when a file under workflow_paths differs from the base branch,
-# counting uncommitted and untracked files, 1 when none does, and 2 when that
-# cannot be determined. Sets workflow_base to the base branch used.
+# Exits 0 when a file under workflow_paths differs from the tree of the last
+# trusted pass of the run (trusted_base), or without one from the base
+# branch, counting uncommitted and untracked files; 1 when none does, and 2
+# when that cannot be determined. A trusted pass ran the self-tests, or
+# skipped them because its workflow files were those of the base or of the
+# pass before it, so content with the same workflow files needs no new run.
+# Sets workflow_base to what was compared with.
 workflow_files_changed() {
   local specs=()
   local changed
+  local trusted
 
   read -r -a specs <<<"$workflow_paths"
+  if trusted="$(trusted_base)"; then
+    workflow_base="the last trusted pass of this run (tree ${trusted:0:12})"
+    changed="$(git -C "$root" diff-tree -r --name-only "$trusted" "$tree_before" -- "${specs[@]}")" || return 2
+    [[ -n "$changed" ]]
+    return
+  fi
   feature_base || return 2
   workflow_base="$base_ref"
 
@@ -564,6 +621,76 @@ changed_files() {
     git -C "$root" diff -z --name-only --no-renames --diff-filter=d "$base_commit" -- &&
       git -C "$root" ls-files -z --others --exclude-standard --
   } >"$1"
+}
+
+# reads_changed_lib_file <test> <list>
+# Succeeds when scripts/<test>.sh or scripts/lib/<test>.sh names a file of
+# scripts/lib/ that is not a shell script and is in <list>, the changed files
+# separated by NUL: a jq program or another file the script reads at run
+# time, named by its path under scripts/ ('lib/report.jq'). A shell script
+# of scripts/lib/ selects its own self-test by name and nothing else.
+reads_changed_lib_file() {
+  local script
+  local file
+
+  for script in "$root/scripts/$1.sh" "$root/scripts/lib/$1.sh"; do
+    [[ -f "$script" ]] || continue
+    while IFS= read -r -d '' file; do
+      [[ "$file" == scripts/lib/* && "$file" != *.sh ]] || continue
+      ! grep -Fq -- "${file#scripts/}" "$script" || return 0
+    done <"$2"
+  done
+  return 1
+}
+
+# select_changed_tests
+# For --changed: marks in selected_tests the self-tests of the files changed
+# since the base (changed_files): the check that runs tests/<x>-test.sh when
+# that file, scripts/<x>.sh, or scripts/lib/<x>.sh changed, or when
+# scripts/<x>.sh or scripts/lib/<x>.sh names a changed file of scripts/lib/
+# that is not a shell script (reads_changed_lib_file). A self-test that
+# runs no test file of its own is left to the full verification. Sets
+# workflow_note, or workflow_skipped when none is selected. Without a base
+# no self-test is selected: the full verification decides.
+selected_tests=()
+select_changed_tests() {
+  local list="$scratch/changed-files"
+  local index
+  local test
+  local count=0
+  local chosen=""
+
+  if ! changed_files "$list"; then
+    workflow_skipped="SKIP  workflow self-tests ($workflow_count checks): the base branch could not be determined, so no changed file selects one; the full verification decides"
+    return 0
+  fi
+  for ((index = project_count; index < ${#names[@]}; index++)); do
+    [[ "${commands[$index]}" =~ ^\./tests/([a-z0-9][a-z0-9-]*)-test\.sh([[:space:]]|$) ]] || continue
+    test="${BASH_REMATCH[1]}"
+    if tr '\0' '\n' <"$list" | grep -Fqx -e "tests/$test-test.sh" -e "scripts/$test.sh" -e "scripts/lib/$test.sh" ||
+      reads_changed_lib_file "$test" "$list"; then
+      selected_tests[$index]=yes
+      count=$((count + 1))
+      chosen="${chosen:+$chosen, }${names[$index]}"
+    fi
+  done
+  if [[ "$count" -eq 0 ]]; then
+    workflow_skipped="SKIP  workflow self-tests ($workflow_count checks): --changed selects none, since no tested file changed since ${base_ref:-the base}; the full verification decides"
+  else
+    workflow_note="--changed selects $count of $workflow_count, of the files changed since $base_ref: $chosen"
+  fi
+}
+
+# skipped_check <index>
+# Succeeds when a partial run leaves out the check <index>: one outside the
+# groups of --only, or a self-test that --changed does not select.
+skipped_check() {
+  [[ "$partial" -eq 1 ]] || return 1
+  if [[ "$changed_mode" -eq 1 ]]; then
+    [[ "$1" -ge "$project_count" && "${selected_tests[$1]:-}" != "yes" ]]
+  else
+    ! in_list "${groups[$1]}" "$only"
+  fi
 }
 
 [[ "$list_groups" -eq 1 ]] || echo "== Agentic project verification =="
@@ -640,6 +767,14 @@ if [[ "$baseline_mode" -eq 1 ]]; then
   echo "Baseline: every check of scripts/verify.conf runs once, and how it ends is recorded in $baseline_relative. This runs the project's own commands. It is not a verification and records no pass."
 fi
 
+# The fingerprint of the content before any check runs: what a pass is
+# recorded for, and what the workflow files are compared with the last
+# trusted pass of the run on.
+tree_before=""
+if [[ "$recordable" -eq 1 && "$list_groups" -eq 0 ]]; then
+  tree_before="$(fingerprint_worktree "$root" "$scratch")" || tree_before=""
+fi
+
 # Decide whether the workflow self-tests run. Their checks follow the project
 # checks; a project without scripts/verify-workflow.conf has none.
 project_count="${#names[@]}"
@@ -658,6 +793,8 @@ if [[ -f "$workflow_config" ]]; then
     workflow_skipped="SKIP  workflow self-tests ($workflow_count checks): a baseline covers the checks of the project only"
   elif [[ "$run_all" -eq 1 ]]; then
     workflow_note="requested with --all"
+  elif [[ "$changed_mode" -eq 1 ]]; then
+    select_changed_tests
   else
     changed_status=0
     workflow_files_changed || changed_status=$?
@@ -684,7 +821,9 @@ if [[ "$list_groups" -eq 1 ]]; then
   printf '%s\n' "${known_groups//,/$'\n'}"
   exit 0
 fi
-if [[ "$partial" -eq 1 ]]; then
+if [[ "$changed_mode" -eq 1 ]]; then
+  echo "Only the checks of the changed files (--changed): every check of scripts/verify.conf and the self-tests of the files changed since the base. A partial run is not a verification and records nothing."
+elif [[ "$partial" -eq 1 ]]; then
   IFS=, read -r -a wanted <<<"$only"
   for group in "${wanted[@]}"; do
     in_list "$group" "$known_groups" ||
@@ -698,9 +837,7 @@ fi
 # needs them. With VERIFY_TRUSTED_TREES set, the trust contract of the
 # workflow scripts (lib/verification.sh), only a pass whose tree is in the
 # list counts: any other record may have been written in an agent session.
-tree_before=""
 if [[ "$recordable" -eq 1 ]]; then
-  tree_before="$(fingerprint_worktree "$root" "$scratch")" || tree_before=""
   if [[ "$reuse" -eq 1 && -n "$tree_before" && "$(verification_field "$root" tree)" == "$tree_before" ]] &&
     [[ -n "${VERIFY_TRUSTED_TREES+set}" ]] && ! verification_tree_trusted "$tree_before"; then
     echo
@@ -731,7 +868,7 @@ heavy_run=0
 for index in "${!names[@]}"; do
   [[ "${heavy[$index]}" == "yes" ]] || continue
   [[ "$index" -lt "$project_count" || -z "$workflow_skipped" ]] || continue
-  [[ "$partial" -eq 0 ]] || in_list "${groups[$index]}" "$only" || continue
+  ! skipped_check "$index" || continue
   heavy_run=1
 done
 if [[ "$heavy_run" -eq 1 ]]; then
@@ -1118,7 +1255,7 @@ for index in "${!names[@]}"; do
   name="${names[$index]}"
   command="${commands[$index]}"
   budget="${budgets[$index]}"
-  if [[ "$partial" -eq 1 ]] && ! in_list "${groups[$index]}" "$only"; then
+  if skipped_check "$index"; then
     continue
   fi
   read -r tool _ <<<"$command"
@@ -1301,6 +1438,10 @@ fi
 
 # A partial run passed its own checks and says nothing about the others: an
 # existing record is left as it is, and none is written.
+if [[ "$partial" -eq 1 && "$changed_mode" -eq 1 ]]; then
+  echo "The checks that --changed selects passed. Not a verification: the full ./scripts/verify.sh runs after the session."
+  exit 0
+fi
 if [[ "$partial" -eq 1 ]]; then
   echo "The checks of the groups ${only//,/, } passed. Not a verification: run ./scripts/verify.sh without --only for that."
   exit 0

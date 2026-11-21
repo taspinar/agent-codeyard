@@ -32,7 +32,8 @@
 # 'complete' needs every criterion met or not applicable and nothing
 # remaining. 'partial' and 'blocked' need something that remains. The
 # evidence of a criterion cannot be a partial run of the checks
-# ('verify.sh --only'): such a run is not a verification. Nor can the
+# ('verify.sh --only', or '--changed' of an agent session): such a run is
+# not a verification. Nor can the
 # evidence of a met criterion be a budget check of scripts/verify.conf or
 # scripts/verify-workflow.conf ('<name> [<group>] budget: <command>'), nor
 # the target for the duration of their checks ('budget-seconds: <n>'): a
@@ -120,8 +121,8 @@ completion_errors() {
            (if .status == "pending" and ((.gate // "implementation") == "implementation")
             then "criterion \($n): pending is only for evidence of a later gate (pr_ci, owner_approval, or post_merge)" else empty end),
            (if (.evidence | text) | not then "criterion \($n) has no evidence" else empty end),
-           (if (.evidence | type) == "string" and (.evidence | test("verify\\.sh([[:space:]]+-[^[:space:]]*)*[[:space:]]+--only([[:space:]]|$)"))
-            then "criterion \($n) cites a partial run of the checks (verify.sh --only) as evidence, which is not a verification" else empty end),
+           (if (.evidence | type) == "string" and (.evidence | test("verify\\.sh([[:space:]]+-[^[:space:]]*)*[[:space:]]+--(only|changed)([[:space:]]|$)"))
+            then "criterion \($n) cites a partial run of the checks (verify.sh --only or --changed) as evidence, which is not a verification" else empty end),
            (if .status == "met" and (.evidence | type) == "string" and (.evidence | budget_cited) != ""
             then "criterion \($n) cites the budget check \u0027\(.evidence | budget_cited)\u0027 as evidence of a met criterion; a budget is a measurement that never fails the verification, so it shows nothing about the criterion" else empty end)
          end)

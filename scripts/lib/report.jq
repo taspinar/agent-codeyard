@@ -205,7 +205,15 @@ def report_subject($kind; $subject):
      resumed: ($events | map(select(.type == "resumed")) | length),
      versions: ($runs | map(.versions) | unique),
      models: ($calls | map({agent, model}) | unique),
-     input: ($calls | input_of), output: ($calls | output_of)}
+     input: ($calls | input_of), output: ($calls | output_of),
+     # The figures that the pull request reports (publish-feature.sh): the
+     # time of the implementer and triage-implementer sessions, the
+     # verifications that ran the full suite (a reused pass and a partial
+     # run are none), and when the pull request step first succeeded.
+     figures: {
+       session_seconds: ($calls | map(select(.role == "implementer" or .role == "triage-implementer") | .seconds | number_or_null // 0) | add // 0),
+       full_verifications: ($events | map(select(.type == "verification" and .reused != true and .groups == "all")) | length),
+       pull_request: ($steps | map(select(.name == "pull request" and .status == 0) | .epoch | number_or_null) | min)}}
   # Only a subject with undeclared calls has the field, so that a report
   # without them stays as it was.
   + (left_out($runs) | if . == null then {} else {undeclared: .} end);
@@ -402,7 +410,30 @@ def summary_markdown:
     + "\n≥ marks a sum to which some calls reported no figure or only part of it. Replaced each time the feature is published.\n"
     end;
 
+# --- The figures in the pull request -----------------------------------------
+#
+# Numbers only, like the summary. The lead time runs from the first start of
+# a run to the first pull request step that succeeded; before there is one,
+# to now, the publication that opens the pull request.
+
+def figures_markdown:
+  .subjects[0] as $s
+  | if $s == null then null else
+    ($s.figures.session_seconds | number_or_null // 0 | floor) as $session
+    | ($s.figures.full_verifications | number_or_null // 0) as $full
+    | ($s.first_start | number_or_null) as $first
+    | ($s.figures.pull_request | number_or_null) as $pr
+    | (if $first == null then null else ((($pr // now) - $first) | floor) end) as $lead
+    | "## Run figures\n\n"
+    + "From the run records of this feature (`./scripts/report-runs.sh`), as this publication found them.\n\n"
+    + "| | |\n|---|---|\n"
+    + "| Implementer and triage-implementer session time | \($session) s (\($session | duration)) |\n"
+    + "| Full verifications | \($full) |\n"
+    + "| Lead time from the first run start to the pull request | \(if $lead == null then "unknown" else "\($lead) s (\($lead | duration))" end)\(if $pr == null and $lead != null then ", up to this publication" else "" end) |\n"
+    end;
+
 report
 | if $mode == "json" then .
+  elif $mode == "figures" then figures_markdown
   elif $mode == "summary" then summary_markdown
   else markdown end

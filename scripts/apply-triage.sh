@@ -15,7 +15,7 @@ source "$script_dir/lib/skills.sh"
 source "$script_dir/lib/completion.sh"
 
 usage() {
-  echo "Usage: $0 <triage-json> [--agent <agent>] [--model <model>] [--unattended] [--continue] [--checks <group>[,<group>...]]"
+  echo "Usage: $0 <triage-json> [--agent <agent>] [--model <model>] [--unattended] [--continue] [--checks <group>[,<group>...] | --caller-verifies]"
   echo
   echo "--continue takes up a fix session of this triage that was interrupted after"
   echo "it had changed files. The review is then no longer current, which is refused"
@@ -28,6 +28,12 @@ usage() {
   echo "for an intermediate round of run-feature.sh. A partial check is not a"
   echo "verification: it records nothing, and the full verification runs before"
   echo "the commit."
+  echo
+  echo "--caller-verifies runs no verification after the session: the script that"
+  echo "started this one makes the full verification of the result itself, as"
+  echo "run-feature.sh does before the next review round, and its pass is the one the"
+  echo "review and the commit reuse. A failure there is repaired as any failed"
+  echo "verification of the run."
   echo
   echo "The agent and model come from role 'triage-implementer' in"
   echo ".agents/agents.conf unless --agent and --model are given."
@@ -46,6 +52,7 @@ report_errors() {
 
 continue_session=0
 checks=""
+caller_verifies=0
 arguments=()
 while [[ $# -gt 0 ]]; do
   if [[ "$1" == "--continue" ]]; then
@@ -57,6 +64,8 @@ while [[ $# -gt 0 ]]; do
     }
     checks="$2"
     shift
+  elif [[ "$1" == "--caller-verifies" ]]; then
+    caller_verifies=1
   else
     arguments+=("$1")
   fi
@@ -65,6 +74,10 @@ done
 agent_parse_args ${arguments[@]+"${arguments[@]}"}
 if [[ "${#AGENT_POSITIONAL[@]}" -ne 1 ]]; then
   usage
+fi
+if [[ -n "$checks" && "$caller_verifies" -eq 1 ]]; then
+  echo "Error: --checks and --caller-verifies exclude each other: a partial check runs here, --caller-verifies leaves the verification to the caller." >&2
+  exit 1
 fi
 
 triage_input="${AGENT_POSITIONAL[0]}"
@@ -344,10 +357,14 @@ fi
 # content is not repeated, except where the trust contract does not trust it
 # (lib/verification.sh): with the trusted passes of a run, only one of them;
 # with --unattended and without them, none. With --checks only the named
-# groups run: a partial check, which records nothing.
+# groups run: a partial check, which records nothing. With --caller-verifies
+# nothing runs here: the caller verifies the result itself.
 echo
 set +e
-if [[ -n "$checks" ]]; then
+if [[ "$caller_verifies" -eq 1 ]]; then
+  echo "Not verifying here: the caller makes the full verification of the result (--caller-verifies)."
+  true
+elif [[ -n "$checks" ]]; then
   echo "Running only the groups ${checks//,/, } of the verification (a partial check, not a verification)..."
   (
     cd "$root"
@@ -434,7 +451,9 @@ report_checks() {
 report_checks
 echo
 rm -f "$started_mark"
-if [[ -n "$checks" ]]; then
+if [[ "$caller_verifies" -eq 1 ]]; then
+  echo "FIX_NOW implementation completed; the caller verifies the result (--caller-verifies)."
+elif [[ -n "$checks" ]]; then
   echo "FIX_NOW implementation completed and the partial check of the groups ${checks//,/, } passed (not a verification)."
 else
   echo "FIX_NOW implementation completed and verification passed."

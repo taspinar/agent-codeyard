@@ -43,8 +43,9 @@ usage() {
   echo
   echo "What the rounds require follows the risk level of the feature and the risk"
   echo "policy of the base (.agents/policies/risk.conf, computed again before every"
-  echo "round): the verification before an intermediate round may be a partial check"
-  echo "of named groups ('<level>: verification: groups ...'), a later round reviews"
+  echo "round): the fixes and the review of an intermediate round may add a partial"
+  echo "check of named groups ('<level>: verification: groups ...') to the full"
+  echo "verification that precedes every review, a later round reviews"
   echo "only the changes when the policy allows it ('<level>: review: delta') and the"
   echo "level did not rise, and a low-risk feature is committed without a review when"
   echo "the policy says 'low: review: none'. The feature is always committed on the"
@@ -55,6 +56,11 @@ usage() {
   echo "a later gate is pending), its handoff note lists no remaining work,"
   echo "and it wrote the summary of the changes. Until then the implementer is"
   echo "resumed, for at most $MAX_SESSIONS sessions in a run."
+  echo
+  echo "The agent sessions run only the checks of what they changed (verify.sh"
+  echo "--changed). The run makes the full verification itself, after the session and"
+  echo "before the review, once for each content: the review, a retry of it, the fixes,"
+  echo "and the commit reuse that pass instead of verifying again."
   echo
   echo "The run stops with a non-zero status when a step fails or needs you, and"
   echo "says which command continues. Status 3 means that an agent needs a decision"
@@ -676,9 +682,9 @@ level_rank() {
 }
 
 # verify_step
-# The verification as a step of the run, for a feature that is committed
-# without a review: a failure gets the status of a failed verification, so
-# the implementer repairs it like one that a review found. It reuses only a
+# The full verification as a step of the run, before a review round and for
+# a feature that is committed without a review: a failure gets the status of
+# a failed verification, so the implementer repairs it. It reuses only a
 # pass of this run (VERIFY_TRUSTED_TREES); the step runs in a subshell, so
 # the caller adds its pass to the list.
 verify_step() {
@@ -1145,8 +1151,8 @@ if uncommitted; then
       fi
       # An intermediate round, between the first review and the review of
       # the complete feature, may run a partial check of the groups the
-      # policy names for the level instead of the full verification. Such a
-      # round never ends the run: the review of the complete feature that
+      # policy names for the level, after the full verification below. Such
+      # a round never ends the run: the review of the complete feature that
       # follows is made on the full verification.
       if [[ -n "$review" && "$complete_review" -eq 0 && "$risk_verification" == groups* ]]; then
         checks="${risk_verification#groups }"
@@ -1159,9 +1165,36 @@ if uncommitted; then
           checks=""
         fi
       fi
+      # The full verification of a round is this run's own, after the
+      # session and before the review (lib/verification.sh): the agent
+      # sessions run only the checks of what they changed, and its pass is
+      # in this run's VERIFY_TRUSTED_TREES, so the review, a retry of it, and
+      # the commit reuse it instead of verifying again. A failure goes to the
+      # implementer as a repair session; after a repair, or a repeat that
+      # passed, the gate and the round are decided again. It runs also
+      # before a round on a partial check: the review adds the groups, it
+      # does not replace the full verification of the tree it reviews.
+      attempts_before="$repairs/$unstable/$base_merges"
+      step "verification before round $((round + 1))" verify_step
+      if [[ "$step_status" -eq 3 ]]; then
+        rm -f "$state_file"
+        stop 3 "the implementer, repairing the verification, needs a decision of yours; its question is in the handoff note (.agents/handoffs/$issue.md)." \
+          "answer the question in the handoff note"
+      elif [[ "$step_status" -eq 4 ]]; then
+        stop 1 "the verification still fails; the failing checks are in .agents/run/$issue-verify.log and in the log of the run, .agents/run/$issue-log." \
+          "cd \"$worktree\"" \
+          "./scripts/verify.sh    # repair what fails, for example with ./scripts/start-feature.sh $issue --resume"
+      elif [[ "$step_status" -ne 0 ]]; then
+        # verify_step itself returns 0 or 4: the repair session failed.
+        stop 1 "the repair of the verification before round $((round + 1)) failed ($step_command exited with status $step_status, also after the retries)." \
+          "resolve what the output above reports"
+      fi
+      [[ "$repairs/$unstable/$base_merges" == "$attempts_before" ]] || continue
+      # The pass of verify_step, which ran in a subshell.
+      verification_trust "$(verification_field "$worktree" tree)"
       complete_review=0
-      # A budget that the implementer's own verification measured, before
-      # the review covers the handoff note.
+      # A budget that the verification measured, before the review covers
+      # the handoff note.
       report_budgets "review, round $((round + 1))"
       STEP_CHECKS="$checks"
       step "$review_title, round $((round + 1)) of at most $MAX_ROUNDS" \
@@ -1247,9 +1280,11 @@ if uncommitted; then
     fi
     # An interrupted fix session is continued with its scope, not started
     # again: apply-triage.sh refuses a review whose content changed. The
-    # fixes are verified as the round after them will be: with the partial
-    # check the policy names for an intermediate round, when it names one.
-    fix_options=()
+    # fixes are checked with the partial check the policy names for an
+    # intermediate round, when it names one; in either case this run's own
+    # full verification before the next round verifies them
+    # (--caller-verifies otherwise), and the review then reuses it.
+    fix_options=(--caller-verifies)
     fix_title="fixes for round $round"
     checks=""
     if [[ "$risk_verification" == groups* ]]; then

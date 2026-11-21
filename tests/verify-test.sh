@@ -1138,6 +1138,91 @@ for line in "accepted-failure: format changed-files" "accepted-failure: format c
   expect_failure "$project" "a malformed scoped exception must be refused: $line"
   grep -Fq "accepted-failure" "$project/out.log" || fail "the refusal of '$line' does not say why"
 done
+# Within a run that keeps trusted passes (VERIFY_TRUSTED_TREES), the
+# self-tests are compared with the tree of the last trusted pass, not with
+# the base: a later change that touches no workflow file skips them, one that
+# does runs them, and without a trusted tree Git knows the base decides.
+project="$(setup_recorded_project trusted-trigger)"
+mkdir -p "$project/tools"
+printf 'one\n' >"$project/tools/tool.sh"
+printf 'paths: tools\nself-test: pytest\n' >"$project/scripts/verify-workflow.conf"
+git -C "$project" add -A
+git -C "$project" commit -qm "Self-tests"
+git -C "$project" checkout -q -b feature/1-change
+printf 'two\n' >>"$project/tools/tool.sh"
+VERIFY_TRUSTED_TREES="" expect_ran "$project" "a workflow file differs from the base and no pass is trusted yet"
+trusted="$(sed -n 's/^tree: //p' "$project$record")"
+[[ "$(sed -n 's/^workflow-tests: //p' "$project$record")" == "ran" ]] || fail "the first pass did not record its self-tests"
+printf 'two\n' >>"$project/src/app.txt"
+VERIFY_TRUSTED_TREES="other $trusted" expect_skipped "$project" "no workflow file differs from the last trusted pass"
+grep -Fq "no workflow file differs from the last trusted pass of this run (tree ${trusted:0:12})" "$project/out.log" ||
+  fail "the skip does not name the trusted pass it compared with: $(cat "$project/out.log")"
+VERIFY_TRUSTED_TREES="$trusted 0123456789abcdef0123456789abcdef01234567" expect_ran "$project" "the last trusted tree is unknown to Git, so the base decides"
+grep -Fq "a workflow file differs from main" "$project/out.log" || fail "the fallback did not compare with the base: $(cat "$project/out.log")"
+expect_ran "$project" "a run at a terminal compares with the base"
+printf 'three\n' >>"$project/tools/tool.sh"
+VERIFY_TRUSTED_TREES="$trusted" expect_ran "$project" "a workflow file differs from the last trusted pass"
+grep -Fq "a workflow file differs from the last trusted pass of this run" "$project/out.log" ||
+  fail "the run does not say that it compared with the trusted pass: $(cat "$project/out.log")"
+
+# --changed, the targeted check of an agent session: every project check,
+# and the self-tests of the files changed since the base only; a partial run
+# that records nothing.
+project="$(setup_recorded_project changed-tests)"
+mkdir -p "$project/tests"
+for name in alpha beta gamma; do
+  printf '#!/usr/bin/env bash\necho "%s-test" >>"$MOCK_TOOL_LOG"\n' "$name" >"$project/tests/$name-test.sh"
+  chmod +x "$project/tests/$name-test.sh"
+done
+printf 'one\n' >"$project/scripts/alpha.sh"
+printf 'one\n' >"$project/scripts/lib/beta.sh"
+# gamma.sh reads a jq program of scripts/lib/, as report-runs.sh reads lib/report.jq.
+printf 'jq -f "$(dirname "$0")/lib/delta.jq"\n' >"$project/scripts/gamma.sh"
+printf '.\n' >"$project/scripts/lib/delta.jq"
+printf '.\n' >"$project/scripts/lib/epsilon.jq"
+printf '%s\n' "paths: scripts tests" "alpha: ./tests/alpha-test.sh" "beta: ./tests/beta-test.sh" \
+  "gamma: ./tests/gamma-test.sh" "self-test: pytest" >"$project/scripts/verify-workflow.conf"
+git -C "$project" add -A
+git -C "$project" commit -qm "Self-tests of scripts"
+git -C "$project" checkout -q -b feature/1-change
+run_changed() {
+  rm -f "$project/tools.log"
+  PATH="$tmp/bin:/usr/bin:/bin" MOCK_TOOL_LOG="$project/tools.log" \
+    "$project/scripts/verify.sh" --changed "$@" >"$project/out.log" 2>&1
+}
+run_changed || fail "--changed without a change failed: $(cat "$project/out.log")"
+grep -Fqx "ruff check ." "$project/tools.log" || fail "--changed did not run the project checks"
+[[ "$(grep -c . "$project/tools.log")" -eq 1 ]] || fail "--changed ran a self-test of nothing changed: $(cat "$project/tools.log")"
+grep -Fq "SKIP  workflow self-tests (4 checks): --changed selects none" "$project/out.log" || fail "--changed did not report the skip: $(cat "$project/out.log")"
+printf 'two\n' >>"$project/scripts/lib/beta.sh"
+printf '# two\n' >>"$project/tests/gamma-test.sh"
+VERIFY_TRUSTED_TREES="" run_changed || fail "--changed with changed files failed: $(cat "$project/out.log")"
+[[ "$(sort "$project/tools.log" | paste -sd ' ' -)" == "beta-test gamma-test ruff check ." ]] ||
+  fail "--changed selected the wrong self-tests: $(cat "$project/tools.log")"
+grep -Fq -- "--changed selects 2 of 4, of the files changed since main: beta, gamma" "$project/out.log" || fail "--changed does not name what it selected: $(cat "$project/out.log")"
+[[ ! -e "$project$record" ]] || fail "--changed recorded a pass"
+printf 'two\n' >>"$project/scripts/alpha.sh"
+git -C "$project" add -A
+git -C "$project" commit -qm "Change alpha"
+run_changed || fail "--changed with committed changes failed"
+grep -Fqx "alpha-test" "$project/tools.log" || fail "--changed missed the test of a committed script change: $(cat "$project/tools.log")"
+if grep -Fq "pytest" "$project/tools.log"; then fail "--changed ran a self-test that runs no test file of its own"; fi
+# A changed file of scripts/lib/ that is not a shell script selects the
+# self-test of the script that names it (lib/delta.jq: gamma.sh), and nothing
+# for a file no script names (epsilon.jq); alpha.sh and beta.sh still differ
+# from main.
+printf '. | .x\n' >>"$project/scripts/lib/delta.jq"
+printf '. | .x\n' >>"$project/scripts/lib/epsilon.jq"
+run_changed || fail "--changed with a changed jq program failed: $(cat "$project/out.log")"
+[[ "$(sort "$project/tools.log" | paste -sd ' ' -)" == "alpha-test beta-test gamma-test ruff check ." ]] ||
+  fail "--changed did not select the self-test of the script that reads the changed jq program: $(cat "$project/tools.log")"
+grep -Fq -- "--changed selects 3 of 4, of the files changed since main: alpha, beta, gamma" "$project/out.log" || fail "--changed does not name the self-test of the jq program's reader: $(cat "$project/out.log")"
+git -C "$project" checkout -q -- scripts/lib/delta.jq scripts/lib/epsilon.jq
+for option in --all --reuse "--only default"; do
+  # shellcheck disable=SC2086
+  if run_changed $option; then fail "--changed was combined with $option"; fi
+done
+
 # Every self-test passes through tests/lib-fakes.sh before it starts anything.
 for test in "$source_root"/tests/*-test.sh; do
   grep -Eq '^source "\$(source_)?root/tests/lib-fakes\.sh"$' "$test" ||
