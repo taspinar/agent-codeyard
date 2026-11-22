@@ -170,6 +170,97 @@ else
   echo "check-test: no node_modules in $site; the browser checks are skipped." >&2
 fi
 
+# browser-check.mjs on small outputs of two pages: the page matrix over
+# parallel contexts keeps its counts and names the page, the theme and the
+# width of a failure; the part 'pages', which the root base runs instead of
+# the matrix, finds a hard-coded base path under either base.
+# browser_page <file> <base> <extra>: a page that the matrix accepts.
+browser_page() {
+  mkdir -p "$(dirname "$1")"
+  printf '%s\n' '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>T</title>' \
+    '<script>document.documentElement.dataset.theme = localStorage.getItem("act-theme") || "light";</script>' \
+    '<style>body{margin:0;font:16px sans-serif;background:#fff;color:#111}html[data-theme=dark] body{background:#111;color:#eee}a,button{color:inherit;background:none;border:1px solid currentColor}.nav{display:flex;flex-wrap:wrap;gap:4px}</style></head><body>' \
+    "<header class=\"top\"><nav class=\"nav\" aria-label=\"Site\"><a href=\"$2\">Home</a><a href=\"$2#main\">Features</a><a href=\"$2#main\">About</a><a href=\"$2docs/\">Docs</a><a href=\"https://github.com/\">GitHub</a><button class=\"theme\" type=\"button\">Theme</button></nav></header>" \
+    "<main id=\"main\"><h1>Page</h1><p>Text.</p>$3</main>" \
+    "<footer><nav aria-label=\"Footer\"><a href=\"$2\">Open source · MIT</a><a href=\"$2\">GitHub / Source</a><a href=\"$2\">Contributing</a><a href=\"$2\">Security policy</a><a href=\"$2docs/\">Technical Documentation</a></nav></footer></body></html>" >"$1"
+}
+
+# browser_output <dir> <base>: an output of a home page and a docs page.
+browser_output() {
+  browser_page "$1/index.html" "$2" ""
+  browser_page "$1/docs/index.html" "$2" ""
+}
+
+# browser_run <dir> <base> <parts>: runs browser-check.mjs on the output, with two contexts.
+browser_run() {
+  (cd "$site" && DOCUMENTATION_REPORT_DIR="$1/reports" BROWSER_CHECK_WORKERS=2 node browser-check.mjs "$1" "$2" "$3")
+}
+
+# expect_browser_fault <name> <base> <parts> <file> <extra> <message>:
+# the part fails on the output with <extra> in <file>, and says <message>.
+expect_browser_fault() {
+  local dir="$work/browser-$1" result
+  browser_output "$dir" "$2"
+  browser_page "$dir/$4" "$2" "$5"
+  if result="$(browser_run "$dir" "$2" "$3" 2>&1)"; then
+    fail "browser $1: browser-check.mjs passed"
+  elif ! grep -Fq -- "$6" <<<"$result"; then
+    fail "browser $1: no '$6' in: $result"
+  fi
+}
+
+if [[ -d "$site/node_modules" ]] && (cd "$site" && node browser-ready.mjs) >/dev/null 2>&1; then
+  for base in /agent-codeyard/ /; do
+    dir="$work/browser-good$(tr -d / <<<"$base")"
+    browser_output "$dir" "$base"
+    if ! result="$(browser_run "$dir" "$base" pages,matrix 2>&1)"; then
+      fail "browser: a correct output under $base does not pass: $result"
+    else
+      # Two pages in two themes at six and at five widths: 22 cells, each
+      # with its axe result and its screenshot, in the order of a run in one
+      # context (page, theme, width), as on main; one page report per page.
+      order="$(node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1])); console.log([...r.accessibility.map(c => `${c.path} ${c.theme} ${c.width}`), ...r.screenshots, ...r.pages.map(p => p.path)].join("\n"))' \
+        "$dir/reports/$([[ "$base" == / ]] && echo root || echo project)/report.json")"
+      expected="$(for page in docs/ ''; do for theme in light dark; do
+        if [[ -n "$page" ]]; then widths="320 390 768 1280 1440"; else widths="320 375 390 768 1280 1440"; fi
+        for width in $widths; do echo "$base$page $theme $width"; done; done; done
+        for page in docs ''; do for theme in light dark; do
+        if [[ -n "$page" ]]; then widths="320 390 768 1280 1440"; else widths="320 375 390 768 1280 1440"; fi
+        for width in $widths; do echo "${page:-index}-$theme-$width.png"; done; done; done
+        echo "${base}docs/"; echo "$base")"
+      [[ "$order" == "$expected" ]] || fail "browser: the report under $base is not the matrix in its order: $(diff <(echo "$expected") <(echo "$order") | head -n 5)"
+      # The whole summary line; the Pages base of the real output, with the
+      # keyboard checks, prints the line of main (check.sh asserts it).
+      grep -Fxq "browser-check: 2 pages, both themes, five or six widths; 0 redirect pages; the parts pages, matrix passed ($base)." <<<"$result" ||
+        fail "browser: no summary line under $base in: $result"
+    fi
+  done
+
+  # A failure in one cell of the parallel matrix fails the check and names
+  # the page, the theme and the width: here the docs page in the dark theme
+  # at 320 px only.
+  expect_browser_fault matrix-cell /agent-codeyard/ matrix docs/index.html \
+    '<style>@media (max-width: 330px) { html[data-theme=dark] main { width: 1000px; } }</style>' \
+    "/agent-codeyard/docs/ dark 320 px: Horizontal overflow"
+
+  # Hard-coded paths that only the Pages base shows: an asset under '/' and
+  # an absolute /docs/ link.
+  expect_browser_fault asset-under-root /agent-codeyard/ pages index.html \
+    '<link rel="stylesheet" href="/s.css">' "/agent-codeyard/ at 390 px: /s.css answers 404"
+  expect_browser_fault absolute-docs-link /agent-codeyard/ pages index.html \
+    '<a href="/docs/">docs</a>' "links to /docs/, which is outside the base path /agent-codeyard/"
+  # Hard-coded paths that only the root shows, which the root base, without
+  # the matrix, still finds: a route that a script writes for the Pages
+  # base, and an asset of the base joined with a second slash.
+  expect_browser_fault route-assumes-base / pages docs/index.html \
+    '<script>document.querySelector("main").insertAdjacentHTML("beforeend", "<a href=\"/agent-codeyard/docs/\">docs</a>")</script>' \
+    "/docs/ at 390 px: links to /agent-codeyard/docs/, which is not in the output"
+  expect_browser_fault double-slash-asset / pages index.html \
+    '<img src="//fonts/f.png" alt="">' "/ at 390 px: requests http://fonts/f.png, which is not on the site"
+else
+  echo "check-test: no Playwright Chromium here; the checks of browser-check.mjs are skipped." >&2
+fi
+
 # The website check of scripts/verify.conf runs npm ci only when the install
 # is missing or older than package-lock.json. It runs here in a copy with a
 # recording npm and check scripts that only pass.
