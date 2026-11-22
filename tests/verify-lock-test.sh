@@ -241,6 +241,163 @@ run_verify "$tmp/one" "$tmp/nested.out" || { cat "$tmp/nested.out" >&2; fail "a 
 grep -Fqx inner "$WORK_LOG" || fail "the nested heavy check did not run"
 [[ ! -e "$lock" ]] || fail "the slot was not released after the nested run"
 
+# A parallel run ('parallel: <n>') holds the slot while any process of any of
+# its checks lives: the lock records the process group of every check that
+# runs, and releases the slot only when all have ended.
+cat >"$tmp/one/scripts/verify.conf" <<'CONF'
+parallel: 3
+heavy: browser
+light [lint]: echo light >>"$WORK_LOG"
+browser [browser]: heavy-work
+second [browser]: heavy-work
+CONF
+
+# start_parallel_holder: starts the parallel run in the background and waits
+# until both of its heavy checks started and the lock records both groups.
+start_parallel_holder() {
+  local waited=0
+
+  rm -f "$WORK_STARTED" "$WORK_GO"
+  : >"$WORK_LOG"
+  run_verify "$tmp/one" "$tmp/holder.out" 2>/dev/null &
+  holder=$!
+  holders+=("$holder")
+  until [[ "$(grep -c '^heavy ' "$WORK_LOG")" -eq 2 && "$(sed -n 's/^group=//p' "$lock/owner" 2>/dev/null | wc -w | tr -d ' ')" -eq 2 ]]; do
+    kill -0 "$holder" 2>/dev/null || { cat "$tmp/holder.out" >&2; fail "the parallel holder ended before its heavy checks started"; }
+    waited=$((waited + 1))
+    [[ "$waited" -lt 300 ]] || { cat "$tmp/holder.out" >&2; fail "the heavy checks of the parallel holder did not start together"; }
+    sleep 0.1
+  done
+  read -r -a parallel_groups <<<"$(sed -n 's/^group=//p' "$lock/owner")"
+  for group in "${parallel_groups[@]}"; do
+    [[ "$group" =~ ^[1-9][0-9]*$ ]] && kill -0 -- "-$group" 2>/dev/null ||
+      fail "the lock records a group that is not one of the running checks: ${parallel_groups[*]}"
+  done
+}
+
+# Released on a normal exit, when every check has ended.
+start_parallel_holder
+status=0
+WORK_LOG="$WORK_LOG.two" run_verify "$tmp/two" "$tmp/busy.out" || status=$?
+[[ "$status" -eq 75 ]] || { cat "$tmp/busy.out" >&2; fail "a run took the slot while a parallel holder ran: exit $status"; }
+touch "$WORK_GO"
+wait "$holder" || { cat "$tmp/holder.out" >&2; fail "the parallel holding run failed"; }
+[[ ! -e "$lock" ]] || fail "the slot was not released when the parallel run ended"
+grep -Fq "Verification passed" "$tmp/holder.out" || fail "the parallel holding run did not pass"
+
+# Released when the run is terminated, after every check is stopped.
+start_parallel_holder
+kill -TERM "$(holder_verify_pid)"
+{ wait "$holder"; } 2>/dev/null || true
+[[ ! -e "$lock" ]] || fail "the slot was not released when the parallel run was terminated"
+for group in "${parallel_groups[@]}"; do
+  kill -0 -- "-$group" 2>/dev/null && fail "a check of a terminated parallel run was not stopped (group $group)"
+done
+
+# After a crash every check runs on: the slot stays held while one of them
+# lives, also when the other has ended, and is recovered after.
+start_parallel_holder
+kill -KILL "$(holder_verify_pid)"
+{ wait "$holder"; } 2>/dev/null || true
+[[ -e "$lock" ]] || fail "the crash of a parallel run left no lock"
+kill -TERM -- "-${parallel_groups[0]}" 2>/dev/null || true
+for ((waited = 0; waited < 100; waited++)); do
+  kill -0 -- "-${parallel_groups[0]}" 2>/dev/null || break
+  sleep 0.1
+done
+kill -0 -- "-${parallel_groups[1]}" 2>/dev/null || fail "the second check of the crashed parallel run ended, so the slot was not tested"
+: >"$WORK_LOG.two"
+status=0
+WORK_LOG="$WORK_LOG.two" run_verify "$tmp/two" "$tmp/orphan.out" || status=$?
+[[ "$status" -eq 75 ]] || { cat "$tmp/orphan.out" >&2; fail "a run took the slot while a check of a crashed parallel run still ran: exit $status"; }
+[[ ! -s "$WORK_LOG.two" ]] || fail "a run started a check while a check of a crashed parallel run still ran"
+touch "$WORK_GO"
+for ((waited = 0; waited < 300; waited++)); do
+  kill -0 -- "-${parallel_groups[1]}" 2>/dev/null || break
+  sleep 0.1
+done
+run_verify "$tmp/two" "$tmp/recover.out" || { cat "$tmp/recover.out" >&2; fail "a run after the crash of a parallel run did not recover the slot"; }
+grep -Fq "removed the stale lock" "$tmp/recover.out" || fail "the recovery after a parallel run did not say that it removed a stale lock"
+
+# A check that ends and leaves a process of its group behind: the group stays
+# recorded until that process is gone, so the slot is not free while it lives.
+cat >"$tmp/bin/leave-child" <<'EOF'
+#!/usr/bin/env bash
+heavy-work </dev/null >/dev/null 2>&1 &
+echo "$!" >"$WORK_LEFT"
+EOF
+chmod +x "$tmp/bin/leave-child"
+export WORK_LEFT="$tmp/left"
+
+# leftover_alive: succeeds while the process that leave-child left lives.
+leftover_alive() {
+  [[ -s "$WORK_LEFT" ]] && kill -0 "$(cat "$WORK_LEFT")" 2>/dev/null
+}
+
+# await_leftover_gone: lets the leftover go and waits until it has ended.
+await_leftover_gone() {
+  touch "$WORK_GO"
+  for ((waited = 0; waited < 300; waited++)); do
+    leftover_alive || return 0
+    sleep 0.1
+  done
+  fail "the process left by a check did not end"
+}
+
+# On a normal exit, one check at a time and in parallel: the run ends only
+# with the slot held or the leftover stopped, never with the slot free while
+# the leftover lives.
+for conf in "heavy: leaver"$'\n'"leaver [browser]: leave-child" \
+  "parallel: 2"$'\n'"heavy: leaver"$'\n'"leaver [browser]: leave-child"$'\n'"light [lint]: true"; do
+  printf '%s\n' "$conf" >"$tmp/one/scripts/verify.conf"
+  rm -f "$WORK_GO" "$WORK_LEFT"
+  run_verify "$tmp/one" "$tmp/leaver.out" || { cat "$tmp/leaver.out" >&2; fail "a run whose check leaves a process behind failed"; }
+  [[ -s "$WORK_LEFT" ]] || fail "the leaving check did not start its process"
+  if leftover_alive && [[ ! -e "$lock" ]]; then
+    fail "the slot was released while a process of a check of the run still lived ($(head -n 1 <<<"$conf"))"
+  fi
+  await_leftover_gone
+  rm -rf "$lock"
+done
+
+# After a crash of a parallel run: the leaving check has ended, its leftover
+# lives, and the other check is stopped. The slot stays held for the
+# leftover, and is recovered once it is gone.
+cat >"$tmp/one/scripts/verify.conf" <<'CONF'
+parallel: 2
+heavy: leaver second
+leaver [browser]: leave-child
+second [browser]: heavy-work
+CONF
+rm -f "$WORK_GO" "$WORK_LEFT" "$WORK_STARTED"
+: >"$WORK_LOG"
+run_verify "$tmp/one" "$tmp/holder.out" 2>/dev/null &
+holder=$!
+holders+=("$holder")
+for ((waited = 0; waited < 300; waited++)); do
+  [[ "$(grep -c '^heavy ' "$WORK_LOG")" -lt 2 ]] || ! grep -Fq -- "-- leaver took" "$tmp/holder.out" || break
+  kill -0 "$holder" 2>/dev/null || { cat "$tmp/holder.out" >&2; fail "the parallel run ended before its leaving check ended"; }
+  sleep 0.1
+done
+grep -Fq -- "-- leaver took" "$tmp/holder.out" || { cat "$tmp/holder.out" >&2; fail "the leaving check of the parallel run did not end"; }
+leftover_alive || fail "the process left by the check ended, so the slot was not tested"
+read -r -a parallel_groups <<<"$(sed -n 's/^group=//p' "$lock/owner")"
+kill -KILL "$(holder_verify_pid)"
+{ wait "$holder"; } 2>/dev/null || true
+for group in "${parallel_groups[@]}"; do
+  [[ "$group" -eq "$(ps -o pgid= -p "$(cat "$WORK_LEFT")" | tr -d ' ')" ]] || kill -TERM -- "-$group" 2>/dev/null || true
+done
+sleep 0.5
+leftover_alive || fail "the process left by the check ended with the others, so the slot was not tested"
+: >"$WORK_LOG.two"
+status=0
+WORK_LOG="$WORK_LOG.two" run_verify "$tmp/two" "$tmp/orphan.out" || status=$?
+[[ "$status" -eq 75 ]] || { cat "$tmp/orphan.out" >&2; fail "a run took the slot while a process left by a check of a crashed run still lived: exit $status"; }
+[[ ! -s "$WORK_LOG.two" ]] || fail "a run started a check while a process left by a check of a crashed run still lived"
+await_leftover_gone
+run_verify "$tmp/two" "$tmp/recover.out" || { cat "$tmp/recover.out" >&2; fail "a run after the leftover of a crashed run ended did not recover the slot"; }
+grep -Fq "removed the stale lock" "$tmp/recover.out" || fail "the recovery after the leftover ended did not say that it removed a stale lock"
+
 # The configuration of 'heavy:' is checked.
 for conf in "heavy: missing"$'\n'"light: true" "heavy [x]: light"$'\n'"light: true" "heavy: light"$'\n'"heavy: light"$'\n'"light: true"; do
   printf '%s\n' "$conf" >"$tmp/two/scripts/verify.conf"

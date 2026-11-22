@@ -25,6 +25,9 @@ unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
 unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
 unset WORKFLOW_RISK_HINT
 unset VERIFY_TRUSTED_TREES VERIFY_ORIGIN CODEYARD_AGENT_SESSION
+# The number of checks at a time of a run of verify.sh that started this test
+# (VERIFY_PARALLEL): a verify.sh that the test runs keeps its own fixture's.
+unset VERIFY_PARALLEL
 
 make_fake_agents() {
   local bin="$1"

@@ -213,10 +213,26 @@ set_mode() {
 # reading, and a file that keeps its inode would change under it.
 staged_suffix=".sync-template.$$"
 
+# template_version <commit> <path>
+# Prints the template's version of <path> at <commit>, without the lines
+# that are the template's own setting and never a project's: the line
+# 'parallel: <n>' of scripts/verify.conf, the number of checks that run at a
+# time, which the template chose for its own checks on its own host. A
+# project runs its checks one at a time until it sets its own line, and a
+# line it set is kept: the sync neither adds, changes, nor removes it.
+template_version() {
+  if [[ "$2" == "scripts/verify.conf" ]]; then
+    template_git show "$1:$2" >"$work/version" || return 1
+    grep -Ev '^[[:space:]]*parallel[[:space:]]*:' "$work/version" || true
+  else
+    template_git show "$1:$2"
+  fi
+}
+
 # take <path>: writes the target version of <path> into the project.
 take() {
   mkdir -p "$(dirname "$root/$1")"
-  template_git show "$target:$1" >"$root/$1$staged_suffix"
+  template_version "$target" "$1" >"$root/$1$staged_suffix"
   mv -f "$root/$1$staged_suffix" "$root/$1"
   set_mode "$1"
 }
@@ -286,9 +302,9 @@ while IFS=$'\t' read -r status path; do
       continue
       ;;
     A) : >"$work/base" ;;
-    *) template_git show "$base:$path" >"$work/base" ;;
+    *) template_version "$base" "$path" >"$work/base" ;;
   esac
-  template_git show "$target:$path" >"$work/target"
+  template_version "$target" "$path" >"$work/target"
 
   if [[ ! -e "$file" ]]; then
     if [[ "$status" == "A" ]]; then
@@ -337,7 +353,7 @@ if [[ "$base_ownership_known" -eq 1 ]]; then
       notes+=("$path: newly owned by the template, but is not a regular file in the project; left unchanged")
       continue
     fi
-    template_git show "$target:$path" >"$work/target"
+    template_version "$target" "$path" >"$work/target"
     if [[ ! -e "$file" ]]; then
       take "$path"
       added+=("$path (newly owned by the template)")

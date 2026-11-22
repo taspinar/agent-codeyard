@@ -109,7 +109,7 @@ rm -r "$project/.agents/approval-requests"
 [[ -z "$(git -C "$project" ls-files -o -i --exclude-standard)" ]] || fail "the fixture hides files of the workflow"
 {
   sed -nE 's/^([a-z0-9-]+)( \[[^]]*\])?( partition [^:]+)?: .*/pass: \1/p' "$project/scripts/verify.conf" |
-    grep -v '^pass: budget-seconds$'
+    grep -Ev '^pass: (budget-seconds|parallel)$'
 } >"$project/.agents/verification-baseline"
 [[ -s "$project/.agents/verification-baseline" ]] || fail "the fixture has no baseline"
 git -C "$project" add -A
