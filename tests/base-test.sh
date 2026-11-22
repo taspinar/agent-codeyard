@@ -5,7 +5,7 @@ set -euo pipefail
 # The base branch of a feature (scripts/lib/base.sh): the recorded base of the
 # branch, else the default of the project in .agents/template.conf, else main.
 # The end-to-end case, a project whose features use 'develop', is in
-# run-feature-test.sh; publish-feature-test.sh covers the pull request.
+# run-feature-rounds-test.sh; publish-feature-test.sh covers the pull request.
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 

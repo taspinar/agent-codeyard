@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "4c298cbefbbe286271c1ecfeb9129e8cfa11bd34",
+  "commit": {
+    "branch": "feature/446-split-run-feature-test",
+    "parent": "fb9ca4ba6be5cf68b3472a8f8adb8b3f5210a705",
+    "base": "fb9ca4ba6be5cf68b3472a8f8adb8b3f5210a705"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/verify-workflow.conf: an existing check or line is changed or removed"
+  ],
+  "explanation": "Issue #446: Split run-feature-test.sh into parts with a scenario register (step 5 of #345). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

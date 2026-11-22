@@ -519,7 +519,7 @@ stopped main review-feature.sh 21
 stopped feature/21-thing triage-review.sh .agents/reviews/missing.json
 stopped feature/21-thing apply-triage.sh .agents/triage/missing.json
 # run-feature.sh names the step of the run; its other stops, with status 1
-# and 3, are checked in tests/run-feature-test.sh.
+# and 3, are checked in tests/run-feature-<part>-test.sh.
 expected_step=implementation stopped main run-feature.sh 21 thing
 grep -Fq "the implementation failed before a worktree existed" <<<"$(lines "$repo" | jq -r 'select(.type == "run-end") | .reason')" ||
   fail "the stop of run-feature.sh is not its own reason"
