@@ -49,12 +49,10 @@ jobs:
       - name: Install the dependencies
         working-directory: website
         run: npm ci --no-audit --no-fund
-      - name: Install the browser for the website checks
-        working-directory: website
-        run: npx --no-install playwright install --with-deps chromium
-      - name: Check the site against the repository
-        working-directory: website
-        run: ./check.sh --build
+      # The verification of ci.yml, on the pull request and on main, runs
+      # ./check.sh --build with the browser checks for the same commit: this
+      # job builds only for the base path it publishes under and checks that
+      # output.
       - id: pages
         uses: actions/configure-pages@v5
       - name: Build the site

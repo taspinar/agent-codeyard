@@ -2,6 +2,8 @@
 
 # Tests check.sh on small outputs written here, without a build: a correct
 # output under each base path passes, and every kind of fault is reported.
+# Also tests that the website check of scripts/verify.conf installs the
+# dependencies only when they are missing or older than package-lock.json.
 #
 # Run from anywhere: ./website/check-test.sh
 
@@ -166,6 +168,39 @@ if [[ -d "$site/node_modules" ]]; then
   fi
 else
   echo "check-test: no node_modules in $site; the browser checks are skipped." >&2
+fi
+
+# The website check of scripts/verify.conf runs npm ci only when the install
+# is missing or older than package-lock.json. It runs here in a copy with a
+# recording npm and check scripts that only pass.
+website_check="$(sed -n 's/^website: *//p' "$site/../scripts/verify.conf" 2>/dev/null || true)"
+if [[ -n "$website_check" ]]; then
+  copy="$work/install"
+  mkdir -p "$copy/website" "$work/install-bin"
+  : >"$copy/website/.codeyard-site"
+  printf '#!/bin/sh\nexit 0\n' >"$copy/website/check-test.sh"
+  cp "$copy/website/check-test.sh" "$copy/website/check.sh"
+  printf '#!/bin/sh\necho "$*" >>"%s"\nmkdir -p node_modules && : >node_modules/.package-lock.json\n' "$work/npm.log" >"$work/install-bin/npm"
+  chmod +x "$copy/website/check-test.sh" "$copy/website/check.sh" "$work/install-bin/npm"
+  : >"$copy/website/package-lock.json"
+
+  # install_runs <case>: runs the check and reports whether npm ci ran.
+  install_runs() {
+    rm -f "$work/npm.log"
+    (cd "$copy" && PATH="$work/install-bin:$PATH" bash -eo pipefail -c "$website_check") >"$work/install.out" 2>&1 ||
+      { cat "$work/install.out" >&2; fail "$1: the website check fails"; }
+    [[ -f "$work/npm.log" ]] && grep -q '^ci ' "$work/npm.log"
+  }
+
+  install_runs "no install" || fail "without node_modules, npm ci does not run"
+  touch -t 200001010000 "$copy/website/package-lock.json"
+  ! install_runs "current install" || fail "with an install newer than package-lock.json, npm ci runs"
+  touch -t 200001010000 "$copy/website/node_modules/.package-lock.json"
+  ! install_runs "same age" || fail "with an install as old as package-lock.json, npm ci runs"
+  touch "$copy/website/package-lock.json"
+  install_runs "outdated install" || fail "with an install older than package-lock.json, npm ci does not run"
+  rm "$copy/website/node_modules/.package-lock.json"
+  install_runs "install without its lock" || fail "with node_modules but no .package-lock.json, npm ci does not run"
 fi
 
 if [[ "$failures" -gt 0 ]]; then

@@ -1,8 +1,10 @@
 # Documentation validation
 
 Run `npm ci` in this directory, then `npm run check`. The website check
-is also run by the repository's existing verification and the Pages workflow.
-It builds and link-checks the project path (currently
+is also run by the repository's verification, which runs `npm ci` only when
+`node_modules` is missing or older than `package-lock.json`; the Pages
+workflow checks only the output it publishes, under its own base path.
+The check builds and link-checks the project path (currently
 `/agent-codeyard/`) and `/`, runs the site's
 unit and search tests, and uses Playwright Chromium and axe-core on every
 built HTML page, including 404, in light and dark themes at 375, 768 and

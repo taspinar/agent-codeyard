@@ -1,0 +1,21 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "819027a10247f874c7781ad81b4f73232cffe9d8",
+  "commit": {
+    "branch": "feature/442-install-and-build-the",
+    "parent": "be3ee4e4043b626936406ae3014471783e90f343",
+    "base": "be3ee4e4043b626936406ae3014471783e90f343"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".github/workflows/pages.yml: the file defines or carries out the workflow and its gate",
+    "scripts/verify.conf: an existing check or line is changed or removed",
+    "the independent review classified the impact on the architecture as major: The feature changes the Pages deployment workflow and the shared verification configuration. The workflow continues to build and check the deployed base path, while CI remains responsible for the broader browser checks. ",
+    "the review could not confirm: The duration of the website check before and after, from .agents/verification/durations or the run records, is in the pull request."
+  ],
+  "explanation": "Issue #442: Install and build the website once per verification (step 4 of #345). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
