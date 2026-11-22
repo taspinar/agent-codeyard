@@ -18,9 +18,12 @@
 # remove it, and takes the slot. A process is the holder only when its PID and
 # its start time both match the record, so a reused PID is not taken for the
 # holder. The holder starts each check in a process group of its own and
-# records it in the lock ('group='), and the run is over only when the holder
-# is gone and no process of that group remains: a check that outlives its
-# crashed holder still holds the slot. Only a run that is confirmed over is
+# records it in the lock ('group=', the groups of all checks that run at the
+# same time, separated by spaces, when the run starts several: 'parallel:'),
+# and the run is over only when the holder is gone and no process of those
+# groups remains: a check that outlives its crashed holder still holds the
+# slot. A reader that knows only one group (an older verify-lock.sh) reads a
+# list as a value it cannot check, and counts the slot as busy. Only a run that is confirmed over is
 # stale: when a process cannot be inspected (ps does not show the process of
 # another user, or kill is not permitted), the slot counts as busy.
 #
@@ -102,19 +105,27 @@ verify_lock_alive() {
 
 # verify_lock_held <owner-file>
 # Like verify_lock_alive, but for the whole run of the holder: succeeds while
-# the holder or a process of the check group it recorded exists. Returns 1
-# only when the holder is confirmed gone and so is every process of its group,
-# and 2 when that cannot be told.
+# the holder or a process of a check group it recorded exists. Returns 1
+# only when the holder is confirmed gone and so is every process of its
+# groups, and 2 when that cannot be told.
 verify_lock_held() {
   local alive=0
+  local groups=()
   local group
+  local unknown=0
 
   verify_lock_alive "$1" || alive=$?
   [[ "$alive" -eq 1 ]] || return "$alive"
-  group="$(verify_lock_field "$1" group)"
-  [[ -n "$group" ]] || return 1
-  [[ "$group" =~ ^[1-9][0-9]*$ ]] || return 2
-  verify_lock_exists "-$group"
+  read -r -a groups <<<"$(verify_lock_field "$1" group)"
+  for group in ${groups[@]+"${groups[@]}"}; do
+    [[ "$group" =~ ^[1-9][0-9]*$ ]] || return 2
+    alive=0
+    verify_lock_exists "-$group" || alive=$?
+    [[ "$alive" -ne 0 ]] || return 0
+    [[ "$alive" -eq 1 ]] || unknown=1
+  done
+  [[ "$unknown" -eq 0 ]] || return 2
+  return 1
 }
 
 # verify_lock_ancestor <pid>: succeeds when <pid> is this shell or one of its
@@ -254,11 +265,12 @@ verify_lock_acquire() {
   return "$VERIFY_LOCK_BUSY"
 }
 
-# verify_lock_record_group <pgid>
-# Records the process group of the check that this holder starts now, or
-# clears it with an empty <pgid>. The owner file is replaced, never edited in
-# place, so a reader sees the old record or the new one.
-verify_lock_record_group() {
+# verify_lock_write_groups <pgids>
+# Records the process groups of the checks of this holder that run now,
+# separated by spaces, or clears them with an empty list. The owner file is
+# replaced, never edited in place, so a reader sees the old record or the
+# new one. Only the holder writes it.
+verify_lock_write_groups() {
   local owner
 
   [[ -n "$verify_lock_acquired" ]] || return 0
@@ -271,6 +283,26 @@ verify_lock_record_group() {
   verify_lock_group="$1"
 }
 
+# verify_lock_add_group <pgid>
+# Records the process group of a check that this holder starts now, next to
+# those of its checks that still run.
+verify_lock_add_group() {
+  verify_lock_write_groups "${verify_lock_group:+$verify_lock_group }$1"
+}
+
+# verify_lock_remove_group <pgid>
+# Called when the check of <pgid> ended: removes its group from the record
+# once no process of it remains, and so every other recorded group that is
+# empty. A check can end and leave a process of its group behind; that group
+# stays recorded, so that the slot stays held while the process lives, also
+# after a crash of this run, and verify_lock_release stops it at the end.
+verify_lock_remove_group() {
+  local alive
+
+  alive="$(verify_lock_groups_alive)"
+  [[ "$alive" == "$verify_lock_group" ]] || verify_lock_write_groups "$alive"
+}
+
 # verify_lock_await_group <holder-pid>
 # Run by a check as its first step: waits until the holder recorded this
 # check's group ($BASHPID, its leader). Fails when the holder is gone before,
@@ -279,31 +311,52 @@ verify_lock_await_group() {
   local owner
 
   owner="$(verify_lock_path)/owner"
-  until [[ "$(verify_lock_field "$owner" group)" == "$BASHPID" ]]; do
+  until [[ " $(verify_lock_field "$owner" group) " == *" $BASHPID "* ]]; do
     kill -0 "$1" 2>/dev/null || return 1
     sleep 0.05
   done
 }
 
+# verify_lock_groups_alive: the recorded groups of this holder of which a
+# process still exists, separated by spaces.
+verify_lock_groups_alive() {
+  local groups=()
+  local group
+  local alive=""
+
+  read -r -a groups <<<"$verify_lock_group"
+  for group in ${groups[@]+"${groups[@]}"}; do
+    ! kill -0 -- "-$group" 2>/dev/null || alive="${alive:+$alive }$group"
+  done
+  printf '%s\n' "$alive"
+}
+
 # verify_lock_release
 # Gives the slot back when this shell took it and still holds it. A check
 # that is still running (the holder was interrupted) is stopped first, with
-# SIGTERM to its process group; when it has not ended after ten seconds, the
-# lock stays, and the next run recovers it once the group is gone.
+# SIGTERM to its process group; when the checks have not ended after ten
+# seconds, the lock stays, and the next run recovers it once their groups
+# are gone.
 verify_lock_release() {
   local lock
   local tick
+  local alive
+  local group
 
   [[ -n "$verify_lock_acquired" ]] || return 0
   lock="$(verify_lock_path)"
-  if [[ -n "$verify_lock_group" ]] && kill -0 -- "-$verify_lock_group" 2>/dev/null; then
-    kill -TERM -- "-$verify_lock_group" 2>/dev/null || true
+  alive="$(verify_lock_groups_alive)"
+  if [[ -n "$alive" ]]; then
+    for group in $alive; do
+      kill -TERM -- "-$group" 2>/dev/null || true
+    done
     for ((tick = 0; tick < 100; tick++)); do
-      kill -0 -- "-$verify_lock_group" 2>/dev/null || break
+      alive="$(verify_lock_groups_alive)"
+      [[ -n "$alive" ]] || break
       sleep 0.1
     done
-    if kill -0 -- "-$verify_lock_group" 2>/dev/null; then
-      echo "Note: the check in process group $verify_lock_group did not end; the slot for heavy verification stays held until it has (lock $lock)." >&2
+    if [[ -n "$alive" ]]; then
+      echo "Note: the check in process group(s) $alive did not end; the slot for heavy verification stays held until it has (lock $lock)." >&2
       verify_lock_acquired=""
       return 0
     fi

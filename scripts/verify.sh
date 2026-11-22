@@ -65,6 +65,16 @@ records_arguments=("$@")
 # heavy check, such as --only of the light groups, takes no slot. Without a
 # 'heavy:' line nothing is locked.
 #
+# scripts/verify.conf may declare one 'parallel: <n>': up to <n> checks of the
+# run, over the checks of both files, run at the same time, each in a process
+# group of its own with /dev/null as its standard input. They start in the
+# order of the files; the output of each is kept apart and printed as one
+# block when it ends, and the summary, the durations, the exit status, and the
+# record are those of a run of the same checks one at a time. A run that holds
+# the slot for heavy verification records the group of every check that runs.
+# VERIFY_PARALLEL=<n> overrides the line for one run; a check does not inherit
+# it. Without either, the checks run one at a time.
+#
 # A project that adopted the workflow records how its checks ended before any
 # change: './scripts/verify.sh --baseline', started by the owner once, runs
 # the checks of scripts/verify.conf and writes the result of each to
@@ -159,6 +169,11 @@ usage() {
   echo "another run holds it, the summary shows BUSY with that run, no check runs,"
   echo "nothing is recorded, and the exit status is 75. Without the line nothing locks."
   echo
+  echo "A line 'parallel: <n>' in scripts/verify.conf runs up to <n> checks of both files"
+  echo "at a time; the output of each check follows as one block when it ends, and the"
+  echo "result is that of a run one at a time. VERIFY_PARALLEL=<n> overrides it for one"
+  echo "run. Without either, the checks run one at a time."
+  echo
   echo "--baseline runs the checks of scripts/verify.conf once, before any change of an"
   echo "adopted project, and records how each ended in $baseline_relative:"
   echo "passed, failed, or unavailable. It is not a verification and records no pass;"
@@ -187,7 +202,7 @@ usage() {
 
 config_fail() {
   echo "Error: $*" >&2
-  echo "Declare required checks as '<name>: <command>', '<name> [<group>]: <command>', '<name> [<group>] partition <file>: <command>', or '<name> [<group>] budget: <command>', a target for their duration as 'budget-seconds: <n>', and the checks that need the machine to themselves as 'heavy: <check>...'." >&2
+  echo "Declare required checks as '<name>: <command>', '<name> [<group>]: <command>', '<name> [<group>] partition <file>: <command>', or '<name> [<group>] budget: <command>', a target for their duration as 'budget-seconds: <n>', the number of checks at a time as 'parallel: <n>' (scripts/verify.conf only), and the checks that need the machine to themselves as 'heavy: <check>...'." >&2
   exit 1
 }
 
@@ -309,9 +324,10 @@ fi
 # results and the durations of the checks (lib/verification.sh), and the
 # index of a fingerprint.
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/verify.XXXXXX")"
-# The slot for heavy verification is given back however the run ends; a
-# signal ends it through this trap too.
-trap 'rm -rf "$scratch"; ! declare -F verify_lock_release >/dev/null || verify_lock_release' EXIT
+# The checks of a parallel run that still run are stopped, and the slot for
+# heavy verification is given back, however the run ends; a signal ends it
+# through this trap too.
+trap '! declare -F parallel_stop >/dev/null || parallel_stop; ! declare -F verify_lock_release >/dev/null || verify_lock_release; rm -rf "$scratch"' EXIT
 budgets_file="$scratch/budgets"
 durations_file="$scratch/durations"
 
@@ -377,6 +393,7 @@ budget_seconds=""
 project_budget_seconds=""
 workflow_budget_seconds=""
 heavy=()
+parallel_value=""
 accepted_names=()
 accepted_reasons=()
 accepted_lines=()
@@ -400,6 +417,8 @@ completed_status() {
 # 'budget-seconds:' sets budget_seconds, the target for the duration of the
 # checks of <file>. The reserved entry 'heavy:' sets heavy to 'yes' for the
 # checks of <file> that it names. In scripts/verify.conf (<paths-entry> 'no'),
+# the reserved entry 'parallel: <n>' sets parallel_value, the number of checks
+# that run at a time; in the other file it is refused. There,
 # the reserved entry 'accepted-failure: <check> <reason>' adds the owner's
 # exception for the failure of a check to accepted_names and accepted_reasons;
 # a scoped exception sets accepted_scopes to 'changed-files' (its reason is
@@ -496,6 +515,18 @@ load_checks() {
         accepted_reasons+=("$value")
         accepted_statuses+=("")
       fi
+      continue
+    fi
+    if [[ "$name" == "parallel" ]]; then
+      [[ "$paths_entry" == "no" ]] ||
+        config_fail "'parallel' is declared in scripts/verify.conf only, where it covers the checks of both files, not on line $line_number of $label."
+      [[ -z "$group" && -z "$budget" && -z "$partition" ]] ||
+        config_fail "'parallel' is a setting, not a check: it takes no group or partition and is no budget check, on line $line_number of $label."
+      [[ "$value" =~ ^[1-9][0-9]*$ ]] ||
+        config_fail "'parallel' needs a whole number of checks greater than 0, on line $line_number of $label: $value"
+      [[ -z "$parallel_value" ]] ||
+        config_fail "'parallel' is declared more than once in $label."
+      parallel_value="$value"
       continue
     fi
     if [[ "$name" == "heavy" ]]; then
@@ -900,6 +931,17 @@ if [[ "$recordable" -eq 1 ]]; then
   fi
 fi
 
+# How many checks run at a time: 'parallel: <n>' of scripts/verify.conf, or
+# VERIFY_PARALLEL for one run; one at a time without either.
+parallel_jobs="${parallel_value:-1}"
+parallel_source="parallel: $parallel_jobs in scripts/verify.conf"
+if [[ -n "${VERIFY_PARALLEL:-}" ]]; then
+  [[ "$VERIFY_PARALLEL" =~ ^[1-9][0-9]*$ ]] ||
+    config_fail "VERIFY_PARALLEL needs a whole number of checks greater than 0: $VERIFY_PARALLEL"
+  parallel_jobs="$VERIFY_PARALLEL"
+  parallel_source="VERIFY_PARALLEL=$parallel_jobs"
+fi
+
 # The slot for heavy verification, taken only when a heavy check is going to
 # run. A run that finds it busy starts no check and records nothing: it is
 # not a verification, and not a failure of a check.
@@ -940,11 +982,35 @@ fi
 # record_duration <index> <ms> <result>
 # Keeps the duration of a check that ran: for the duration budgets below, and
 # with lib/verification.sh for the record and the run record. <result> is
-# 'pass', 'fail', or 'budget'.
+# 'pass', 'fail', or 'budget'. A parallel run, whose checks end in any
+# order, writes the durations when every check has ended, in the order of the
+# files (record_duration_file).
 record_duration() {
   durations[$1]="$2"
+  duration_results[$1]="$3"
+  [[ "$parallel_jobs" -gt 1 ]] || record_duration_file "$1"
+}
+
+# record_duration_file <index>: adds the duration of the check to the record.
+record_duration_file() {
   ! declare -F verification_duration_add >/dev/null ||
-    verification_duration_add "$durations_file" "${names[$1]}" "$(config_of "$1")" "$2" "$3"
+    verification_duration_add "$durations_file" "${names[$1]}" "$(config_of "$1")" "${durations[$1]}" "${duration_results[$1]}"
+}
+
+# wall_clock <first-index> <end-index>: in a parallel run, the time from the
+# start of the first of the checks <first-index> to <end-index> - 1 to the
+# end of the last, in milliseconds; nothing when none of them ran.
+wall_clock() {
+  local index
+  local first=""
+  local last=""
+
+  for ((index = $1; index < $2; index++)); do
+    [[ -n "${check_started[$index]:-}" && -n "${check_ended[$index]:-}" ]] || continue
+    [[ -n "$first" && "$first" -le "${check_started[$index]}" ]] || first="${check_started[$index]}"
+    [[ -n "$last" && "$last" -ge "${check_ended[$index]}" ]] || last="${check_ended[$index]}"
+  done
+  [[ -z "$first" ]] || echo "$((last - first))"
 }
 
 # config_of <index>: the file that declares the check.
@@ -957,22 +1023,30 @@ config_of() {
 # checks of the file <label>, with its target. Over it, the summary shows
 # BUDGET with the total, the target, and the five slowest checks, and the
 # result is kept as a budget result named 'duration of <label>': a
-# measurement that fails nothing. Within it, nothing is shown.
+# measurement that fails nothing. Within it, nothing is shown. The target is
+# compared with the sum of the durations; a parallel run also shows the
+# wall-clock time of those checks next to it.
 duration_budget() {
   local label="$1"
   local target="$2"
   local index
   local total=0
   local output
+  local wall=""
+  local wall_text=""
 
   [[ -n "$target" ]] || return 0
   for ((index = $3; index < $4; index++)); do
     total=$((total + ${durations[$index]:-0}))
   done
   [[ "$total" -gt $((target * 1000)) ]] || return 0
+  if [[ "$parallel_jobs" -gt 1 ]]; then
+    wall="$(wall_clock "$3" "$4")"
+    [[ -z "$wall" ]] || wall_text=", $(seconds_text "$wall") wall-clock"
+  fi
   output="$scratch/duration-budget.out"
   {
-    echo "$(seconds_text "$total") in total, target ${target}s; the slowest checks:"
+    echo "$(seconds_text "$total") in total$wall_text, target ${target}s; the slowest checks:"
     for ((index = $3; index < $4; index++)); do
       [[ -z "${durations[$index]:-}" ]] || printf '%s\t%s\n' "${durations[$index]}" "${names[$index]}"
     done | sort -t $'\t' -k1,1nr | head -n 5 | while IFS=$'\t' read -r ms check; do
@@ -980,7 +1054,7 @@ duration_budget() {
     done
   } >"$output"
   echo "Note: the checks of $label took $(seconds_text "$total"), over the target of ${target}s. A budget is a measurement, not a failure: the verification does not fail for it, and nothing repairs it." >&2
-  results+=("BUDGET  duration of $label ($(seconds_text "$total"), target ${target}s)")
+  results+=("BUDGET  duration of $label ($(seconds_text "$total")$wall_text, target ${target}s)")
   while IFS= read -r line; do
     results+=("        $line")
   done < <(tail -n +2 "$output")
@@ -995,7 +1069,7 @@ duration_budget() {
 run_check() {
   if [[ "${3:-}" == "stdout" ]]; then
     (
-      unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
+      unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE VERIFY_PARALLEL
       unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
       cd "$root" && bash -eo pipefail -c "$1"
     ) | tee "$2"
@@ -1003,14 +1077,14 @@ run_check() {
   fi
   if [[ -n "$2" ]]; then
     (
-      unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
+      unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE VERIFY_PARALLEL
       unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
       cd "$root" && bash -eo pipefail -c "$1"
     ) 2>&1 | tee "$2"
     return "${PIPESTATUS[0]}"
   fi
   (
-    unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
+    unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE VERIFY_PARALLEL
     unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
     cd "$root" && bash -eo pipefail -c "$1"
   )
@@ -1109,7 +1183,7 @@ scoped_changed_files() {
   fi
   set +e
   (
-    unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE
+    unset AGENT_CONFIG_FILE ATTRIBUTION_CONFIG_FILE VERIFY_PARALLEL
     unset RECORDS_RUN_ID RECORDS_FILE RECORDS_COMMAND RECORDS_KIND RECORDS_SUBJECT RECORDS_VERIFICATION RECORDS_DISABLED
     cd "$root" && bash -eo pipefail -c "$command \"\$@\"" verify-scope "${files[@]}"
   )
@@ -1285,77 +1359,62 @@ outcomes=()
 exceeded=0
 duration_exceeded=0
 durations=()
-for index in "${!names[@]}"; do
-  if [[ "$index" -eq "$project_count" ]]; then
-    [[ -z "$workflow_skipped" ]] || break
-    echo
-    echo "== Workflow self-tests: $workflow_note =="
-  fi
-  name="${names[$index]}"
-  command="${commands[$index]}"
-  budget="${budgets[$index]}"
-  if skipped_check "$index"; then
-    continue
-  fi
-  read -r tool _ <<<"$command"
+duration_results=()
+check_started=()
+check_ended=()
+check_output=""
+check_capture=""
 
+# check_header <index>: the line that opens the output of a check.
+check_header() {
   echo
-  if [[ "$budget" == "yes" ]]; then
-    echo "-- $name (budget): $command"
+  if [[ "${budgets[$1]}" == "yes" ]]; then
+    echo "-- ${names[$1]} (budget): ${commands[$1]}"
   else
-    echo "-- $name: $command"
+    echo "-- ${names[$1]}: ${commands[$1]}"
   fi
+}
 
-  if ! (cd "$root" && command -v "$tool" >/dev/null 2>&1); then
-    echo "Error: required check '$name' cannot run; '$tool' is missing or not executable." >&2
-    failure_result "$index" "missing tool: $tool"
-    outcomes[$index]="unavailable: $name missing tool: $tool"
-    record_duration "$index" 0 fail
-    continue
-  fi
+# check_missing <index> <tool>: the result of a check whose tool is missing
+# or not executable; it does not run. Its block ends with its duration, 0s,
+# as the block of every check does.
+check_missing() {
+  echo "Error: required check '${names[$1]}' cannot run; '$2' is missing or not executable." >&2
+  echo "-- ${names[$1]} took $(seconds_text 0)"
+  failure_result "$1" "missing tool: $2"
+  outcomes[$1]="unavailable: ${names[$1]} missing tool: $2"
+  record_duration "$1" 0 fail
+}
 
-  started="$(now_ms)"
-  set +e
-  # A check is not part of the run that verifies: a workflow script that it
-  # starts, as the self-tests do, must not write into that run's records, and
-  # must not use the agent or attribution configuration that was chosen for
-  # that run. The output of a budget check is kept: it is the measurement.
-  output=""
-  capture=""
-  [[ "$budget" != "yes" ]] || output="$scratch/budget-$name.out"
-  if [[ "$(accepted_scope "$name")" == "recorded" ]]; then
-    output="$scratch/recorded-$name.out"
-    capture=stdout
+# check_capture_of <index>: sets check_output and check_capture, the
+# arguments of run_check. A check is not part of the run that verifies: a
+# workflow script that it starts, as the self-tests do, must not write into
+# that run's records, and must not use the agent or attribution
+# configuration that was chosen for that run (run_check). The output of a
+# budget check is kept: it is the measurement.
+check_capture_of() {
+  check_output=""
+  check_capture=""
+  [[ "${budgets[$1]}" != "yes" ]] || check_output="$scratch/budget-${names[$1]}.out"
+  if [[ "$(accepted_scope "${names[$1]}")" == "recorded" ]]; then
+    check_output="$scratch/recorded-${names[$1]}.out"
+    check_capture=stdout
   fi
-  if [[ -n "${verify_lock_acquired:-}" ]]; then
-    # The run holds the slot: the check runs in a process group of its own
-    # (job control), which the lock records before the check starts, so that
-    # the slot stays held while any process of the check lives, also after a
-    # crash of this run. Its standard input is /dev/null: a job outside the
-    # terminal's foreground group must not read from it.
-    set -m
-    (
-      verify_lock_await_group "$$" || exit 1
-      run_check "$command" "$output" "$capture"
-    ) </dev/null &
-    check_pid=$!
-    set +m
-    if ! verify_lock_record_group "$check_pid"; then
-      # The check waits for that record: it is stopped and fails.
-      echo "Error: the process group of check '$name' could not be recorded in the lock $(verify_lock_path)." >&2
-      kill -TERM -- "-$check_pid" 2>/dev/null || true
-    fi
-    wait "$check_pid"
-    status=$?
-    verify_lock_record_group ""
-  else
-    run_check "$command" "$output" "$capture"
-    status=$?
-  fi
-  set -e
-  elapsed=$(($(now_ms) - started))
-  echo "-- $name took $(seconds_text "$elapsed")"
+}
 
+# check_conclude <index> <status> <elapsed-ms>: the result of a check that
+# ran, from its exit status.
+check_conclude() {
+  local index="$1"
+  local status="$2"
+  local elapsed="$3"
+  local name="${names[$1]}"
+  local budget="${budgets[$1]}"
+  local output
+  local line
+
+  check_capture_of "$index"
+  output="$check_output"
   if [[ "$status" -eq 0 ]]; then
     if [[ "$budget" == "yes" ]]; then
       results+=("PASS  $name (budget within its target)")
@@ -1404,7 +1463,254 @@ for index in "${!names[@]}"; do
     fi
     record_duration "$index" "$elapsed" fail
   fi
-done
+}
+
+# run_sequential: the checks one at a time, in the order of the files, each
+# with its output as it comes.
+run_sequential() {
+  local index
+  local tool
+  local started
+  local status
+  local elapsed
+  local check_pid
+
+  for index in "${!names[@]}"; do
+    if [[ "$index" -eq "$project_count" ]]; then
+      [[ -z "$workflow_skipped" ]] || break
+      echo
+      echo "== Workflow self-tests: $workflow_note =="
+    fi
+    if skipped_check "$index"; then
+      continue
+    fi
+    read -r tool _ <<<"${commands[$index]}"
+    check_header "$index"
+    if ! (cd "$root" && command -v "$tool" >/dev/null 2>&1); then
+      check_missing "$index" "$tool"
+      continue
+    fi
+
+    check_capture_of "$index"
+    started="$(now_ms)"
+    set +e
+    if [[ -n "${verify_lock_acquired:-}" ]]; then
+      # The run holds the slot: the check runs in a process group of its own
+      # (job control), which the lock records before the check starts, so that
+      # the slot stays held while any process of the check lives, also after a
+      # crash of this run. Its standard input is /dev/null: a job outside the
+      # terminal's foreground group must not read from it.
+      set -m
+      (
+        verify_lock_await_group "$$" || exit 1
+        run_check "${commands[$index]}" "$check_output" "$check_capture"
+      ) </dev/null &
+      check_pid=$!
+      set +m
+      if ! verify_lock_add_group "$check_pid"; then
+        # The check waits for that record: it is stopped and fails.
+        echo "Error: the process group of check '${names[$index]}' could not be recorded in the lock $(verify_lock_path)." >&2
+        kill -TERM -- "-$check_pid" 2>/dev/null || true
+      fi
+      wait "$check_pid"
+      status=$?
+      verify_lock_remove_group "$check_pid"
+    else
+      run_check "${commands[$index]}" "$check_output" "$check_capture"
+      status=$?
+    fi
+    set -e
+    elapsed=$(($(now_ms) - started))
+    echo "-- ${names[$index]} took $(seconds_text "$elapsed")"
+    check_conclude "$index" "$status" "$elapsed"
+  done
+}
+
+# The checks of a parallel run that are running: their indexes, and the
+# process (and process group) of each.
+parallel_active=()
+parallel_pids=()
+
+# parallel_start <index>
+# Starts a check in the background, in a process group of its own (job
+# control), with its standard input /dev/null and its output, standard
+# output and error together, in a file of its own. A run that holds the slot
+# for heavy verification records the group in the lock before the check
+# begins, as run_sequential does; the slot then stays held while any process
+# of any of its checks lives.
+parallel_start() {
+  local index="$1"
+  local pid
+
+  check_capture_of "$index"
+  check_started[$index]="$(now_ms)"
+  set -m
+  (
+    if [[ -n "${verify_lock_acquired:-}" ]]; then
+      verify_lock_await_group "$$" || exit 1
+    fi
+    status=0
+    run_check "${commands[$index]}" "$check_output" "$check_capture" || status=$?
+    now_ms >"$scratch/check-$index.end" 2>/dev/null || true
+    exit "$status"
+  ) </dev/null >"$scratch/check-$index.log" 2>&1 &
+  pid=$!
+  set +m
+  parallel_pids[$index]="$pid"
+  parallel_active+=("$index")
+  if [[ -n "${verify_lock_acquired:-}" ]] && ! verify_lock_add_group "$pid"; then
+    # The check waits for that record: it is stopped and fails.
+    echo "Error: the process group of check '${names[$index]}' could not be recorded in the lock $(verify_lock_path)." >&2
+    kill -TERM -- "-$pid" 2>/dev/null || true
+  fi
+}
+
+# parallel_finish <index>
+# Takes the result of a check that ended: prints its output as one block,
+# with the line that opens it and its duration, and keeps its summary lines
+# apart, so that the summary follows the order of the files.
+parallel_finish() {
+  local index="$1"
+  local pid="${parallel_pids[$1]}"
+  local status=0
+  local ended=""
+  local elapsed
+  local kept=()
+  local other
+
+  wait "$pid" || status=$?
+  [[ ! -s "$scratch/check-$index.end" ]] || ended="$(cat "$scratch/check-$index.end")"
+  [[ "$ended" =~ ^[0-9]+$ ]] || ended="$(now_ms)"
+  check_ended[$index]="$ended"
+  elapsed=$((ended - check_started[index]))
+  [[ -z "${verify_lock_acquired:-}" ]] || verify_lock_remove_group "$pid"
+  for other in "${parallel_active[@]}"; do
+    [[ "$other" == "$index" ]] || kept+=("$other")
+  done
+  parallel_active=(${kept[@]+"${kept[@]}"})
+  unset "parallel_pids[$index]"
+
+  check_header "$index"
+  cat "$scratch/check-$index.log"
+  echo "-- ${names[$index]} took $(seconds_text "$elapsed")"
+  parallel_conclude "$index" check_conclude "$index" "$status" "$elapsed"
+}
+
+# parallel_conclude <index> <function> <argument>...: runs <function>, which
+# adds the summary lines of the check <index>, and keeps those lines in a
+# file of their own until the run has ended.
+parallel_conclude() {
+  local index="$1"
+
+  shift
+  results=()
+  "$@"
+  printf '%s\n' ${results[@]+"${results[@]}"} >"$scratch/results-$index"
+  results=()
+}
+
+# parallel_stop: stops the checks that still run, when the run ends before
+# them (a signal), with SIGTERM to the process group of each, and waits up to
+# ten seconds for them. A run that holds the slot for heavy verification keeps
+# it while one of them lives (verify_lock_release).
+parallel_stop() {
+  local index
+  local tick
+  local alive
+
+  [[ "${#parallel_active[@]}" -gt 0 ]] || return 0
+  for index in "${parallel_active[@]}"; do
+    kill -TERM -- "-${parallel_pids[$index]}" 2>/dev/null || true
+  done
+  for ((tick = 0; tick < 100; tick++)); do
+    alive=0
+    for index in "${parallel_active[@]}"; do
+      ! kill -0 -- "-${parallel_pids[$index]}" 2>/dev/null || alive=1
+    done
+    [[ "$alive" -eq 1 ]] || break
+    sleep 0.1
+  done
+  parallel_active=()
+}
+
+# run_parallel: up to parallel_jobs checks at a time. They start in the order
+# of the files, and a check starts as soon as one ends. The output of each is
+# printed as one block when it ends; the summary lines are put together in
+# the order of the files.
+run_parallel() {
+  local queue=()
+  local index
+  local next=0
+  local tool
+  local ended
+  local line
+  local wall
+  local sum=0
+
+  for index in "${!names[@]}"; do
+    [[ "$index" -lt "$project_count" || -z "$workflow_skipped" ]] || break
+    if skipped_check "$index"; then
+      continue
+    fi
+    queue+=("$index")
+  done
+  # A signal ends the run through the EXIT trap, which stops the checks.
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  echo
+  echo "Up to $parallel_jobs checks run at a time ($parallel_source). The output of each check follows as one block when it ends; the summary keeps the order of the files."
+  if [[ "${#names[@]}" -gt "$project_count" && -z "$workflow_skipped" ]]; then
+    echo
+    echo "== Workflow self-tests: $workflow_note =="
+  fi
+  while [[ "$next" -lt "${#queue[@]}" || "${#parallel_active[@]}" -gt 0 ]]; do
+    while [[ "$next" -lt "${#queue[@]}" && "${#parallel_active[@]}" -lt "$parallel_jobs" ]]; do
+      index="${queue[$next]}"
+      next=$((next + 1))
+      read -r tool _ <<<"${commands[$index]}"
+      if ! (cd "$root" && command -v "$tool" >/dev/null 2>&1); then
+        check_header "$index"
+        parallel_conclude "$index" check_missing "$index" "$tool"
+        continue
+      fi
+      parallel_start "$index"
+    done
+    ended=0
+    for index in ${parallel_active[@]+"${parallel_active[@]}"}; do
+      if ! kill -0 "${parallel_pids[$index]}" 2>/dev/null; then
+        parallel_finish "$index"
+        ended=1
+      fi
+    done
+    [[ "$ended" -eq 1 || "${#parallel_active[@]}" -eq 0 ]] || sleep 0.1
+  done
+
+  for index in ${queue[@]+"${queue[@]}"}; do
+    if [[ -f "$scratch/results-$index" ]]; then
+      while IFS= read -r line; do
+        results+=("$line")
+      done <"$scratch/results-$index"
+    fi
+    sum=$((sum + ${durations[$index]:-0}))
+  done
+  # The durations are recorded in the order of the files, as in a run of one
+  # check at a time.
+  for index in ${queue[@]+"${queue[@]}"}; do
+    [[ -z "${duration_results[$index]:-}" ]] || record_duration_file "$index"
+  done
+  wall="$(wall_clock 0 "${#names[@]}")"
+  if [[ -n "$wall" ]]; then
+    echo
+    echo "-- ${#queue[@]} checks, up to $parallel_jobs at a time, took $(seconds_text "$wall") wall-clock; their durations add up to $(seconds_text "$sum")"
+  fi
+}
+
+if [[ "$parallel_jobs" -gt 1 ]]; then
+  run_parallel
+else
+  run_sequential
+fi
 
 # The targets for the duration of each file's checks, compared only in a
 # complete run of that file.

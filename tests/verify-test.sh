@@ -1262,6 +1262,153 @@ run_changed || fail "--changed with a changed tests/lib-fakes.sh failed: $(cat "
 [[ "$(grep -c . "$project/tools.log")" -eq 1 ]] || fail "--changed selected a self-test for tests/lib-fakes.sh: $(cat "$project/tools.log")"
 git -C "$project" checkout -q -- tests/lib-fakes.sh
 
+# Parallel runs: 'parallel: <n>' in scripts/verify.conf runs up to <n> checks
+# at a time, over the checks of both files; VERIFY_PARALLEL overrides it for
+# one run. Without the line, and with 1, the checks run one at a time.
+# overlap-check <log> <name>, a check that logs its start and its end:
+# max_overlap <log> prints the most checks that ran at the same time.
+printf '#!/usr/bin/env bash\necho "start $2" >>"$1"\nsleep 0.4\necho "end $2" >>"$1"\n' >"$tmp/bin/overlap-check"
+chmod +x "$tmp/bin/overlap-check"
+max_overlap() {
+  awk '$1 == "start" { now++; if (now > most) most = now } $1 == "end" { now-- } END { print most + 0 }' "$1"
+}
+overlap_checks=()
+for check in one two three four five; do
+  overlap_checks+=("$check: overlap-check overlap.log $check")
+done
+# expect_overlap <expected> <description> [<parallel-line>]: with VERIFY_PARALLEL from the caller.
+expect_overlap() {
+  local project
+
+  project="$(setup_project "overlap-$RANDOM" ${3:+"$3"} "${overlap_checks[@]}")"
+  run_with "$project" || fail "a run of checks that pass failed ($2): $(cat "$project/out.log")"
+  [[ "$(max_overlap "$project/overlap.log")" -eq "$1" ]] ||
+    fail "$2: $(max_overlap "$project/overlap.log") checks ran at the same time, not $1: $(cat "$project/overlap.log")"
+  [[ "$(grep -c '^start' "$project/overlap.log")" -eq 5 ]] || fail "$2: not every check ran"
+}
+expect_overlap 1 "without a 'parallel:' line"
+expect_overlap 1 "with 'parallel: 1'" "parallel: 1"
+expect_overlap 2 "with 'parallel: 2'" "parallel: 2"
+expect_overlap 3 "with 'parallel: 3'" "parallel: 3"
+VERIFY_PARALLEL=3 expect_overlap 3 "with VERIFY_PARALLEL=3 and no line"
+VERIFY_PARALLEL=1 expect_overlap 1 "with VERIFY_PARALLEL=1 over 'parallel: 3'" "parallel: 3"
+# The line covers the self-tests too, together with the checks of the project.
+project="$(setup_workflow_project parallel-workflow)"
+printf '%s\n' "parallel: 4" "${overlap_checks[@]:0:2}" >"$project/scripts/verify.conf"
+printf '%s\n' "paths: tools" "${overlap_checks[@]:2}" >"$project/scripts/verify-workflow.conf"
+run_with "$project" --all || fail "a parallel run with self-tests failed: $(cat "$project/out.log")"
+[[ "$(max_overlap "$project/overlap.log")" -eq 4 ]] ||
+  fail "the checks of both files did not share the slots of 'parallel: 4': $(cat "$project/overlap.log")"
+grep -Fq "== Workflow self-tests: requested with --all ==" "$project/out.log" || fail "a parallel run did not say why the self-tests run"
+
+# The result is that of a run of one check at a time: a failing check, a
+# missing tool, a command that is not found (127), a budget over its target,
+# a KNOWN failure of the baseline, and a check that is killed, with the same
+# summary in the order of the files and the same exit status.
+project="$(setup_project parallel-results "parallel: 4" "slow: sleep 0.5" "lint: ruff check ." "types: tsc --noEmit" \
+  "lost: true && no-such-command" "size budget: echo 'over the target'; exit 3" "known: pytest" \
+  "killed: kill -KILL \$\$" "fast: true")"
+mkdir -p "$project/.agents"
+printf 'pass: slow\nfail: known exit 3\npass: lint\n' >"$project/.agents/verification-baseline"
+summaries=()
+for jobs in 1 4; do
+  status=0
+  VERIFY_PARALLEL="$jobs" MOCK_RUFF_EXIT=1 MOCK_PYTEST_EXIT=3 run_with "$project" || status=$?
+  [[ "$status" -eq 1 ]] || fail "a failing run with VERIFY_PARALLEL=$jobs exited with $status, not 1: $(cat "$project/out.log")"
+  summaries+=("$(summary_of "$project")")
+done
+[[ "${summaries[0]}" == "${summaries[1]}" ]] ||
+  fail "a parallel run has another summary than a run of one check at a time:"$'\n'"${summaries[0]}"$'\n'"---"$'\n'"${summaries[1]}"
+for expected in "PASS  slow" "FAIL  lint (exit 1): a regression, it passed in the baseline" "FAIL  types (missing tool: tsc)" \
+  "FAIL  lost (exit 127, a command was not found)" "BUDGET  size (exit 3)" "KNOWN  known (exit 3)" "FAIL  killed (exit 137)" "PASS  fast"; do
+  grep -Fq -- "$expected" <<<"${summaries[1]}" || fail "the parallel summary lacks '$expected': ${summaries[1]}"
+done
+[[ "$(grep -E '^(PASS|FAIL|BUDGET|KNOWN) ' <<<"${summaries[1]}" | awk '{ print $2 }' | paste -sd ' ' -)" == "slow lint types lost size known killed fast" ]] ||
+  fail "the parallel summary does not keep the order of the file: ${summaries[1]}"
+# The check whose tool is missing is one block too, with its duration, in
+# both runs.
+for jobs in 1 4; do
+  VERIFY_PARALLEL="$jobs" MOCK_RUFF_EXIT=1 MOCK_PYTEST_EXIT=3 run_with "$project" || true
+  block="$(sed -n '/^-- types: tsc --noEmit$/,/^-- types took /p' "$project/out.log")"
+  grep -Fxq -- "-- types took 0.0s" <<<"$block" &&
+    grep -Fxq "Error: required check 'types' cannot run; 'tsc' is missing or not executable." <<<"$block" ||
+    fail "with VERIFY_PARALLEL=$jobs the block of the check with a missing tool lacks its error or duration: $(cat "$project/out.log")"
+done
+# A run in which every check passes passes, also in parallel.
+project="$(setup_project parallel-pass "parallel: 3" "lint: ruff check ." "tests: pytest" "slow: sleep 0.3")"
+run_with "$project" || fail "a parallel run of passing checks failed: $(cat "$project/out.log")"
+grep -Fxq "Verification passed." "$project/out.log" || fail "a parallel run that passed did not say so"
+grep -Eq '^-- 3 checks, up to 3 at a time, took [0-9]+\.[0-9]s wall-clock; their durations add up to [0-9]+\.[0-9]s$' "$project/out.log" ||
+  fail "a parallel run did not report its wall-clock time: $(cat "$project/out.log")"
+
+# A check does not inherit VERIFY_PARALLEL: a verify.sh that it starts, as a
+# self-test does, runs its own fixture as that fixture's line says.
+project="$(setup_project parallel-inherit "plain: test -z \"\${VERIFY_PARALLEL+set}\"" "other: true")"
+VERIFY_PARALLEL=2 run_with "$project" || fail "a check inherited VERIFY_PARALLEL: $(cat "$project/out.log")"
+
+# The output does not interleave: the output of each check is one block,
+# its header, everything it printed, and its duration, when it ends.
+printf '#!/usr/bin/env bash\nfor step in 1 2 3 4; do echo "$1 $step"; echo "$1 error $step" >&2; sleep 0.1; done\n' >"$tmp/bin/chatty"
+chmod +x "$tmp/bin/chatty"
+project="$(setup_project parallel-blocks "parallel: 3" "alpha: chatty alpha" "beta: chatty beta" "gamma: chatty gamma")"
+run_with "$project" || fail "a parallel run of chatty checks failed: $(cat "$project/out.log")"
+for check in alpha beta gamma; do
+  block="$(sed -n "/^-- $check: chatty $check\$/,/^-- $check took /p" "$project/out.log")"
+  [[ "$(grep -c . <<<"$block")" -eq 10 ]] && ! grep -Ev "^(-- $check|$check )" <<<"$block" >/dev/null ||
+    fail "the output of $check is not one block of its own: $(cat "$project/out.log")"
+done
+
+# The durations are recorded in the order of the files, whichever check ends
+# first, and the target of a file's duration shows the wall-clock time next
+# to the sum.
+project="$(setup_recorded_project parallel-durations)"
+printf '%s\n' "parallel: 3" "budget-seconds: 1" "slow: sleep 0.8" "lint: ruff check ." "medium: sleep 0.6" >"$project/scripts/verify.conf"
+git -C "$project" commit -qam "Parallel checks"
+run_with "$project" || fail "a parallel run over its duration target failed: $(cat "$project/out.log")"
+[[ "$(cut -f1 "$project$durations" | paste -sd ' ' -)" == "slow lint medium" ]] ||
+  fail "a parallel run did not record the durations in the order of the file: $(cat "$project$durations")"
+grep -Eq '^BUDGET  duration of scripts/verify\.conf \(1\.[0-9]s, 0\.[0-9]s wall-clock, target 1s\)$' "$project/out.log" ||
+  fail "the duration target of a parallel run does not show the wall-clock time: $(summary_of "$project")"
+[[ -s "$project$record" ]] || fail "a parallel run that passed was not recorded"
+run_with "$project" --reuse && grep -Fq "already passed" "$project/out.log" || fail "the pass of a parallel run was not reused"
+
+# A parallel run that is terminated stops the checks that still run.
+printf '#!/usr/bin/env bash\necho $$ >>"$1"\nsleep 30\n' >"$tmp/bin/long-check"
+chmod +x "$tmp/bin/long-check"
+project="$(setup_project parallel-term "parallel: 2" "first: long-check pids" "second: long-check pids")"
+PATH="$tmp/bin:/usr/bin:/bin" "$project/scripts/verify.sh" >"$project/out.log" 2>&1 &
+runner=$!
+for ((waited = 0; waited < 100; waited++)); do
+  [[ "$(grep -c . "$project/pids" 2>/dev/null)" -lt 2 ]] || break
+  sleep 0.1
+done
+[[ "$(grep -c . "$project/pids" 2>/dev/null)" -eq 2 ]] || fail "the checks of a parallel run did not start together"
+kill -TERM "$runner"
+status=0
+wait "$runner" || status=$?
+[[ "$status" -ne 0 ]] || fail "a terminated parallel run passed"
+while IFS= read -r pid; do
+  ! kill -0 "$pid" 2>/dev/null || fail "a check of a terminated parallel run still runs (PID $pid)"
+done <"$project/pids"
+
+# The line is exact: a whole number above 0, once, no group, no budget, and
+# only in scripts/verify.conf; VERIFY_PARALLEL is a whole number above 0.
+for line in "parallel: 0" "parallel: two" "parallel: 1.5" "parallel [code]: 2" "parallel budget: 2"; do
+  project="$(setup_project "parallel-refused-$RANDOM" "$line" "lint: ruff check .")"
+  expect_failure "$project" "'$line' must be refused"
+  grep -Fq "'parallel'" "$project/out.log" || fail "the refusal of '$line' did not say why: $(cat "$project/out.log")"
+done
+project="$(setup_project parallel-twice "parallel: 2" "parallel: 3" "lint: ruff check .")"
+expect_failure "$project" "'parallel' twice must be refused"
+grep -Fq "declared more than once" "$project/out.log" || fail "the refusal of a second 'parallel' did not say why"
+project="$(setup_workflow_project parallel-in-workflow)"
+printf '%s\n' "parallel: 2" "paths: tools" "self-test: pytest" >"$project/scripts/verify-workflow.conf"
+if run_with "$project" --all; then fail "'parallel' in scripts/verify-workflow.conf was accepted"; fi
+grep -Fq "'parallel' is declared in scripts/verify.conf only" "$project/out.log" || fail "the refusal of 'parallel' in the self-tests did not say why: $(cat "$project/out.log")"
+project="$(setup_project parallel-variable "lint: ruff check .")"
+if VERIFY_PARALLEL=many run_with "$project"; then fail "VERIFY_PARALLEL=many was accepted"; fi
+grep -Fq "VERIFY_PARALLEL needs a whole number" "$project/out.log" || fail "the refusal of VERIFY_PARALLEL did not say why"
+
 # Every self-test passes through tests/lib-fakes.sh before it starts anything.
 for test in "$source_root"/tests/*-test.sh; do
   grep -Eq '^source "\$(source_)?root/tests/lib-fakes\.sh"$' "$test" ||

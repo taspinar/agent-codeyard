@@ -248,6 +248,16 @@ grep -q '^no-project-check: ' "$repo/scripts/verify.conf" || fail "a project wit
 if (cd "$repo" && PATH="/usr/bin:/bin" ./scripts/verify.sh) >"$repo.verify" 2>&1; then fail "a project without a check passed the verification"; fi
 grep -Fq "nothing of the project is verified" "$repo.verify" || fail "the verification does not say that nothing is verified: $(cat "$repo.verify")"
 
+# A command of the project named like a reserved word of scripts/verify.conf,
+# such as 'parallel' (the number of checks that run at a time), is not taken
+# over as a check.
+repo="$(make_target reserved)"
+assess "$repo" '.verification[0].name = "parallel"'
+adopt "$repo" || { cat "$repo.out" >&2; fail "the adoption of a project with a command named 'parallel' failed"; }
+grep -Fqx "# Not taken over: parallel is a reserved word of this file. Add the check under another name." "$repo/scripts/verify.conf" ||
+  fail "a command named 'parallel' was not refused as a reserved word: $(cat "$repo/scripts/verify.conf")"
+if grep -q '^parallel' "$repo/scripts/verify.conf"; then fail "a command named 'parallel' became a line of scripts/verify.conf"; fi
+
 # A project whose architecture and requirements the assessment judged not
 # sufficient: the marked baseline is written at their paths, above the
 # project's text, which stays unchanged; the change only adds lines.

@@ -1009,4 +1009,52 @@ fi
   fail "a sync left changes under .github/actions/ or .agents/policy-overrides/"
 if grep -Fq "policy-overrides" "$project/.agents/template.conf"; then fail "the project needed an exclusion for its policy overrides"; fi
 
+# A sync does not bring the template's 'parallel: <n>' of scripts/verify.conf
+# into a project (Issue 450): the template chose it for its own checks on its
+# own host, so a project runs its checks one at a time until it sets its own
+# line, and keeps the line it set. The rest of the template's changes of the
+# file are taken over as before.
+template_conf "$tmp/parallel-template.conf"
+parallel_template="$tmp/parallel-template"
+mkdir -p "$parallel_template/scripts" "$parallel_template/.agents"
+sed "s#^repository:.*#repository: $parallel_template#" "$tmp/parallel-template.conf" >"$parallel_template/.agents/template.conf"
+cp "$source_root/scripts/sync-template.sh" "$parallel_template/scripts/sync-template.sh"
+lines "# The checks." "" "lint: echo lint" >"$parallel_template/scripts/verify.conf"
+git -C "$parallel_template" init -q -b main
+commit_all "$parallel_template" "Checks one at a time"
+parallel_one="$(git -C "$parallel_template" rev-parse HEAD)"
+lines "# The checks, changed by the template." "" "parallel: 4" "lint: echo lint" >"$parallel_template/scripts/verify.conf"
+commit_all "$parallel_template" "Four checks at a time"
+parallel_two="$(git -C "$parallel_template" rev-parse HEAD)"
+lines "# The checks, changed by the template." "" "parallel: 6" "lint: echo lint" >"$parallel_template/scripts/verify.conf"
+commit_all "$parallel_template" "Six checks at a time"
+# sync_parallel <label> <verify.conf of the project>...: a project of the
+# first version with that scripts/verify.conf, synced to the last version.
+sync_parallel() {
+  local project="$tmp/parallel-$1"
+
+  shift
+  mkdir -p "$project"
+  git -C "$parallel_template" archive "$parallel_one" | tar -x -C "$project"
+  git -C "$project" init -q -b main
+  commit_all "$project" "Create the project"
+  if [[ $# -gt 0 ]]; then
+    lines "$@" >"$project/scripts/verify.conf"
+    commit_all "$project" "The project's checks"
+  fi
+  run_sync "$project" --from "$parallel_one" || { cat "$project.out" >&2; fail "the sync of $project failed"; }
+  printf '%s\n' "$project"
+}
+project="$(sync_parallel unchanged)"
+grep -Fqx "# The checks, changed by the template." "$project/scripts/verify.conf" || fail "the template's change of scripts/verify.conf was not taken over"
+if grep -q '^parallel' "$project/scripts/verify.conf"; then fail "a sync brought the template's 'parallel:' into a project: $(cat "$project/scripts/verify.conf")"; fi
+project="$(sync_parallel own-checks "# The checks." "" "lint: echo lint" "tests: echo tests")"
+grep -Fqx "tests: echo tests" "$project/scripts/verify.conf" && grep -Fqx "# The checks, changed by the template." "$project/scripts/verify.conf" ||
+  fail "the sync did not merge scripts/verify.conf of a project with checks of its own: $(cat "$project/scripts/verify.conf")"
+if grep -q '^parallel' "$project/scripts/verify.conf"; then fail "a sync brought the template's 'parallel:' into a project with checks of its own: $(cat "$project/scripts/verify.conf")"; fi
+project="$(sync_parallel own-value "# The checks." "" "parallel: 2" "lint: echo lint")"
+[[ "$(grep '^parallel' "$project/scripts/verify.conf")" == "parallel: 2" ]] ||
+  fail "a sync changed the project's own 'parallel:': $(cat "$project/scripts/verify.conf")"
+if grep -Fq "CONFLICT" "$project.out"; then fail "the project's own 'parallel:' conflicted with the template's: $(cat "$project.out")"; fi
+
 echo "sync-template tests passed"

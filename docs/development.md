@@ -70,7 +70,9 @@ from the repository root, so a failing step in a pipeline or command sequence
 fails the check. Its first word is the required tool. Verification fails
 when that tool is missing or not executable, when a command exits non-zero, or
 when the configuration is missing, empty, or malformed. All checks run even
-after a failure, and a summary lists each check as `PASS` or `FAIL`.
+after a failure, one at a time or, with `parallel: <n>`, several at a time
+(see "Checks at the same time"), and a summary lists each check as `PASS` or
+`FAIL`.
 
 Every check is timed: `-- <name> took <seconds>s` follows its output, also in
 a partial run. The durations of a run are recorded with the pass in
@@ -440,7 +442,10 @@ a failure and never a repair order.
 - When the checks of the file take longer, the summary shows
   `BUDGET  duration of <file> (<total>s, target <n>s)` with the five slowest
   checks of the file under it, and the verification passes when every check
-  passed. A failing check still fails it.
+  passed. A failing check still fails it. The total is the sum of the
+  durations; a run of several checks at a time (`parallel:`) shows the
+  wall-clock time of the file's checks next to it,
+  `(<total>s, <wall>s wall-clock, target <n>s)`.
 - The result is recorded as a budget result named `duration of <file>`: with
   the pass in `.agents/verification/budgets`, in the run record, in the
   handoff note, the reviewer's context, the commit message, and the pull
@@ -473,7 +478,8 @@ run, with the output of each, are kept next to it in
 them, and a failing run removes them. The durations of its checks are kept
 the same way in `.agents/verification/durations`, one line per check with
 its name, the file that declares it, the duration in milliseconds, and its
-result (`pass` or `budget`), separated by tabs.
+result (`pass` or `budget`), separated by tabs, in the order of the files
+also when the checks ran at the same time.
 
 `./scripts/verify.sh --reuse` skips the run when the record matches the current
 content exactly, and says so. `review-feature.sh`, `apply-triage.sh`, and
@@ -677,6 +683,71 @@ exception, and the list `.agents/accepted-failures/<check>` like the
 baseline: you approve any change of it at the merge, also the one that
 shrinks it.
 
+### Checks at the same time
+
+By default `./scripts/verify.sh` runs the checks one after the other. One
+line in `scripts/verify.conf` lets it run several at a time on one machine:
+
+```text
+parallel: 4
+```
+
+- At most `<n>` checks run at the same time, over the checks of both files:
+  the checks of the project and the workflow self-tests share the slots.
+  They start in the order of the files, and the next one starts as soon as
+  one ends, so a long check listed late ends last: list the longest first.
+  Without the line, or with `parallel: 1`, the run is the one it always was.
+- `VERIFY_PARALLEL=<n>` overrides the line for one run, for example
+  `VERIFY_PARALLEL=1 ./scripts/verify.sh` to run the checks one at a time
+  while you look for a check that fails only beside another. The line and
+  the variable take a whole number greater than 0; the line is declared
+  once, only in `scripts/verify.conf`, and is not a check.
+- The output of each check is kept apart and printed as one block when the
+  check ends: its `-- <name>: <command>` line, everything it printed
+  (standard output and error together), and `-- <name> took <s>`. The blocks
+  come in the order in which the checks end; the summary keeps the order of
+  the files. After the last block one line gives the wall-clock time of the
+  run and the sum of the durations of its checks.
+- Nothing about the result changes: every check runs, also after a failure,
+  and the exit status, `PASS`, `FAIL`, `KNOWN`, `ACCEPTED`, `SCOPED`,
+  `BUDGET`, the baseline, `--only`, `--changed`, `--reuse`, and the record of
+  a pass are those of a run of the same checks one at a time. The durations
+  are recorded in the order of the files. A target for the duration of a
+  file (`budget-seconds`, "Budgets") is still compared with the sum of the
+  durations of its checks; over it, the `BUDGET` line shows the wall-clock
+  time of those checks next to the sum.
+- Each check runs in a process group of its own, with `/dev/null` as its
+  standard input: a check that reads from the terminal does not work in a
+  parallel run. `Ctrl-C`, `SIGTERM`, and `SIGHUP` stop the checks that still
+  run, with `SIGTERM` to their process groups.
+- Checks that run side by side share the checkout and the machine. A check
+  writes only into a temporary directory of its own (`mktemp -d`), never
+  into a fixed path or into the checkout, and does not depend on a port, a
+  lock, or a file that another check uses too. A check that cannot run
+  beside others is a defect of that check. A check that needs the machine to
+  itself is declared `heavy:` (see "Heavy checks and the machine-wide
+  slot"); a parallel run that holds the slot holds it while any of its checks
+  runs.
+- A sync of the template never brings the template's line into a project,
+  and never changes or removes the project's own (see "Taking over template
+  changes"): a project runs its checks one at a time until it sets a value
+  of its own, measured on its own checks and machine.
+
+The template ships `parallel: 4`, measured on its host of the runs (8 cores,
+31 GB): its 47 workflow self-tests, run side by side in one checkout, took
+707 s at four at a time instead of about 2170 s one at a time, at a load of
+up to 8.6 and with 3.1 GB of memory in use. The checks themselves take longer
+beside each other (their durations added up to 2669 s), and a higher value
+gains nothing: the load is at the number of cores already, and the longest
+check, `adopted-project` (589 s there, and itself four self-tests at a time,
+`ADOPTED_PROJECT_JOBS`), sets the lower limit. It is therefore the first
+check of `scripts/verify-workflow.conf`: it starts at once and holds one of
+the four slots, while the other checks share the rest; started last, in the
+order of the file before, it would end last. No other mechanism is needed
+for it: a simulation with the durations of a full run one at a time gave
+982 s for four at a time in that old order, 695 s with `adopted-project`
+first, and 663 s for an order by the recorded durations.
+
 ### Heavy checks and the machine-wide slot
 
 Feature worktrees share the machine: two sessions that run a browser suite or
@@ -709,13 +780,19 @@ and holds it until the run ends:
   for its light checks too.
 - The run that holds the slot starts each check in a process group of its
   own and records the group in the lock (`group=` in the file `owner`)
-  before the check begins. The check's standard input is `/dev/null`.
+  before the check begins. The check's standard input is `/dev/null`. A run
+  with `parallel:` records the groups of all checks that run at the same
+  time, separated by spaces, and holds the slot while a process of any of
+  them lives. A check that ends keeps its group in the record until no
+  process of it remains: a process that a check left behind holds the slot
+  too, and the run stops it when it ends. An older `verify-lock.sh` reads such a list as a group it
+  cannot check and counts the slot as busy.
 - The slot is released when the run ends, also by `Ctrl-C`, `SIGTERM`, or
-  `SIGHUP`: the run first stops the check that is running, with `SIGTERM` to
-  its process group. If the check has not ended within ten seconds, the lock
+  `SIGHUP`: the run first stops the checks that are running, with `SIGTERM`
+  to their process groups. If one has not ended within ten seconds, the lock
   stays until it has.
 - After a crash or `SIGKILL` the lock stays. A check that the run started
-  can outlive it, and while any process of the recorded group exists, the
+  can outlive it, and while any process of a recorded group exists, the
   slot is still held: the next run reports it `BUSY` with the group. Only
   when the holder no longer exists, with the same PID and start time, and no
   process of its group remains does the next run remove the lock, say so,
@@ -4062,6 +4139,12 @@ project's own, add `:(exclude)<path>` to `paths:` in the project's
 | The template started to list a file under `paths:` that already existed in the previous version (changed in the range or not) | Adds it when the project has no such file; keeps the project's file with other content and reports it |
 | The template changed only the executable bit | Applies it to the project's file |
 | The file, or a directory above it, is a symbolic link in the project | Reports it and writes nothing |
+
+One line is never taken over: `parallel: <n>` of `scripts/verify.conf`, the
+number of checks that the template runs at a time on its own host. The sync
+leaves it out of the template's versions of that file, so a project runs its
+checks one at a time until it sets its own line, and a line the project set
+stays as it is (see "Checks at the same time").
 
 Whether the template started to list a file is decided against the files of
 the version the project has. When that version predates the `paths:` list,

@@ -1,0 +1,21 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "a414b8d264f98274c769735a91133617e2ad2e92",
+  "commit": {
+    "branch": "feature/450-run-independent-checks-at",
+    "parent": "2b57fb3c14c30d6ebadfd8539d383fefa2516883",
+    "base": "2b57fb3c14c30d6ebadfd8539d383fefa2516883"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/verify-workflow.conf: an existing check or line is changed or removed",
+    "the independent review classified the impact on the architecture as major: The feature changes shared verification behavior and the machine-wide heavy-slot lock used by other workflow features, in scripts/verify.sh and scripts/lib/verify-lock.sh. The architecture document is a placeholder, and there are no accepted ADRs under docs/decisions to compare against. ",
+    "the completion record leaves a criterion of the owner_approval gate pending: ./scripts/verify.sh --all passes with the template's parallel: value three times in a row on the host of the run, and once with parallel: 1.",
+    "the completion record leaves a criterion of the owner_approval gate pending: The pull request reports, on the same host and base: the wall-clock time of ./scripts/verify.sh --all with parallel: 1 and with the chosen value, the duration of each check in both runs, and the CPU and memory load at the chosen value. It explains the chosen value and how adopted-project runs (point 5)."
+  ],
+  "explanation": "Issue #450: Run independent checks at the same time in verify.sh with parallel: (step 7 of #345). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
