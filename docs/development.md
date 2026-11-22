@@ -133,10 +133,14 @@ runs `tests/<x>-test.sh` when that file, `scripts/<x>.sh`, or
 `scripts/lib/<x>.sh` changed, or when `scripts/<x>.sh` or `scripts/lib/<x>.sh`
 names a changed file of `scripts/lib/` that is not a shell script as
 `lib/<name>`: a change to `scripts/lib/report.jq` selects `report-runs`, since
-`report-runs.sh` reads it. A self-test that runs no test file of its own
-is left to the full verification. It records nothing, takes neither `--only`,
-`--all`, nor `--reuse`, and the completion gate refuses it as evidence like
-`--only`. The implementer and the triage-implementer of `run-feature.sh` run
+`report-runs.sh` reads it. The self-tests of one script may be split over
+several files that source a shared part `tests/lib-<x>.sh`: a test that
+sources it counts as a test of `scripts/<x>.sh`, so a change to that script
+or to the shared part selects every part (`tests/lib-run-feature.sh` and
+the parts `tests/run-feature-<part>-test.sh`). A self-test that runs no test
+file of its own is left to the full verification. It records nothing, takes
+neither `--only`, `--all`, nor `--reuse`, and the completion gate refuses it
+as evidence like `--only`. The implementer and the triage-implementer of `run-feature.sh` run
 it instead of the full suite; the run makes the full verification after the
 session (see "Recorded verification").
 
@@ -783,6 +787,22 @@ baseline, its own ADRs, an ignore rule `*.json` that the adoption's
 section un-ignores again, and no `README.md` or `LICENSE`, and runs every
 other self-test there, four at a time, or `ADOPTED_PROJECT_JOBS` at a time
 when it is set (a lower value for a host with few cores); each has to pass.
+It starts them in the order of `scripts/verify-workflow.conf`, so the
+longest self-tests are listed first: a long test that starts last would end
+last and hold up the whole.
+
+The tests of `scripts/run-feature.sh` are split into parts,
+`tests/run-feature-<part>-test.sh`, each a check of its own, that share the
+helpers of `tests/lib-run-feature.sh`, so that no single self-test holds up
+`adopted-project`. Every case of a part starts with a line
+`scenario <id>`, its stable identifier, and the register in
+`tests/lib-run-feature.sh` (`scenario_register`) lists each identifier once.
+Each part checks at its end that the register agrees with all parts, and
+`tests/scenario-register-test.sh` checks it as a test of its own: an
+identifier defined twice, one that the register lists and no part runs, and
+one that a part runs and the register does not list each fail it. A new case
+gets an identifier and a line in the register; a case moves between parts
+without a change to the register.
 
 The self-tests start `jq`, `git`, and `bash` thousands of times. On an Apple
 Silicon Mac an x86_64 `jq`, such as the one Anaconda installs, runs under
@@ -994,7 +1014,7 @@ cannot show that nothing changed), ends with status 5, whatever the agent's own 
 named. `start-feature.sh` and `apply-triage.sh` then exit with status 5, a
 review stores nothing, and `run-feature.sh` stops without trying anything
 again, because a forged review without findings, for example, would
-otherwise go to the commit (`tests/agent-test.sh`, `tests/run-feature-test.sh`).
+otherwise go to the commit (`tests/agent-test.sh`, `tests/run-feature-verification-test.sh`).
 A changed verification record is only reported: a reuse trusts no pass that
 an agent recorded (see "Recorded verification").
 
@@ -3461,7 +3481,7 @@ session: `run-feature.sh` verifies it as a step and commits it as under
 "Low without a review". For a `medium` feature whose review has only minor
 findings and suggestions, the light triage prefers to defer or accept them,
 and the round ends without a fix session and without the reviews after it
-("Light triage"). `tests/run-feature-test.sh` runs the same fake features
+("Light triage"). `tests/run-feature-policy-test.sh` runs the same fake features
 under no profile, `standard`, and `light` and compares the sessions: one
 implementer and one reviewer for the documentation, against one implementer
 under `light`; one implementer, three reviews, one triage, and one fix

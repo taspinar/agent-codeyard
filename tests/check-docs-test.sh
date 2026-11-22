@@ -236,14 +236,20 @@ check "$repo"
 if [[ -f "$source_root/website/.codeyard-site" && -f "$source_root/.github/workflows/pages.yml" ]]; then
   repo="$tmp/project"
   mkdir -p "$repo"
-  (cd "$source_root" && git ls-files -z) |
+  # The content as it is verified: the worktree with its new files. A file
+  # that the worktree deleted is kept as committed, since check-docs accepts
+  # a name of a file that the feature removed and the copy has no history.
+  (cd "$source_root" && git ls-files -z --cached --others --exclude-standard) |
     while IFS= read -r -d '' path; do
       case "$path" in
         website/* | .github/workflows/pages.yml) continue ;;
       esac
-      [[ -f "$source_root/$path" ]] || continue
       mkdir -p "$repo/$(dirname "$path")"
-      cp -p "$source_root/$path" "$repo/$path"
+      if [[ -f "$source_root/$path" ]]; then
+        cp -p "$source_root/$path" "$repo/$path"
+      else
+        git -C "$source_root" show "HEAD:$path" >"$repo/$path" 2>/dev/null || rm -f "$repo/$path"
+      fi
     done
   git -C "$repo" init -q -b main
   git -C "$repo" config user.name "Check Docs Test"

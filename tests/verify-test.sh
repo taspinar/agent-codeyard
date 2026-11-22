@@ -1223,6 +1223,45 @@ for option in --all --reuse "--only default"; do
   if run_changed $option; then fail "--changed was combined with $option"; fi
 done
 
+# The self-tests of one script split over parts that source a shared file
+# tests/lib-<script>.sh, as tests/run-feature-<part>-test.sh source
+# tests/lib-run-feature.sh: a change to the script, or to the shared file,
+# selects every part; a change to one part selects that part. A shared file
+# of no script (tests/lib-fakes.sh) selects nothing by itself.
+project="$(setup_recorded_project changed-parts)"
+mkdir -p "$project/tests"
+printf 'one\n' >"$project/scripts/alpha.sh"
+printf '# shared\n' >"$project/tests/lib-alpha.sh"
+printf '# fakes\n' >"$project/tests/lib-fakes.sh"
+for name in alpha-one alpha-two other; do
+  printf '#!/usr/bin/env bash\nsource_root="$(cd "$(dirname "$0")/.." && pwd)"\nsource "$source_root/tests/lib-fakes.sh"\n' >"$project/tests/$name-test.sh"
+  [[ "$name" == "other" ]] || printf 'source "$source_root/tests/lib-alpha.sh"\n' >>"$project/tests/$name-test.sh"
+  printf 'echo "%s-test" >>"$MOCK_TOOL_LOG"\n' "$name" >>"$project/tests/$name-test.sh"
+  chmod +x "$project/tests/$name-test.sh"
+done
+printf '%s\n' "paths: scripts tests" "alpha-one: ./tests/alpha-one-test.sh" "alpha-two: ./tests/alpha-two-test.sh" \
+  "other: ./tests/other-test.sh" >"$project/scripts/verify-workflow.conf"
+git -C "$project" add -A
+git -C "$project" commit -qm "Self-tests of alpha in two parts"
+git -C "$project" checkout -q -b feature/2-parts
+expect_parts() {
+  local changed="$1"
+  local expected="$2"
+
+  printf '# two\n' >>"$project/$changed"
+  run_changed || fail "--changed with a changed $changed failed: $(cat "$project/out.log")"
+  [[ "$(grep -v '^ruff' "$project/tools.log" | sort | paste -sd ' ' -)" == "$expected" ]] ||
+    fail "--changed with a changed $changed selected $(grep -v '^ruff' "$project/tools.log" | sort | paste -sd ' ' -) instead of $expected: $(cat "$project/out.log")"
+  git -C "$project" checkout -q -- "$changed"
+}
+expect_parts scripts/alpha.sh "alpha-one-test alpha-two-test"
+expect_parts tests/lib-alpha.sh "alpha-one-test alpha-two-test"
+expect_parts tests/alpha-two-test.sh "alpha-two-test"
+printf '# two\n' >>"$project/tests/lib-fakes.sh"
+run_changed || fail "--changed with a changed tests/lib-fakes.sh failed: $(cat "$project/out.log")"
+[[ "$(grep -c . "$project/tools.log")" -eq 1 ]] || fail "--changed selected a self-test for tests/lib-fakes.sh: $(cat "$project/tools.log")"
+git -C "$project" checkout -q -- tests/lib-fakes.sh
+
 # Every self-test passes through tests/lib-fakes.sh before it starts anything.
 for test in "$source_root"/tests/*-test.sh; do
   grep -Eq '^source "\$(source_)?root/tests/lib-fakes\.sh"$' "$test" ||

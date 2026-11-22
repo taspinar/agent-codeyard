@@ -643,20 +643,43 @@ reads_changed_lib_file() {
   return 1
 }
 
+# shared_test_parts <test>
+# Prints the names <y> of the files tests/lib-<y>.sh that tests/<test>-test.sh
+# sources and for which scripts/<y>.sh exists: the shared part of the
+# self-tests of scripts/<y>.sh when they are split over several files
+# (tests/lib-run-feature.sh and tests/run-feature-<part>-test.sh).
+shared_test_parts() {
+  local file="$root/tests/$1-test.sh"
+  local name
+
+  [[ -f "$file" ]] || return 0
+  while IFS= read -r name; do
+    if [[ -f "$root/scripts/$name.sh" ]]; then printf '%s\n' "$name"; fi
+  done < <(sed -nE 's|^[[:space:]]*source "\$(source_)?root/tests/lib-([a-z0-9][a-z0-9-]*)\.sh"[[:space:]]*$|\2|p' "$file")
+}
+
 # select_changed_tests
 # For --changed: marks in selected_tests the self-tests of the files changed
 # since the base (changed_files): the check that runs tests/<x>-test.sh when
 # that file, scripts/<x>.sh, or scripts/lib/<x>.sh changed, or when
 # scripts/<x>.sh or scripts/lib/<x>.sh names a changed file of scripts/lib/
-# that is not a shell script (reads_changed_lib_file). A self-test that
-# runs no test file of its own is left to the full verification. Sets
-# workflow_note, or workflow_skipped when none is selected. Without a base
-# no self-test is selected: the full verification decides.
+# that is not a shell script (reads_changed_lib_file). A test that sources
+# the shared part tests/lib-<y>.sh of the self-tests of scripts/<y>.sh
+# (shared_test_parts) is selected for <y> as for <x>, and for a change to
+# tests/lib-<y>.sh. A self-test that runs no test file of its own is left
+# to the full verification. Sets workflow_note, or workflow_skipped when none
+# is selected. Without a base no self-test is selected: the full
+# verification decides.
 selected_tests=()
 select_changed_tests() {
   local list="$scratch/changed-files"
   local index
   local test
+  local shared
+  local reader
+  local selected
+  local patterns
+  local readers
   local count=0
   local chosen=""
 
@@ -667,8 +690,24 @@ select_changed_tests() {
   for ((index = project_count; index < ${#names[@]}; index++)); do
     [[ "${commands[$index]}" =~ ^\./tests/([a-z0-9][a-z0-9-]*)-test\.sh([[:space:]]|$) ]] || continue
     test="${BASH_REMATCH[1]}"
-    if tr '\0' '\n' <"$list" | grep -Fqx -e "tests/$test-test.sh" -e "scripts/$test.sh" -e "scripts/lib/$test.sh" ||
-      reads_changed_lib_file "$test" "$list"; then
+    patterns=(-e "tests/$test-test.sh" -e "scripts/$test.sh" -e "scripts/lib/$test.sh")
+    readers=("$test")
+    while IFS= read -r shared; do
+      patterns+=(-e "tests/lib-$shared.sh" -e "scripts/$shared.sh" -e "scripts/lib/$shared.sh")
+      readers+=("$shared")
+    done < <(shared_test_parts "$test")
+    selected=no
+    if tr '\0' '\n' <"$list" | grep -Fqx "${patterns[@]}"; then
+      selected=yes
+    else
+      for reader in "${readers[@]}"; do
+        if reads_changed_lib_file "$reader" "$list"; then
+          selected=yes
+          break
+        fi
+      done
+    fi
+    if [[ "$selected" == "yes" ]]; then
       selected_tests[$index]=yes
       count=$((count + 1))
       chosen="${chosen:+$chosen, }${names[$index]}"
