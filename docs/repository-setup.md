@@ -148,10 +148,13 @@ commit message and the pull request. In a team, turn it on.
 
 ## 4. Required status checks
 
-The template ships one CI job, `verify`, which runs `./scripts/verify.sh`
-(with `--all` on `main`, every night, and in the template on every pull
-request; see "Workflow self-tests" in [`docs/development.md`](development.md)),
-after a small job `scope` that is not a required check. Add `verify` to the `main` ruleset as a required status
+The template's CI runs `./scripts/verify.sh` in parallel jobs, one per group
+of checks (with `--all` on `main`, every night, and in the template on every
+pull request; see "Workflow self-tests" and "A parallel CI" in
+[`docs/development.md`](development.md)). The required check is the
+aggregate job `verify`, which passes only when every group job succeeded;
+the jobs `scope`, `mapping`, and `group-<group>` are not required checks.
+Add `verify` to the `main` ruleset as a required status
 check: enable "Require status checks to pass" and add `verify`. GitHub lists a
 check only after it ran once, so open a first pull request before adding it.
 

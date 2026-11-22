@@ -590,6 +590,7 @@ ci_website_conditions() {
     function flush() { if (step && site) print cond; step = 0; site = 0; cond = "" }
     /^[[:space:]]*#/ { next }
     /^[[:space:]]*steps:/ { flush(); insteps = 1; indent = ""; next }
+    /^  [^[:space:]]/ { flush(); insteps = 0; next }
     insteps && match($0, /^[[:space:]]*- /) && (indent == "" || RLENGTH == indent) { indent = RLENGTH; flush(); step = 1 }
     step && /website/ { site = 1 }
     step && match($0, /^[[:space:]]*(- )?if:[[:space:]]*/) { cond = substr($0, RLENGTH + 1) }
@@ -624,28 +625,44 @@ if [[ -f "$ci_workflow" ]]; then
 fi
 
 # Prints the script of the 'run: |' block of the first step of ci.yml that
-# has a line containing $2, without its indentation.
+# has a line containing $2, without its indentation. Comments do not count.
 ci_step_script() {
   awk -v marker="$2" '
     function flush() { if (hit && !done) { printf "%s", body; done = 1 } hit = 0; body = ""; inrun = 0 }
     /^[[:space:]]*steps:/ { flush(); indent = ""; next }
-    index($0, marker) { hit = 1 }
     inrun {
       match($0, /^[[:space:]]*/)
-      if ($0 ~ /^[[:space:]]*$/ || RLENGTH > runindent) { line = $0; sub(/^[[:space:]]+/, "", line); body = body line "\n"; next }
+      if ($0 ~ /^[[:space:]]*$/ || RLENGTH > runindent) { if (index($0, marker)) hit = 1; line = $0; sub(/^[[:space:]]+/, "", line); body = body line "\n"; next }
       inrun = 0
     }
+    /^[[:space:]]*#/ { next }
+    index($0, marker) { hit = 1 }
     match($0, /^[[:space:]]*- /) && (indent == "" || RLENGTH == indent) { flush(); indent = RLENGTH; hit = index($0, marker) > 0 }
     /^[[:space:]]*(- )?run: \|[[:space:]]*$/ { inrun = 1; match($0, /^[[:space:]]*(- )?/); runindent = RLENGTH; next }
     END { flush() }
   ' "$1"
 }
 
+# Prints the lines of the job $2 of ci.yml.
+ci_job_block() {
+  awk -v job="$2" '
+    /^[^[:space:]#]/ { injob = 0 }
+    /^  [^[:space:]#]/ { injob = ($0 ~ "^  " job ":") }
+    injob { print }
+  ' "$1"
+}
+
 # Prints the job-level if: of the job $2 of ci.yml.
 ci_job_condition() {
-  awk -v job="$2" '
-    /^  [^[:space:]#]/ { injob = ($0 ~ "^  " job ":") }
-    injob && /^    if:/ { sub(/^    if:[[:space:]]*/, ""); print; exit }
+  ci_job_block "$1" "$2" | awk '/^    if:/ { sub(/^    if:[[:space:]]*/, ""); print; exit }'
+}
+
+# Prints the jobs of ci.yml whose name starts with $2, one per line.
+ci_jobs() {
+  awk -v prefix="$2" '
+    /^jobs:/ { injobs = 1; next }
+    /^[^[:space:]#]/ { injobs = 0 }
+    injobs && /^  [^[:space:]#]/ { job = $1; sub(/:.*/, "", job); if (index(job, prefix) == 1) print job }
   ' "$1"
 }
 
@@ -656,8 +673,6 @@ ci_job_condition() {
 if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
   scope_script="$(ci_step_script "$ci_workflow" 'id: scope')"
   [[ -n "$scope_script" ]] || fail "ci.yml has no step 'scope' that decides which checks run"
-  verify_script="$(ci_step_script "$ci_workflow" 'scripts/verify.sh')"
-  [[ -n "$verify_script" ]] || fail "ci.yml has no step that runs verify.sh"
   mkdir -p "$tmp/ci-scope/template/.agents" "$tmp/ci-scope/project/.agents" "$tmp/ci-scope/bare"
   printf 'repository: https://github.com/Owner/Template.git\n\npaths: scripts\n' >"$tmp/ci-scope/template/.agents/template.conf"
   printf 'repository: https://github.com/owner/template\n\npaths: scripts\ncommit: 0123\n' >"$tmp/ci-scope/project/.agents/template.conf"
@@ -682,34 +697,90 @@ if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
   expect_scope project owner/project schedule all
   expect_scope bare owner/project pull_request changed
 
-  # The verify step: only 'changed' leaves out --all, also when the scope
-  # job gave nothing.
+  # The group jobs (Issue 448): each runs verify.sh for the group it
+  # declares; only 'changed' leaves out --all, also when the scope job gave
+  # nothing. Each runs unless the scope is 'none', also when the scope job
+  # failed and gave nothing, and checks out the full history: in a shallow
+  # clone verify.sh cannot tell which files changed and runs every
+  # self-test. A project's own CI without group jobs is not the template's.
   mkdir -p "$tmp/ci-verify/scripts"
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "verify.sh $*" >"%s"\n' "$tmp/ci-verify/ran" >"$tmp/ci-verify/scripts/verify.sh"
   chmod +x "$tmp/ci-verify/scripts/verify.sh"
-  for case in "changed:verify.sh " "all:verify.sh --all" ":verify.sh --all"; do
-    rm -f "$tmp/ci-verify/ran"
-    (cd "$tmp/ci-verify" && SCOPE="${case%%:*}" bash -euo pipefail -c "$verify_script") ||
-      fail "the verify step of ci.yml failed with the scope '${case%%:*}'"
-    [[ "$(cat "$tmp/ci-verify/ran" 2>/dev/null)" == "${case#*:}" ]] ||
-      fail "the verify step of ci.yml ran '$(cat "$tmp/ci-verify/ran" 2>/dev/null)' with the scope '${case%%:*}'"
+  group_jobs="$(ci_jobs "$ci_workflow" group-)"
+  [[ -n "$group_jobs" ]] || fail "ci.yml has no group jobs"
+  for job in $group_jobs; do
+    ci_job_block "$ci_workflow" "$job" >"$tmp/ci-job.yml"
+    group="$(sed -n 's/^      VERIFY_GROUP:[[:space:]]*//p' "$tmp/ci-job.yml")"
+    [[ "$group" == "${job#group-}" ]] || fail "the job $job of ci.yml declares the group '$group'"
+    verify_script="$(ci_step_script "$tmp/ci-job.yml" 'scripts/verify.sh')"
+    [[ -n "$verify_script" ]] || fail "the job $job of ci.yml has no step that runs verify.sh"
+    for case in "changed:verify.sh --only $group" "all:verify.sh --all --only $group" ":verify.sh --all --only $group"; do
+      rm -f "$tmp/ci-verify/ran"
+      (cd "$tmp/ci-verify" && SCOPE="${case%%:*}" VERIFY_GROUP="$group" bash -euo pipefail -c "$verify_script") ||
+        fail "the verify step of $job failed with the scope '${case%%:*}'"
+      [[ "$(cat "$tmp/ci-verify/ran" 2>/dev/null)" == "${case#*:}" ]] ||
+        fail "the verify step of $job ran '$(cat "$tmp/ci-verify/ran" 2>/dev/null)' with the scope '${case%%:*}'"
+    done
+    verify_condition="$(ci_job_condition "$ci_workflow" "$job")"
+    for scope in all changed ''; do
+      ci_condition_true "$tmp/ci-verify" "${verify_condition//needs.scope.outputs.verify/\'$scope\'}" ||
+        fail "the job $job of ci.yml does not run with the scope '$scope': $verify_condition"
+    done
+    ! ci_condition_true "$tmp/ci-verify" "${verify_condition//needs.scope.outputs.verify/\'none\'}" ||
+      fail "the job $job of ci.yml runs with the scope 'none': $verify_condition"
+    grep -Fq 'fetch-depth: 0' "$tmp/ci-job.yml" ||
+      fail "the job $job of ci.yml checks out without the history verify.sh compares with"
   done
-
-  # The verify job runs unless the scope is 'none', also when the scope job
-  # failed and gave nothing; a skipped required check would pass.
-  verify_condition="$(ci_job_condition "$ci_workflow" verify)"
-  for scope in all changed ''; do
-    ci_condition_true "$tmp/ci-verify" "${verify_condition//needs.scope.outputs.verify/\'$scope\'}" ||
-      fail "the verify job of ci.yml does not run with the scope '$scope': $verify_condition"
-  done
-  ! ci_condition_true "$tmp/ci-verify" "${verify_condition//needs.scope.outputs.verify/\'none\'}" ||
-    fail "the verify job of ci.yml runs with the scope 'none': $verify_condition"
-
-  # 'changed' needs the base branch in the checkout: in a shallow clone
-  # verify.sh cannot tell and runs every self-test. --all runs every night.
-  awk '/^  verify:/ { v = 1; next } /^  [^[:space:]]/ { v = 0 } v && /fetch-depth: 0/ { found = 1 } END { exit !found }' "$ci_workflow" ||
-    fail "the verify job of ci.yml checks out without the history verify.sh compares with"
   grep -Eq '^[[:space:]]+schedule:' "$ci_workflow" || fail "ci.yml has no schedule for the nightly --all"
+
+  # Only the job of the group of the website check sets up Node and the
+  # browser and uploads the website reports.
+  website_group="$(sed -nE 's/^website( \[([a-z0-9-]+)\])?:.*/\2/p' "$source_root/scripts/verify.conf")"
+  website_group="${website_group:-default}"
+  for job in $(ci_jobs "$ci_workflow" ""); do
+    ci_job_block "$ci_workflow" "$job" | grep -v '^[[:space:]]*#' >"$tmp/ci-job.yml"
+    if grep -Eq 'setup-node|playwright|upload-artifact|website/' "$tmp/ci-job.yml"; then
+      [[ "$job" == "group-$website_group" ]] ||
+        fail "the job $job of ci.yml sets up or reports the website, which is checked in group-$website_group"
+    fi
+  done
+  ci_job_block "$ci_workflow" "group-$website_group" | grep -Fq 'playwright install' ||
+    fail "the job group-$website_group of ci.yml does not install the browser for the website check"
+
+  # The aggregate job 'verify' is the required check: it always runs, needs
+  # the scope, the mapping, and every group job, and passes the needs to
+  # check-ci-groups.sh --results, except on the template's nightly run, the
+  # scope 'none' on a schedule. The scope 'none' on any other event goes to
+  # --results, which fails on the skipped group jobs.
+  [[ "$(ci_job_condition "$ci_workflow" verify)" == "always()" ]] ||
+    fail "the job verify of ci.yml does not run with if: always(): $(ci_job_condition "$ci_workflow" verify)"
+  aggregate_needs="$(ci_job_block "$ci_workflow" verify | sed -n 's/^    needs:[[:space:]]*//p')"
+  for job in scope mapping $group_jobs; do
+    [[ "$aggregate_needs" =~ [\[,[:space:]]$job[],] ]] || fail "the job verify of ci.yml does not need $job: $aggregate_needs"
+  done
+  ci_job_block "$ci_workflow" verify >"$tmp/ci-job.yml"
+  aggregate_script="$(ci_step_script "$tmp/ci-job.yml" 'check-ci-groups.sh --results')"
+  [[ -n "$aggregate_script" ]] || fail "the job verify of ci.yml does not run check-ci-groups.sh --results"
+  grep -Fq 'NEEDS: ${{ toJSON(needs) }}' "$tmp/ci-job.yml" || fail "the job verify of ci.yml does not pass toJSON(needs)"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "check-ci-groups.sh $*" >"%s"\nexit "${CHECK_STATUS:-0}"\n' "$tmp/ci-verify/ran" >"$tmp/ci-verify/scripts/check-ci-groups.sh"
+  chmod +x "$tmp/ci-verify/scripts/check-ci-groups.sh"
+  # aggregate <scope> <event> <status of --results>: the exit status of the
+  # step; 'ran' holds the call of check-ci-groups.sh.
+  aggregate() {
+    rm -f "$tmp/ci-verify/ran"
+    (cd "$tmp/ci-verify" && SCOPE="$1" EVENT="$2" NEEDS='{"needs":1}' CHECK_STATUS="$3" \
+      bash -euo pipefail -c "$aggregate_script") >/dev/null
+  }
+  aggregate none schedule 1 || fail "the aggregate of ci.yml fails on the template's nightly run"
+  [[ ! -f "$tmp/ci-verify/ran" ]] || fail "the aggregate of ci.yml checks results on the template's nightly run"
+  for case in "none pull_request" "none push" "all pull_request" "all push" "all schedule" "changed pull_request" " pull_request"; do
+    read -r scope event <<<"$case"
+    [[ -n "$event" ]] || { event="$scope"; scope=""; }
+    aggregate "$scope" "$event" 0 || fail "the aggregate of ci.yml fails with the scope '$scope' on $event when the jobs succeeded"
+    [[ "$(cat "$tmp/ci-verify/ran" 2>/dev/null)" == 'check-ci-groups.sh --results {"needs":1}' ]] ||
+      fail "the aggregate of ci.yml does not check the results with the scope '$scope' on $event: $(cat "$tmp/ci-verify/ran" 2>/dev/null)"
+    ! aggregate "$scope" "$event" 1 || fail "the aggregate of ci.yml passes with the scope '$scope' on $event when a job failed"
+  done
 
   # The token is read-only whatever the repository's default (Issue 435):
   # the top level grants contents and packages read and nothing else, and no
@@ -740,7 +811,7 @@ mkdir -p "$pr_root/work/scripts/lib" "$pr_root/work/.github/workflows" "$pr_root
 cp "$source_root/scripts/verify.sh" "$pr_root/work/scripts/"
 cp "$source_root/scripts/lib/base.sh" "$pr_root/work/scripts/lib/"
 printf 'project: true\n' >"$pr_root/work/scripts/verify.conf"
-printf 'paths: %s\n\nself-test: echo ran >>"$SELF_TEST_LOG"\n' "$pr_paths" >"$pr_root/work/scripts/verify-workflow.conf"
+printf 'paths: %s\n\nself-test [self-tests]: echo ran >>"$SELF_TEST_LOG"\n' "$pr_paths" >"$pr_root/work/scripts/verify-workflow.conf"
 printf 'name: ci\n' >"$pr_root/work/.github/workflows/ci.yml"
 printf 'name: guardrails\n' >"$pr_root/work/.github/workflows/guardrails.yml"
 printf 'name: deploy\n' >"$pr_root/work/.github/workflows/deploy.yml"
@@ -808,6 +879,17 @@ expect_pr() {
     skipped) [[ ! -f "$pr_root/ran" ]] || fail "a pull request that changes $1 (fetch-depth: $2) runs the self-tests: $(cat "$pr_root/out.log")" ;;
   esac
   grep -Fq "$4" "$pr_root/out.log" || fail "verify.sh does not say '$4' for a pull request that changes $1 (fetch-depth: $2): $(cat "$pr_root/out.log")"
+  # The group job of the self-tests decides the same, and passes when it
+  # skips them (Issue 448).
+  rm -f "$pr_root/ran"
+  (cd "$checkout" && SELF_TEST_LOG="$pr_root/ran" ./scripts/verify.sh --only self-tests >"$pr_root/out.log" 2>&1) || {
+    cat "$pr_root/out.log" >&2
+    fail "verify.sh --only self-tests failed in the checkout of a pull request that changes $1"
+  }
+  case "$3" in
+    ran) [[ -f "$pr_root/ran" ]] || fail "the group job skips the self-tests for a pull request that changes $1 (fetch-depth: $2): $(cat "$pr_root/out.log")" ;;
+    skipped) [[ ! -f "$pr_root/ran" ]] || fail "the group job runs the self-tests for a pull request that changes $1 (fetch-depth: $2): $(cat "$pr_root/out.log")" ;;
+  esac
 }
 
 expect_pr src/app.txt 0 skipped "no workflow file differs from origin/main"

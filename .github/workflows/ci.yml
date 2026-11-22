@@ -23,6 +23,18 @@ permissions:
 # (verify.sh without --all decides; a sync of the template changes them), and
 # always on main and every night. The template is the repository that
 # .agents/template.conf names under 'repository:'; it needs no nightly run.
+#
+# The checks run in parallel jobs, one per group of checks
+# (docs/development.md, "A parallel CI"): 'group-<group>' declares its group
+# as 'env: VERIFY_GROUP: <group>' and runs ./scripts/verify.sh --only that
+# group. The checks of scripts/verify.conf without a group, the project's
+# own checks and the website of the template, run in group-default; the
+# self-tests have the groups that scripts/verify-workflow.conf gives them.
+# The job 'mapping' fails when a group has no job here, for example a group
+# of a project's own: a project that adds one keeps this file as its own
+# (':(exclude).github/workflows/ci.yml' in .agents/template.conf) and adds
+# the job. The required check is the aggregate job 'verify', which passes
+# only when every group job succeeded.
 jobs:
   scope:
     runs-on: ubuntu-latest
@@ -57,11 +69,26 @@ jobs:
           echo "verify=$verify" >>"$GITHUB_OUTPUT"
           echo "Verification scope: $verify"
 
-  verify:
+  # The mapping of the groups onto the jobs of this file, as the jobs declare
+  # it: every group of ./scripts/verify.sh --groups has exactly one job
+  # 'group-<group>'. It fails for a group of a project's own that this file
+  # has no job for; see the comment at the top.
+  mapping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that every group is declared by exactly one job
+        run: ./scripts/check-ci-groups.sh --workflow .github/workflows/ci.yml
+
+  # The group of the checks without a group: the project's own checks and,
+  # in the template, the website, which only this job sets up and reports.
+  group-default:
     needs: scope
     # Runs also when the scope could not be decided, then with --all; only
     # a cancelled run or the scope 'none' skips it.
     if: ${{ !cancelled() && needs.scope.outputs.verify != 'none' }}
+    env:
+      VERIFY_GROUP: default
     runs-on: ubuntu-latest
     steps:
       # The full history: verify.sh compares with the base branch to see
@@ -81,7 +108,8 @@ jobs:
       # The website of the template is built by the verification
       # and needs the Node version it pins. The site is recognised by its
       # marker website/.codeyard-site: a project has no site, or a website/
-      # of its own without the marker, and skips these steps.
+      # of its own without the marker, and skips these steps. Its check is
+      # in this group, so no other job installs Node or the browser.
       - if: hashFiles('website/.codeyard-site') != ''
         uses: actions/setup-node@v4
         with:
@@ -92,14 +120,14 @@ jobs:
         if: hashFiles('website/.codeyard-site') != ''
         working-directory: website
         run: npm ci --no-audit --no-fund && npx --no-install playwright install --with-deps chromium
-      - name: Verify template/project
+      - name: Verify the group
         env:
           SCOPE: ${{ needs.scope.outputs.verify }}
         run: |
           if [[ "$SCOPE" == changed ]]; then
-            ./scripts/verify.sh
+            ./scripts/verify.sh --only "$VERIFY_GROUP"
           else
-            ./scripts/verify.sh --all
+            ./scripts/verify.sh --all --only "$VERIFY_GROUP"
           fi
       - name: Attach website screenshots and reports
         id: website-artifact
@@ -115,3 +143,162 @@ jobs:
           ARTIFACT_URL: ${{ steps.website-artifact.outputs.artifact-url }}
         run: |
           echo "[Download website screenshots and reports]($ARTIFACT_URL). Review every page at 375, 768 and 1440 px in both themes against website/design/PRODUCT.md and website/validation.md." >> "$GITHUB_STEP_SUMMARY"
+
+  # The self-tests, spread over groups by their duration
+  # (scripts/verify-workflow.conf).
+  group-adopted-project:
+    needs: scope
+    # Runs also when the scope could not be decided, then with --all; only
+    # a cancelled run or the scope 'none' skips it.
+    if: ${{ !cancelled() && needs.scope.outputs.verify != 'none' }}
+    env:
+      VERIFY_GROUP: adopted-project
+    runs-on: ubuntu-latest
+    steps:
+      # The full history: verify.sh compares with the base branch to see
+      # whether a workflow file changed, and runs every self-test when it
+      # cannot tell, as in a shallow clone.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The project's own toolchains and dependencies (Python, uv, Node.js,
+      # ...): a composite action that the project owns and the template never
+      # ships, so this file stays the template's. It runs only when the
+      # project has it, before the verification. See docs/development.md,
+      # "The project's CI setup".
+      - name: Set up the project
+        if: hashFiles('.github/actions/project-setup/action.yml') != ''
+        uses: ./.github/actions/project-setup
+      - name: Verify the group
+        env:
+          SCOPE: ${{ needs.scope.outputs.verify }}
+        run: |
+          if [[ "$SCOPE" == changed ]]; then
+            ./scripts/verify.sh --only "$VERIFY_GROUP"
+          else
+            ./scripts/verify.sh --all --only "$VERIFY_GROUP"
+          fi
+
+  group-self-tests-1:
+    needs: scope
+    # Runs also when the scope could not be decided, then with --all; only
+    # a cancelled run or the scope 'none' skips it.
+    if: ${{ !cancelled() && needs.scope.outputs.verify != 'none' }}
+    env:
+      VERIFY_GROUP: self-tests-1
+    runs-on: ubuntu-latest
+    steps:
+      # The full history: verify.sh compares with the base branch to see
+      # whether a workflow file changed, and runs every self-test when it
+      # cannot tell, as in a shallow clone.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The project's own toolchains and dependencies (Python, uv, Node.js,
+      # ...): a composite action that the project owns and the template never
+      # ships, so this file stays the template's. It runs only when the
+      # project has it, before the verification. See docs/development.md,
+      # "The project's CI setup".
+      - name: Set up the project
+        if: hashFiles('.github/actions/project-setup/action.yml') != ''
+        uses: ./.github/actions/project-setup
+      - name: Verify the group
+        env:
+          SCOPE: ${{ needs.scope.outputs.verify }}
+        run: |
+          if [[ "$SCOPE" == changed ]]; then
+            ./scripts/verify.sh --only "$VERIFY_GROUP"
+          else
+            ./scripts/verify.sh --all --only "$VERIFY_GROUP"
+          fi
+
+  group-self-tests-2:
+    needs: scope
+    # Runs also when the scope could not be decided, then with --all; only
+    # a cancelled run or the scope 'none' skips it.
+    if: ${{ !cancelled() && needs.scope.outputs.verify != 'none' }}
+    env:
+      VERIFY_GROUP: self-tests-2
+    runs-on: ubuntu-latest
+    steps:
+      # The full history: verify.sh compares with the base branch to see
+      # whether a workflow file changed, and runs every self-test when it
+      # cannot tell, as in a shallow clone.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The project's own toolchains and dependencies (Python, uv, Node.js,
+      # ...): a composite action that the project owns and the template never
+      # ships, so this file stays the template's. It runs only when the
+      # project has it, before the verification. See docs/development.md,
+      # "The project's CI setup".
+      - name: Set up the project
+        if: hashFiles('.github/actions/project-setup/action.yml') != ''
+        uses: ./.github/actions/project-setup
+      - name: Verify the group
+        env:
+          SCOPE: ${{ needs.scope.outputs.verify }}
+        run: |
+          if [[ "$SCOPE" == changed ]]; then
+            ./scripts/verify.sh --only "$VERIFY_GROUP"
+          else
+            ./scripts/verify.sh --all --only "$VERIFY_GROUP"
+          fi
+
+  group-self-tests-3:
+    needs: scope
+    # Runs also when the scope could not be decided, then with --all; only
+    # a cancelled run or the scope 'none' skips it.
+    if: ${{ !cancelled() && needs.scope.outputs.verify != 'none' }}
+    env:
+      VERIFY_GROUP: self-tests-3
+    runs-on: ubuntu-latest
+    steps:
+      # The full history: verify.sh compares with the base branch to see
+      # whether a workflow file changed, and runs every self-test when it
+      # cannot tell, as in a shallow clone.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The project's own toolchains and dependencies (Python, uv, Node.js,
+      # ...): a composite action that the project owns and the template never
+      # ships, so this file stays the template's. It runs only when the
+      # project has it, before the verification. See docs/development.md,
+      # "The project's CI setup".
+      - name: Set up the project
+        if: hashFiles('.github/actions/project-setup/action.yml') != ''
+        uses: ./.github/actions/project-setup
+      - name: Verify the group
+        env:
+          SCOPE: ${{ needs.scope.outputs.verify }}
+        run: |
+          if [[ "$SCOPE" == changed ]]; then
+            ./scripts/verify.sh --only "$VERIFY_GROUP"
+          else
+            ./scripts/verify.sh --all --only "$VERIFY_GROUP"
+          fi
+
+  # The one required check. 'always()' makes it run when a job it needs
+  # failed, was cancelled, or was skipped: a skipped required check counts as
+  # passed in a branch protection, so it must never be skipped itself. It
+  # fails unless every job it needs succeeded and every group has its job
+  # here. The only run without group jobs is the template's nightly run, the
+  # scope 'none' on a schedule, which has nothing to verify and passes; the
+  # scope 'none' on any other event fails like a skipped group job.
+  verify:
+    if: always()
+    needs: [scope, mapping, group-default, group-adopted-project, group-self-tests-1, group-self-tests-2, group-self-tests-3]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that every required job succeeded
+        env:
+          EVENT: ${{ github.event_name }}
+          SCOPE: ${{ needs.scope.outputs.verify }}
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          if [[ "$SCOPE" == none && "$EVENT" == schedule ]]; then
+            echo "Verification scope: none on the nightly run of the template; nothing to verify."
+            exit 0
+          fi
+          ./scripts/check-ci-groups.sh --results "$NEEDS"

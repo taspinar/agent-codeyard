@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
-# Checks the mapping of an optional parallel CI onto the groups of checks
-# (docs/development.md, "A parallel CI"). The default CI is one job that runs
-# ./scripts/verify.sh --all and needs none of this.
+# Checks the mapping of a parallel CI onto the groups of checks
+# (docs/development.md, "A parallel CI"), such as the template's own
+# .github/workflows/ci.yml. A CI of one job that runs ./scripts/verify.sh
+# needs none of this.
 #
 # The mapping is declared, never read from commands: a job declares the group
 # it runs, and a check declares the partition it runs. This script checks the

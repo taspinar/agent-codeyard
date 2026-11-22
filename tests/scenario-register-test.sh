@@ -22,7 +22,7 @@ parts=("$source_root"/tests/run-feature-*-test.sh)
 
 # Every part is a check of scripts/verify-workflow.conf, so every part runs.
 for part in "${parts[@]}"; do
-  grep -Eq "^[a-z0-9-]+: \./tests/$(basename "$part")\$" "$source_root/scripts/verify-workflow.conf" ||
+  grep -Eq "^[a-z0-9-]+( \[[a-z0-9-]+\])?: \./tests/$(basename "$part")\$" "$source_root/scripts/verify-workflow.conf" ||
     fail "$(basename "$part") is not a check of scripts/verify-workflow.conf"
 done
 

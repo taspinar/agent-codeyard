@@ -196,4 +196,90 @@ expect "$repo" 1 "the job preview ended with 'failure'" "a failure of a job that
 check "$repo" --results "$needs_ok" --may-skip group-e2e
 expect "$repo" 2 "a group job may not be skipped" "a group job declared skippable"
 
+# The CI of the template (.github/workflows/ci.yml, Issue 448) runs every
+# group in a job of its own, with the aggregate job 'verify' as the required
+# check. A project that syncs the template gets this file with the
+# template's self-tests and its own scripts/verify.conf.
+ci_workflow="$source_root/.github/workflows/ci.yml"
+if [[ -f "$ci_workflow" ]] && grep -Fq 'check-ci-groups.sh --results' "$ci_workflow"; then
+  # setup_synced <name> <verify.conf>: a repository with the template's CI,
+  # its self-tests, and the given checks of its own.
+  setup_synced() {
+    local repo="$tmp/$1"
+
+    mkdir -p "$repo/scripts" "$repo/.github/workflows"
+    cp "$source_root/scripts/verify.sh" "$source_root/scripts/check-ci-groups.sh" "$source_root/scripts/verify-workflow.conf" "$repo/scripts/"
+    cp "$ci_workflow" "$repo/.github/workflows/ci.yml"
+    printf '%s\n' "$2" >"$repo/scripts/verify.conf"
+    git -C "$repo" init -q -b main
+    printf '%s\n' "$repo"
+  }
+
+  # The template itself: every check of both files runs in exactly one job.
+  repo="$tmp/template-ci"
+  mkdir -p "$repo/scripts" "$repo/.github/workflows"
+  cp "$source_root/scripts/verify.sh" "$source_root/scripts/check-ci-groups.sh" "$source_root/scripts/verify.conf" "$source_root/scripts/verify-workflow.conf" "$repo/scripts/"
+  cp "$ci_workflow" "$repo/.github/workflows/ci.yml"
+  git -C "$repo" init -q -b main
+  check "$repo" --workflow .github/workflows/ci.yml
+  expect "$repo" 0 "PASS  every group is declared by exactly one job" "the template's CI"
+
+  # The needs of the aggregate job, as ci.yml lists them, all succeeded.
+  aggregate_needs="$(awk '/^  verify:/ { v = 1; next } /^  [^[:space:]#]/ { v = 0 } v && /^    needs:/ { sub(/^    needs:[[:space:]]*\[/, ""); sub(/\][[:space:]]*$/, ""); gsub(/[[:space:]]/, ""); print; exit }' "$ci_workflow")"
+  [[ -n "$aggregate_needs" ]] || fail "the job verify of ci.yml lists no needs"
+  ci_needs_ok="$(jq -cn --arg jobs "$aggregate_needs" '$jobs | split(",") | map({key: ., value: {result: "success", outputs: {}}}) | from_entries')"
+  check "$repo" --results "$ci_needs_ok"
+  expect "$repo" 0 "PASS  every required job succeeded" "every job of the template's CI succeeded"
+  # A group job that failed, was cancelled, or was skipped fails the
+  # aggregate, and so do the scope and the mapping.
+  for job in $(jq -r 'keys[]' <<<"$ci_needs_ok"); do
+    for result in failure cancelled skipped; do
+      check "$repo" --results "$(jq -c --arg job "$job" --arg result "$result" '.[$job].result = $result' <<<"$ci_needs_ok")"
+      expect "$repo" 1 "the job $job ended with '$result'" "a $result job $job of the template's CI"
+    done
+  done
+  # Every group has its job among the needs: a group job left out of them
+  # fails the aggregate.
+  for group in $(cd "$repo" && ./scripts/verify.sh --groups); do
+    jq -e --arg job "group-$group" 'has($job)' <<<"$ci_needs_ok" >/dev/null ||
+      fail "the job verify of ci.yml does not need group-$group"
+    check "$repo" --results "$(jq -c --arg job "group-$group" 'del(.[$job])' <<<"$ci_needs_ok")"
+    expect "$repo" 1 "the aggregate job does not need group-$group" "the aggregate without group-$group"
+  done
+
+  # A project without groups of its own: its checks run in group-default.
+  repo="$(setup_synced synced-plain $'lint: true\ntests: true')"
+  check "$repo" --workflow .github/workflows/ci.yml
+  expect "$repo" 0 "PASS  every group is declared by exactly one job" "a synced project without groups"
+  check "$repo" --results "$ci_needs_ok"
+  expect "$repo" 0 "PASS  every required job succeeded" "the aggregate of a synced project without groups"
+
+  # A project whose checks use a group of the template's CI.
+  repo="$(setup_synced synced-known $'lint: true\nslow [self-tests-1]: true')"
+  check "$repo" --workflow .github/workflows/ci.yml
+  expect "$repo" 0 "PASS  every group is declared by exactly one job" "a synced project with a group the CI has"
+
+  # A project with a group of its own fails the mapping, with the message
+  # that docs/development.md ("A parallel CI") documents ...
+  repo="$(setup_synced synced-own $'lint [code]: true\ntests: true')"
+  check "$repo" --workflow .github/workflows/ci.yml
+  expect "$repo" 1 "no job of .github/workflows/ci.yml declares the group code, so its checks would never run in CI." "a synced project with a group of its own"
+  check "$repo" --results "$ci_needs_ok"
+  expect "$repo" 1 "the aggregate job does not need group-code" "the aggregate of a project with a group of its own"
+  # ... and the documented fix: the project keeps ci.yml as its own and
+  # adds the job group-<group>, a copy of group-default, and its need.
+  awk '
+    /^  group-default:/ { copy = 1 }
+    copy && /^  [^[:space:]#]/ && !/^  group-default:/ { copy = 0 }
+    copy { block = block $0 "\n" }
+    { print }
+    END { gsub(/group-default:/, "group-code:", block); gsub(/VERIFY_GROUP: default/, "VERIFY_GROUP: code", block); printf "%s", block }
+  ' "$repo/.github/workflows/ci.yml" >"$repo/ci.tmp"
+  sed 's/^\(    needs: \[scope, mapping, \)/\1group-code, /' "$repo/ci.tmp" >"$repo/.github/workflows/ci.yml"
+  check "$repo" --workflow .github/workflows/ci.yml
+  expect "$repo" 0 "PASS  every group is declared by exactly one job" "the fix for a group of its own"
+  check "$repo" --results "$(jq -c '. + {"group-code": {result: "success", outputs: {}}}' <<<"$ci_needs_ok")"
+  expect "$repo" 0 "PASS  every required job succeeded" "the aggregate after the fix"
+fi
+
 echo "check-ci-groups tests passed"
