@@ -108,7 +108,8 @@ tests-in-a-browser [e2e]: pytest tests/e2e
 
 Groups exist for a CI that has outgrown one job: each job runs
 `./scripts/verify.sh --all --only <group>`, and one job that needs all of them
-is the required check. Every check stays declared in `scripts/verify.conf`
+is the required check. The CI of the template works this way (see "A parallel
+CI"). Every check stays declared in `scripts/verify.conf`
 or `scripts/verify-workflow.conf`; none is declared in the workflow file.
 Such a CI has to run **every** group, `default` included, or a check that is
 added without a group runs on a laptop and never in CI.
@@ -150,8 +151,8 @@ A project installs its own toolchains and dependencies in CI (Python, uv,
 Node.js, Terraform, ...) without editing `.github/workflows/ci.yml`: that
 file stays the template's, so `./scripts/sync-template.sh` keeps updating it
 without conflicts. The extension point is a composite action that the
-project owns: the file `action.yml` in `.github/actions/project-setup/`. The
-verification job of `ci.yml` runs it after the checkout and before
+project owns: the file `action.yml` in `.github/actions/project-setup/`. Every
+group job of `ci.yml` runs it after the checkout and before
 `./scripts/verify.sh`, and only when the file exists
 (`if: hashFiles('.github/actions/project-setup/action.yml') != ''`); every
 group job of `docs/examples/parallel-ci.yml` does the same. A project without
@@ -202,14 +203,78 @@ the action is the end-to-end evidence that it works.
 
 ### A parallel CI
 
-The CI of the template, `.github/workflows/ci.yml`, is one job, `verify`,
-that runs `./scripts/verify.sh`, after a small job `scope` that decides
-whether it adds `--all` (see "Workflow self-tests"). That is the default
-and stays supported: it needs no mapping, no artifacts between jobs, and no
-aggregate check. A
-parallel CI is an option for a project whose checks fall into independent,
-expensive groups. `docs/examples/parallel-ci.yml` is a complete example to
-adapt; it is not a workflow of the template.
+A parallel CI runs the groups of checks (see "Groups of checks") in jobs
+of their own, at the same time, with one aggregate job as the required
+check. `docs/examples/parallel-ci.yml` is a complete example to adapt, with
+a producer and a consumer; it is not a workflow of the template.
+
+**The CI of the template is one.** `.github/workflows/ci.yml` runs, after
+the job `scope` that decides whether `--all` is added (see "Workflow
+self-tests"):
+
+- `group-default`: the checks of `scripts/verify.conf` without a group. In
+  the template that is the website check and the light checks of the
+  template; it is the only job that installs Node and the browser and
+  uploads the website reports, all conditioned on the site's marker
+  `website/.codeyard-site`. The website check stays in `default` rather
+  than a group `website`: a project replaces `scripts/verify.conf` with its
+  own checks, and a job for a group that the project's file does not have
+  would fail the mapping of every project that syncs the template.
+- `group-adopted-project` and `group-self-tests-1` to `group-self-tests-3`:
+  the self-tests, in the groups that `scripts/verify-workflow.conf` gives
+  them. `adopted-project` is the longest and a group of its own; the others
+  are spread by their duration on CI, not by their count, so that no group
+  takes longer than `adopted-project`. A new self-test goes into the group
+  with the least time.
+- `mapping`: `./scripts/check-ci-groups.sh --workflow
+  .github/workflows/ci.yml`.
+- `verify`, the aggregate and the required check: `if: always()`, it needs
+  `scope`, `mapping`, and every group job, and runs
+  `./scripts/check-ci-groups.sh --results`. A group job that failed, was
+  cancelled, or was skipped fails it, and so does a failed `scope`. The one
+  run without group jobs is the template's nightly run, the scope `none` on
+  a `schedule`: it has nothing to verify, and `verify` passes. The scope
+  `none` on any other event goes to `--results` and fails on the skipped
+  group jobs, so a pull request whose groups did not run never passes.
+
+Each group job declares `env: VERIFY_GROUP: <group>` and runs
+`./scripts/verify.sh --all --only "$VERIFY_GROUP"`, or without `--all` when
+the scope is `changed`: on a project's pull request that changes no
+workflow file, a group of self-tests skips its checks and passes, as
+`verify.sh` without `--only` does.
+
+**In a project that syncs the template.** `ci.yml` is in the `paths:` of
+`.agents/template.conf`, so a project gets this file with every sync, and
+`scripts/verify-workflow.conf` with the groups of the self-tests. A project
+whose `scripts/verify.conf` has no groups runs its own checks in
+`group-default` and needs nothing. A project whose checks use a group of
+the template's jobs runs them there. A project with a group of its own,
+say `lint [code]: ruff check .`, fails the job `mapping`, and so the
+required check, with
+
+```text
+FAIL  no job of .github/workflows/ci.yml declares the group code, so its checks would never run in CI.
+```
+
+That is the intended outcome: no check is left without a job. The fix is
+one of two. Remove the group from the check, so that it runs in
+`group-default`. Or keep `ci.yml` as the project's own: add
+`:(exclude).github/workflows/ci.yml` to the `paths:` of
+`.agents/template.conf`, so that a sync no longer replaces it, add a job
+`group-code` (a copy of `group-default` with `VERIFY_GROUP: code`, without
+the website steps), and add it to the `needs` of `verify`; a later change
+of the template's `ci.yml` is then taken over by hand.
+`tests/check-ci-groups-test.sh` holds all three cases against the
+template's `ci.yml`: no groups, a group the CI has, and a group of its own
+before and after the fix.
+
+**When one job is the better default.** A project whose verification takes
+a few minutes gains little from the parallel jobs, which each check out the
+repository and set up the project: the elapsed time shrinks, the runner
+time grows. Such a project can keep the template's `ci.yml`, whose
+`group-default` job is the whole of its own checks and whose group jobs of
+self-tests skip their checks on a pull request that changes no workflow
+file, or keep a single job of its own with `ci.yml` excluded as above.
 
 **What it buys.** Parallel jobs shorten the time until the required check
 reports, the elapsed time, to roughly that of the longest chain of jobs. They
@@ -244,9 +309,9 @@ checks dominate.
   `run-id`, which reads only the current run, and refuses an artifact whose
   record names another run or commit. A re-run of a failed job keeps the run
   and the commit, so it reads the output of the same run.
-- One aggregate job is the required check, named `verify` like the job of the
-  default CI, so the branch protection does not change when a project
-  switches. It `needs` every group job and runs with `if: always()`: a job
+- One aggregate job is the required check, named `verify` like the single
+  job of a CI without groups, so the branch protection does not change when
+  a project switches. It `needs` every group job and runs with `if: always()`: a job
   that is skipped because a job it needs failed reports as passed in a branch
   protection, so the required check itself must never be skipped. It runs
   `./scripts/check-ci-groups.sh --results "$NEEDS"` with
@@ -744,12 +809,16 @@ project's pull request reports in minutes. A sync of the template changes
 workflow files, so its pull request runs them, and `main` and the nightly
 run still catch a self-test that fails in the project for another reason,
 such as a new runner image. The template runs them on every pull request,
-since nearly every change there is a workflow change. The job `verify`
-checks out the full history (`fetch-depth: 0`): in a shallow clone
+since nearly every change there is a workflow change. In CI the self-tests
+run in four parallel jobs, one per group of `scripts/verify-workflow.conf`
+(see "A parallel CI"), each deciding the same with `--only` of its group.
+Every group job checks out the full history (`fetch-depth: 0`): in a shallow clone
 `verify.sh` cannot see which files changed and runs every self-test. It
 compares with the project's base branch (`base:` in
-`.agents/template.conf`, else `main`). When the job `scope` fails, `verify`
-still runs, with `--all`; the nightly run uses the time in `cron:`, which a
+`.agents/template.conf`, else `main`). When the job `scope` fails, the
+group jobs still run, with `--all`, and the aggregate `verify` fails on the
+failed `scope`; on the template's nightly run, the scope `none`, no group job
+runs and `verify` passes (see "A parallel CI"); the nightly run uses the time in `cron:`, which a
 project may change, and GitHub turns off a schedule in a public repository without
 activity for 60 days. `paths:` lists `.github/workflows` as a whole (the template's CI
 workflows and a project's own), `.agents/policies`, `.agents/template.conf`,

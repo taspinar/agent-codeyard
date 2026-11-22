@@ -1,0 +1,20 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "07a6dd99f241bfedef89d7bf2412edc2927d2d4e",
+  "commit": {
+    "branch": "feature/448-run-the-ci-as",
+    "parent": "d60dea4600d70abd34b248ac3f044ce466373b0e",
+    "base": "d60dea4600d70abd34b248ac3f044ce466373b0e"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".github/workflows/ci.yml: the file defines or carries out the workflow and its gate",
+    "scripts/verify-workflow.conf: an existing check or line is changed or removed",
+    "the independent review classified the impact on the architecture as major: The change replaces the template’s single-job CI with a parallel workflow and aggregate required check, and changes the CI contract inherited by projects that sync the template. The workflow mapping and its failure behavior are checked in the supplied tests and documented for downstream projects. "
+  ],
+  "explanation": "Issue #448: Run the CI as parallel group jobs with an aggregate check verify (step 6 of #345). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
