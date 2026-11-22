@@ -11,7 +11,9 @@
   `website/.nvmrc`), and Playwright Chromium with its Linux system
   libraries. Install both once with
   `cd website && npm ci && npx playwright install --with-deps chromium`
-  (the system libraries need `sudo`). The check installs a missing Chromium
+  (the system libraries need `sudo`). The check runs `npm ci` again only
+  when `website/node_modules` is missing or older than
+  `website/package-lock.json`. It installs a missing Chromium
   itself, which needs network access once, and never downloads it again when
   it is installed; when Chromium cannot be installed or does not start for
   missing system libraries, it stops with the command to run. A project
