@@ -2,6 +2,8 @@
 
 # Tests check.sh on small outputs written here, without a build: a correct
 # output under each base path passes, and every kind of fault is reported.
+# Also tests that the website check of scripts/verify.conf installs the
+# dependencies only when they are missing or older than package-lock.json.
 #
 # Run from anywhere: ./website/check-test.sh
 
@@ -166,6 +168,73 @@ if [[ -d "$site/node_modules" ]]; then
   fi
 else
   echo "check-test: no node_modules in $site; the browser checks are skipped." >&2
+fi
+
+# The website check of scripts/verify.conf runs npm ci only when the install
+# is missing or older than package-lock.json. It runs here in a copy with a
+# recording npm and check scripts that only pass.
+website_check="$(sed -n 's/^website: *//p' "$site/../scripts/verify.conf" 2>/dev/null || true)"
+if [[ -n "$website_check" ]]; then
+  copy="$work/install"
+  mkdir -p "$work/install-bin"
+  printf '#!/bin/sh\necho "$*" >>"%s"\n' "$work/npm.log" >"$work/install-bin/npm"
+  chmod +x "$work/install-bin/npm"
+
+  # install_state: the state of the install in the copy, as install_fixture
+  # names it, from the files alone.
+  install_state() {
+    local w="$copy/website" lock="$copy/website/node_modules/.package-lock.json"
+    if [[ ! -e "$w/node_modules" ]]; then echo missing
+    elif [[ ! -f "$lock" ]]; then echo "no lock"
+    elif [[ "$lock" -ot "$w/package-lock.json" ]]; then echo older
+    elif [[ "$lock" -nt "$w/package-lock.json" ]]; then echo current
+    else echo "same age"
+    fi
+  }
+
+  # install_fixture <state>: writes a new copy with check scripts that only
+  # pass and an install in that state: missing, no lock, older, current or
+  # same age.
+  install_fixture() {
+    rm -rf "$copy"
+    mkdir -p "$copy/website"
+    : >"$copy/website/.codeyard-site"
+    printf '#!/bin/sh\nexit 0\n' >"$copy/website/check-test.sh"
+    cp "$copy/website/check-test.sh" "$copy/website/check.sh"
+    chmod +x "$copy/website/check-test.sh" "$copy/website/check.sh"
+    : >"$copy/website/package-lock.json"
+    touch -t 200001020000 "$copy/website/package-lock.json"
+    [[ "$1" == missing ]] && return 0
+    mkdir "$copy/website/node_modules"
+    [[ "$1" == "no lock" ]] && return 0
+    : >"$copy/website/node_modules/.package-lock.json"
+    case "$1" in
+      older) touch -t 200001010000 "$copy/website/node_modules/.package-lock.json" ;;
+      current) touch -t 200001030000 "$copy/website/node_modules/.package-lock.json" ;;
+      "same age") touch -t 200001020000 "$copy/website/node_modules/.package-lock.json" ;;
+    esac
+  }
+
+  # install_case <state> <yes|no>: runs the check on an install in that state
+  # and reports when npm ci does not run as expected, or the state is not the
+  # one the case names before and after the run.
+  install_case() {
+    local state="$1" expected="$2" ran=no
+    install_fixture "$state"
+    [[ "$(install_state)" == "$state" ]] || { fail "$state: the fixture is $(install_state)"; return 0; }
+    rm -f "$work/npm.log"
+    (cd "$copy" && PATH="$work/install-bin:$PATH" bash -eo pipefail -c "$website_check") >"$work/install.out" 2>&1 ||
+      { cat "$work/install.out" >&2; fail "$state: the website check fails"; return 0; }
+    [[ -f "$work/npm.log" ]] && grep -Eq '^ci( |$)' "$work/npm.log" && ran=yes
+    [[ "$ran" == "$expected" ]] || fail "$state install: npm ci runs: $ran, expected: $expected"
+    [[ "$(install_state)" == "$state" ]] || fail "$state: the run changes the fixture to $(install_state)"
+  }
+
+  install_case missing yes
+  install_case "no lock" yes
+  install_case older yes
+  install_case current no
+  install_case "same age" no
 fi
 
 if [[ "$failures" -gt 0 ]]; then
