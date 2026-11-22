@@ -79,7 +79,7 @@ The sum of the self-tests, the wall-clock of `./scripts/verify.sh --all`,
 and the CI duration of `verify` come from the full verification of the run
 and from the CI of the pull request.
 
-Cases: the 91 `setup_repo` cases of `tests/run-feature-test.sh` on main and
+Cases: the 91 `setup_repo` cases of the removed run-feature-test.sh on main and
 the 91 of the parts have the same labels (`grep -oE 'setup_repo "?[^")]+'`
 over each, sorted; the difference is empty), and the 91 scenario
 identifiers are those labels (loops as in step 3). Assertions (`fail` and
