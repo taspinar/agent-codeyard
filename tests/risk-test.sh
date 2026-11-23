@@ -517,9 +517,11 @@ expect_level "$repo" medium "a project without a policy classifies a documentati
 [[ "$(requirement_of "$repo" verification)" == "full" && "$(requirement_of "$repo" review)" == "delta" ]] ||
   fail "a project without a policy does not get the shipped requirements: $(cat "$repo.out")"
 
-# A project names groups for the intermediate rounds of high, requires
-# complete reviews for high, and lets low go without a review. A requirement
-# line is not a path class: a file named like a group is not high.
+# A project that still names groups for the intermediate rounds (refused
+# since #443: the full verification precedes every round, so they saved
+# nothing) gets the full verification and the refusal; it requires complete
+# reviews for high and lets low go without a review. A requirement line is
+# not a path class: a file named like a group is not high.
 requirements_policy='default: medium
 low: docs
 high: src/auth
@@ -531,7 +533,8 @@ repo="$(setup_repo requirements-high "$requirements_policy")"
 mkdir -p "$repo/src/auth"
 printf 'login\n' >"$repo/src/auth/login.py"
 expect_level "$repo" high "a path of the high class is high"
-[[ "$(requirement_of "$repo" verification)" == "groups lint unit" ]] || fail "the groups of high were not read: $(cat "$repo.out")"
+[[ "$(requirement_of "$repo" verification)" == "full" ]] || fail "the groups of high were not refused with the full verification: $(cat "$repo.out")"
+expect_reason "$repo" "refused: high: verification: groups unit lint is not accepted" "the refused groups of high were not reported"
 [[ "$(requirement_of "$repo" review)" == "full" ]] || fail "the complete review of high was not read: $(cat "$repo.out")"
 repo="$(setup_repo requirements-low "$requirements_policy")"
 printf 'More.\n' >>"$repo/docs/guide.md"
@@ -543,7 +546,8 @@ printf 'checks\n' >"$repo/unit"
 printf 'print("y")\n' >>"$repo/src/code.py"
 expect_level "$repo" medium "a file named like a group of checks is not a path of the high class"
 if grep -Fq "listed as high" "$repo.out"; then fail "a requirement line was read as a path class"; fi
-[[ "$(requirement_of "$repo" verification)" == "groups unit" ]] || fail "the groups of medium were not read: $(cat "$repo.out")"
+[[ "$(requirement_of "$repo" verification)" == "full" ]] || fail "the groups of medium were not refused with the full verification: $(cat "$repo.out")"
+expect_reason "$repo" "refused: medium: verification: groups unit is not accepted" "the refused groups of medium were not reported"
 [[ "$(requirement_of "$repo" review)" == "delta" ]] || fail "medium without a review line does not allow delta reviews: $(cat "$repo.out")"
 
 # 'review: none' is refused for medium and high, and a value the policy

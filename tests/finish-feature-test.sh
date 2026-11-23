@@ -1084,8 +1084,7 @@ grep -Fq -- "- scripts/publish-feature.sh: " <<<"$(risk_of "$repo")" || fail "th
 
 # A review made on a partial check (review-feature.sh --checks) is an
 # intermediate round: a feature is committed on a review of content that
-# passed the full verification, whatever the risk policy allows for the
-# intermediate rounds.
+# passed the full verification.
 repo="$(setup_repo partial-check PASS "[]")"
 set_impact "$repo" minor
 jq '.verification = {status: "partial", groups: ["fast"], verified_at: "2026-01-01T00:00:00Z"}' "$repo/$review" >"$repo/$review.tmp" &&

@@ -121,11 +121,12 @@ groups that the jobs of the workflow file declare; see "A parallel CI".
 A partial run is never a verification. With `--only` nothing is recorded as
 passed, nothing is written into the record of a run it was started in, and
 `--reuse` is refused, so `review-feature.sh` and `finish-feature.sh` still run
-every check. The one place the workflow uses a partial run is an intermediate
-review round of a feature at any level whose risk policy names groups for it
-(`review-feature.sh --checks`, see "What each level requires"): that review
-records the content as partially checked, and the commit still needs the full
-verification. A failing partial run removes an
+every check. The workflow itself starts no partial run before a review: a
+round that you review by hand on a partial check (`review-feature.sh
+--checks`) records the content as partially checked, and the commit still
+needs the full verification (the risk policy's `verification: groups`, which
+asked for such rounds, is refused since #443, see "What each level
+requires"). A failing partial run removes an
 existing record, like any failing run. The workflow self-tests keep their own
 rule with `--only`: they run when a workflow file changed, or with `--all`.
 
@@ -140,7 +141,21 @@ names a changed file of `scripts/lib/` that is not a shell script as
 several files that source a shared part `tests/lib-<x>.sh`: a test that
 sources it counts as a test of `scripts/<x>.sh`, so a change to that script
 or to the shared part selects every part (`tests/lib-run-feature.sh` and
-the parts `tests/run-feature-<part>-test.sh`). A self-test that runs no test
+the parts `tests/run-feature-<part>-test.sh`). A changed library
+`scripts/lib/<y>.sh` also selects every self-test whose script, library, test
+file, or shared part sources it, directly or through another library: a
+change to `scripts/lib/fingerprint.sh` selects the tests of the scripts that
+source `lib/records.sh`, which sources it. Only one form of sourcing is
+recognized: a line of its own `source "<path>/<y>.sh"`, with the path in
+double quotes and nothing after it but spaces, whose path is not under
+`tests/`. A `.` command, a path in single quotes or without quotes, or a line
+with more after the path (`source "$dir/lib/y.sh" || exit 1`, a comment) is
+not seen, and a change to that library then does not select the self-test
+that sources it that way; the full verification still runs it. Any other changed file directly
+in `tests/` that is not a self-test, such as `tests/lib-fakes.sh`, which every
+self-test sources, or a `tests/lib-<x>.sh` that no self-test sources (also
+when `scripts/<x>.sh` exists), selects every self-test; the files in the directories
+under `tests/` are the project's. A self-test that runs no test
 file of its own is left to the full verification. It records nothing, takes
 neither `--only`, `--all`, nor `--reuse`, and the completion gate refuses it
 as evidence like `--only`. The implementer and the triage-implementer of `run-feature.sh` run
@@ -2329,6 +2344,15 @@ agent exits, it verifies that the review and triage artifacts are unchanged and
 verifies the result with `./scripts/verify.sh --reuse`, so a pass that the
 agent recorded for exactly that content is not repeated.
 
+Before it verifies, it checks the completion record that the session left
+(`.agents/completion/<issue>.json`) with the rules of the completion gate
+(`completion_errors`, `scripts/lib/completion.sh`), so that a record the gate
+refuses, such as one that cites `./scripts/verify.sh --changed` as evidence,
+is found before the review and not at the commit after it. An unattended
+session gets one session of the same agent to correct the record, with the
+errors; a record that still does not pass, or one of an interactive session,
+stops the helper with status 1 and the errors, before the verification.
+
 The helper does not commit, push, merge, deploy, or create/close Issues. Inspect
 the resulting diff and run another independent review and triage when fixes
 require confirmation.
@@ -2357,7 +2381,9 @@ new category.
 
 A `refuted` critical or major finding cannot become `ACCEPT` without you.
 When the reviewer, given the refutation, reports it again as `unresolved`
-(its `previous`), and every `FIX_NOW` finding of that round without your
+(its `previous`, with the same title: a finding whose title differs, apart
+from the mark `Unresolved: ` or `, unresolved`, is a new finding, and the
+refutation of the earlier one does not carry over to it), and every `FIX_NOW` finding of that round without your
 exception was refuted that way, one of them critical or major,
 `run-feature.sh` starts no fix session: the implementer would refute it
 again. It stops with status 3 and names each finding with the round and the
@@ -2533,7 +2559,11 @@ schema, `.agents/schemas/feature-review.schema.json`):
 ```
 
 - `unresolved`: a finding that was to be fixed (`FIX_NOW`, or never triaged)
-  is not, or not fully, resolved.
+  is not, or not fully, resolved. It keeps the title of its predecessor,
+  marked only by `Unresolved: ` before it or `, unresolved` after it:
+  `run-feature.sh` continues a finding by its `previous` and its title
+  together, since the IDs of two rounds are given anew and an `M1` of one
+  round can be another defect than the `M1` of an earlier one.
 - `worsened`: an accepted or deferred finding that the change made worse;
   `reason` says how and is required. It is a legitimate re-raise and is
   triaged like any finding.
@@ -2966,7 +2996,8 @@ From the primary checkout it runs:
 3. `finish-feature.sh --unattended`, with the title of the Issue as the
    summary of the commit, and `publish-feature.sh`.
 
-It uses at most five review rounds. The first round reviews the complete
+It uses at most five review rounds; `--rounds <m>` raises the limit for one
+run (below). The first round reviews the complete
 feature; a round after fixes reviews only what changed since the round before
 it (`review-feature.sh --changes`). Every round after the first knows what
 the approved triages of all earlier rounds decided, so a finding that was
@@ -2979,8 +3010,7 @@ When the base of the branch changed between two rounds, for example because
 you merged `main` into it while the run was stopped, the next round reviews
 the complete feature; so does a round after the risk level of the feature
 rose, or when the risk policy requires complete reviews for the level. What
-the rounds require per level, and the partial checks of the intermediate
-rounds of a `high` feature, are described under "What each level requires";
+the rounds require per level is described under "What each level requires";
 with the policy the template ships, the rounds are as described here.
 The agents and models are those of the roles in `.agents/agents.conf`.
 
@@ -2999,7 +3029,7 @@ only together with what it recorded:
 | Unstable check | The verification is repeated once, and no check failed in both runs | Records the checks and goes on, at most three times in a run |
 | Base moved | A check failed in both runs, and the base moved since the feature started and merges cleanly | Merges the base into the branch, notes `base merged`, and does the step again on the merged content, without a session of the implementer; see "Bringing a finished feature up to date with its base" |
 | Failed verification | A check failed in both runs, and the base did not move | Resumes the implementer with those checks in the handoff note, at most three times (`AGENTS.md`); a review follows. A repair session is retried like any other |
-| Budget exceeded | The verification passed, and a budget check (`<name> [<group>] budget: <command>`, see "Budgets") exceeded its target | Goes on: no repair session, whatever the measurement. Writes the measurement to the handoff note, with the note that it is not a repair order, and to the log and the run record, once per result and only where a note cannot make a review stale (before a review round, after the verification of an unreviewed `low` feature, after the commit). The reviewer's context, the commit message, and the pull request get it from the verification record |
+| Budget exceeded | The verification passed, and a budget check (`<name> [<group>] budget: <command>`, see "Budgets") exceeded its target | Goes on: no repair session, whatever the measurement. Writes the measurement to the handoff note, with the note that it is not a repair order, and to the log and the run record, once per result and only where a note cannot make a review stale. The heading of the note names the result (`budget result <digest>`, of the budgets that exceeded their targets): a run that starts again, as after an owner exception, finds it and writes no second note, which would make the review and the exception stale (before a review round, after the verification of an unreviewed `low` feature, after the commit). The reviewer's context, the commit message, and the pull request get it from the verification record |
 | Blocked | An agent ends with `BLOCKED:` and the handoff note holds a question under "Open questions", or the completion record says `blocked` | Stops with status 3. Without such a question there is nothing to answer: the line is ignored and the run goes on |
 | Not complete | The implementer ended normally, but the completion gate does not pass: no record, an invalid one, `partial`, remaining work in the handoff note, or no summary of the changes | Resumes the implementer with the reasons in the handoff note, at most four sessions in a run. Nothing is reviewed or committed before the gate passes |
 
@@ -3009,7 +3039,9 @@ what the run did. The output of the last step is kept next to it in
 `<issue>-step.log`, and that of a repeated verification in
 `<issue>-verify.log`. Status 4 is kept for a failed verification: the scripts
 turn an agent that happens to exit with it into an ordinary failure. `RUN_FEATURE_RETRIES`, `RUN_FEATURE_RETRY_WAIT` (seconds),
-and `RUN_FEATURE_REPAIRS` change the limits for one run.
+and `RUN_FEATURE_REPAIRS` change the limits for one run;
+`RUN_FEATURE_ROUNDS_CEILING` can only lower the ceiling of 20 for `--rounds`
+(the self-tests use it to reach the ceiling without twenty rounds).
 
 The run stops with a non-zero status, and keeps the worktree, when:
 
@@ -3020,7 +3052,7 @@ The run stops with a non-zero status, and keeps the worktree, when:
 | The verification still fails after three repairs, or checks are unstable more than three times | 1 |
 | The verification fails, the base moved, and its merge conflicts with the branch or the uncommitted work of the feature, would write over an untracked file (also one that Git ignores), meets staged changes in the index, or leaves untracked paths behind that the branch ignored; the files are named | 1 |
 | The proposed triage is invalid, for example because it defers a critical or major finding | 1 |
-| Five rounds are used and the last one still has a finding that must be fixed, or was an intermediate round (only the changes, or partially checked content) | 1 |
+| Five rounds (or the limit of `--rounds`) are used and the last one still has a finding that must be fixed, or was an intermediate round (only the changes, or partially checked content); the stop proposes `--rounds` with two rounds more, or, at the ceiling of 20, says that it is reached and proposes only the steps by hand | 1 |
 | The implementer ended four sessions without completing the Issue | 1 |
 | The completion record says `blocked` | 3 |
 | The implementer refuted every finding left to fix, one of them critical or major, with evidence, and the review of the complete feature still reports it; the findings and the ways on are named | 3 |
@@ -3041,6 +3073,17 @@ run continues with the review without a session of the implementer; the
 completion gate has to pass for that too, so write the completion record and
 the summary first. You can also take over by hand at any point:
 the single scripts work on the same files.
+
+When a run stops because its five review rounds are used, continue it with a
+higher limit instead of the steps by hand: `./scripts/run-feature.sh <issue>
+--rounds <m>`, with `<m>` above five and at most 20; the stop proposes two
+rounds more, up to 20. At a limit of 20 the ceiling is reached: the stop
+proposes no `--rounds` and says so, and you continue by hand with the steps
+it names. It is your decision and only yours: the run refuses the option
+in an agent session (`CODEYARD_AGENT_SESSION`) and when standard input is not
+a terminal, so it never runs unattended, and the run record notes it as an
+intervention. Every other rule of the rounds stays as it is: the run ends on
+a review of the complete feature on the full verification.
 
 Know what you hand over before you use it:
 
@@ -3374,8 +3417,8 @@ The risk policy also says what a level requires of the rounds of
 
 | Line | Meaning |
 |---|---|
-| `<level>: verification: full` | The full verification runs before every review round of a feature of that level |
-| `<level>: verification: groups <group> ...` | Before an intermediate round, only the named groups of `scripts/verify.conf` run (`verify.sh --only`, see "Groups of checks"). An intermediate round is a round after the first review that is not the review of the complete feature a feature is committed on: the repair and fix rounds |
+| `<level>: verification: full` | The full verification runs before every review round of a feature of that level. It is the only value: `run-feature.sh` makes the full verification before every round whatever the line says |
+| `<level>: verification: groups <group> ...` | Refused since #443, and the full verification applies. It ran a partial check of the named groups in the intermediate rounds; since `run-feature.sh` makes the full verification before every round (#424), the partial check came in addition and saved nothing |
 | `<level>: review: delta` | A later round may review only the changes since the round before (`review-feature.sh --changes`), when it can build on that round |
 | `<level>: review: full` | Every round reviews the complete feature |
 | `low: review: none` | A `low` feature is committed without a review. Only `low` may have it; `medium: review: none` and `high: review: none` are refused |
@@ -3390,32 +3433,24 @@ triage as the contract says. A level without a line gets the same. Of the
 base refs the rules are read from (the local base and `origin/<base>`), the
 strictest requirement counts, and a value that is not accepted counts as the
 strictest and is reported by `check-risk.sh` and the scripts: `full` before
-`groups`, `full` before `delta` before `none`, `full` before `light`.
+`delta` before `none`, `full` before `light`.
 
-**Intermediate and final rounds.** In an intermediate round of a level with
-`verification: groups`, the fixes are verified with those groups
-(`apply-triage.sh --checks`, which also tells the fixing agent to run only
-them) and the review of the round starts on them (`review-feature.sh
---checks`); the groups run once after the fixes and once before the review,
-since a partial run records nothing that a later step could reuse. They add
-to the full verification, they do not replace it: `run-feature.sh` runs the
-full verification of the tree after the fix session and before every review,
-also before a round on a partial check. A partial
-check never counts as a verification, whatever the policy says: `verify.sh
---only` records no pass, the review of that round records
-`verification.status: partial` with the groups, the reviewer is told that
-the content is partially checked, the completion record cannot cite the run
-as evidence (`finish-feature.sh` and the completion gate refuse a record
-that does), and `finish-feature.sh` does not commit on such a review. A round on a partial check is an intermediate
-round like a review of changes only: when it leaves nothing to fix, the run
-goes on to a review of the complete feature on the full verification, and
-the commit is made on that one. Before the commit the full verification runs
-(`verify.sh --reuse`: a pass that was recorded for identical content is
-reused, as before). A `high` feature keeps needing your approval through the
-merge approval gate, which this does not touch. `run-feature.sh` names a
-round on a partial check in its output (`review on a partial check of the
-groups ...`); when the policy names a group that `verify.sh` does not know,
-the full verification runs and the log of the run says so.
+**Intermediate and final rounds.** Every round, intermediate or final, is
+made on the full verification of its tree, which `run-feature.sh` runs after
+the session and before the review; the fixes leave it to the run
+(`apply-triage.sh --caller-verifies`). `verification: groups`, which ran a
+partial check of named groups in the intermediate rounds, is refused since
+#443: once the full verification preceded every round (#424), the partial
+check ran in addition to it and replaced nothing, so it only cost time. To
+let a partial-check round skip the full verification again would bring back
+a review of content that no complete run checked, and a fix round that a
+failing check outside the groups reaches only at the commit. A policy that
+still has the line gets the full verification; `check-risk.sh` prints the
+refusal, and `run-feature.sh` notes it in the log of the run. A round on a
+partial check that you run by hand (`review-feature.sh --checks`) stays an
+intermediate round: its review records `verification.status: partial`, and
+`finish-feature.sh` does not commit on it. A `high` feature keeps needing
+your approval through the merge approval gate, which this does not touch.
 
 **Baseline and delta.** The first review is complete. A later round reviews
 only the changes (`--changes`) when the policy allows it for the level, the
@@ -3478,16 +3513,11 @@ default: medium
 low: docs :(glob)**/*.md :(exclude)docs/decisions :(exclude)docs/roadmap.md :(exclude)docs/PROJECT_REQUIREMENTS.md :(exclude)AGENTS.md
 low: review: none
 high: scripts/verify.conf scripts/verify-workflow.conf src/verification
-high: verification: groups unit lint
 ```
 
 With that file a feature that changes only such documentation is `low` and
-is committed without a review; a `high` feature gets a partial check of the
-groups `unit` and `lint` in its repair rounds, in addition to the full
-verification before every review and its commit. Whether a partial check pays off
-depends on the project: it saved about 55 minutes per repair round in
-Physics by Construction, and little in a project whose full run takes a few
-minutes, which is why the template ships `full`.
+is committed without a review; a `high` feature gets the full verification
+before every review round and its commit, as every level does.
 
 **What does not change the fingerprint.** The content fingerprint that a
 verification is recorded for, and that decides whether a review is stale,

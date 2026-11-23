@@ -691,6 +691,70 @@ shared_test_parts() {
   done < <(sed -nE 's|^[[:space:]]*source "\$(source_)?root/tests/lib-([a-z0-9][a-z0-9-]*)\.sh"[[:space:]]*$|\2|p' "$file")
 }
 
+# sourced_libs <file>
+# Prints the names <y> of the libraries scripts/lib/<y>.sh that <file>
+# sources, one per line: a line 'source "<path>/<y>.sh"' whose path is not
+# under tests/ and for which scripts/lib/<y>.sh exists.
+sourced_libs() {
+  local name
+
+  [[ -f "$1" ]] || return 0
+  while IFS= read -r name; do
+    if [[ -f "$root/scripts/lib/$name.sh" ]]; then printf '%s\n' "$name"; fi
+  done < <(grep -v '/tests/' "$1" | sed -nE 's|^[[:space:]]*source ".*/([a-z0-9][a-z0-9-]*)\.sh"[[:space:]]*$|\1|p')
+}
+
+# affected_libs <list>
+# Prints the names <y> of the libraries scripts/lib/<y>.sh that changed
+# (<list>, the changed files separated by NUL), and of every library that
+# sources one of them, directly or through another library, one per line.
+affected_libs() {
+  local affected
+  local added=1
+  local library
+  local name
+  local sourced
+
+  affected="$(tr '\0' '\n' <"$1" | sed -nE 's|^scripts/lib/([a-z0-9][a-z0-9-]*)\.sh$|\1|p')"
+  [[ -n "$affected" ]] || return 0
+  while [[ "$added" -eq 1 ]]; do
+    added=0
+    for library in "$root"/scripts/lib/*.sh; do
+      name="$(basename "$library" .sh)"
+      ! grep -Fqx -- "$name" <<<"$affected" || continue
+      sourced="$(sourced_libs "$library")"
+      [[ -n "$sourced" ]] || continue
+      if grep -Fqx -f <(printf '%s\n' "$sourced") <<<"$affected"; then
+        affected+=$'\n'"$name"
+        added=1
+      fi
+    done
+  done
+  printf '%s\n' "$affected"
+}
+
+# shared_test_file_changed <list> <parts>
+# Succeeds when a file directly under tests/ changed (<list>, the changed
+# files separated by NUL) that is not a self-test tests/<x>-test.sh and not
+# a shared part tests/lib-<y>.sh that a self-test sources (<parts>, the names
+# <y> of shared_test_parts of the self-tests, one per line): a file that
+# self-tests share, such as tests/lib-fakes.sh, which every self-test
+# sources, or a tests/lib-<y>.sh that no self-test sources, which selects no
+# self-test of its own. Files in the directories under tests/ are the
+# project's.
+shared_test_file_changed() {
+  local file
+
+  while IFS= read -r -d '' file; do
+    [[ "$file" =~ ^tests/[^/]+$ && "$file" != *-test.sh ]] || continue
+    if [[ "$file" =~ ^tests/lib-([a-z0-9][a-z0-9-]*)\.sh$ ]] && grep -Fqx -- "${BASH_REMATCH[1]}" <<<"$2"; then
+      continue
+    fi
+    return 0
+  done <"$1"
+  return 1
+}
+
 # select_changed_tests
 # For --changed: marks in selected_tests the self-tests of the files changed
 # since the base (changed_files): the check that runs tests/<x>-test.sh when
@@ -699,9 +763,13 @@ shared_test_parts() {
 # that is not a shell script (reads_changed_lib_file). A test that sources
 # the shared part tests/lib-<y>.sh of the self-tests of scripts/<y>.sh
 # (shared_test_parts) is selected for <y> as for <x>, and for a change to
-# tests/lib-<y>.sh. A self-test that runs no test file of its own is left
-# to the full verification. Sets workflow_note, or workflow_skipped when none
-# is selected. Without a base no self-test is selected: the full
+# tests/lib-<y>.sh. A changed library scripts/lib/<y>.sh also selects every
+# test whose script, library, test file, or shared part sources it, directly
+# or through another library (affected_libs). Any other changed file
+# directly under tests/ (shared_test_file_changed: tests/lib-fakes.sh, or a
+# tests/lib-<y>.sh that no self-test sources) selects every self-test. A self-test that runs no test file of its own is
+# left to the full verification. Sets workflow_note, or workflow_skipped when
+# none is selected. Without a base no self-test is selected: the full
 # verification decides.
 selected_tests=()
 select_changed_tests() {
@@ -713,6 +781,10 @@ select_changed_tests() {
   local selected
   local patterns
   local readers
+  local sources
+  local affected
+  local parts=""
+  local all=no
   local count=0
   local chosen=""
 
@@ -720,21 +792,40 @@ select_changed_tests() {
     workflow_skipped="SKIP  workflow self-tests ($workflow_count checks): the base branch could not be determined, so no changed file selects one; the full verification decides"
     return 0
   fi
+  affected="$(affected_libs "$list")"
+  for ((index = project_count; index < ${#names[@]}; index++)); do
+    [[ "${commands[$index]}" =~ ^\./tests/([a-z0-9][a-z0-9-]*)-test\.sh([[:space:]]|$) ]] || continue
+    parts+="$(shared_test_parts "${BASH_REMATCH[1]}")"$'\n'
+  done
+  ! shared_test_file_changed "$list" "$parts" || all=yes
   for ((index = project_count; index < ${#names[@]}; index++)); do
     [[ "${commands[$index]}" =~ ^\./tests/([a-z0-9][a-z0-9-]*)-test\.sh([[:space:]]|$) ]] || continue
     test="${BASH_REMATCH[1]}"
     patterns=(-e "tests/$test-test.sh" -e "scripts/$test.sh" -e "scripts/lib/$test.sh")
     readers=("$test")
+    sources=("$root/tests/$test-test.sh" "$root/scripts/$test.sh" "$root/scripts/lib/$test.sh")
     while IFS= read -r shared; do
       patterns+=(-e "tests/lib-$shared.sh" -e "scripts/$shared.sh" -e "scripts/lib/$shared.sh")
       readers+=("$shared")
+      sources+=("$root/tests/lib-$shared.sh" "$root/scripts/$shared.sh" "$root/scripts/lib/$shared.sh")
     done < <(shared_test_parts "$test")
-    selected=no
-    if tr '\0' '\n' <"$list" | grep -Fqx "${patterns[@]}"; then
+    selected="$all"
+    if [[ "$selected" == "yes" ]]; then
+      :
+    elif tr '\0' '\n' <"$list" | grep -Fqx "${patterns[@]}"; then
       selected=yes
     else
       for reader in "${readers[@]}"; do
         if reads_changed_lib_file "$reader" "$list"; then
+          selected=yes
+          break
+        fi
+      done
+    fi
+    if [[ "$selected" == "no" && -n "$affected" ]]; then
+      for reader in "${sources[@]}"; do
+        shared="$(sourced_libs "$reader")"
+        if [[ -n "$shared" ]] && grep -Fqx -f <(printf '%s\n' "$affected") <<<"$shared"; then
           selected=yes
           break
         fi

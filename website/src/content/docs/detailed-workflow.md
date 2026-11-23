@@ -150,7 +150,7 @@ For an Issue with many parts, a technical plan in `.agents/plans/` holds the imp
 <a id="step-run"></a>
 <a id="run-a-feature-unattended"></a>
 
-**Run a feature unattended.** One command runs every step of this stage up to the pull request, as <a href="#step-by-step-or-unattended">Step by step or unattended</a> describes. Its limits: at most five review rounds, and by default four implementer sessions, three retries of a failing agent call and three repairs of a failing verification. An agent that needs your decision ends with a `BLOCKED:` line, and the run exits with status 3; running the same command again continues where the feature stands. It never merges and never removes a worktree. <a href="#workflow-reference/run-unattended">Reference</a>.
+**Run a feature unattended.** One command runs every step of this stage up to the pull request, as <a href="#step-by-step-or-unattended">Step by step or unattended</a> describes. Its limits: at most five review rounds (at a terminal, `--rounds <m>` raises that for one run), and by default four implementer sessions, three retries of a failing agent call and three repairs of a failing verification. An agent that needs your decision ends with a `BLOCKED:` line, and the run exits with status 3; running the same command again continues where the feature stands. It never merges and never removes a worktree. <a href="#workflow-reference/run-unattended">Reference</a>.
 
 ## When you disagree, and exceptions
 

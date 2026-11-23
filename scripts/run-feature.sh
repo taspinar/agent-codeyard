@@ -16,6 +16,12 @@ source "$script_dir/lib/guardrails.sh"
 source "$script_dir/lib/exceptions.sh"
 
 MAX_ROUNDS=5
+# The most review rounds that --rounds may allow. RUN_FEATURE_ROUNDS_CEILING
+# may only lower it (for the self-tests, which cannot afford twenty rounds).
+ROUNDS_CEILING=20
+if [[ "${RUN_FEATURE_ROUNDS_CEILING:-}" =~ ^[1-9][0-9]*$ && "$RUN_FEATURE_ROUNDS_CEILING" -lt "$ROUNDS_CEILING" ]]; then
+  ROUNDS_CEILING="$RUN_FEATURE_ROUNDS_CEILING"
+fi
 # A session of the implementer that ends without an error has not completed
 # the feature by that alone: the completion gate decides. While it does not
 # pass, the implementer is resumed, for at most this many sessions in a run.
@@ -31,7 +37,7 @@ repairs=0
 unstable=0
 
 usage() {
-  echo "Usage: $0 <issue-number> [slug] [base-branch] [--implemented] [--risk <level>]"
+  echo "Usage: $0 <issue-number> [slug] [base-branch] [--implemented] [--risk <level>] [--rounds <m>]"
   echo
   echo "Runs a feature from its Issue to an open pull request, without questions:"
   echo "start-feature.sh, then review-feature.sh, triage-review.sh, and"
@@ -43,9 +49,7 @@ usage() {
   echo
   echo "What the rounds require follows the risk level of the feature and the risk"
   echo "policy of the base (.agents/policies/risk.conf, computed again before every"
-  echo "round): the fixes and the review of an intermediate round may add a partial"
-  echo "check of named groups ('<level>: verification: groups ...') to the full"
-  echo "verification that precedes every review, a later round reviews"
+  echo "round): the full verification precedes every review, a later round reviews"
   echo "only the changes when the policy allows it ('<level>: review: delta') and the"
   echo "level did not rise, and a low-risk feature is committed without a review when"
   echo "the policy says 'low: review: none'. The feature is always committed on the"
@@ -85,10 +89,17 @@ usage() {
   echo "label 'risk: high' or 'risk: medium' on the Issue. A hint raises the level,"
   echo "never lowers it; one below the computed level is ignored and reported."
   echo
+  echo "--rounds <m> raises the limit of review rounds for this run from $MAX_ROUNDS to"
+  echo "<m> (at most $ROUNDS_CEILING), to continue a feature that stopped because the"
+  echo "rounds were used, without the steps by hand. It is the owner's decision: it is"
+  echo "refused in an agent session and without a terminal on standard input, so it"
+  echo "never runs unattended, and the run record notes it as an intervention."
+  echo
   echo "Examples:"
   echo "  $0 3"
   echo "  $0 3 site-skeleton develop"
   echo "  $0 3 --risk high"
+  echo "  $0 3 --rounds 7"
   exit 1
 }
 
@@ -99,10 +110,16 @@ fail() {
 }
 
 implemented=0
+rounds=""
 arguments=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --implemented) implemented=1 ;;
+    --rounds)
+      [[ $# -ge 2 && "$2" =~ ^[1-9][0-9]*$ ]] || usage
+      rounds="$2"
+      shift
+      ;;
     --risk)
       # The owner's hint, which every script of this run reads (lib/risk.sh).
       [[ $# -ge 2 && "$2" =~ ^(low|medium|high)$ ]] || usage
@@ -119,6 +136,19 @@ issue="${arguments[0]}"
 [[ "$issue" =~ ^[0-9]+$ ]] || fail "issue number must be numeric: $issue"
 records_wrap feature "$issue" "$0" ${records_arguments[@]+"${records_arguments[@]}"}
 [[ "$implemented" -eq 0 ]] || records_intervention "said with --implemented that the implementation is complete"
+# --rounds is the owner's decision at a terminal: never an agent's, and never
+# a run that nobody watches.
+if [[ -n "$rounds" ]]; then
+  [[ "${CODEYARD_AGENT_SESSION:-}" != "1" ]] ||
+    fail "--rounds raises the limit of review rounds, which only the owner decides; it is refused in an agent session."
+  [[ -t 0 ]] ||
+    fail "--rounds raises the limit of review rounds, which only the owner decides at a terminal; standard input must be a terminal, so it never runs unattended."
+  [[ "$rounds" -gt "$MAX_ROUNDS" && "$rounds" -le "$ROUNDS_CEILING" ]] ||
+    fail "--rounds must be more than the $MAX_ROUNDS rounds a run allows anyway, and at most $ROUNDS_CEILING: $rounds"
+  records_intervention "raised the limit of review rounds from $MAX_ROUNDS to $rounds with --rounds"
+  echo "run-feature.sh: at most $rounds review rounds in this run (--rounds), instead of $MAX_ROUNDS."
+  MAX_ROUNDS="$rounds"
+fi
 
 review_data_require_jq
 command -v gh >/dev/null 2>&1 || fail "GitHub CLI 'gh' is not installed."
@@ -232,7 +262,12 @@ failing_checks() {
 # shown as the measurement of this content. The handoff note is part of the
 # fingerprint of a review, so this is called only where a note cannot make a
 # review stale: before a review round, after the verification of an
-# unreviewed low-risk feature, and after the commit.
+# unreviewed low-risk feature, and after the commit. The heading of the note
+# carries a digest of the result ('budget result <digest>', of the names of
+# the budgets that exceeded their targets): a run that starts again, as after
+# an owner exception, finds the note of the same result there and writes
+# nothing, so the review and an exception bound to
+# it stay current.
 budgets_reported=""
 report_budgets() {
   local recorded
@@ -240,6 +275,8 @@ report_budgets() {
   local tree=""
   local report
   local first
+  local digest
+  local handoff="$worktree/.agents/handoffs/$issue.md"
 
   recorded="$(verification_budgets "$worktree")"
   [[ -n "$recorded" ]] && verification_budgets_exceeded "$recorded" || return 0
@@ -250,6 +287,13 @@ report_budgets() {
   fi
   [[ -n "$tree" && "$tree" == "$(verification_field "$worktree" tree)" ]] || return 0
   budgets_reported="$recorded"
+  # The result is which budgets exceeded their targets, not the measured
+  # values, which a verification that runs again measures anew.
+  digest="$(printf '%s\n' "$recorded" | awk '/^budget: / { name = substr($0, 9) } /^status: exceeded$/ { print name }' |
+    sort -u | git -C "$worktree" hash-object --stdin | cut -c1-12)"
+  if [[ -f "$handoff" ]] && grep -Eq "^## Budget exceeded \(.*budget result $digest\)$" "$handoff"; then
+    return 0
+  fi
   # The whole output of each check goes to the handoff note: the owner
   # decides with it; the log gets the first line of each exceeded budget.
   report="$(printf '%s\n' "$recorded" | verification_budget_report)"
@@ -258,7 +302,7 @@ report_budgets() {
   mkdir -p "$worktree/.agents/handoffs"
   {
     echo
-    echo "## Budget exceeded ($(date -u +'%Y-%m-%dT%H:%M:%SZ'), recorded by run-feature.sh)"
+    echo "## Budget exceeded ($(date -u +'%Y-%m-%dT%H:%M:%SZ'), recorded by run-feature.sh, budget result $digest)"
     echo
     echo "The verification passed, and a budget of scripts/verify.conf or"
     echo "scripts/verify-workflow.conf (a budget check, or 'budget-seconds' for the"
@@ -271,7 +315,7 @@ report_budgets() {
     echo "optimization."
     echo
     printf '%s\n' "$report" | sed 's/^budget /- budget /'
-  } >>"$worktree/.agents/handoffs/$issue.md"
+  } >>"$handoff"
 }
 
 # retrying <title> <command>...
@@ -490,15 +534,9 @@ repair_verification() {
 
   first="$(failing_checks "$first_log")"
   mkdir -p "$(dirname "$log")"
-  # The same checks as the step ran: a partial check of the groups in
-  # STEP_CHECKS is repeated as one.
-  if [[ -n "${STEP_CHECKS:-}" ]]; then
-    (cd "$worktree" && ./scripts/verify.sh --only "$STEP_CHECKS") >"$log" 2>&1 || repeat_status=$?
-  else
-    (cd "$worktree" && VERIFY_ORIGIN=orchestrator ./scripts/verify.sh) >"$log" 2>&1 || repeat_status=$?
-    # A pass of this run's own: the step done again reuses it.
-    [[ "$repeat_status" -ne 0 ]] || verification_trust "$(verification_field "$worktree" tree)"
-  fi
+  (cd "$worktree" && VERIFY_ORIGIN=orchestrator ./scripts/verify.sh) >"$log" 2>&1 || repeat_status=$?
+  # A pass of this run's own: the step done again reuses it.
+  [[ "$repeat_status" -ne 0 ]] || verification_trust "$(verification_field "$worktree" tree)"
   if [[ "$repeat_status" -eq 75 ]] || grep -q '^BUSY  ' "$log" 2>/dev/null; then
     note "$title" "busy" "$(sed -n 's/^BUSY  //p' "$log" | sed -n 1p)" "Stopping; nothing is repaired"
     stop 75 "the slot for heavy verification of this machine is held by another run, which says nothing about this feature; the holder is in .agents/run/$issue-verify.log." \
@@ -544,19 +582,9 @@ repair_verification() {
     echo
     echo "## Verification failed ($(date -u +'%Y-%m-%dT%H:%M:%SZ'), recorded by run-feature.sh)"
     echo
-    if [[ -n "${STEP_CHECKS:-}" ]]; then
-      echo "./scripts/verify.sh --only $STEP_CHECKS fails on the content as it is: a partial"
-      echo "check of the groups ${STEP_CHECKS//,/, }, which the risk policy allows before an"
-      echo "intermediate review round of this feature. These checks failed in two runs;"
-      echo "repair them. The complete output is in .agents/run/$issue-verify.log."
-      echo "Repair attempt $repairs of $MAX_REPAIRS. A partial run is not a verification:"
-      echo "it records nothing, and the completion record cannot cite it as evidence;"
-      echo "the full verification runs before the commit."
-    else
-      echo "./scripts/verify.sh fails on the content as it is. These checks failed in two"
-      echo "runs; repair them. The complete output is in .agents/run/$issue-verify.log."
-      echo "Repair attempt $repairs of $MAX_REPAIRS."
-    fi
+    echo "./scripts/verify.sh fails on the content as it is. These checks failed in two"
+    echo "runs; repair them. The complete output is in .agents/run/$issue-verify.log."
+    echo "Repair attempt $repairs of $MAX_REPAIRS."
     echo
     printf '%s\n' "${twice:-(no check named; read the log)}" | sed 's/^/- FAIL /'
     [[ -z "$once" ]] || echo "Failed in one run only, so probably unstable and not yours to repair: $once"
@@ -624,16 +652,16 @@ step_once() {
 # the worktree computes them from the diff and the rules of the base at this
 # moment (never from a level stored in a review), and notes them in the run
 # record. Sets risk_level, and what the level requires of the rounds by the
-# risk policy: risk_verification ('full', or 'groups <group> ...') and
-# risk_review ('full', 'delta', or 'none'), and risk_triage ('full' or
-# 'light'; triage-review.sh derives it again itself). The workflow profile
+# risk policy: risk_review ('full', 'delta', or 'none'), and risk_triage
+# ('full' or 'light'; triage-review.sh derives it again itself). The full
+# verification precedes every round whatever the policy says. The workflow profile
 # of the policy is printed and recorded with the level. When the level cannot
 # be determined, the strictest requirements apply. finish-feature.sh
 # enforces the level again before the commit. A value of the policy that is
-# refused, such as 'high: triage: light', is printed with the reasons and
-# noted in the log of the feature; the strictest requirement applies.
+# refused, such as 'high: triage: light' or 'high: verification: groups
+# unit' (refused since #443), is printed with the reasons and noted in the log
+# of the feature; the strictest requirement applies.
 risk_level=""
-risk_verification="full"
 risk_review="full"
 risk_triage="full"
 report_risk() {
@@ -642,7 +670,6 @@ report_risk() {
   local refused
 
   risk_level=""
-  risk_verification="full"
   risk_review="full"
   risk_triage="full"
   output="$( (cd "$worktree" && ./scripts/check-risk.sh "$base" </dev/null) 2>&1)" || status=$?
@@ -651,10 +678,8 @@ report_risk() {
     return 0
   fi
   risk_level="$(printf '%s\n' "$output" | sed -n '1s/^risk: //p')"
-  risk_verification="$(printf '%s\n' "$output" | sed -n 's/^verification: //p' | sed -n 1p)"
   risk_review="$(printf '%s\n' "$output" | sed -n 's/^review: //p' | sed -n 1p)"
   risk_triage="$(printf '%s\n' "$output" | sed -n 's/^triage: //p' | sed -n 1p)"
-  [[ -n "$risk_verification" ]] || risk_verification="full"
   [[ -n "$risk_review" ]] || risk_review="full"
   [[ "$risk_triage" == "light" ]] || risk_triage="full"
   echo
@@ -668,6 +693,27 @@ report_risk() {
     echo "run-feature.sh: $refused"
     note "risk policy $1" "refused" "$refused" "The full triage applies"
   fi
+  refused="$(printf '%s\n' "$output" | sed -n 's/^refused: \([a-z]*: verification: .*\)$/\1/p' | sed -n 1p)"
+  if [[ -n "$refused" ]]; then
+    echo "run-feature.sh: $refused"
+    note "risk policy $1" "refused" "$refused" "The full verification applies"
+  fi
+}
+
+# more_rounds: the step that a stop for used rounds proposes to continue:
+# --rounds with two rounds more than now (a fix and its review, and the
+# review of the complete feature), within ROUNDS_CEILING. At the ceiling no
+# higher limit exists, and the step says so instead: the owner continues by
+# hand, with the steps that follow it.
+more_rounds() {
+  local more=$((MAX_ROUNDS + 2))
+
+  if [[ "$MAX_ROUNDS" -ge "$ROUNDS_CEILING" ]]; then
+    echo "# the ceiling of $ROUNDS_CEILING review rounds is reached: --rounds cannot raise the limit further; continue by hand"
+    return
+  fi
+  [[ "$more" -le "$ROUNDS_CEILING" ]] || more="$ROUNDS_CEILING"
+  echo "./scripts/run-feature.sh $issue --rounds $more    # your decision, at a terminal: continue with a higher limit"
 }
 
 # level_rank <level>: 0 for low, 1 for medium, 2 for high; 3 otherwise, so
@@ -689,19 +735,6 @@ level_rank() {
 # the caller adds its pass to the list.
 verify_step() {
   verification_run . orchestrator 1 || return 4
-}
-
-# checks_for_round <groups>
-# Succeeds when verify.sh of the worktree knows every group of the
-# comma-separated list, so a partial check of them can run.
-checks_for_round() {
-  local known
-  local group
-
-  known="$( (cd "$worktree" && ./scripts/verify.sh --groups </dev/null) 2>/dev/null)" || return 1
-  for group in ${1//,/ }; do
-    grep -Fqx -- "$group" <<<"$known" || return 1
-  done
 }
 
 # ---------------------------------------------------------------- implement
@@ -915,9 +948,12 @@ excepted_findings() {
 # <round>: '<round> TAB <id> TAB <evidence>' of the line that refuted it in
 # the handoff note (lib/completion.sh, triage_check_outcomes). A finding with
 # no check in the section of its own triage (no fix session ran for it yet)
-# is refuted when the finding it continues as unresolved (previous) is. Fails
-# when the finding was fixed, not reproduced, not executable, has
-# conflicting checks, or continues no refuted finding.
+# is refuted when the finding it continues as unresolved (previous) is, and
+# only when that earlier finding has the same title (finding_title): the IDs
+# of two rounds are given anew, so a finding with another title is a new
+# one, whatever its 'previous' says. Fails when the finding was fixed, not
+# reproduced, not executable, has conflicting checks, or continues no
+# refuted finding.
 finding_refutation() {
   local round="$1"
   local id="$2"
@@ -943,7 +979,25 @@ finding_refutation() {
   previous="$(jq -r --arg id "$id" '.findings[] | select(.id == $id) | .previous
     | select(. != null and .relation == "unresolved") | "\(.round)\t\(.id)"' "$review_file")"
   [[ -n "$previous" && "${previous%%$'\t'*}" -lt "$round" ]] || return 1
+  [[ "$(finding_title "$round" "$id")" == "$(finding_title "${previous%%$'\t'*}" "${previous#*$'\t'}")" ]] || return 1
   finding_refutation "${previous%%$'\t'*}" "${previous#*$'\t'}"
+}
+
+# finding_title <round> <id>
+# Prints the title of finding <id> of review round <round> as it is
+# compared: in lower case, with its white space collapsed, without the mark
+# of an unresolved finding that the reviewer contract allows ('Unresolved: '
+# before it, ', unresolved' or ' (unresolved)' after it), and without the
+# punctuation at its end; nothing when the round or the finding does not
+# exist.
+finding_title() {
+  local review_file
+
+  review_file="$worktree/.agents/reviews/$slug-review-$(printf '%02d' "$1").json"
+  [[ -f "$review_file" ]] || return 0
+  jq -r --arg id "$2" '.findings[] | select(.id == $id) | .title // ""
+    | ascii_downcase | gsub("[[:space:]]+"; " ") | sub("^ "; "") | sub("[ .!;:]+$"; "")
+    | sub("^unresolved( ?[:—–-] ?| )"; "") | sub(",? [(]?unresolved[)]?$"; "") | sub("[ .!;:,]+$"; "")' "$review_file"
 }
 
 # refuted_findings <review> <triage>
@@ -1049,8 +1103,8 @@ changes_only() {
 
 # partially_checked <review>
 # Succeeds when a review was made on a partial check of the content
-# (review-feature.sh --checks): an intermediate round, never the one a
-# feature is committed on.
+# (review-feature.sh --checks, run by hand; this run never asks for one): an
+# intermediate round, never the one a feature is committed on.
 partially_checked() {
   [[ "$(jq -r '.verification.status // "passed"' "$1")" == "partial" ]]
 }
@@ -1089,13 +1143,15 @@ if uncommitted; then
       # latest one was an intermediate round and nothing is left to fix.
       if [[ "$round" -ge "$MAX_ROUNDS" && "$complete_review" -eq 1 ]]; then
         stop 1 "$MAX_ROUNDS review rounds are used, and round $round reviewed only changes or partially checked content, so no review of the complete feature confirms that the Issue is done." \
+          "$(more_rounds)" \
           "cd \"$worktree\"" \
-          "./scripts/review-feature.sh $issue $base    # and continue by hand: triage-review.sh, apply-triage.sh, finish-feature.sh, publish-feature.sh"
+          "./scripts/review-feature.sh $issue $base    # or continue by hand: triage-review.sh, apply-triage.sh, finish-feature.sh, publish-feature.sh"
       fi
       if [[ "$round" -ge "$MAX_ROUNDS" ]]; then
         stop 1 "$MAX_ROUNDS review rounds are used, and the content changed after round $round, so it is not confirmed by a review." \
+          "$(more_rounds)" \
           "cd \"$worktree\"" \
-          "./scripts/review-feature.sh $issue $base    # and continue by hand: triage-review.sh, apply-triage.sh, finish-feature.sh, publish-feature.sh"
+          "./scripts/review-feature.sh $issue $base    # or continue by hand: triage-review.sh, apply-triage.sh, finish-feature.sh, publish-feature.sh"
       fi
       # The level and what it requires, computed now: the policy is applied
       # to the feature as it is, never to a level a review stored.
@@ -1139,7 +1195,6 @@ if uncommitted; then
       # and deferred again. Otherwise the round reviews the complete feature.
       review_options=()
       review_title="review"
-      checks=""
       if [[ "$complete_review" -eq 1 ]]; then
         review_title="review of the complete feature"
       elif [[ -n "$review" ]]; then
@@ -1149,31 +1204,13 @@ if uncommitted; then
           note "review, round $((round + 1))" "complete" "no review of the changes only: $delta_refusal" "Reviewing the complete feature"
         fi
       fi
-      # An intermediate round, between the first review and the review of
-      # the complete feature, may run a partial check of the groups the
-      # policy names for the level, after the full verification below. Such
-      # a round never ends the run: the review of the complete feature that
-      # follows is made on the full verification.
-      if [[ -n "$review" && "$complete_review" -eq 0 && "$risk_verification" == groups* ]]; then
-        checks="${risk_verification#groups }"
-        checks="${checks// /,}"
-        if checks_for_round "$checks"; then
-          review_options+=(--checks "$checks")
-          review_title+=" on a partial check of the groups ${checks//,/, }"
-        else
-          note "review, round $((round + 1))" "full verification" "the risk policy names a group of checks that verify.sh does not know: $checks" "Running the full verification instead"
-          checks=""
-        fi
-      fi
       # The full verification of a round is this run's own, after the
       # session and before the review (lib/verification.sh): the agent
       # sessions run only the checks of what they changed, and its pass is
       # in this run's VERIFY_TRUSTED_TREES, so the review, a retry of it, and
       # the commit reuse it instead of verifying again. A failure goes to the
       # implementer as a repair session; after a repair, or a repeat that
-      # passed, the gate and the round are decided again. It runs also
-      # before a round on a partial check: the review adds the groups, it
-      # does not replace the full verification of the tree it reviews.
+      # passed, the gate and the round are decided again.
       attempts_before="$repairs/$unstable/$base_merges"
       step "verification before round $((round + 1))" verify_step
       if [[ "$step_status" -eq 3 ]]; then
@@ -1196,10 +1233,8 @@ if uncommitted; then
       # A budget that the verification measured, before the review covers
       # the handoff note.
       report_budgets "review, round $((round + 1))"
-      STEP_CHECKS="$checks"
       step "$review_title, round $((round + 1)) of at most $MAX_ROUNDS" \
         ./scripts/review-feature.sh "$issue" "$base" ${review_options[@]+"${review_options[@]}"}
-      STEP_CHECKS=""
       if [[ "$step_status" -eq 3 ]]; then
         rm -f "$state_file"
         stop 3 "the implementer, repairing the verification, needs a decision of yours; its question is in the handoff note (.agents/handoffs/$issue.md)." \
@@ -1274,34 +1309,18 @@ if uncommitted; then
     fi
     if [[ "$round" -ge "$MAX_ROUNDS" ]]; then
       stop 1 "$MAX_ROUNDS review rounds are used and round $round still has findings that must be fixed; see $review_relative. Where the owner disagrees with a critical or major finding, the owner may record an exception to it at a terminal (docs/development.md, 'Owner exceptions to a blocking finding')." \
+        "$(more_rounds)" \
         "cd \"$worktree\"" \
-        "./scripts/apply-triage.sh $triage_relative    # and continue by hand: review-feature.sh, finish-feature.sh, publish-feature.sh" \
+        "./scripts/apply-triage.sh $triage_relative    # or continue by hand: review-feature.sh, finish-feature.sh, publish-feature.sh" \
         "./scripts/record-exception.sh $review_relative --finding <id> --type not-applicable|risk-accepted --reason \"<why>\"    # the owner's option, for one blocking finding"
     fi
     # An interrupted fix session is continued with its scope, not started
-    # again: apply-triage.sh refuses a review whose content changed. The
-    # fixes are checked with the partial check the policy names for an
-    # intermediate round, when it names one; in either case this run's own
-    # full verification before the next round verifies them
-    # (--caller-verifies otherwise), and the review then reuses it.
-    fix_options=(--caller-verifies)
-    fix_title="fixes for round $round"
-    checks=""
-    if [[ "$risk_verification" == groups* ]]; then
-      checks="${risk_verification#groups }"
-      checks="${checks// /,}"
-      if checks_for_round "$checks"; then
-        fix_options=(--checks "$checks")
-        fix_title+=" on a partial check of the groups ${checks//,/, }"
-      else
-        checks=""
-      fi
-    fi
+    # again: apply-triage.sh refuses a review whose content changed. This
+    # run's own full verification before the next round verifies the fixes
+    # (--caller-verifies), and the review then reuses it.
     STEP_REVIEW="$review"
-    STEP_CHECKS="$checks"
-    step "$fix_title" ./scripts/apply-triage.sh "$triage_relative" --unattended ${fix_options[@]+"${fix_options[@]}"}
+    step "fixes for round $round" ./scripts/apply-triage.sh "$triage_relative" --unattended --caller-verifies
     STEP_REVIEW=""
-    STEP_CHECKS=""
     if [[ "$step_status" -eq 3 ]]; then
       # The next run resumes the implementer, which reads the handoff note
       # with the answer before it continues; a review follows.

@@ -69,8 +69,8 @@ if [[ "${#AGENT_POSITIONAL[@]}" -lt 1 || "${#AGENT_POSITIONAL[@]}" -gt 2 ]]; the
   echo "record. Its pass is trusted for the scripts it starts."
   echo
   echo "--checks runs only the named groups of ./scripts/verify.sh (--only) before"
-  echo "the review, as the risk policy may allow for an intermediate round of"
-  echo "run-feature.sh. Such a run is a partial check, not a verification: it"
+  echo "the review, for an intermediate round that you run by hand (run-feature.sh"
+  echo "never asks for one). Such a run is a partial check, not a verification: it"
   echo "records nothing, the review records that the content is partially checked,"
   echo "the reviewer is told, and finish-feature.sh does not commit on that review."
   echo
@@ -555,8 +555,8 @@ if [[ -n "$checks" ]]; then
     echo "## Verification of the content under review"
     echo
     echo "This content is PARTIALLY CHECKED: of ./scripts/verify.sh only the groups ${checks//,/, } ran"
-    echo "and passed, as the risk policy allows for an intermediate round of a"
-    echo "$risk_level-risk feature; every other check did not run. A partial"
+    echo "and passed, for an intermediate round of this $risk_level-risk feature;"
+    echo "every other check did not run. A partial"
     echo "run is not a verification: do not take it as evidence that the feature works"
     echo "or that the checks pass, and report a completion record that cites such a run"
     echo "as evidence. The full verification runs before the commit, and the review a"

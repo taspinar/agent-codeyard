@@ -419,6 +419,66 @@ grep -Fq "Decision: DEFER" "$repo.control/reviewer-2.context" ||
 run_feature "$repo" 2
 expect_stopped "$repo" 1 "5 review rounds are used"
 expect_sessions "$repo" 1 5 5 4
+grep -Fq "./scripts/run-feature.sh 2 --rounds 7    # your decision, at a terminal" "$repo.out" ||
+  fail "the stop for used rounds does not offer a higher limit: $(cat "$repo.out")"
+# At the ceiling (here lowered to the five rounds used; the real one is 20)
+# no higher limit exists: the stop proposes no --rounds that would be refused
+# or stop again at once, says that the ceiling is reached, and names the
+# steps by hand.
+RUN_FEATURE_ROUNDS_CEILING=5 run_feature "$repo" 2
+expect_stopped "$repo" 1 "5 review rounds are used"
+expect_sessions "$repo" 1 5 5 4
+if grep -Fq -- "run-feature.sh 2 --rounds" "$repo.out"; then fail "the stop at the ceiling proposes --rounds: $(cat "$repo.out")"; fi
+grep -Fq "the ceiling of 5 review rounds is reached" "$repo.out" ||
+  fail "the stop at the ceiling does not say that it is reached: $(cat "$repo.out")"
+grep -Fq "./scripts/apply-triage.sh" "$repo.out" || fail "the stop at the ceiling names no step by hand: $(cat "$repo.out")"
+
+# --rounds <m> continues the loop with a higher limit, as the owner's decision
+# at a terminal: refused without a terminal, in an agent session, and for a
+# limit that is not higher than five. The run record notes the intervention.
+scenario more-rounds
+run_feature "$repo" 2 --rounds 7
+[[ "$status" -eq 1 ]] && grep -Fq "standard input must be a terminal" "$repo.out" ||
+  fail "--rounds was accepted without a terminal: $(cat "$repo.out")"
+expect_sessions "$repo" 1 5 5 4
+# run_at_terminal <repo> <argument>...: run-feature.sh at a pseudo-terminal.
+run_at_terminal() {
+  local repo="$1"
+  local command
+
+  shift
+  command="PATH=$(printf '%q' "$tmp/bin:/usr/bin:/bin") RUN_CONTROL=$(printf '%q' "$repo.control") RUN_ISSUE=$1 GIT_EDITOR=false RUN_FEATURE_RETRY_WAIT=0 START_FEATURE_GH_WAIT=0 ${AT_TERMINAL_ENV:-} ./scripts/run-feature.sh $*"
+  status=0
+  (
+    cd "$repo"
+    if grep -q util-linux <<<"$(script --version 2>/dev/null)"; then
+      script -qec "$command" /dev/null </dev/null
+    else
+      script -q /dev/null sh -c "$command" </dev/null
+    fi
+  ) >"$repo.out" 2>&1 || status=$?
+}
+AT_TERMINAL_ENV="CODEYARD_AGENT_SESSION=1" run_at_terminal "$repo" 2 --rounds 7
+[[ "$status" -ne 0 ]] && grep -Fq "it is refused in an agent session" "$repo.out" ||
+  fail "--rounds was accepted in an agent session: $(cat "$repo.out")"
+for limit in 5 3 21; do
+  run_at_terminal "$repo" 2 --rounds "$limit"
+  [[ "$status" -ne 0 ]] && grep -Fq -- "--rounds must be more than the 5 rounds" "$repo.out" ||
+    fail "--rounds $limit was accepted: $(cat "$repo.out")"
+done
+expect_sessions "$repo" 1 5 5 4
+# With seven rounds: round 5 is fixed, round 6 confirms the fix on the
+# changes, and round 7 reviews the complete feature.
+printf '%s\n' 'eval "$default"' >"$repo.control/reviewer-6.sh"
+printf '%s\n' 'eval "$default"' >"$repo.control/reviewer-7.sh"
+run_at_terminal "$repo" 2 --rounds 7
+expect_published "$repo"
+expect_sessions "$repo" 1 7 5 5
+grep -Fq "at most 7 review rounds in this run (--rounds)" "$repo.out" || fail "the run does not say that the limit was raised"
+grep -Fq "review of the complete feature, round 7 of at most 7" "$repo.out" || fail "the seventh round did not review the complete feature"
+grep -q "^Review: round 7, PASS" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" || fail "the commit does not name round 7"
+cat "$repo"/.agents/run/records/*.jsonl | jq -e -s 'any(.type == "intervention" and .what == "raised the limit of review rounds from 5 to 7 with --rounds")' >/dev/null ||
+  fail "the raised limit is not in the run record"
 
 # An implementer that needs a decision, with its question in the handoff
 # note, stops the run with status 3. After the answer, the same command

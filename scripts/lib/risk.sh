@@ -38,9 +38,11 @@
 # of the feature cannot be enumerated, the level is high.
 #
 # The same policy says what each level requires of the workflow
-# (risk_requirement): '<level>: verification: full|groups <group>...' for the
-# verification of the intermediate review rounds of run-feature.sh, and
-# '<level>: review: full|delta|none' for its later rounds, and
+# (risk_requirement): '<level>: verification: full' for the verification
+# before its review rounds ('groups <group>...', a partial check of named
+# groups in the intermediate rounds, is refused since #443: run-feature.sh
+# makes the full verification before every round, so it saved nothing), and
+# '<level>: review: full|delta|none' for the later rounds of run-feature.sh, and
 # '<level>: triage: full|light' for the triage of its findings. Without the
 # line a level requires the full verification, allows a review of changes
 # only (delta), and gets the full triage, which is what the workflow did
@@ -637,17 +639,16 @@ risk_requirement_value() {
 }
 
 # risk_requirement <root> <rules-refs> <level> <kind>
-# Prints on the first line what the level requires: for 'verification', 'full'
-# or 'groups <group> ...' (the groups of verify.sh that the intermediate
-# review rounds run); for 'review', 'full', 'delta', or 'none'; for 'triage',
-# 'full' or 'light'. Every line after it names a value of the policy that is
-# not accepted. The requirement is the strictest over the refs (full before
-# groups; full before delta before none; full before light), the built-in
+# Prints on the first line what the level requires: for 'verification',
+# 'full'; for 'review', 'full', 'delta', or 'none'; for 'triage', 'full' or
+# 'light'. Every line after it names a value of the policy that is not
+# accepted, such as 'groups <group> ...' for 'verification', which a policy
+# could set before #443. The requirement is the strictest over the refs
+# (full before delta before none; full before light), the built-in
 # default (RISK_DEFAULT_VERIFICATION, RISK_DEFAULT_REVIEW,
 # RISK_DEFAULT_TRIAGE) stands for a ref without the line, and a value that
-# is not accepted counts as the strictest: a word the policy does not know, a
-# group name that is none, 'none' for a level other than low, or 'light' for
-# high.
+# is not accepted counts as the strictest: a word the policy does not know,
+# 'groups', 'none' for a level other than low, or 'light' for high.
 risk_requirement() {
   local root="$1"
   local rules="$2"
@@ -656,7 +657,6 @@ risk_requirement() {
   local ref
   local value
   local rank=-1
-  local groups=""
   local problems=""
   local RISK_POLICY_REFS="$RISK_POLICY_REFS"
 
@@ -672,11 +672,11 @@ risk_requirement() {
       verification)
         if [[ -z "$value" || "$value" == "full" ]]; then
           rank=1
-        elif [[ "$value" =~ ^groups([[:space:]][a-z0-9][a-z0-9-]*)+$ ]]; then
-          [[ "$rank" -ge 0 ]] || rank=0
-          groups+="${value#groups}"
+        elif [[ "$value" =~ ^groups([[:space:]]|$) ]]; then
+          problems+="$level: verification: $value is not accepted in $RISK_CONFIG of $ref any more: run-feature.sh makes the full verification before every review round, so a partial check of named groups saves nothing (#443); the full verification applies"$'\n'
+          rank=1
         else
-          problems+="$level: verification: $value is not accepted in $RISK_CONFIG of $ref (full, or groups <group>...); the full verification applies"$'\n'
+          problems+="$level: verification: $value is not accepted in $RISK_CONFIG of $ref (full); the full verification applies"$'\n'
           rank=1
         fi
         ;;
@@ -721,11 +721,7 @@ risk_requirement() {
 
   case "$kind" in
     verification)
-      if [[ "$rank" -eq 0 ]]; then
-        echo "groups$(printf '%s\n' $groups | sort -u | tr '\n' ' ' | sed 's/ $//; s/^/ /')"
-      else
-        echo "$RISK_DEFAULT_VERIFICATION"
-      fi
+      echo "$RISK_DEFAULT_VERIFICATION"
       ;;
     review)
       case "$rank" in
