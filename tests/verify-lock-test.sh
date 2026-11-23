@@ -398,6 +398,112 @@ await_leftover_gone
 run_verify "$tmp/two" "$tmp/recover.out" || { cat "$tmp/recover.out" >&2; fail "a run after the leftover of a crashed run ended did not recover the slot"; }
 grep -Fq "removed the stale lock" "$tmp/recover.out" || fail "the recovery after the leftover ended did not say that it removed a stale lock"
 
+# A nested verification with 'parallel:' inside the holder's slot (#452): it
+# runs its checks one at a time, in the process group of the holder's check
+# that started it, which the lock records. A check of the nested run that
+# outlives both runs therefore still holds the slot.
+mkdir -p "$tmp/pnested/scripts/lib"
+cp "$tmp/repo/scripts/verify.sh" "$tmp/pnested/scripts/verify.sh"
+cp "$tmp/repo/scripts/lib/verify-lock.sh" "$tmp/pnested/scripts/lib/verify-lock.sh"
+cat >"$tmp/pnested/scripts/verify.conf" <<'CONF'
+parallel: 2
+heavy: inner
+inner: nested-work
+other: true
+CONF
+# The nested check: records its PID, says it started, and waits until the
+# test lets it go. With NESTED_IGNORE_TERM it ignores SIGTERM.
+cat >"$tmp/bin/nested-work" <<'EOF'
+#!/usr/bin/env bash
+[[ -z "${NESTED_IGNORE_TERM:-}" ]] || trap '' TERM
+echo "$$" >"$NESTED_PID"
+for ((tick = 0; tick < 600; tick++)); do
+  [[ ! -e "$WORK_GO" ]] || exit 0
+  sleep 0.1
+done
+exit 1
+EOF
+chmod +x "$tmp/bin/nested-work"
+# The holder's heavy check: records the PID of the nested verify.sh, which it
+# becomes.
+printf '#!/usr/bin/env bash\necho "$$" >"%s"\ncd "%s"\nexec ./scripts/verify.sh\n' "$tmp/nested-verify.pid" "$tmp/pnested" >"$tmp/bin/run-pnested"
+chmod +x "$tmp/bin/run-pnested"
+printf 'heavy: outer\nouter: run-pnested\n' >"$tmp/one/scripts/verify.conf"
+export NESTED_PID="$tmp/nested-work.pid"
+
+# nested_alive: succeeds while the nested check lives.
+nested_alive() {
+  [[ -s "$NESTED_PID" ]] && kill -0 "$(cat "$NESTED_PID")" 2>/dev/null
+}
+
+# start_nested_holder: starts the holder and waits until the nested check runs.
+start_nested_holder() {
+  rm -f "$WORK_GO" "$NESTED_PID" "$tmp/nested-verify.pid"
+  run_verify "$tmp/one" "$tmp/holder.out" 2>/dev/null &
+  holder=$!
+  holders+=("$holder")
+  for ((waited = 0; waited < 300; waited++)); do
+    ! nested_alive || return 0
+    kill -0 "$holder" 2>/dev/null || { cat "$tmp/holder.out" >&2; fail "the holder ended before the nested check started"; }
+    sleep 0.1
+  done
+  fail "the nested check did not start"
+}
+
+# expect_nested_held <what>: with the holder and the nested run gone and the
+# nested check alive, a competing heavy run finds the slot busy; once the
+# check has ended, the next run recovers the slot.
+expect_nested_held() {
+  local group
+  local others
+
+  # The processes of the killed runs end shortly after them (a tee of the
+  # holder's check): wait until the recorded group holds nothing else than
+  # the nested check, or nothing, so that only that check can keep the slot.
+  group="$(sed -n 's/^group=//p' "$lock/owner" 2>/dev/null)"
+  for ((waited = 0; waited < 100; waited++)); do
+    others="$(ps -eo pid=,pgid= | awk -v g="$group" -v n="$(cat "$NESTED_PID")" '$2 == g && $1 != n { print $1 }')"
+    [[ -n "$others" ]] || break
+    sleep 0.1
+  done
+  nested_alive || fail "the nested check ended with the runs, so the slot was not tested ($1)"
+  : >"$WORK_LOG.two"
+  status=0
+  WORK_LOG="$WORK_LOG.two" run_verify "$tmp/two" "$tmp/orphan.out" || status=$?
+  [[ "$status" -eq 75 ]] || { cat "$tmp/orphan.out" >&2; fail "a run took the slot while a check of a nested parallel run still ran ($1): exit $status"; }
+  [[ ! -s "$WORK_LOG.two" ]] || fail "a run started a check while a check of a nested parallel run still ran ($1)"
+  touch "$WORK_GO"
+  for ((waited = 0; waited < 300; waited++)); do
+    nested_alive || break
+    sleep 0.1
+  done
+  nested_alive && fail "the nested check did not end ($1)"
+  run_verify "$tmp/two" "$tmp/recover.out" || { cat "$tmp/recover.out" >&2; fail "a run after the nested check ended did not recover the slot ($1)"; }
+  grep -Fq "removed the stale lock" "$tmp/recover.out" || fail "the recovery after a nested parallel run did not say that it removed a stale lock ($1)"
+}
+
+# After SIGKILL of the holder and of the nested verify.sh.
+start_nested_holder
+kill -KILL "$(holder_verify_pid)" "$(cat "$tmp/nested-verify.pid")"
+{ wait "$holder"; } 2>/dev/null || true
+expect_nested_held "SIGKILL"
+
+# The nested run is stopped normally (SIGTERM) and its check ignores SIGTERM;
+# the holder then crashes.
+export NESTED_IGNORE_TERM=1
+start_nested_holder
+nested_verify="$(cat "$tmp/nested-verify.pid")"
+kill -TERM "$nested_verify"
+for ((waited = 0; waited < 200; waited++)); do
+  kill -0 "$nested_verify" 2>/dev/null || break
+  sleep 0.1
+done
+kill -0 "$nested_verify" 2>/dev/null && fail "the nested verify.sh did not end on SIGTERM"
+kill -KILL "$(holder_verify_pid)" 2>/dev/null || true
+{ wait "$holder"; } 2>/dev/null || true
+expect_nested_held "SIGTERM ignored"
+unset NESTED_IGNORE_TERM
+
 # The configuration of 'heavy:' is checked.
 for conf in "heavy: missing"$'\n'"light: true" "heavy [x]: light"$'\n'"light: true" "heavy: light"$'\n'"heavy: light"$'\n'"light: true"; do
   printf '%s\n' "$conf" >"$tmp/two/scripts/verify.conf"

@@ -31,6 +31,9 @@
 # slot, runs in that slot: the holder exports VERIFY_LOCK_TOKEN, and a run
 # that finds this token in the lock and the holder among its own ancestors
 # neither waits for nor releases the slot. A token without both is ignored.
+# Such a nested run records nothing in the lock: it runs its checks one at a
+# time, without process groups of their own, so that they stay in the group
+# of the holder's check that started it, which the lock records.
 
 # Exit status of a run that found the slot busy (EX_TEMPFAIL): not a failed
 # check, and not a verification.
@@ -143,6 +146,21 @@ verify_lock_ancestor() {
   return 1
 }
 
+# verify_lock_inside: succeeds when this run runs inside the slot of another
+# run: VERIFY_LOCK_TOKEN is the token of the lock, and its holder is alive and
+# among this shell's ancestors. Such a run is started by a check of the
+# holder and so runs in a process group that the holder recorded; it runs its
+# own checks one at a time and in that group (scripts/verify.sh), so that the
+# record covers them too.
+verify_lock_inside() {
+  local owner
+
+  [[ -n "${VERIFY_LOCK_TOKEN:-}" ]] || return 1
+  owner="$(verify_lock_path)/owner"
+  [[ "$(verify_lock_field "$owner" token)" == "$VERIFY_LOCK_TOKEN" ]] &&
+    verify_lock_alive "$owner" && verify_lock_ancestor "$(verify_lock_field "$owner" pid)"
+}
+
 # verify_lock_describe <owner-file>: the holder in one line.
 verify_lock_describe() {
   printf 'run %s, PID %s, worktree %s, since %s\n' \
@@ -201,10 +219,7 @@ verify_lock_acquire() {
 
   lock="$(verify_lock_path)"
   owner="$lock/owner"
-  if [[ -n "${VERIFY_LOCK_TOKEN:-}" && "$(verify_lock_field "$owner" token)" == "$VERIFY_LOCK_TOKEN" ]] &&
-    verify_lock_alive "$owner" && verify_lock_ancestor "$(verify_lock_field "$owner" pid)"; then
-    return 0
-  fi
+  ! verify_lock_inside || return 0
 
   mkdir -p "${lock%/*}" 2>/dev/null || return 1
   token="$$-$(date +%s)-$RANDOM$RANDOM"

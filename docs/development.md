@@ -727,7 +727,8 @@ parallel: 4
   beside others is a defect of that check. A check that needs the machine to
   itself is declared `heavy:` (see "Heavy checks and the machine-wide
   slot"); a parallel run that holds the slot holds it while any of its checks
-  runs.
+  runs. A verification that a check of the holder starts runs inside the slot
+  and runs its own checks one at a time, whatever its `parallel:` says.
 - A sync of the template never brings the template's line into a project,
   and never changes or removes the project's own (see "Taking over template
   changes"): a project runs its checks one at a time until it sets a value
@@ -804,7 +805,14 @@ and holds it until the run ends:
   slot, runs in that slot instead of waiting for it. The holder passes
   `VERIFY_LOCK_TOKEN` to its checks; a run counts as nested only when the
   token is the one in the lock and the holder is one of its own ancestors, so
-  a copied or stale token does not get past the slot.
+  a copied or stale token does not get past the slot. A nested run records
+  nothing in the lock and ignores its own `parallel:` and `VERIFY_PARALLEL`:
+  it runs its checks one at a time, without process groups of their own, so
+  that they stay in the group of the holder's check that started it, which
+  the lock records. A check of the nested run that outlives a crash of both
+  runs, or ignores `SIGTERM`, therefore keeps the slot held as well. This
+  holds for every verification that a check of the holder starts, also one
+  without a heavy check.
 
 To end a holder, take its PID and worktree from the `BUSY` line or from the
 file `owner` in the lock directory, check them with `ps -p <pid> -o pid,lstart,args`,

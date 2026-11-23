@@ -73,7 +73,9 @@ records_arguments=("$@")
 # record are those of a run of the same checks one at a time. A run that holds
 # the slot for heavy verification records the group of every check that runs.
 # VERIFY_PARALLEL=<n> overrides the line for one run; a check does not inherit
-# it. Without either, the checks run one at a time.
+# it. Without either, the checks run one at a time. A run inside the slot of
+# another run (started by one of its checks) runs its checks one at a time,
+# in the process group that the holder recorded, whatever either says.
 #
 # A project that adopted the workflow records how its checks ended before any
 # change: './scripts/verify.sh --baseline', started by the owner once, runs
@@ -976,6 +978,23 @@ if [[ "$heavy_run" -eq 1 ]]; then
     trap 'exit 143' TERM
     echo
     echo "Holding the slot for heavy verification of this machine (lock $(verify_lock_path), PID $$)."
+  fi
+fi
+
+# A run inside the slot of another run (a check of that run started it) runs
+# its checks one at a time and without process groups of their own: they stay
+# in the process group of the check that started this run, which the holder
+# recorded in the lock. Checks in groups of their own would escape that
+# record, and could outlive a crash of this run while the lock counts the
+# slot as free (#452). This applies whether or not this run declares a heavy
+# check: every check of the holder runs in a recorded group.
+if [[ "$parallel_jobs" -gt 1 && -n "${VERIFY_LOCK_TOKEN:-}" && -z "${verify_lock_acquired:-}" &&
+  -f "$root/scripts/lib/verify-lock.sh" ]]; then
+  declare -F verify_lock_inside >/dev/null || source "$root/scripts/lib/verify-lock.sh"
+  if verify_lock_inside; then
+    echo
+    echo "This run runs inside the slot for heavy verification of the run that started it: its checks run one at a time, in that run's process group ($parallel_source is not used)."
+    parallel_jobs=1
   fi
 fi
 
