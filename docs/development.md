@@ -950,6 +950,14 @@ one that a part runs and the register does not list each fail it. A new case
 gets an identifier and a line in the register; a case moves between parts
 without a change to the register.
 
+The self-tests run under `set -o pipefail`, so an assertion does not pipe
+output into a quiet grep: `producer | grep -q pattern` fails when grep exits
+at its first match while the producer is still writing, which depends on the
+load of the host (Issue #456). Write `grep -q pattern <<<"$(producer)"`
+instead; `>/dev/null` in place of `-q` is no remedy, since GNU grep then stops
+at the first match as well. `tests/pipe-grep-test.sh` fails on such a pipe in
+`tests/*.sh`, also one that continues on the next line.
+
 The self-tests start `jq`, `git`, and `bash` thousands of times. On an Apple
 Silicon Mac an x86_64 `jq`, such as the one Anaconda installs, runs under
 Rosetta and roughly doubles their duration; `file "$(command -v jq)"` shows

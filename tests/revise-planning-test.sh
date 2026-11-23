@@ -230,7 +230,7 @@ at_terminal() {
 
   shift 2
   command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:/usr/bin:/bin") MOCK_AGENT_LOG=$(printf '%q' "$repo.log") ./scripts/revise-planning.sh $(printf '%q ' "$@")"
-  if script --version 2>/dev/null | grep -q util-linux; then
+  if grep -q util-linux <<<"$(script --version 2>/dev/null)"; then
     printf '%s' "$answers" | script -qec "$command" /dev/null >"$repo.out" 2>&1 || true
   else
     printf '%s' "$answers" | script -q /dev/null sh -c "$command" >"$repo.out" 2>&1 || true
@@ -271,8 +271,7 @@ grep -Fq "F02 — Offline storage" "$repo/docs/roadmap.md" || fail "the write se
 
 # A recorded amendment is the owner's: one without confirmation is invalid.
 jq '.decisions[0].amendment.confirmed_by = "planner"' "$repo/$revision.json" >"$tmp/forged.json"
-(source "$repo/scripts/lib/review-data.sh" && revision_artifact_errors "$tmp/forged.json" "$repo/$review") |
-  grep -Fq "no confirmation by the owner" || fail "an amendment without the owner's confirmation was valid"
+grep -Fq "no confirmation by the owner" <<<"$(source "$repo/scripts/lib/review-data.sh" && revision_artifact_errors "$tmp/forged.json" "$repo/$review")" || fail "an amendment without the owner's confirmation was valid"
 
 # A failed write session after the amendment: the decisions and the amended
 # requirements stay, and a re-run aligns the planning without asking again.

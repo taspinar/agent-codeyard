@@ -496,7 +496,7 @@ scenario_errors() {
   done < <(sort <<<"$listed" | uniq -d)
   while IFS= read -r id; do
     [[ -n "$id" ]] || continue
-    cut -d: -f3 <<<"$defined" | grep -Fqx -- "$id" || {
+    grep -Fqx -- "$id" <<<"$(cut -d: -f3 <<<"$defined")" || {
       echo "the register lists $id, which no part runs"
       errors=1
     }

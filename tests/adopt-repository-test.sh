@@ -364,7 +364,7 @@ adopt "$repo" || { cat "$repo.out" >&2; fail "the adoption with a name that diff
 [[ "$(git -C "$repo" ls-files docs | grep -ci '^docs/architecture\.md$')" -eq 1 && -n "$(git -C "$repo" ls-files -- docs/architecture.md)" ]] ||
   fail "the project's document was not renamed, or a second one was written: $(git -C "$repo" ls-files docs)"
 [[ "$(cat "$repo/docs/architecture.md")" == "# Our architecture" ]] || fail "the renamed document lost its content: $(cat "$repo/docs/architecture.md")"
-git -C "$repo" diff -M --name-status main adopt/agent-codeyard -- docs | grep -Fxq $'R100\tdocs/ARCHITECTURE.md\tdocs/architecture.md' ||
+grep -Fxq $'R100\tdocs/ARCHITECTURE.md\tdocs/architecture.md' <<<"$(git -C "$repo" diff -M --name-status main adopt/agent-codeyard -- docs)" ||
   fail "the adoption is no rename: $(git -C "$repo" diff -M --name-status main adopt/agent-codeyard -- docs)"
 [[ "$(git -C "$repo" log --follow --format=%s adopt/agent-codeyard -- docs/architecture.md | tail -n 1)" == "Fixture" ]] ||
   fail "the history of the document was not kept: $(git -C "$repo" log --follow --format=%s adopt/agent-codeyard -- docs/architecture.md)"
@@ -476,9 +476,9 @@ workflows_before="$(cd "$repo" && find .github/workflows -type f | LC_ALL=C sort
 if (cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/sync-template.sh --template "$template") >"$repo.sync" 2>&1; then
   fail "the sync reported no conflict: $(cat "$repo.sync")"
 fi
-grep -A3 '^Replaced' "$repo.sync" | grep -Fq 'docs/evaluation.md' && cmp -s "$repo/docs/evaluation.md" "$template/docs/evaluation.md" ||
+grep -Fq 'docs/evaluation.md' <<<"$(grep -A3 '^Replaced' "$repo.sync")" && cmp -s "$repo/docs/evaluation.md" "$template/docs/evaluation.md" ||
   fail "the sync did not update a file of the workflow: $(cat "$repo.sync")"
-grep -A3 '^CONFLICTS' "$repo.sync" | grep -Fq '.github/PULL_REQUEST_TEMPLATE.md' ||
+grep -Fq '.github/PULL_REQUEST_TEMPLATE.md' <<<"$(grep -A3 '^CONFLICTS' "$repo.sync")" ||
   fail "the sync did not report the conflict of the project's file: $(cat "$repo.sync")"
 [[ "$(cat "$repo/AGENTS.md")" == "$agents_before" ]] || fail "the sync changed the project's AGENTS.md"
 # The project's CI stays its own: a template workflow the adoption left out is

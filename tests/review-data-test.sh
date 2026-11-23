@@ -201,7 +201,7 @@ grep -Fq "previous has unexpected fields: extra" <<<"$(review_result_errors "$re
 
 # The generated report names the predecessor.
 review="$(write_review 3 "[$(finding major "Name now misleading" '{"round": 1, "id": "MIN1", "relation": "worsened", "reason": "The rename made it misleading."}')]")"
-review_render_markdown "$review" review.json | grep -Fq "**Continues:** MIN1 of round 1, worsened: The rename made it misleading." ||
+grep -Fq "**Continues:** MIN1 of round 1, worsened: The rename made it misleading." <<<"$(review_render_markdown "$review" review.json)" ||
   fail "the report does not name the predecessor"
 
 # The criteria the reviewer could not confirm: a list of {criterion, reason},
@@ -226,7 +226,7 @@ review="$(write_review 4 "[]")"
 jq '.unverified_criteria = [{criterion: "The deployment works", reason: "No access to the staging account."}]' "$review" >"$review.tmp"
 mv "$review.tmp" "$review"
 [[ -z "$(review_artifact_errors "$review")" ]] || fail "a stored review with an unverified criterion was refused: $(review_artifact_errors "$review")"
-review_render_markdown "$review" review.json | grep -Fqx -- "- The deployment works: No access to the staging account." ||
+grep -Fqx -- "- The deployment works: No access to the staging account." <<<"$(review_render_markdown "$review" review.json)" ||
   fail "the report does not name the criterion the review could not confirm"
 jq '.unverified_criteria[0].extra = 1' "$review" >"$review.tmp"
 grep -Fq "unverified criterion 1 has unexpected fields: extra" <<<"$(review_artifact_errors "$review.tmp")" ||

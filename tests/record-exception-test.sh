@@ -166,7 +166,7 @@ at_terminal() {
 
   shift 2
   command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:/usr/bin:/bin") MOCK_GH_LOG=$(printf '%q' "$repo.gh") $(printf '%q ' "$@")"
-  if script --version 2>/dev/null | grep -q util-linux; then
+  if grep -q util-linux <<<"$(script --version 2>/dev/null)"; then
     printf '%s\n' "$answer" | script -qec "$command" /dev/null
   else
     printf '%s\n' "$answer" | script -q /dev/null sh -c "$command"
@@ -299,7 +299,7 @@ jq -e --arg sha "$(sha256sum "$repo/$review" | cut -c1-64)" --arg tree "$(jq -r 
   and .finding_severity == "major" and .reviewed_tree == $tree and (.merge_base | length) == 40
 ' "$repo/$record_m1" >/dev/null || fail "the stored exception lacks a field: $(cat "$repo/$record_m1")"
 # Stored exactly as shown.
-tr -d '\r' <"$repo.out" | grep -Fq -- "$(cat "$repo/$record_m1")" || fail "the stored exception is not the one shown"
+grep -Fq -- "$(cat "$repo/$record_m1")" <<<"$(tr -d '\r' <"$repo.out")" || fail "the stored exception is not the one shown"
 [[ -z "$(git -C "$repo" status --porcelain -- .agents/exceptions)" ]] || fail "Git does not ignore the exceptions"
 # Published on the Issue, with the marker that keeps it from the agents.
 jq -r .body "$repo.gh.comments" >"$repo.comment"
@@ -360,7 +360,7 @@ jq -e --arg m1 "$(sha256sum "$repo/$record_m1" | cut -c1-64)" --arg c1 "$(sha256
   (.reasons | any(test("exception \\(not-applicable\\) to the blocking finding M1 .* sha256 " + $m1)))
   and (.reasons | any(test("exception \\(risk-accepted\\) to the blocking finding C1 .* sha256 " + $c1)))
 ' <<<"$request" >/dev/null || fail "the approval request does not name the exceptions: $request"
-if git -C "$repo" show --name-only --format= HEAD | grep -Fq ".agents/exceptions"; then fail "an exception was committed"; fi
+if grep -Fq ".agents/exceptions" <<<"$(git -C "$repo" show --name-only --format= HEAD)"; then fail "an exception was committed"; fi
 
 # The pull request shows the original finding and the owner's exception
 # first, from the records whose SHA-256 it recomputed.

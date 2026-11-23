@@ -325,16 +325,16 @@ rm "$root/scripts/verify.conf" "$root/scripts/verify-workflow.conf"
 printf '%s\n' "$cites_budget" >"$record"
 expect_gate "the same record in a project without budget checks" complete
 printf '%s\n' "$awaiting" >"$record"
-completion_commit_lines "$root" 7 | grep -Fqx -- "- pending at post_merge: main verifies after the merge (the verify run on main)" ||
+grep -Fqx -- "- pending at post_merge: main verifies after the merge (the verify run on main)" <<<"$(completion_commit_lines "$root" 7)" ||
   fail "the commit lines do not name the gate of pending evidence"
-completion_commit_lines "$root" 7 | grep -Fqx "Completion: awaiting_evidence" || fail "the commit lines do not state awaiting_evidence"
+grep -Fqx "Completion: awaiting_evidence" <<<"$(completion_commit_lines "$root" 7)" || fail "the commit lines do not state awaiting_evidence"
 # A pending post_merge criterion also gets an exact line, a JSON string, so
 # that record-post-merge.sh matches it whatever it or its evidence contains;
 # other gates and other statuses get none.
 [[ "$(completion_commit_lines "$root" 7 | grep -c '^Post-merge criterion: ')" -eq 1 ]] || fail "the commit lines do not hold exactly one post-merge criterion line"
-completion_commit_lines "$root" 7 | grep -Fqx 'Post-merge criterion: "main verifies after the merge"' || fail "the post-merge criterion line is not the criterion as a JSON string"
+grep -Fqx 'Post-merge criterion: "main verifies after the merge"' <<<"$(completion_commit_lines "$root" 7)" || fail "the post-merge criterion line is not the criterion as a JSON string"
 printf '%s\n' '{"schema": "completion/v1", "status": "awaiting_evidence", "criteria": [{"criterion": "main verifies \"fast\" (production)", "gate": "post_merge", "status": "pending", "evidence": "the run (verify.sh)"}], "remaining": []}' >"$record"
-completion_commit_lines "$root" 7 | grep -Fqx 'Post-merge criterion: "main verifies \"fast\" (production)"' || fail "quotes and parentheses of a criterion are not kept exactly in its JSON string"
+grep -Fqx 'Post-merge criterion: "main verifies \"fast\" (production)"' <<<"$(completion_commit_lines "$root" 7)" || fail "quotes and parentheses of a criterion are not kept exactly in its JSON string"
 printf '%s\n' "$awaiting" >"$record"
 printf '%s\n' "$complete" >"$record"
 
@@ -389,8 +389,7 @@ This Refs #12 and Fixes #123, Refs owner/repo#12; see #12
 Refs https://github.com/o/r/issues/12
 Refs #12
 This encloses #12" ]] || fail "closing keywords were not turned into references as expected"
-if printf '%s\n' "Closes #12" "Fixes #12 and resolves #12" | completion_neutralize_closing 12 |
-  grep -Eiq "$(completion_closing_pattern 12)"; then
+if grep -Eiq "$(completion_closing_pattern 12)" <<<"$(printf '%s\n' "Closes #12" "Fixes #12 and resolves #12" | completion_neutralize_closing 12)"; then
   fail "a closing keyword survived the rewriting"
 fi
 
