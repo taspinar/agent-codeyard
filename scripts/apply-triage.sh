@@ -24,8 +24,8 @@ usage() {
   echo "refused when no session of this triage was started and left unfinished."
   echo
   echo "--checks verifies the result with only the named groups of ./scripts/verify.sh"
-  echo "(--only), and tells the agent to do the same, as the risk policy may allow"
-  echo "for an intermediate round of run-feature.sh. A partial check is not a"
+  echo "(--only), and tells the agent to do the same, for an intermediate round that"
+  echo "you run by hand (run-feature.sh never asks for one). A partial check is not a"
   echo "verification: it records nothing, and the full verification runs before"
   echo "the commit."
   echo
@@ -292,8 +292,8 @@ if [[ -n "$checks" ]]; then
 
 This is an intermediate round: after your last change run
 ./scripts/verify.sh --only $checks
-instead of the full ./scripts/verify.sh, as the risk policy allows for this
-round. A partial run is not a verification: it records nothing and cannot be
+instead of the full ./scripts/verify.sh, as the caller asked for this round
+(--checks). A partial run is not a verification: it records nothing and cannot be
 cited as evidence in the completion record; the full verification runs
 before the commit."
 fi
@@ -343,6 +343,55 @@ else
 fi
 set -e
 
+# The completion record that the session left is checked now, with the rules
+# of the completion gate (lib/completion.sh, completion_errors), and not only
+# at the commit after the next review: a record that cites a partial run of
+# the checks as evidence, for example, would cost a review round there. An
+# unattended session gets one session to correct it, with the errors; an
+# interactive one stops here, before the verification, for the human to
+# correct it. A missing record is an error of the gate as well: without one
+# the feature would reach the review only to be refused at the commit.
+fix_record_errors() {
+  if [[ -f "$completion_file" ]]; then
+    completion_errors "$completion_file" "$root"
+  else
+    echo "there is no completion record: write it as .agents/prompts/implementer.md describes under 'Completion'"
+  fi
+}
+record_errors=""
+if [[ "$agent_status" -eq 0 && -z "$blocked" && -n "$source_issue" ]]; then
+  completion_file="$(completion_record "$root" "$source_issue")"
+  record_errors="$(fix_record_errors)"
+  if [[ -n "$record_errors" && "$AGENT_UNATTENDED" -eq 1 ]]; then
+    echo
+    echo "The completion record ($COMPLETION_DIR/$source_issue.json) does not pass the completion gate:"
+    printf '%s\n' "$record_errors" | sed 's/^/  - /'
+    echo "Starting a session of the $agent agent to correct it."
+    set +e
+    agent_run unattended "$agent" "$model" "$root" "Read and follow .agents/prompts/triage-implementer.md.
+
+You applied the approved FIX_NOW findings of ${triage_relative} for Issue #${source_issue}.
+The completion record $COMPLETION_DIR/$source_issue.json that you left does not
+pass the completion gate:
+
+$(printf '%s\n' "$record_errors" | sed 's/^/- /')
+
+Correct only the completion record, as .agents/prompts/implementer.md
+describes it under 'Completion'. A partial run of the checks
+(./scripts/verify.sh --changed or --only) is no evidence: for a criterion that
+the full verification shows, the evidence is the pass that run-feature.sh
+makes after your session. Change no other file.
+
+$AGENT_UNATTENDED_PROMPT" "$final_message"
+    agent_status=$?
+    set -e
+    blocked="$(agent_blocked_reason "$final_message")"
+    record_errors=""
+    [[ "$agent_status" -ne 0 || -n "$blocked" ]] ||
+      record_errors="$(fix_record_errors)"
+  fi
+fi
+
 # The session ran inside the artifact manifest of agent_run (lib/agent.sh),
 # which covers the review and the triage this session works from.
 protected_artifact_changed=0
@@ -351,6 +400,14 @@ if [[ -n "$AGENT_ARTIFACTS_CHANGED" ]]; then
   echo "Error: implementation agent modified artifacts that it may only read: ${AGENT_ARTIFACTS_CHANGED//$'\n'/, }."
   protected_artifact_changed=1
   protected_artifact_reason="implementation agent modified artifacts that it may only read: ${AGENT_ARTIFACTS_CHANGED//$'\n'/, }."
+fi
+
+if [[ -n "$record_errors" && -z "$AGENT_ARTIFACTS_CHANGED" ]]; then
+  echo "Error: the completion record ($COMPLETION_DIR/$source_issue.json) does not pass the completion gate:" >&2
+  printf '%s\n' "$record_errors" | sed 's/^/  - /' >&2
+  echo "Correct it as .agents/prompts/implementer.md describes under 'Completion', then review again: ./scripts/review-feature.sh $source_issue" >&2
+  records_stop "${0##*/}" "the completion record does not pass the completion gate: ${record_errors//$'\n'/; }"
+  exit 1
 fi
 
 # The fixed content must pass verification. A pass recorded for exactly this

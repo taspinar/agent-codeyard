@@ -380,6 +380,7 @@ adr
 impact-major
 major-deferred
 rounds
+more-rounds
 blocked
 blocked-restart
 blocked-without-question
@@ -425,12 +426,10 @@ fixes-blocked
 fixes-nothing
 fixes-refuted
 fixes-mixed
+fixes-refuted-other-title
 fixes-inconclusive
 base-changed
-high-partial-checks
-high-partial-full-review
-high-partial-repaired
-high-unknown-group
+high-groups-refused
 level-rises
 medium-full-reviews
 low-unreviewed
@@ -450,6 +449,7 @@ resumed
 refused
 budget
 budget-measured
+budget-restart
 budget-as-evidence
 duration-budget
 REGISTER

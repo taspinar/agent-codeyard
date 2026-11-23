@@ -21,40 +21,37 @@ source "$source_root/tests/lib-run-feature.sh"
 # base. With the policy the template ships, which the cases of the other
 # parts run with, nothing changed: the full verification before each round,
 # a review of the changes when it can build on the round before, a complete
-# review last. A project may name groups of checks for the intermediate
-# rounds of a high-risk feature: the round after the fixes runs only them,
-# the review records that the content is partially checked, and the round
-# that ends the run is a complete review on the full verification; the
-# commit is made on that one.
+# review last. A policy that still names groups of checks for the
+# intermediate rounds ('high: verification: groups fast', refused since
+# #443) gets the full verification before every round: the refusal is
+# printed and in the log of the feature, no partial check runs, the fixes
+# leave the verification to the run, and the round that ends the run is a
+# complete review on the full verification; the commit is made on that one.
 verify_trace='sound: sh -c '"'"'mkdir -p .agents/run; echo full >>.agents/run/verify-trace; test ! -e broken.txt'"'"'
 fast [fast]: sh -c '"'"'mkdir -p .agents/run; echo fast >>.agents/run/verify-trace'"'"
-scenario high-partial-checks
-repo="$(VERIFY_CONF="$verify_trace" RISK_CONF="$(printf 'default: medium\nhigh: feature.txt\nhigh: verification: groups fast\nhigh: review: delta')" setup_repo high-partial-checks)"
+scenario high-groups-refused
+repo="$(VERIFY_CONF="$verify_trace" RISK_CONF="$(printf 'default: medium\nhigh: feature.txt\nhigh: verification: groups fast\nhigh: review: delta')" setup_repo high-groups-refused)"
 printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
 run_feature "$repo" 2 thing
 expect_published "$repo"
 expect_sessions "$repo" 1 3 1 1
 grep -Fq "run-feature.sh: risk level before round 2: high" "$repo.out" || fail "the level of the high-risk feature was not computed before round 2"
-grep -Fq "review on a partial check of the groups fast, round 2 of at most 5" "$repo.out" || fail "round 2 did not run on a partial check"
-grep -Fq "fixes for round 1 on a partial check of the groups fast" "$repo.out" || fail "the fixes were not verified on a partial check"
-grep -Fq "verify.sh --only fast" "$repo.control/fixes.args" || fail "the fixing agent was not told to run only the groups"
-# The full run of the run before round 1, the partial check after the fixes,
-# the full verification of the run after the fix session and before round 2,
-# and the partial check of round 2: the closing round, on the same tree, and
-# the commit reuse the full pass of the run (the trust contract,
-# lib/verification.sh).
-[[ "$(tr '\n' ' ' <"$repo-2-thing/.agents/run/verify-trace")" == "full fast fast full fast fast " ]] ||
-  fail "the checks did not run as full, partial, full, partial: $(tr '\n' ' ' <"$repo-2-thing/.agents/run/verify-trace")"
-steps="$(cat "$repo"/.agents/run/records/*.jsonl | jq -r -s 'sort_by(.epoch) | map(select(.type == "step") | .name) | join(" | ")')"
-[[ "$steps" == *"fixes for round 1 on a partial check of the groups fast | verification before round 2 | review on a partial check of the groups fast, round 2 of at most 5 | "* ]] ||
-  fail "the run did not make the full verification after the fix session and before the partial-check round: $steps"
+grep -Fq "| risk policy before round 1 | refused | high: verification: groups fast is not accepted" <<<"$(log_of "$repo")" ||
+  fail "the refused groups are not in the log of the feature: $(log_of "$repo")"
+if grep -Fq "on a partial check of the groups" "$repo.out"; then fail "a round ran on a partial check: $(cat "$repo.out")"; fi
+if grep -Fq "verify.sh --only" "$repo.control/fixes.args"; then fail "the fixing agent was told to run only the groups"; fi
+grep -Fq "verify.sh --changed" "$repo.control/fixes.args" || fail "the fixing agent was not told to run the targeted check"
+# The full verification of the run before round 1 and after the fix session
+# before round 2; the closing round, on the same tree, and the commit reuse
+# the pass of the run (the trust contract, lib/verification.sh).
+[[ "$(tr '\n' ' ' <"$repo-2-thing/.agents/run/verify-trace")" == "full fast full fast " ]] ||
+  fail "the checks did not run as two full verifications: $(tr '\n' ' ' <"$repo-2-thing/.agents/run/verify-trace")"
 [[ "$(full_verifications "$repo")" -eq 2 ]] ||
   fail "the run made $(full_verifications "$repo") full verifications instead of one per distinct tree (two)"
 round2="$repo-2-thing/.agents/reviews/feature-2-thing-review-02.json"
-[[ "$(jq -c '[.scope.kind, .verification.status, .verification.groups]' "$round2")" == '["changes","partial",["fast"]]' ]] ||
-  fail "round 2 does not record the delta review on a partial check: $(jq -c '[.scope, .verification]' "$round2")"
-grep -Fq "## Verification of the content under review" "$repo.control/reviewer-2.context" || fail "the reviewer of round 2 was not told about the partial check"
-if grep -Fq "## Verification of the content under review" "$repo.control/reviewer-3.context"; then fail "the reviewer of round 3 was told about a partial check"; fi
+[[ "$(jq -c '[.scope.kind, .verification.status]' "$round2")" == '["changes","passed"]' ]] ||
+  fail "round 2 is not a delta review on the full verification: $(jq -c '[.scope, .verification]' "$round2")"
+if grep -Fq "## Verification of the content under review" "$repo.control/reviewer-2.context"; then fail "the reviewer of round 2 was told about a partial check"; fi
 [[ "$(jq -r '.verification.status' "$repo-2-thing/.agents/reviews/feature-2-thing-review-03.json")" == "passed" ]] ||
   fail "the closing round was not made on the full verification"
 grep -q "^Review: round 3, PASS" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" || fail "the commit does not rest on the closing round"
@@ -68,45 +65,6 @@ grep -Eq '^- Round 1, M1 \[major\] .+: FIX_NOW — It is wrong\.$' "$repo.contro
 grep -Eq '^- Round 1, MIN1 \[minor\] .+: DEFER — Later\.$' "$repo.control/reviewer-3.context" ||
   fail "the closing round was not given the deferred finding of round 1"
 grep -Fqx -- "- Round 2: no findings." "$repo.control/reviewer-3.context" || fail "the closing round was not told about round 2"
-# The same partial check when round 2 is a complete review by policy: it is
-# still an intermediate round, and a complete review on the full
-# verification follows before the commit.
-scenario high-partial-full-review
-repo="$(VERIFY_CONF="$verify_trace" RISK_CONF="$(printf 'default: medium\nhigh: feature.txt\nhigh: verification: groups fast\nhigh: review: full')" setup_repo high-partial-full-review)"
-printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
-run_feature "$repo" 2 thing
-expect_published "$repo"
-expect_sessions "$repo" 1 3 1 1
-if grep -Fq "Review of changes only" "$repo.control/reviewer.args"; then fail "a round reviewed only the changes although the policy requires complete reviews"; fi
-[[ "$(jq -c '[.scope.kind, .verification.status]' "$repo-2-thing/.agents/reviews/feature-2-thing-review-02.json")" == '["full","partial"]' ]] ||
-  fail "round 2 is not a complete review on a partial check"
-[[ "$(jq -c '[.scope.kind, .verification.status]' "$repo-2-thing/.agents/reviews/feature-2-thing-review-03.json")" == '["full","passed"]' ]] ||
-  fail "the closing round is not a complete review on the full verification"
-grep -q "^Review: round 3, PASS" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" || fail "the commit does not rest on the closing round"
-# A partial check that fails is repaired like a failed verification; the
-# handoff note says that the partial run is not a verification.
-scenario high-partial-repaired
-repo="$(VERIFY_CONF="$verify_trace"'
-gate [fast]: test ! -e fast-broken.txt' RISK_CONF="$(printf 'default: medium\nhigh: feature.txt\nhigh: verification: groups fast')" setup_repo high-partial-repaired)"
-printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
-printf '%s\n' 'printf "fixed\n" >>feature.txt; printf "x\n" >fast-broken.txt; reply="Fixed."' >"$repo.control/fixes.sh"
-printf '%s\n' 'if [[ "$count" -eq 1 ]]; then eval "$default"; else grep -q "verify.sh --only fast" ".agents/handoffs/$RUN_ISSUE.md" && grep -q "not a verification" ".agents/handoffs/$RUN_ISSUE.md" && rm -f fast-broken.txt; reply="Repaired."; fi' \
-  >"$repo.control/implementer.sh"
-run_feature "$repo" 2 thing
-expect_published "$repo"
-expect_sessions "$repo" 2 3 1 1
-grep -Fq "Repair attempt 1 of 3" <<<"$(log_of "$repo")" || fail "the failed partial check was not repaired"
-# A group the policy names that verify.sh does not know: the full
-# verification runs, and the run says so.
-scenario high-unknown-group
-repo="$(RISK_CONF="$(printf 'default: medium\nhigh: feature.txt\nhigh: verification: groups nope')" setup_repo high-unknown-group)"
-printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
-run_feature "$repo" 2 thing
-expect_published "$repo"
-expect_sessions "$repo" 1 3 1 1
-grep -Fq "a group of checks that verify.sh does not know: nope" <<<"$(log_of "$repo")" || fail "the unknown group is not in the log of the feature"
-[[ "$(jq -r '.verification.status' "$repo-2-thing/.agents/reviews/feature-2-thing-review-02.json")" == "passed" ]] ||
-  fail "round 2 did not run the full verification for an unknown group"
 
 # A medium-risk feature whose fixes touch a path of the high class is
 # reclassified: the round after the fixes reviews the complete feature
@@ -447,6 +405,24 @@ grep -Fq "| review, round 1 | budget | budget perf exceeded: 1.4 s, target 1.0 s
   fail "the budget was recorded $(grep -c "## Budget exceeded" "$repo-2-thing/.agents/handoffs/2.md") times instead of once"
 grep -Fqx -- "- budget perf exceeded: 1.4 s, target 1.0 s" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" ||
   fail "the commit message lacks the budget measured by the implementer"
+
+# A run that starts again finds the note of the same budget result in the
+# handoff note and does not write it again: the note is part of what a review
+# covers, so a second note would make the review, and an owner exception
+# bound to it, stale. The first run stops on a failed review, the second
+# verifies again, measures the same budget over its target, and goes on.
+scenario budget-restart
+repo="$(VERIFY_CONF="$budget_conf" setup_repo budget-restart)"
+printf '%s\n' 'exit 1' >"$repo.control/reviewer-1.sh"
+RUN_FEATURE_RETRIES=0 run_feature "$repo" 2 thing
+expect_stopped "$repo" 1 "the review did not complete"
+[[ "$(grep -c "## Budget exceeded" "$repo-2-thing/.agents/handoffs/2.md")" -eq 1 ]] || fail "the first run did not record the budget"
+run_feature "$repo" 2
+expect_published "$repo"
+[[ "$(grep -c "## Budget exceeded" "$repo-2-thing/.agents/handoffs/2.md")" -eq 1 ]] ||
+  fail "the restart recorded the same budget result again: $(cat "$repo-2-thing/.agents/handoffs/2.md")"
+grep -Fqx -- "- budget perf exceeded: 1.4 s, target 1.0 s" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" ||
+  fail "the commit message of the restarted run lacks the budget"
 
 # A completion record that cites the budget check as evidence of a met
 # criterion does not pass the gate: the implementer is resumed with the

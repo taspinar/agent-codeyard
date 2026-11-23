@@ -1227,7 +1227,9 @@ done
 # tests/lib-<script>.sh, as tests/run-feature-<part>-test.sh source
 # tests/lib-run-feature.sh: a change to the script, or to the shared file,
 # selects every part; a change to one part selects that part. A shared file
-# of no script (tests/lib-fakes.sh) selects nothing by itself.
+# of no script (tests/lib-fakes.sh), which every self-test sources, selects
+# every self-test; a file in a directory under tests/ (the project's tests)
+# selects none.
 project="$(setup_recorded_project changed-parts)"
 mkdir -p "$project/tests"
 printf 'one\n' >"$project/scripts/alpha.sh"
@@ -1257,10 +1259,41 @@ expect_parts() {
 expect_parts scripts/alpha.sh "alpha-one-test alpha-two-test"
 expect_parts tests/lib-alpha.sh "alpha-one-test alpha-two-test"
 expect_parts tests/alpha-two-test.sh "alpha-two-test"
-printf '# two\n' >>"$project/tests/lib-fakes.sh"
-run_changed || fail "--changed with a changed tests/lib-fakes.sh failed: $(cat "$project/out.log")"
-[[ "$(grep -c . "$project/tools.log")" -eq 1 ]] || fail "--changed selected a self-test for tests/lib-fakes.sh: $(cat "$project/tools.log")"
-git -C "$project" checkout -q -- tests/lib-fakes.sh
+expect_parts tests/lib-fakes.sh "alpha-one-test alpha-two-test other-test"
+mkdir -p "$project/tests/unit"
+printf '# unit\n' >"$project/tests/unit/test_app.py"
+run_changed || fail "--changed with a changed project test failed: $(cat "$project/out.log")"
+[[ "$(grep -c . "$project/tools.log")" -eq 1 ]] || fail "--changed selected a self-test for a project test under tests/unit: $(cat "$project/tools.log")"
+rm -rf "$project/tests/unit"
+
+# A changed library selects the self-tests of everything that sources it,
+# directly or through another library: scripts/lib/inner.sh is sourced only by
+# scripts/lib/outer.sh, which scripts/zeta.sh sources, and directly by the
+# test tests/omega-test.sh; scripts/lib/lone.sh is sourced by nothing and
+# selects nothing but its own test, which does not exist.
+project="$(setup_recorded_project changed-sourced)"
+mkdir -p "$project/tests"
+printf '# inner\n' >"$project/scripts/lib/inner.sh"
+printf '# lone\n' >"$project/scripts/lib/lone.sh"
+printf 'source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/inner.sh"\n' >"$project/scripts/lib/outer.sh"
+printf 'script_dir="$(dirname "$0")"\nsource "$script_dir/lib/outer.sh"\n' >"$project/scripts/zeta.sh"
+for name in zeta omega other; do
+  printf '#!/usr/bin/env bash\nsource_root="$(cd "$(dirname "$0")/.." && pwd)"\n' >"$project/tests/$name-test.sh"
+  [[ "$name" != "omega" ]] || printf 'source "$source_root/scripts/lib/inner.sh"\n' >>"$project/tests/$name-test.sh"
+  printf 'echo "%s-test" >>"$MOCK_TOOL_LOG"\n' "$name" >>"$project/tests/$name-test.sh"
+  chmod +x "$project/tests/$name-test.sh"
+done
+printf '%s\n' "paths: scripts tests" "zeta: ./tests/zeta-test.sh" "omega: ./tests/omega-test.sh" \
+  "other: ./tests/other-test.sh" >"$project/scripts/verify-workflow.conf"
+git -C "$project" add -A
+git -C "$project" commit -qm "Libraries sourced through others"
+git -C "$project" checkout -q -b feature/3-sourced
+expect_parts scripts/lib/inner.sh "omega-test zeta-test"
+expect_parts scripts/lib/outer.sh "zeta-test"
+printf '# two\n' >>"$project/scripts/lib/lone.sh"
+run_changed || fail "--changed with a changed library that nothing sources failed: $(cat "$project/out.log")"
+[[ "$(grep -c . "$project/tools.log")" -eq 1 ]] || fail "--changed selected a self-test for a library that nothing sources: $(cat "$project/tools.log")"
+git -C "$project" checkout -q -- scripts/lib/lone.sh
 
 # Parallel runs: 'parallel: <n>' in scripts/verify.conf runs up to <n> checks
 # at a time, over the checks of both files; VERIFY_PARALLEL overrides it for

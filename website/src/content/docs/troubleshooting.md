@@ -152,7 +152,15 @@ Each finding gets one recorded decision: fix it now (`FIX_NOW`), defer it to a f
 - **Recovered when:** `./scripts/run-feature.sh <issue>` goes on to the commit, or reviews the fix.
 - **Output:** the output of `run-feature.sh` and `.agents/run/<issue>-log`; the evidence in `.agents/handoffs/<issue>.md`, under `## Triage …`.
 
-An unattended run stops with status 3 when the implementer showed, with a reproduction, that every finding left to fix does not hold and changed no code for it, and a later review still reports it. No agent may accept a critical or major finding, so another fix session would only refute it again. Your decision lets the same command continue.
+An unattended run stops with status 3 when the implementer showed, with a reproduction, that every finding left to fix does not hold and changed no code for it, and a later review still reports it under the same title. No agent may accept a critical or major finding, so another fix session would only refute it again. Your decision lets the same command continue. A finding that names a refuted one as its predecessor but has another title is a new finding: it gets a fix session, not this stop.
+
+### "5 review rounds are used, …"
+
+- **First fix:** when another round or two is worth it, run the command the stop proposes, `./scripts/run-feature.sh <issue> --rounds <m>`, at a terminal. Otherwise record an exception for a blocking finding you disagree with, or continue by hand with the scripts the stop names.
+- **Recovered when:** the run ends on a review of the complete feature and opens the pull request.
+- **Output:** the output of `run-feature.sh` and `.agents/run/<issue>-log`; the run record notes the raised limit.
+
+`--rounds` is your decision only: an agent session and a run without a terminal on standard input are refused.
 
 ## Planning
 

@@ -102,7 +102,7 @@ The policy can also say, per level, what the review rounds of `run-feature.sh` n
 
 | Line | What it means |
 | --- | --- |
-| `verification: full` or `groups <group>...` | Every check before every review round, or in addition the named groups in the repair rounds between the first review and the last. A partial check is never a verification: every review and the commit still need every check |
+| `verification: full` | Every check before every review round and the commit. `groups <group>...`, a partial check in the repair rounds, is refused: it ran in addition to every check and saved nothing |
 | `review: delta`, `full`, or `none` | Whether a later round may review only the changes, or always the complete feature. `low: review: none` commits a low-risk feature without a review; only `low` may have it |
 | `triage: full` or `light` | The light triage prefers to defer or accept a suggestion or a minor finding over a fix session. Only `low` and `medium` may have it |
 

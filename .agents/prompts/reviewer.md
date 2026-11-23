@@ -115,8 +115,9 @@ fixed, and its review artifact is under `.agents/reviews/`.
   `previous`: `round` and `id` as the earlier round gave them, and
   `relation`:
   - `unresolved`: a finding that was to be fixed (`FIX_NOW`, or not triaged)
-    is not, or not fully, resolved. Keep its severity and say in the title
-    that it is unresolved.
+    is not, or not fully, resolved. Keep its severity and its title, and
+    say that it is unresolved only by `Unresolved: ` before the title or
+    `, unresolved` after it.
   - `worsened`: an accepted or deferred finding that the change made worse.
     `reason` says how; it is required.
 - Leave `previous` null for a new finding.
@@ -129,7 +130,12 @@ finding that still holds as `unresolved`, with what you found about the
 recorded check.
 
 Judge the change, not the titles: a finding continues an earlier one when it
-is about the same defect, whatever it is called. The script checks
+is about the same defect, whatever it is called; then give it the title of
+the earlier one. `run-feature.sh` continues a finding by its `previous` and
+its title together: a finding whose title differs from that of the finding
+it names, apart from the mark of an unresolved one, counts as a new finding,
+and what the implementer recorded about the earlier one does not carry over
+to it. A different defect is a new finding with `previous` null. The script checks
 `previous` against the recorded decisions and refuses the review when it
 names a round or a finding that does not exist, when an `unresolved` finding
 names an accepted or deferred one or has another severity than it, when a
@@ -145,8 +151,8 @@ instead of the complete feature diff. Then:
 
 - For every finding that was to be fixed (`FIX_NOW`, or not triaged), check
   in the current files that it is resolved. Report one that is not, or only
-  partly, again with its severity, say in the title that it is unresolved,
-  and name it in `previous` with the relation `unresolved`.
+  partly, again with its severity and its title, marked as unresolved as
+  above, and name it in `previous` with the relation `unresolved`.
 - Review the changed lines and what they affect: callers, tests, and
   documentation of the changed behaviour. Read the surrounding code; a fix
   can break something next to it.

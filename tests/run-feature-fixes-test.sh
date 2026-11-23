@@ -143,7 +143,8 @@ refuted() {
 printf "\n## Triage %s\n\n- '"$1"': '"$2"' — \`grep -c feature feature.txt\` prints 1: the content is right\n" "$(basename "$t")" >>".agents/handoffs/$RUN_ISSUE.md"
 reply="'"$1"' is '"$2"'."'
 }
-# A reviewer that reports M1 of the round before again, as unresolved.
+# A reviewer that reports M1 of the round before again, as unresolved, with
+# its title and the mark that it is unresolved.
 unresolved='reply="{\"architecture_impact\": {\"level\": \"minor\", \"rationale\": \"Stays within the accepted architecture.\", \"checked_against\": []}, \"verdict\": \"CHANGES_REQUIRED\", \"limitations\": \"\", \"findings\": [
   {\"severity\": \"major\", \"title\": \"Wrong content, unresolved\", \"evidence\": \"feature.txt:1\", \"impact\": \"Bug.\", \"recommendation\": \"Fix.\", \"previous\": {\"round\": $((count - 1)), \"id\": \"M1\", \"relation\": \"unresolved\", \"reason\": null}}
 ]}"'
@@ -218,6 +219,24 @@ expect_stopped "$repo" 3 "the implementer refuted every finding left to fix in r
 expect_sessions "$repo" 1 3 3 1
 grep -Fq -- "- M1 (major): Wrong content, unresolved — refuted in round 1 (M1): " "$repo.out" || fail "the remaining refuted finding is not named"
 if grep -Fq "M2 (major)" "$repo.out"; then fail "the fixed finding is named as refuted"; fi
+
+# A finding is continued by its ID and its title, apart from the mark that it
+# is unresolved: one that names an earlier refuted finding as its
+# predecessor but has another title is a new finding,
+# which is fixed like any other, and the refutation of the earlier one does
+# not stop the run for the owner (#432: a new M1 of round 3 was taken for the
+# refuted M1 of round 1).
+scenario fixes-refuted-other-title
+repo="$(setup_repo fixes-refuted-other-title)"
+printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
+printf '%s\n' "${unresolved/Wrong content/Another defect}" >"$repo.control/reviewer-2.sh"
+printf '%s\n' "$fix_major" >"$repo.control/triage.sh"
+refuted M1 refuted >"$repo.control/fixes-1.sh"
+run_feature "$repo" 2 thing
+expect_published "$repo"
+expect_sessions "$repo" 1 4 2 2
+if grep -Fq "refuted every finding" "$repo.out"; then fail "a finding with another title was taken for the refuted one"; fi
+grep -Fqx "fixed" "$repo-2-thing/feature.txt" || fail "the new finding of round 2 was not fixed"
 
 # A finding that was not reproduced, or that cannot be run here, proves
 # nothing either way: the next round fixes it as before, without the owner.
