@@ -3106,6 +3106,107 @@ Know what you hand over before you use it:
 - The commit message is not edited: its summary is the title of the Issue
   and its list of changes is what the implementer wrote.
 
+### The overview of every feature
+
+`./scripts/status.sh` shows where every feature stands, one row for each
+feature that has a worktree or an open pull request, from any checkout:
+
+```bash
+./scripts/status.sh              # in the terminal
+./scripts/status.sh --markdown   # a table that renders on GitHub
+./scripts/status.sh --changes    # only what changed since the last --changes
+```
+
+The columns:
+
+- **Issue** and its title.
+- **Phase** of the latest run of the feature: `implementing`, `verifying`,
+  `review round <n> of <m>`, `triage of round <n>`, `fixing, round <n>`,
+  `committing`, `publishing`, `published` or `finished` when the run ended
+  well, `stopped (<phase>)`, `interrupted (<phase>)` for a run that has no
+  recorded end and whose process is gone, and `merged`.
+- **Exit**: the exit status of that run when it stopped (1, 3, 75, or 130;
+  see `docs/workflow.md`).
+- **Verification**: the last full verification of the feature, whether it
+  passed, and whether it counts as trusted evidence, with its origin
+  (`orchestrator`, `script`, `agent-session`, `manual`; see "Recorded
+  verification").
+- **Pull request**: its number, its CI checks (`checks pass`, `checks fail
+  (<n> of <m>)`, `checks pending`), and whether it is `mergeable` or
+  `conflicting`.
+- **Owner decision needed**: what only you can do now, with the command or
+  the link that does it, and empty when nothing is needed. A run that stopped
+  for your decision (status 3) or a blocked completion record: the question
+  that its handoff note holds under "Open questions", to answer in
+  `.agents/handoffs/<issue>.md`. A pull request with an approval
+  request (`.agents/approval-requests/<issue>.json`) that you have not
+  approved. Review rounds that are used up: `--rounds <m>` or an exception.
+  A conflict with the base: `./scripts/update-feature.sh <issue>`. Failing
+  checks. A pull request that is ready: merge it. A merged feature with a
+  pending `post_merge` criterion: `./scripts/record-post-merge.sh`. Any other
+  stop, with its reason and the command that continues.
+
+Nothing in the overview is a status of its own. The phase, the exit status,
+and the verification come from the run records (see "Run records"), the
+implementer's state from the completion gate, the pull request from GitHub
+with `gh`, and the need for your approval from the approval request. A run is
+running while its record has no end and the process in its run id lives;
+the records are on this machine, so a run on another machine is not seen. A
+verification you start by hand is shown, but does not change the phase.
+
+#### Notified on change
+
+`--changes` compares with the previous overview, kept in `.agents/status/` of
+the primary checkout, which Git ignores. It prints nothing when nothing
+changed; otherwise the rows that changed, the features that are no longer
+listed, and under "New owner decisions:" every decision that is new. Without
+GitHub it fails and keeps the previous overview, so that no change is
+reported that did not happen.
+
+To be told, name a command in `.agents/notify.conf` of the primary checkout:
+one line `command: <shell command>`. It gets exactly the output of
+`--changes` on standard input, and only when something changed. The file the
+template ships holds examples. When the command fails, `--changes` says so
+and exits 1, and the previous overview is not replaced: the next `--changes`
+reports the same changes again. A notification that reaches you is the
+setup to have: without it, a run that waits for you waits until you look.
+
+```text
+# .agents/notify.conf
+command: gh issue comment <tracking-issue> --body-file -
+# command: osascript -e "display notification \"$(head -c 200)\" with title \"Features\""
+# command: mail -s "Feature status" you@example.com
+```
+
+Run it by hand, after each `run-feature.sh`
+(`./scripts/run-feature.sh 12; ./scripts/status.sh --changes`), or on a
+schedule. With cron, every ten minutes:
+
+```text
+*/10 * * * * cd /path/to/project && ./scripts/status.sh --changes >/dev/null 2>>.agents/status/cron.log
+```
+
+With launchd on macOS, `~/Library/LaunchAgents/local.feature-status.plist`,
+loaded with `launchctl load ~/Library/LaunchAgents/local.feature-status.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>local.feature-status</string>
+  <key>WorkingDirectory</key><string>/path/to/project</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/bash</string><string>-lc</string><string>./scripts/status.sh --changes</string></array>
+  <key>StartInterval</key><integer>600</integer>
+  <key>StandardErrorPath</key><string>/tmp/feature-status.log</string>
+</dict>
+</plist>
+```
+
+A scheduler starts with a short `PATH`: `gh` and `jq` must be on it, and `gh`
+must be logged in for that user.
+
 ### The merge approval gate
 
 A feature may update the architecture and add an ADR, and in an unattended

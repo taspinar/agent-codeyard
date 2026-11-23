@@ -48,6 +48,9 @@ credentials*.json
 # agents used: one file per run in .agents/run/records/, and the runs of a
 # feature or a planning together here. Never published.
 .agents/records/
+# The previous overview of scripts/status.sh --changes, against which the
+# next one reports what changed. Local.
+.agents/status/
 # The implementer's optional notes on a run, kept in its experience record
 # (scripts/lib/experience.sh). Never published.
 .agents/experience/

@@ -33,6 +33,12 @@ A feature that stopped keeps its worktree, its handoff note and its records, so 
 
 The feature has recovered when the next session starts from the handoff note instead of from the beginning, and the step that stopped runs again. If the same stop comes back, look up its message in <a href="#troubleshooting">Troubleshooting</a>.
 
+### Where every feature stands
+
+`./scripts/status.sh` shows every feature that has a worktree or an open pull request, one row each: the Issue, the phase of its run (implementing, review round 2 of 5, stopped, published, merged), the exit status of a run that stopped, the last verification and whether it counts as trusted evidence, the pull request with its checks and whether it merges, and the column **Owner decision needed**. That column is empty when nothing is needed from you; otherwise it names the decision and the command or link that settles it: a question to answer, a pull request to approve or merge, review rounds that are used up, a conflict with the base, post-merge evidence to record. `--markdown` gives a table to post as a comment.
+
+You do not need to watch it. `./scripts/status.sh --changes` prints only what changed since its last call, and nothing when nothing did. Name a command in `.agents/notify.conf`, such as `command: gh issue comment <tracking-issue> --body-file -`, a desktop notification, or a mail command, and it receives exactly those changes. If the command fails, the changes are kept and sent again the next time. Run it after each `run-feature.sh`, or every few minutes from cron or launchd; the [development guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#the-overview-of-every-feature) has both examples.
+
 ### When the plan changes
 
 You do not edit the approved requirements or roadmap by hand. Write the change down in a short file, and start the change process: `./scripts/start-planning.sh <name> --change <file>`, with `--grill` when the requirements change. The planning agent updates what the change touches, the change is reviewed, and you approve it again. A small change to the architecture or a decision record has a lighter route, `./scripts/finish-planning.sh --amend`. Feature Issues that you create afterwards follow the new plan; <a href="#step-change">Update an approved plan</a> says more.
