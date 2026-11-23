@@ -156,7 +156,7 @@ An unattended run stops with status 3 when the implementer showed, with a reprod
 
 ### "5 review rounds are used, …"
 
-- **First fix:** when another round or two is worth it, run the command the stop proposes, `./scripts/run-feature.sh <issue> --rounds <m>`, at a terminal. Otherwise record an exception for a blocking finding you disagree with, or continue by hand with the scripts the stop names.
+- **First fix:** when another round or two is worth it, run the command the stop proposes, `./scripts/run-feature.sh <issue> --rounds <m>`, at a terminal. At the ceiling of 20 rounds the stop proposes no `--rounds` and says that the ceiling is reached; continue by hand there. Otherwise record an exception for a blocking finding you disagree with, or continue by hand with the scripts the stop names.
 - **Recovered when:** the run ends on a review of the complete feature and opens the pull request.
 - **Output:** the output of `run-feature.sh` and `.agents/run/<issue>-log`; the run record notes the raised limit.
 

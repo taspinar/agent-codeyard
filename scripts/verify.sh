@@ -733,21 +733,22 @@ affected_libs() {
   printf '%s\n' "$affected"
 }
 
-# shared_test_file_changed <list>
+# shared_test_file_changed <list> <parts>
 # Succeeds when a file directly under tests/ changed (<list>, the changed
 # files separated by NUL) that is not a self-test tests/<x>-test.sh and not
-# the shared part tests/lib-<y>.sh of the self-tests of scripts/<y>.sh: a
-# file that self-tests share, such as tests/lib-fakes.sh, which every
-# self-test sources. Files in the directories under tests/ are the project's.
+# a shared part tests/lib-<y>.sh that a self-test sources (<parts>, the names
+# <y> of shared_test_parts of the self-tests, one per line): a file that
+# self-tests share, such as tests/lib-fakes.sh, which every self-test
+# sources, or a tests/lib-<y>.sh that no self-test sources, which selects no
+# self-test of its own. Files in the directories under tests/ are the
+# project's.
 shared_test_file_changed() {
   local file
-  local name
 
   while IFS= read -r -d '' file; do
     [[ "$file" =~ ^tests/[^/]+$ && "$file" != *-test.sh ]] || continue
-    if [[ "$file" =~ ^tests/lib-([a-z0-9][a-z0-9-]*)\.sh$ ]]; then
-      name="${BASH_REMATCH[1]}"
-      [[ -f "$root/scripts/$name.sh" ]] && continue
+    if [[ "$file" =~ ^tests/lib-([a-z0-9][a-z0-9-]*)\.sh$ ]] && grep -Fqx -- "${BASH_REMATCH[1]}" <<<"$2"; then
+      continue
     fi
     return 0
   done <"$1"
@@ -765,8 +766,8 @@ shared_test_file_changed() {
 # tests/lib-<y>.sh. A changed library scripts/lib/<y>.sh also selects every
 # test whose script, library, test file, or shared part sources it, directly
 # or through another library (affected_libs). Any other changed file
-# directly under tests/ (shared_test_file_changed: tests/lib-fakes.sh)
-# selects every self-test. A self-test that runs no test file of its own is
+# directly under tests/ (shared_test_file_changed: tests/lib-fakes.sh, or a
+# tests/lib-<y>.sh that no self-test sources) selects every self-test. A self-test that runs no test file of its own is
 # left to the full verification. Sets workflow_note, or workflow_skipped when
 # none is selected. Without a base no self-test is selected: the full
 # verification decides.
@@ -782,6 +783,7 @@ select_changed_tests() {
   local readers
   local sources
   local affected
+  local parts=""
   local all=no
   local count=0
   local chosen=""
@@ -791,7 +793,11 @@ select_changed_tests() {
     return 0
   fi
   affected="$(affected_libs "$list")"
-  ! shared_test_file_changed "$list" || all=yes
+  for ((index = project_count; index < ${#names[@]}; index++)); do
+    [[ "${commands[$index]}" =~ ^\./tests/([a-z0-9][a-z0-9-]*)-test\.sh([[:space:]]|$) ]] || continue
+    parts+="$(shared_test_parts "${BASH_REMATCH[1]}")"$'\n'
+  done
+  ! shared_test_file_changed "$list" "$parts" || all=yes
   for ((index = project_count; index < ${#names[@]}; index++)); do
     [[ "${commands[$index]}" =~ ^\./tests/([a-z0-9][a-z0-9-]*)-test\.sh([[:space:]]|$) ]] || continue
     test="${BASH_REMATCH[1]}"

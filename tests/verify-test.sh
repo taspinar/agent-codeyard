@@ -1228,13 +1228,16 @@ done
 # tests/lib-run-feature.sh: a change to the script, or to the shared file,
 # selects every part; a change to one part selects that part. A shared file
 # of no script (tests/lib-fakes.sh), which every self-test sources, selects
-# every self-test; a file in a directory under tests/ (the project's tests)
+# every self-test, and so does tests/lib-<script>.sh that no self-test sources
+# (tests/lib-beta.sh beside scripts/beta.sh); a file in a directory under tests/ (the project's tests)
 # selects none.
 project="$(setup_recorded_project changed-parts)"
 mkdir -p "$project/tests"
 printf 'one\n' >"$project/scripts/alpha.sh"
 printf '# shared\n' >"$project/tests/lib-alpha.sh"
 printf '# fakes\n' >"$project/tests/lib-fakes.sh"
+printf 'beta\n' >"$project/scripts/beta.sh"
+printf '# orphan\n' >"$project/tests/lib-beta.sh"
 for name in alpha-one alpha-two other; do
   printf '#!/usr/bin/env bash\nsource_root="$(cd "$(dirname "$0")/.." && pwd)"\nsource "$source_root/tests/lib-fakes.sh"\n' >"$project/tests/$name-test.sh"
   [[ "$name" == "other" ]] || printf 'source "$source_root/tests/lib-alpha.sh"\n' >>"$project/tests/$name-test.sh"
@@ -1260,6 +1263,7 @@ expect_parts scripts/alpha.sh "alpha-one-test alpha-two-test"
 expect_parts tests/lib-alpha.sh "alpha-one-test alpha-two-test"
 expect_parts tests/alpha-two-test.sh "alpha-two-test"
 expect_parts tests/lib-fakes.sh "alpha-one-test alpha-two-test other-test"
+expect_parts tests/lib-beta.sh "alpha-one-test alpha-two-test other-test"
 mkdir -p "$project/tests/unit"
 printf '# unit\n' >"$project/tests/unit/test_app.py"
 run_changed || fail "--changed with a changed project test failed: $(cat "$project/out.log")"

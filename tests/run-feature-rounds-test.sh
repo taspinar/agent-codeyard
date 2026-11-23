@@ -421,6 +421,17 @@ expect_stopped "$repo" 1 "5 review rounds are used"
 expect_sessions "$repo" 1 5 5 4
 grep -Fq "./scripts/run-feature.sh 2 --rounds 7    # your decision, at a terminal" "$repo.out" ||
   fail "the stop for used rounds does not offer a higher limit: $(cat "$repo.out")"
+# At the ceiling (here lowered to the five rounds used; the real one is 20)
+# no higher limit exists: the stop proposes no --rounds that would be refused
+# or stop again at once, says that the ceiling is reached, and names the
+# steps by hand.
+RUN_FEATURE_ROUNDS_CEILING=5 run_feature "$repo" 2
+expect_stopped "$repo" 1 "5 review rounds are used"
+expect_sessions "$repo" 1 5 5 4
+if grep -Fq -- "run-feature.sh 2 --rounds" "$repo.out"; then fail "the stop at the ceiling proposes --rounds: $(cat "$repo.out")"; fi
+grep -Fq "the ceiling of 5 review rounds is reached" "$repo.out" ||
+  fail "the stop at the ceiling does not say that it is reached: $(cat "$repo.out")"
+grep -Fq "./scripts/apply-triage.sh" "$repo.out" || fail "the stop at the ceiling names no step by hand: $(cat "$repo.out")"
 
 # --rounds <m> continues the loop with a higher limit, as the owner's decision
 # at a terminal: refused without a terminal, in an agent session, and for a

@@ -432,6 +432,34 @@ MOCK_OUTPUT="C1 is fixed." MOCK_WRITE_ACTION="mkdir -p '$repo/.agents/completion
 printf '%s\n' '$good_record' >'$repo/.agents/completion/13.json'; echo session >>'$repo.sessions'" \
   run_apply "$repo" "" "$triage" --unattended || fail "a fix session with a valid record failed: $(cat "$repo.out")"
 [[ "$(grep -c . "$repo.sessions")" -eq 1 ]] || fail "a valid record was given to another session"
+# A protected artifact that the first session changed stops the fixes with
+# status 5, also when its record does not pass the gate: apply-triage.sh keeps
+# the first session's result before any later session (agent_run resets
+# AGENT_ARTIFACTS_CHANGED, lib/agent.sh), and no correcting session starts
+# after such a change, so none can hide it. The test pins that invariant:
+# one session, status 5.
+repo="$(setup_repo record-protected-first)"
+status=0
+MOCK_OUTPUT="C1 is fixed." MOCK_WRITE_ACTION="mkdir -p '$repo/.agents/completion'
+if [[ ! -e '$repo.sessions' ]]; then printf 'fixed\n' >>'$repo/feature.txt'; printf 'changed\n' >>'$repo/$review'; printf '%s\n' '$bad_record' >'$repo/.agents/completion/13.json'
+else printf '%s\n' '$good_record' >'$repo/.agents/completion/13.json'; fi
+echo session >>'$repo.sessions'" \
+  run_apply "$repo" "" "$triage" --unattended || status=$?
+[[ "$status" -eq 5 ]] || fail "a protected artifact changed by the first session did not stop the fixes ($status): $(cat "$repo.out")"
+grep -Fq "may only read" "$repo.out" || fail "the stop does not name the changed protected artifact: $(cat "$repo.out")"
+[[ "$(grep -c . "$repo.sessions")" -eq 1 ]] || fail "a session that changed a protected artifact was followed by a correcting session"
+# A protected artifact that the correcting session changes stops the fixes
+# as well: its result is checked after it, as the first session's is before.
+repo="$(setup_repo record-protected-correction)"
+status=0
+MOCK_OUTPUT="C1 is fixed." MOCK_WRITE_ACTION="mkdir -p '$repo/.agents/completion'
+if [[ ! -e '$repo.sessions' ]]; then printf 'fixed\n' >>'$repo/feature.txt'; printf '%s\n' '$bad_record' >'$repo/.agents/completion/13.json'
+else printf '%s\n' '$good_record' >'$repo/.agents/completion/13.json'; printf 'changed\n' >>'$repo/$review'; fi
+echo session >>'$repo.sessions'" \
+  run_apply "$repo" "" "$triage" --unattended || status=$?
+[[ "$status" -eq 5 ]] || fail "a protected artifact changed by the correcting session did not stop the fixes ($status): $(cat "$repo.out")"
+[[ "$(grep -c . "$repo.sessions")" -eq 2 ]] || fail "the invalid record did not go to a correcting session"
+grep -Fq "may only read" "$repo.out" || fail "the stop does not name the artifact the correcting session changed: $(cat "$repo.out")"
 
 # --checks verifies the result with only the named groups, a partial check
 # that records nothing, and tells the agent to run only them.

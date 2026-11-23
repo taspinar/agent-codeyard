@@ -342,6 +342,10 @@ else
   agent_status=$?
 fi
 set -e
+# The protected artifacts that this session changed (lib/agent.sh), kept
+# before any later session: agent_run resets AGENT_ARTIFACTS_CHANGED at its
+# start, so a correcting session must not be what hides this change.
+artifacts_changed="$AGENT_ARTIFACTS_CHANGED"
 
 # The completion record that the session left is checked now, with the rules
 # of the completion gate (lib/completion.sh, completion_errors), and not only
@@ -359,7 +363,7 @@ fix_record_errors() {
   fi
 }
 record_errors=""
-if [[ "$agent_status" -eq 0 && -z "$blocked" && -n "$source_issue" ]]; then
+if [[ "$agent_status" -eq 0 && -z "$blocked" && -z "$artifacts_changed" && -n "$source_issue" ]]; then
   completion_file="$(completion_record "$root" "$source_issue")"
   record_errors="$(fix_record_errors)"
   if [[ -n "$record_errors" && "$AGENT_UNATTENDED" -eq 1 ]]; then
@@ -385,6 +389,7 @@ makes after your session. Change no other file.
 $AGENT_UNATTENDED_PROMPT" "$final_message"
     agent_status=$?
     set -e
+    artifacts_changed="$AGENT_ARTIFACTS_CHANGED"
     blocked="$(agent_blocked_reason "$final_message")"
     record_errors=""
     [[ "$agent_status" -ne 0 || -n "$blocked" ]] ||
@@ -392,17 +397,20 @@ $AGENT_UNATTENDED_PROMPT" "$final_message"
   fi
 fi
 
-# The session ran inside the artifact manifest of agent_run (lib/agent.sh),
-# which covers the review and the triage this session works from.
+# Each session ran inside the artifact manifest of agent_run (lib/agent.sh),
+# which covers the review and the triage this session works from. The first
+# session's result was checked before the correcting session (which starts
+# only when it changed nothing protected); the correcting session's result
+# is checked here.
 protected_artifact_changed=0
 protected_artifact_reason=""
-if [[ -n "$AGENT_ARTIFACTS_CHANGED" ]]; then
-  echo "Error: implementation agent modified artifacts that it may only read: ${AGENT_ARTIFACTS_CHANGED//$'\n'/, }."
+if [[ -n "$artifacts_changed" ]]; then
+  echo "Error: implementation agent modified artifacts that it may only read: ${artifacts_changed//$'\n'/, }."
   protected_artifact_changed=1
-  protected_artifact_reason="implementation agent modified artifacts that it may only read: ${AGENT_ARTIFACTS_CHANGED//$'\n'/, }."
+  protected_artifact_reason="implementation agent modified artifacts that it may only read: ${artifacts_changed//$'\n'/, }."
 fi
 
-if [[ -n "$record_errors" && -z "$AGENT_ARTIFACTS_CHANGED" ]]; then
+if [[ -n "$record_errors" && -z "$artifacts_changed" ]]; then
   echo "Error: the completion record ($COMPLETION_DIR/$source_issue.json) does not pass the completion gate:" >&2
   printf '%s\n' "$record_errors" | sed 's/^/  - /' >&2
   echo "Correct it as .agents/prompts/implementer.md describes under 'Completion', then review again: ./scripts/review-feature.sh $source_issue" >&2

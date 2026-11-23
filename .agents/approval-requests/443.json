@@ -1,14 +1,14 @@
 {
   "schema": "approval-request/v1",
-  "content_tree": "cac107b6c8f79fdc31081086c28144e494f6193e",
+  "content_tree": "9f51f8586d755cd9273b75cbab0604cdcbb9b244",
   "commit": {
     "branch": "feature/443-six-workflow-defects-found",
-    "parent": "a692b8388a4c1a5a67fcce44aa2a5d56a87ae277",
+    "parent": "c03c22ab17f9467863a70fd4bc28da6bcb49368f",
     "base": "a692b8388a4c1a5a67fcce44aa2a5d56a87ae277"
   },
   "review": {
-    "round": 3,
-    "verdict": "PASS",
+    "round": 7,
+    "verdict": "CHANGES REQUIRED",
     "reviewer": "codex (gpt-6-luna)"
   },
   "reasons": [
@@ -18,7 +18,8 @@
     "scripts/lib/risk.sh: the file defines or carries out the workflow and its gate",
     "scripts/review-feature.sh: the file defines or carries out the workflow and its gate",
     "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
-    "the independent review classified the impact on the architecture as major: The feature changes shared workflow behavior and gates across run-feature.sh, apply-triage.sh, verify.sh, and risk policy handling. These changes stay within the existing workflow architecture, but affect checks, review continuity, and the path to commit and publish. "
+    "the independent review classified the impact on the architecture as major: The changes alter shared workflow behavior and gates in verification selection, triage repair, risk-policy interpretation, finding continuity, and review-round continuation. They stay within the existing architecture but affect the path to review, commit, and publish. ",
+    "the owner recorded an exception (risk-accepted) to the blocking finding M1 of review round 7: .agents/exceptions/feature-443-six-workflow-defects-found-review-07-M1.json sha256 1cd5c260ece882d5d6a4a64afb83961584791d90ad8c4e33f02bd635382b762f"
   ],
   "explanation": "Issue #443: Six workflow defects found in the runs of #432, #434 and #424. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
 }

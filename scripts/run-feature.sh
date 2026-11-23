@@ -16,8 +16,12 @@ source "$script_dir/lib/guardrails.sh"
 source "$script_dir/lib/exceptions.sh"
 
 MAX_ROUNDS=5
-# The most review rounds that --rounds may allow.
+# The most review rounds that --rounds may allow. RUN_FEATURE_ROUNDS_CEILING
+# may only lower it (for the self-tests, which cannot afford twenty rounds).
 ROUNDS_CEILING=20
+if [[ "${RUN_FEATURE_ROUNDS_CEILING:-}" =~ ^[1-9][0-9]*$ && "$RUN_FEATURE_ROUNDS_CEILING" -lt "$ROUNDS_CEILING" ]]; then
+  ROUNDS_CEILING="$RUN_FEATURE_ROUNDS_CEILING"
+fi
 # A session of the implementer that ends without an error has not completed
 # the feature by that alone: the completion gate decides. While it does not
 # pass, the implementer is resumed, for at most this many sessions in a run.
@@ -696,14 +700,20 @@ report_risk() {
   fi
 }
 
-# more_rounds: the limit that a stop for used rounds proposes for --rounds,
-# two rounds more than now (a fix and its review, and the review of the
-# complete feature), within ROUNDS_CEILING.
+# more_rounds: the step that a stop for used rounds proposes to continue:
+# --rounds with two rounds more than now (a fix and its review, and the
+# review of the complete feature), within ROUNDS_CEILING. At the ceiling no
+# higher limit exists, and the step says so instead: the owner continues by
+# hand, with the steps that follow it.
 more_rounds() {
   local more=$((MAX_ROUNDS + 2))
 
+  if [[ "$MAX_ROUNDS" -ge "$ROUNDS_CEILING" ]]; then
+    echo "# the ceiling of $ROUNDS_CEILING review rounds is reached: --rounds cannot raise the limit further; continue by hand"
+    return
+  fi
   [[ "$more" -le "$ROUNDS_CEILING" ]] || more="$ROUNDS_CEILING"
-  echo "$more"
+  echo "./scripts/run-feature.sh $issue --rounds $more    # your decision, at a terminal: continue with a higher limit"
 }
 
 # level_rank <level>: 0 for low, 1 for medium, 2 for high; 3 otherwise, so
@@ -1133,13 +1143,13 @@ if uncommitted; then
       # latest one was an intermediate round and nothing is left to fix.
       if [[ "$round" -ge "$MAX_ROUNDS" && "$complete_review" -eq 1 ]]; then
         stop 1 "$MAX_ROUNDS review rounds are used, and round $round reviewed only changes or partially checked content, so no review of the complete feature confirms that the Issue is done." \
-          "./scripts/run-feature.sh $issue --rounds $(more_rounds)    # your decision, at a terminal: continue with a higher limit" \
+          "$(more_rounds)" \
           "cd \"$worktree\"" \
           "./scripts/review-feature.sh $issue $base    # or continue by hand: triage-review.sh, apply-triage.sh, finish-feature.sh, publish-feature.sh"
       fi
       if [[ "$round" -ge "$MAX_ROUNDS" ]]; then
         stop 1 "$MAX_ROUNDS review rounds are used, and the content changed after round $round, so it is not confirmed by a review." \
-          "./scripts/run-feature.sh $issue --rounds $(more_rounds)    # your decision, at a terminal: continue with a higher limit" \
+          "$(more_rounds)" \
           "cd \"$worktree\"" \
           "./scripts/review-feature.sh $issue $base    # or continue by hand: triage-review.sh, apply-triage.sh, finish-feature.sh, publish-feature.sh"
       fi
@@ -1299,7 +1309,7 @@ if uncommitted; then
     fi
     if [[ "$round" -ge "$MAX_ROUNDS" ]]; then
       stop 1 "$MAX_ROUNDS review rounds are used and round $round still has findings that must be fixed; see $review_relative. Where the owner disagrees with a critical or major finding, the owner may record an exception to it at a terminal (docs/development.md, 'Owner exceptions to a blocking finding')." \
-        "./scripts/run-feature.sh $issue --rounds $(more_rounds)    # your decision, at a terminal: continue with a higher limit" \
+        "$(more_rounds)" \
         "cd \"$worktree\"" \
         "./scripts/apply-triage.sh $triage_relative    # or continue by hand: review-feature.sh, finish-feature.sh, publish-feature.sh" \
         "./scripts/record-exception.sh $review_relative --finding <id> --type not-applicable|risk-accepted --reason \"<why>\"    # the owner's option, for one blocking finding"

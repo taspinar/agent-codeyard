@@ -145,9 +145,16 @@ the parts `tests/run-feature-<part>-test.sh`). A changed library
 `scripts/lib/<y>.sh` also selects every self-test whose script, library, test
 file, or shared part sources it, directly or through another library: a
 change to `scripts/lib/fingerprint.sh` selects the tests of the scripts that
-source `lib/records.sh`, which sources it. Any other changed file directly
+source `lib/records.sh`, which sources it. Only one form of sourcing is
+recognized: a line of its own `source "<path>/<y>.sh"`, with the path in
+double quotes and nothing after it but spaces, whose path is not under
+`tests/`. A `.` command, a path in single quotes or without quotes, or a line
+with more after the path (`source "$dir/lib/y.sh" || exit 1`, a comment) is
+not seen, and a change to that library then does not select the self-test
+that sources it that way; the full verification still runs it. Any other changed file directly
 in `tests/` that is not a self-test, such as `tests/lib-fakes.sh`, which every
-self-test sources, selects every self-test; the files in the directories
+self-test sources, or a `tests/lib-<x>.sh` that no self-test sources (also
+when `scripts/<x>.sh` exists), selects every self-test; the files in the directories
 under `tests/` are the project's. A self-test that runs no test
 file of its own is left to the full verification. It records nothing, takes
 neither `--only`, `--all`, nor `--reuse`, and the completion gate refuses it
@@ -3032,7 +3039,9 @@ what the run did. The output of the last step is kept next to it in
 `<issue>-step.log`, and that of a repeated verification in
 `<issue>-verify.log`. Status 4 is kept for a failed verification: the scripts
 turn an agent that happens to exit with it into an ordinary failure. `RUN_FEATURE_RETRIES`, `RUN_FEATURE_RETRY_WAIT` (seconds),
-and `RUN_FEATURE_REPAIRS` change the limits for one run.
+and `RUN_FEATURE_REPAIRS` change the limits for one run;
+`RUN_FEATURE_ROUNDS_CEILING` can only lower the ceiling of 20 for `--rounds`
+(the self-tests use it to reach the ceiling without twenty rounds).
 
 The run stops with a non-zero status, and keeps the worktree, when:
 
@@ -3043,7 +3052,7 @@ The run stops with a non-zero status, and keeps the worktree, when:
 | The verification still fails after three repairs, or checks are unstable more than three times | 1 |
 | The verification fails, the base moved, and its merge conflicts with the branch or the uncommitted work of the feature, would write over an untracked file (also one that Git ignores), meets staged changes in the index, or leaves untracked paths behind that the branch ignored; the files are named | 1 |
 | The proposed triage is invalid, for example because it defers a critical or major finding | 1 |
-| Five rounds (or the limit of `--rounds`) are used and the last one still has a finding that must be fixed, or was an intermediate round (only the changes, or partially checked content); the stop proposes `--rounds` with two rounds more | 1 |
+| Five rounds (or the limit of `--rounds`) are used and the last one still has a finding that must be fixed, or was an intermediate round (only the changes, or partially checked content); the stop proposes `--rounds` with two rounds more, or, at the ceiling of 20, says that it is reached and proposes only the steps by hand | 1 |
 | The implementer ended four sessions without completing the Issue | 1 |
 | The completion record says `blocked` | 3 |
 | The implementer refuted every finding left to fix, one of them critical or major, with evidence, and the review of the complete feature still reports it; the findings and the ways on are named | 3 |
@@ -3068,7 +3077,9 @@ the single scripts work on the same files.
 When a run stops because its five review rounds are used, continue it with a
 higher limit instead of the steps by hand: `./scripts/run-feature.sh <issue>
 --rounds <m>`, with `<m>` above five and at most 20; the stop proposes two
-rounds more. It is your decision and only yours: the run refuses the option
+rounds more, up to 20. At a limit of 20 the ceiling is reached: the stop
+proposes no `--rounds` and says so, and you continue by hand with the steps
+it names. It is your decision and only yours: the run refuses the option
 in an agent session (`CODEYARD_AGENT_SESSION`) and when standard input is not
 a terminal, so it never runs unattended, and the run record notes it as an
 intervention. Every other rule of the rounds stays as it is: the run ends on
