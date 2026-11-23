@@ -117,7 +117,7 @@ run_finish() {
 
   (
     cd "$repo"
-    PATH="$tmp/bin:/usr/bin:/bin" GIT_EDITOR="${EDITOR_COMMAND:-true}" ./scripts/finish-feature.sh "$@"
+    PATH="$tmp/bin:$ISOLATED_PATH" GIT_EDITOR="${EDITOR_COMMAND:-true}" ./scripts/finish-feature.sh "$@"
   ) >"$repo.out" 2>&1
 }
 
@@ -184,7 +184,7 @@ count_runs() {
 repo="$(setup_repo reuse PASS "[]")"
 printf 'count: echo run >>verify-count.log\n' >"$repo/scripts/verify.conf"
 record_reviewed_tree "$repo" "$repo/$review"
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh >/dev/null) || fail "the first verification failed"
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh >/dev/null) || fail "the first verification failed"
 [[ "$(count_runs "$repo")" -eq 1 ]] || fail "the first verification did not run"
 run_finish "$repo" 12 "Add the marker" || {
   cat "$repo.out" >&2
@@ -195,7 +195,7 @@ run_finish "$repo" 12 "Add the marker" || {
 
 repo="$(setup_repo reverify PASS "[]")"
 printf 'count: echo run >>verify-count.log\n' >"$repo/scripts/verify.conf"
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh >/dev/null) || fail "the first verification failed"
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh >/dev/null) || fail "the first verification failed"
 printf 'more feature work\n' >>"$repo/feature.txt"
 record_reviewed_tree "$repo" "$repo/$review"
 run_finish "$repo" 12 "Add the marker" || fail "finishing changed content failed"
@@ -210,7 +210,7 @@ printf 'count: echo run >>verify-count.log\n' >"$repo/scripts/verify.conf"
 mkdir -p "$repo/.agents/summaries"
 printf -- '- Adds the marker.\n' >"$repo/.agents/summaries/12.md"
 record_reviewed_tree "$repo" "$repo/$review"
-(cd "$repo" && CODEYARD_AGENT_SESSION=1 PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh >/dev/null) || fail "the verification of the agent session failed"
+(cd "$repo" && CODEYARD_AGENT_SESSION=1 PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh >/dev/null) || fail "the verification of the agent session failed"
 grep -Fqx "origin: agent-session" "$repo/.agents/verification/passed" || fail "the pass of an agent session does not say so"
 EDITOR_COMMAND=false run_finish "$repo" 12 "Add the marker" --unattended || {
   cat "$repo.out" >&2
@@ -225,7 +225,7 @@ printf 'count: echo run >>verify-count.log\n' >"$repo/scripts/verify.conf"
 mkdir -p "$repo/.agents/summaries"
 printf -- '- Adds the marker.\n' >"$repo/.agents/summaries/12.md"
 record_reviewed_tree "$repo" "$repo/$review"
-(cd "$repo" && CODEYARD_AGENT_SESSION=1 PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh >/dev/null) || fail "the verification of the agent session failed"
+(cd "$repo" && CODEYARD_AGENT_SESSION=1 PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh >/dev/null) || fail "the verification of the agent session failed"
 trusted_tree="$(sed -n 's/^tree: //p' "$repo/.agents/verification/passed")"
 VERIFY_TRUSTED_TREES="unrelated" EDITOR_COMMAND=false run_finish "$repo" 12 "Add the marker" --unattended ||
   fail "finishing with a list that lacks the pass failed"
@@ -739,7 +739,7 @@ content_tree_of() {
 gate_status=0
 run_gate() {
   gate_status=0
-  (cd "$1" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/check-guardrails.sh --commits main HEAD) >"$1.gate" 2>&1 || gate_status=$?
+  (cd "$1" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/check-guardrails.sh --commits main HEAD) >"$1.gate" 2>&1 || gate_status=$?
 }
 
 # gate_content_tree <repo>: the content tree that check-guardrails.sh prints
@@ -834,11 +834,11 @@ fi
 # content tree, the recorded verification, and the currency of the review
 # stay; the gate still accepts the request. Editing code changes the
 # content tree.
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh >/dev/null 2>&1) || fail "the verification of the fixture failed"
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh >/dev/null 2>&1) || fail "the verification of the fixture failed"
 jq '.explanation = "Edited by the owner after the commit."' "$repo/$request" >"$repo/$request.tmp" && mv "$repo/$request.tmp" "$repo/$request"
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh --reuse) >"$repo.verify" 2>&1 || fail "verify.sh --reuse failed after the explanation was edited"
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh --reuse) >"$repo.verify" 2>&1 || fail "verify.sh --reuse failed after the explanation was edited"
 grep -Fq "already passed for this content" "$repo.verify" || fail "the edited explanation invalidated the recorded verification"
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/check-review.sh "$review" >/dev/null) || fail "the edited explanation made the review stale"
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/check-review.sh "$review" >/dev/null) || fail "the edited explanation made the review stale"
 [[ "$(
   source "$source_root/scripts/lib/fingerprint.sh"
   fingerprint_worktree "$repo" "$tmp"
@@ -851,7 +851,7 @@ printf 'changed code\n' >>"$repo/feature.txt"
   source "$source_root/scripts/lib/fingerprint.sh"
   fingerprint_worktree "$repo" "$tmp"
 )" != "$tree" ]] || fail "changed code did not change the content tree"
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh --reuse) >"$repo.verify" 2>&1 || true
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh --reuse) >"$repo.verify" 2>&1 || true
 if grep -Fq "already passed for this content" "$repo.verify"; then fail "changed code did not invalidate the recorded verification"; fi
 git -C "$repo" checkout -q -- feature.txt
 
@@ -879,7 +879,7 @@ grep -Fq "triage published on #12" <<<"$(message "$repo")" || fail "the commit d
 [[ -f "$repo/$request" ]] || fail "no approval request was written for the triaged feature"
 tree="$(content_tree_of "$repo")"
 [[ "$(jq -r '.content_tree' "$repo/$request")" == "$tree" ]] || fail "the request of the triaged feature does not name the content tree"
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh >/dev/null 2>&1) || fail "the verification of the triaged fixture failed"
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh >/dev/null 2>&1) || fail "the verification of the triaged fixture failed"
 artifacts_hash() {
   (
     source "$source_root/scripts/lib/fingerprint.sh"
@@ -895,9 +895,9 @@ for edit in \
   "$triage:.decisions[0].rationale = \"Edited after the commit.\""; do
   file="${edit%%:*}"
   edit_artifact "$file" "${edit#*:}"
-  (cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh --reuse) >"$repo.verify" 2>&1 || fail "verify.sh --reuse failed after $file was edited"
+  (cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh --reuse) >"$repo.verify" 2>&1 || fail "verify.sh --reuse failed after $file was edited"
   grep -Fq "already passed for this content" "$repo.verify" || fail "editing $file invalidated the recorded verification"
-  (cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/check-review.sh "$review" >/dev/null) || fail "editing $file made the latest review stale"
+  (cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/check-review.sh "$review" >/dev/null) || fail "editing $file made the latest review stale"
   [[ "$(
     source "$source_root/scripts/lib/fingerprint.sh"
     fingerprint_worktree "$repo" "$tmp"
@@ -914,10 +914,10 @@ printf 'changed code\n' >>"$repo/feature.txt"
   source "$source_root/scripts/lib/fingerprint.sh"
   fingerprint_worktree "$repo" "$tmp"
 )" != "$tree" ]] || fail "changed code did not change the content tree of the triaged feature"
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh --reuse) >"$repo.verify" 2>&1 || true
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh --reuse) >"$repo.verify" 2>&1 || true
 if grep -Fq "already passed for this content" "$repo.verify"; then fail "changed code did not invalidate the recorded verification of the triaged feature"; fi
 status=0
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/check-review.sh "$review" >/dev/null 2>&1) || status=$?
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/check-review.sh "$review" >/dev/null 2>&1) || status=$?
 [[ "$status" -eq 1 ]] || fail "changed code did not make the latest review stale (status $status)"
 [[ "$(artifacts_hash "$repo")" == "$artifacts" ]] || fail "changed code changed the hash of the artifacts"
 git -C "$repo" checkout -q -- feature.txt
@@ -933,7 +933,7 @@ git -C "$repo" checkout -q -- feature.txt
 review_status() {
   local status=0
 
-  (cd "$1" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/check-review.sh "$review" >/dev/null 2>&1) || status=$?
+  (cd "$1" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/check-review.sh "$review" >/dev/null 2>&1) || status=$?
   printf '%s\n' "$status"
 }
 
@@ -1261,6 +1261,18 @@ printf 'broken: false\n' >"$repo/scripts/verify.conf"
 record_reviewed_tree "$repo" "$repo/$review"
 expect_no_commit "$repo" "verification fails" 12 "Add the marker"
 
+# A missing prerequisite of the machine (status 78 of verify.sh and its
+# ENVIRONMENT line) is passed on unchanged, so that a caller does not repair
+# the code for it; nothing is committed.
+repo="$(setup_repo environment-missing PASS "[]")"
+fake_missing_prerequisite "$repo"
+record_reviewed_tree "$repo" "$repo/$review"
+status=0
+run_finish "$repo" 12 "Add the marker" || status=$?
+[[ "$status" -eq 78 ]] || { cat "$repo.out" >&2; fail "a missing prerequisite did not end finish-feature.sh with status 78 ($status)"; }
+[[ "$(git -C "$repo" rev-list --count HEAD)" -eq 1 ]] || fail "a commit was created although a prerequisite is missing"
+grep -q '^ENVIRONMENT  faked-tool for this test — install faked-tool$' "$repo.out" || fail "the ENVIRONMENT line of verify.sh was not shown: $(cat "$repo.out")"
+
 repo="$(setup_repo no-review-file PASS "[]")"
 rm "$repo/$review"
 expect_no_commit "$repo" "there is no review" 12 "Add the marker"
@@ -1391,7 +1403,7 @@ historical_decisions='{"decisions": [{"finding_id": "M1", "decision": "FIX_NOW",
 run_triage() {
   (
     cd "$1"
-    printf 'y\n' | PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$1.agent" MOCK_OUTPUT="$historical_decisions" \
+    printf 'y\n' | PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$1.agent" MOCK_OUTPUT="$historical_decisions" \
       ./scripts/triage-review.sh "$2"
   ) >"$1.triage.out" 2>&1
 }

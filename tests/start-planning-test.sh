@@ -318,7 +318,7 @@ codex_log="$tmp/codex.log"
 codex_output="$(
   cd "$codex_repo/docs"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$codex_log" \
     ../scripts/start-planning.sh --agent codex --model astra 2>"$tmp/codex-success.err"
 )"
@@ -370,7 +370,7 @@ claude_log="$tmp/claude.log"
 (
   cd "$claude_repo"
   printf 'yes\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$claude_log" \
     ./scripts/start-planning.sh --agent claude --model fable architecture-refresh \
     >/dev/null 2>"$tmp/claude-success.err"
@@ -416,7 +416,7 @@ run_review_case() {
   (
     cd "$repo"
     printf '%s' "$answers" |
-      env PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$tmp/$label.log" "$@" \
+      env PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$tmp/$label.log" "$@" \
       ./scripts/start-planning.sh --agent codex --model astra
   ) >"$tmp/$label.out" 2>&1
 }
@@ -533,7 +533,7 @@ inherited_repo="$(setup_repo inherited inherited_seed)"
 inherited_output="$(
   cd "$inherited_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$tmp/inherited.log" \
     ./scripts/start-planning.sh --agent codex --model astra 2>"$tmp/inherited.err"
 )" || {
@@ -566,7 +566,7 @@ git -C "$shallow_repo" config user.email "planning-test@example.com"
 shallow_output="$(
   cd "$shallow_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$tmp/shallow.log" \
     ./scripts/start-planning.sh --agent codex --model astra 2>"$tmp/shallow.err"
 )" || {
@@ -594,7 +594,7 @@ template_repo="$(setup_repo template template_seed)"
 template_output="$(
   cd "$template_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$tmp/template.log" \
     ./scripts/start-planning.sh --agent codex --model astra 2>"$tmp/template.err"
 )" || {
@@ -612,7 +612,7 @@ decline_log="$tmp/decline.log"
 if (
   cd "$decline_repo"
   printf 'n\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$decline_log" \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
 ); then
@@ -630,7 +630,7 @@ malformed_log="$tmp/malformed.log"
 if (
   cd "$malformed_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$malformed_log" \
     MOCK_GRILL_MODE=malformed \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
@@ -645,7 +645,7 @@ empty_section_log="$tmp/empty-section.log"
 if (
   cd "$empty_section_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$empty_section_log" \
     MOCK_GRILL_MODE=empty-section \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
@@ -660,7 +660,7 @@ duplicate_section_log="$tmp/duplicate-section.log"
 if (
   cd "$duplicate_section_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$duplicate_section_log" \
     MOCK_GRILL_MODE=duplicate-section \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
@@ -675,7 +675,7 @@ grill_scope_log="$tmp/grill-scope.log"
 if (
   cd "$grill_scope_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$grill_scope_log" \
     MOCK_GRILL_MODE=extra \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
@@ -691,7 +691,7 @@ observed_repo="$(setup_repo observed)"
 (
   cd "$observed_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$tmp/observed.log" MOCK_GRILL_MODE=observed \
+    PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$tmp/observed.log" MOCK_GRILL_MODE=observed \
     ./scripts/start-planning.sh --agent codex --model astra >"$tmp/observed.out" 2>&1
 ) || { cat "$tmp/observed.out" >&2; fail "the planning of reconstructed requirements failed"; }
 grep -Fq "> **Observed, not approved.**" "$tmp/observed.out" || fail "the requirements shown for approval do not carry the mark"
@@ -707,7 +707,7 @@ grill_ignored_log="$tmp/grill-ignored.log"
 if (
   cd "$grill_ignored_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$grill_ignored_log" \
     MOCK_GRILL_MODE=ignored \
     ./scripts/start-planning.sh --agent codex --model astra >"$tmp/grill-ignored.out" 2>&1
@@ -724,7 +724,7 @@ grill_weird_log="$tmp/grill-weird.log"
 if (
   cd "$grill_weird_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$grill_weird_log" \
     MOCK_GRILL_MODE=weird-paths \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
@@ -737,7 +737,7 @@ grill_commit_log="$tmp/grill-commit.log"
 if (
   cd "$grill_commit_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$grill_commit_log" \
     MOCK_GRILL_MODE=commit-extra \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
@@ -752,7 +752,7 @@ grill_fail_log="$tmp/grill-fail.log"
 set +e
 (
   cd "$grill_fail_repo"
-  PATH="$tmp/bin:/usr/bin:/bin" \
+  PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$grill_fail_log" \
     MOCK_GRILL_MODE=fail \
     ./scripts/start-planning.sh --agent claude --model fable >"$tmp/grill-fail.out" 2>&1
@@ -774,7 +774,7 @@ set +e
 (
   cd "$planner_fail_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$planner_fail_log" \
     MOCK_PLANNER_MODE=fail \
     ./scripts/start-planning.sh --agent claude --model fable >/dev/null 2>&1
@@ -791,7 +791,7 @@ planner_scope_log="$tmp/planner-scope.log"
 if (
   cd "$planner_scope_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$planner_scope_log" \
     MOCK_PLANNER_MODE=extra \
     ./scripts/start-planning.sh --agent claude --model fable >/dev/null 2>&1
@@ -806,7 +806,7 @@ planner_ignored_log="$tmp/planner-ignored.log"
 if (
   cd "$planner_ignored_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$planner_ignored_log" \
     MOCK_PLANNER_MODE=ignored \
     ./scripts/start-planning.sh --agent claude --model fable >"$tmp/planner-ignored.out" 2>&1
@@ -821,7 +821,7 @@ planner_weird_log="$tmp/planner-weird.log"
 if (
   cd "$planner_weird_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$planner_weird_log" \
     MOCK_PLANNER_MODE=weird-paths \
     ./scripts/start-planning.sh --agent claude --model fable >/dev/null 2>&1
@@ -834,7 +834,7 @@ planner_commit_log="$tmp/planner-commit.log"
 if (
   cd "$planner_commit_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$planner_commit_log" \
     MOCK_PLANNER_MODE=commit-extra \
     ./scripts/start-planning.sh --agent claude --model fable >/dev/null 2>&1
@@ -847,7 +847,7 @@ requirements_mode_log="$tmp/requirements-mode.log"
 if (
   cd "$requirements_mode_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$requirements_mode_log" \
     MOCK_PLANNER_MODE=requirements-mode \
     ./scripts/start-planning.sh --agent claude --model fable >/dev/null 2>&1
@@ -860,7 +860,7 @@ architecture_directory_log="$tmp/architecture-directory.log"
 if (
   cd "$architecture_directory_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$architecture_directory_log" \
     MOCK_PLANNER_MODE=architecture-directory \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
@@ -873,7 +873,7 @@ roadmap_symlink_log="$tmp/roadmap-symlink.log"
 if (
   cd "$roadmap_symlink_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$roadmap_symlink_log" \
     MOCK_PLANNER_MODE=roadmap-symlink \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
@@ -886,7 +886,7 @@ adr_non_markdown_log="$tmp/adr-non-markdown.log"
 if (
   cd "$adr_non_markdown_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$adr_non_markdown_log" \
     MOCK_PLANNER_MODE=adr-non-markdown \
     ./scripts/start-planning.sh --agent claude --model fable >/dev/null 2>&1
@@ -899,7 +899,7 @@ adr_nested_log="$tmp/adr-nested.log"
 if (
   cd "$adr_nested_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$adr_nested_log" \
     MOCK_PLANNER_MODE=adr-nested \
     ./scripts/start-planning.sh --agent claude --model fable >/dev/null 2>&1
@@ -912,7 +912,7 @@ only_roadmap_log="$tmp/only-roadmap.log"
 if (
   cd "$only_roadmap_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$only_roadmap_log" \
     MOCK_PLANNER_MODE=only-roadmap \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
@@ -925,7 +925,7 @@ only_architecture_log="$tmp/only-architecture.log"
 if (
   cd "$only_architecture_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$only_architecture_log" \
     MOCK_PLANNER_MODE=only-architecture \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
@@ -943,7 +943,7 @@ mode_only_log="$tmp/mode-only.log"
 if (
   cd "$mode_only_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$mode_only_log" \
     MOCK_PLANNER_MODE=mode-only \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
@@ -956,7 +956,7 @@ executable_docs_log="$tmp/executable-docs.log"
 if (
   cd "$executable_docs_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$executable_docs_log" \
     MOCK_PLANNER_MODE=executable-docs \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
@@ -967,7 +967,7 @@ fi
 invalid_repo="$(setup_repo invalid)"
 if (
   cd "$invalid_repo"
-  PATH="$tmp/bin:/usr/bin:/bin" \
+  PATH="$tmp/bin:$ISOLATED_PATH" \
     ./scripts/start-planning.sh --agent codex --model fable >/dev/null 2>&1
 ); then
   fail "known incompatible agent/model combination returned success"
@@ -978,7 +978,7 @@ fi
 unknown_agent_repo="$(setup_repo unknown-agent)"
 if (
   cd "$unknown_agent_repo"
-  PATH="$tmp/bin:/usr/bin:/bin" \
+  PATH="$tmp/bin:$ISOLATED_PATH" \
     ./scripts/start-planning.sh --agent other --model model >/dev/null 2>&1
 ); then
   fail "unknown agent returned success"
@@ -987,7 +987,7 @@ fi
 invalid_name_repo="$(setup_repo invalid-name)"
 if (
   cd "$invalid_name_repo"
-  PATH="$tmp/bin:/usr/bin:/bin" \
+  PATH="$tmp/bin:$ISOLATED_PATH" \
     ./scripts/start-planning.sh --agent codex --model astra ../unsafe >/dev/null 2>&1
 ); then
   fail "unsafe planning name returned success"
@@ -996,7 +996,7 @@ fi
 invalid_model_repo="$(setup_repo invalid-model)"
 if (
   cd "$invalid_model_repo"
-  PATH="$tmp/bin:/usr/bin:/bin" \
+  PATH="$tmp/bin:$ISOLATED_PATH" \
     ./scripts/start-planning.sh --agent codex --model "bad model" >/dev/null 2>&1
 ); then
   fail "unsafe model syntax returned success"
@@ -1005,7 +1005,7 @@ fi
 option_model_repo="$(setup_repo option-model)"
 if (
   cd "$option_model_repo"
-  PATH="$tmp/bin:/usr/bin:/bin" \
+  PATH="$tmp/bin:$ISOLATED_PATH" \
     ./scripts/start-planning.sh --agent codex --model --fallback >/dev/null 2>&1
 ); then
   fail "option-like model returned success"
@@ -1014,7 +1014,7 @@ fi
 missing_cli_repo="$(setup_repo missing-cli)"
 if (
   cd "$missing_cli_repo"
-  PATH="/usr/bin:/bin" \
+  PATH="$ISOLATED_PATH" \
     ./scripts/start-planning.sh --agent claude --model fable >/dev/null 2>&1
 ); then
   fail "missing selected agent CLI returned success"
@@ -1026,7 +1026,7 @@ git -C "$remote_repo" push -q origin planning/project-bootstrap
 git -C "$remote_repo" branch -D planning/project-bootstrap >/dev/null
 if (
   cd "$remote_repo"
-  PATH="$tmp/bin:/usr/bin:/bin" \
+  PATH="$tmp/bin:$ISOLATED_PATH" \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
 ); then
   fail "existing remote planning branch returned success"
@@ -1038,7 +1038,7 @@ local_repo="$(setup_repo local-duplicate)"
 git -C "$local_repo" branch planning/project-bootstrap
 if (
   cd "$local_repo"
-  PATH="$tmp/bin:/usr/bin:/bin" \
+  PATH="$tmp/bin:$ISOLATED_PATH" \
     ./scripts/start-planning.sh --agent codex --model astra >"$tmp/local-duplicate.out" 2>&1
 ); then
   fail "existing local planning branch returned success"
@@ -1052,7 +1052,7 @@ path_repo="$(setup_repo path-duplicate)"
 mkdir "$tmp/path-duplicate-repo-planning-project-bootstrap"
 if (
   cd "$path_repo"
-  PATH="$tmp/bin:/usr/bin:/bin" \
+  PATH="$tmp/bin:$ISOLATED_PATH" \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
 ); then
   fail "existing worktree path returned success"
@@ -1065,7 +1065,7 @@ dangling_path_repo="$(setup_repo dangling-path)"
 ln -s "$tmp/missing-worktree-target" "$tmp/dangling-path-repo-planning-project-bootstrap"
 if (
   cd "$dangling_path_repo"
-  PATH="$tmp/bin:/usr/bin:/bin" \
+  PATH="$tmp/bin:$ISOLATED_PATH" \
     ./scripts/start-planning.sh --agent codex --model astra >"$tmp/dangling-path.out" 2>&1
 ); then
   fail "dangling worktree symlink returned success"
@@ -1080,7 +1080,7 @@ missing_prompt_repo="$(setup_repo missing-prompt)"
 rm "$missing_prompt_repo/.agents/prompts/project-planner.md"
 if (
   cd "$missing_prompt_repo"
-  PATH="$tmp/bin:/usr/bin:/bin" \
+  PATH="$tmp/bin:$ISOLATED_PATH" \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
 ); then
   fail "missing project-planner prompt returned success"
@@ -1090,7 +1090,7 @@ missing_base_repo="$(setup_repo missing-base)"
 git -C "$missing_base_repo" remote set-url origin "$tmp/does-not-exist.git"
 if (
   cd "$missing_base_repo"
-  PATH="$tmp/bin:/usr/bin:/bin" \
+  PATH="$tmp/bin:$ISOLATED_PATH" \
     ./scripts/start-planning.sh --agent codex --model astra >"$tmp/missing-base.out" 2>&1
 ); then
   fail "unavailable origin/main returned success"
@@ -1102,7 +1102,7 @@ dirty_repo="$(setup_repo dirty)"
 printf '\nDirty.\n' >>"$dirty_repo/AGENTS.md"
 if (
   cd "$dirty_repo"
-  PATH="$tmp/bin:/usr/bin:/bin" \
+  PATH="$tmp/bin:$ISOLATED_PATH" \
     ./scripts/start-planning.sh --agent codex --model astra >/dev/null 2>&1
 ); then
   fail "dirty repository returned success"
@@ -1119,7 +1119,7 @@ description_log="$tmp/description.log"
 (
   cd "$description_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$description_log" \
     ./scripts/start-planning.sh --description "$description" --agent claude --model fable \
     >"$tmp/description.out" 2>&1
@@ -1142,7 +1142,7 @@ printf 'An untracked description in the checkout.\n' >"$inside_repo/idea.md"
 printf '\nDirty.\n' >>"$inside_repo/AGENTS.md"
 if (
   cd "$inside_repo"
-  PATH="$tmp/bin:/usr/bin:/bin" \
+  PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$tmp/description-inside.log" \
     ./scripts/start-planning.sh --description idea.md --agent codex --model astra >/dev/null 2>&1
 ); then
@@ -1154,7 +1154,7 @@ git -C "$inside_repo" checkout -q -- AGENTS.md
 (
   cd "$inside_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$tmp/description-inside.log" \
     ./scripts/start-planning.sh --description idea.md --agent codex --model astra \
     >"$tmp/description-inside.out" 2>&1
@@ -1171,7 +1171,7 @@ description_edit_repo="$(setup_repo description-edit)"
 if (
   cd "$description_edit_repo"
   printf 'y\n' |
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
     MOCK_AGENT_LOG="$tmp/description-edit.log" \
     MOCK_GRILL_MODE=edit-description \
     ./scripts/start-planning.sh --description "$description" --agent codex --model astra \
@@ -1188,7 +1188,7 @@ description_invalid_repo="$(setup_repo description-invalid)"
 for invalid_description in "$tmp/no-such-description.txt" "$tmp/empty-description.txt" "$tmp/bin" ""; do
   if (
     cd "$description_invalid_repo"
-    PATH="$tmp/bin:/usr/bin:/bin" \
+    PATH="$tmp/bin:$ISOLATED_PATH" \
       MOCK_AGENT_LOG="$tmp/description-invalid.log" \
       ./scripts/start-planning.sh --agent codex --model astra --description "$invalid_description" \
       >/dev/null 2>&1
@@ -1228,7 +1228,7 @@ setup_approved_repo() {
   (
     cd "$repo"
     printf 'y\n' |
-      PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$tmp/$label-bootstrap.log" \
+      PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$tmp/$label-bootstrap.log" \
       ./scripts/start-planning.sh --agent codex --model astra --description "$tmp/$label-idea.md" >/dev/null 2>&1
   ) || fail "the first planning of $label failed"
   mkdir -p "$worktree/docs/decisions"
@@ -1264,7 +1264,7 @@ run_change() {
   (
     cd "$repo"
     printf '%s' "$answer" |
-      PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$tmp/$label.log" \
+      PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$tmp/$label.log" \
       ./scripts/start-planning.sh "$name" --agent codex --model astra "$@"
   ) >"$tmp/$label.out" 2>&1
 }
@@ -1476,10 +1476,10 @@ printf '\nChanged after the approval.\n' >>"$stale_repo/docs/roadmap.md"
 git -C "$stale_repo" commit -qam "Change the roadmap without approval"
 git -C "$stale_repo" push -q origin main
 expect_no_current_approval "the planning changed after its approval" "$stale_repo"
-if (cd "$change_repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/start-planning.sh --agent codex --model astra --change "$change_request") >/dev/null 2>&1; then
+if (cd "$change_repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/start-planning.sh --agent codex --model astra --change "$change_request") >/dev/null 2>&1; then
   fail "a change cycle without a name was accepted"
 fi
-if (cd "$change_repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/start-planning.sh again --agent codex --model astra --grill) >/dev/null 2>&1; then
+if (cd "$change_repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/start-planning.sh again --agent codex --model astra --grill) >/dev/null 2>&1; then
   fail "--grill without --change was accepted"
 fi
 

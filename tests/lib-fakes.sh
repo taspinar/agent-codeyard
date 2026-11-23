@@ -29,6 +29,30 @@ unset VERIFY_TRUSTED_TREES VERIFY_ORIGIN CODEYARD_AGENT_SESSION
 # (VERIFY_PARALLEL): a verify.sh that the test runs keeps its own fixture's.
 unset VERIFY_PARALLEL
 
+# The isolated test toolchain (scripts/lib/environment.sh): a directory of
+# links to the selected tools only (Bash 4 or newer, GNU sed, GNU timeout and
+# the coreutils, jq, Git), never an agent CLI, gh, or another network tool.
+# A test that runs a workflow script with a restricted PATH uses
+#
+#   PATH="$ISOLATED_PATH"                 normal isolated execution
+#   PATH="<fakes>:$ISOLATED_PATH"         with fake agents or tools first
+#
+# and never a fixed '/usr/bin:/bin' alone: on macOS that is Bash 3.2, a BSD
+# sed, and no timeout. A test that makes a tool unavailable on purpose (Bash,
+# jq, Git, ...) builds its own PATH without the toolchain, or with the links
+# of TEST_TOOLCHAIN_BIN it wants. Without a required tool the test stops
+# here with the ENVIRONMENT line of verify.sh and its status 78.
+# shellcheck source=../scripts/lib/environment.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/scripts/lib/environment.sh"
+TEST_TOOLCHAIN_BIN="$(environment_toolchain_build)" || {
+  echo "The workflow self-tests cannot run on this machine: a prerequisite is missing (the ENVIRONMENT lines above)." >&2
+  exit "$ENVIRONMENT_STATUS"
+}
+ISOLATED_PATH="$TEST_TOOLCHAIN_BIN:/usr/bin:/bin"
+# The test's own commands use the same tools, first: on macOS its sed -i and
+# stat -c are those of GNU then, as on Linux.
+PATH="$TEST_TOOLCHAIN_BIN:$PATH"
+
 make_fake_agents() {
   local bin="$1"
   local jq_path
@@ -256,4 +280,22 @@ expect_comments_recorded() {
   cat "$1"/*.jsonl 2>/dev/null | jq -e -s --arg role "$2" \
     'any(.type == "issue-comments" and .role == $role and .passed == 3 and .others == 2 and .workflow == 3)' >/dev/null ||
     fail "the run record does not say how many comments were passed on to the $2"
+}
+
+# fake_missing_prerequisite <repo> [<control-file>]
+# Makes the preflight of the verify.sh of <repo> (its scripts/lib/
+# environment.sh) find a general prerequisite missing, so that verify.sh ends
+# with the environment status 78 and an ENVIRONMENT line: always, or, with
+# <control-file>, only while that file exists. For the tests of the scripts
+# that pass the status on; the preflight itself is tested on its own
+# (tests/environment-test.sh).
+fake_missing_prerequisite() {
+  local file="$1/scripts/lib/environment.sh"
+
+  [[ -f "$file" ]] || cp "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/scripts/lib/environment.sh" "$file"
+  if [[ -n "${2:-}" ]]; then
+    printf 'environment_general_missing() { [[ ! -e %q ]] || printf '"'"'faked-tool for this test\\tinstall faked-tool\\n'"'"'; }\n' "$2" >>"$file"
+  else
+    printf 'environment_general_missing() { printf '"'"'faked-tool for this test\\tinstall faked-tool\\n'"'"'; }\n' >>"$file"
+  fi
 }

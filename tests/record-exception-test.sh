@@ -165,7 +165,7 @@ at_terminal() {
   local command
 
   shift 2
-  command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:/usr/bin:/bin") MOCK_GH_LOG=$(printf '%q' "$repo.gh") $(printf '%q ' "$@")"
+  command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:$ISOLATED_PATH") MOCK_GH_LOG=$(printf '%q' "$repo.gh") $(printf '%q ' "$@")"
   if grep -q util-linux <<<"$(script --version 2>/dev/null)"; then
     printf '%s\n' "$answer" | script -qec "$command" /dev/null
   else
@@ -207,7 +207,7 @@ run_finish() {
 
   (
     cd "$repo"
-    PATH="$tmp/bin:/usr/bin:/bin" MOCK_GH_LOG="$repo.gh" GIT_EDITOR="${EDITOR_COMMAND:-true}" ./scripts/finish-feature.sh "$@"
+    PATH="$tmp/bin:$ISOLATED_PATH" MOCK_GH_LOG="$repo.gh" GIT_EDITOR="${EDITOR_COMMAND:-true}" ./scripts/finish-feature.sh "$@"
   ) >"$repo.finish" 2>&1
 }
 
@@ -230,7 +230,7 @@ expect_no_commit() {
 run_publish() {
   (
     cd "$1"
-    PATH="$tmp/bin:/usr/bin:/bin" MOCK_GH_LOG="$1.gh" ./scripts/publish-feature.sh 12
+    PATH="$tmp/bin:$ISOLATED_PATH" MOCK_GH_LOG="$1.gh" ./scripts/publish-feature.sh 12
   ) >"$1.publish" 2>&1
 }
 
@@ -245,7 +245,7 @@ risk_accepted=(--finding C1 --type risk-accepted --reason "The data is a cache; 
 repo="$(setup_repo refusals)"
 
 # Without a terminal: the confirmation is never read from a pipe.
-if (cd "$repo" && printf 'y\n' | PATH="$tmp/bin:/usr/bin:/bin" MOCK_GH_LOG="$repo.gh" \
+if (cd "$repo" && printf 'y\n' | PATH="$tmp/bin:$ISOLATED_PATH" MOCK_GH_LOG="$repo.gh" \
   ./scripts/record-exception.sh "$review" "${not_applicable[@]}") >"$repo.out" 2>&1; then
   fail "an exception was recorded without a terminal"
 fi

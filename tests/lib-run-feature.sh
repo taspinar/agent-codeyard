@@ -228,6 +228,9 @@ setup_repo() {
     shipped_policy >"$seed/.agents/policies/risk.conf"
   fi
   printf '# Agents\n' >"$seed/AGENTS.md"
+  # ENVIRONMENT_CONTROL: while this file exists, the preflight of verify.sh
+  # finds a prerequisite missing (fake_missing_prerequisite, lib-fakes.sh).
+  [[ -z "${ENVIRONMENT_CONTROL:-}" ]] || fake_missing_prerequisite "$seed" "$ENVIRONMENT_CONTROL"
   git -C "$seed" init -q -b main
   git -C "$seed" config user.name "Run Feature Test"
   git -C "$seed" config user.email "run-feature-test@example.com"
@@ -249,7 +252,7 @@ run_feature() {
   status=0
   (
     cd "$repo"
-    PATH="$tmp/bin:/usr/bin:/bin" RUN_CONTROL="$repo.control" RUN_ISSUE="${1:-}" GIT_EDITOR=false \
+    PATH="$tmp/bin:$ISOLATED_PATH" RUN_CONTROL="$repo.control" RUN_ISSUE="${1:-}" GIT_EDITOR=false \
       RUN_FEATURE_RETRY_WAIT=0 START_FEATURE_GH_WAIT=0 \
       ./scripts/run-feature.sh "$@" </dev/null
   ) >"$repo.out" 2>&1 || status=$?
@@ -399,6 +402,8 @@ reviewer-keeps-failing
 unstable
 alternating
 busy
+environment
+environment-repeat
 repaired
 base-repairs
 base-conflicts

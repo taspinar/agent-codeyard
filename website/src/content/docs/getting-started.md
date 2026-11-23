@@ -12,7 +12,7 @@ This page is one path, in eight steps, from a GitHub account without the project
 
 **What you need:**
 
-- Git and Bash
+- Git and Bash 4 or newer
 - The [GitHub CLI](https://cli.github.com/), signed in to your account
 - `jq` 1.6 or later
 - Two coding agents of different providers. As shipped, Claude Code implements and Codex reviews; `review-feature.sh` refuses a reviewer of the implementer’s provider.
@@ -27,7 +27,7 @@ This page is one path, in eight steps, from a GitHub account without the project
 - Approve the requirements and the plan, and merge the planning pull request.
 - Read and merge every feature pull request: no script merges.
 
-**Where it runs:** in a Bash shell on Linux. Parts of it also work on macOS, but no automated test covers macOS, and Windows is not supported. `./scripts/doctor.sh` (step 4) tells you what is missing.
+**Where it runs:** in a Bash shell on Linux or macOS; Windows is not supported. On macOS, install the GNU tools once with `brew install bash coreutils gnu-sed jq` and put Homebrew's directories first on `PATH`, as `docs/development.md` describes under "Prerequisites": macOS ships Bash 3.2, and every script stops below Bash 4. The template's CI runs every check on macOS too. `./scripts/doctor.sh` (step 4) tells you what is missing.
 
 Questions about cost and about what Codeyard adds: <a href="../features/#faq">the questions on Features</a>. Stopping a run: <a href="#troubleshooting/a-session-or-a-run-was-interrupted">a session or a run was interrupted</a>. What agents may do without you: <a href="#configuration/unattended">what "unattended" means</a>.
 

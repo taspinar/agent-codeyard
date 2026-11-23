@@ -180,7 +180,7 @@ expect_stopped "$repo" 3 "the implementer refuted every finding left to fix in r
 expect_sessions "$repo" 1 3 3 1
 (
   cd "$repo-2-thing"
-  command="PATH=$(printf '%q' "$tmp/bin:/usr/bin:/bin") RUN_CONTROL=$(printf '%q' "$repo.control") ./scripts/record-exception.sh .agents/reviews/feature-2-thing-review-03.json --finding M1 --type not-applicable --evidence .agents/handoffs/2.md --reason 'The content is right.'"
+  command="PATH=$(printf '%q' "$tmp/bin:$ISOLATED_PATH") RUN_CONTROL=$(printf '%q' "$repo.control") ./scripts/record-exception.sh .agents/reviews/feature-2-thing-review-03.json --finding M1 --type not-applicable --evidence .agents/handoffs/2.md --reason 'The content is right.'"
   if grep -q util-linux <<<"$(script --version 2>/dev/null)"; then
     printf 'y\n' | script -qec "$command" /dev/null
   else

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+case $0 in */*) bootstrap_dir=${0%/*} ;; *) bootstrap_dir=. ;; esac; [ ! -f "$bootstrap_dir/lib/bootstrap.sh" ] || . "$bootstrap_dir/lib/bootstrap.sh"
 
 set -euo pipefail
 
@@ -8,7 +9,9 @@ set -euo pipefail
 # directory (mkdir, git init, rm), waits for the session (sleep) and removes
 # it again, and the search for the approval requests and plans that a project
 # inherited from the template (lib/inherited.sh), which reads Git with sed,
-# grep, and sort. Nothing of the project is changed.
+# grep, and sort, and the preflight of ./scripts/verify.sh
+# (lib/environment.sh), which asks the tools it checks for their version.
+# Nothing of the project is changed.
 
 script_dir="${BASH_SOURCE[0]%/*}"
 [[ "$script_dir" != "${BASH_SOURCE[0]}" ]] || script_dir="."
@@ -17,6 +20,7 @@ source "$script_dir/lib/agent.sh"
 source "$script_dir/lib/github.sh"
 source "$script_dir/lib/attribution.sh"
 source "$script_dir/lib/inherited.sh"
+source "$script_dir/lib/environment.sh"
 
 failed=0
 gh_ready=0
@@ -189,6 +193,25 @@ Then reply with the single word done. Do not create or change any other file."
 
 echo "== Agentic template doctor =="
 
+# The preflight of ./scripts/verify.sh (lib/environment.sh), read-only. Bash 4
+# or newer: an older Bash stopped this script before it got here
+# (lib/bootstrap.sh). Git and jq are checked below. The prerequisites of the
+# workflow self-tests are a warning: verify.sh needs them only when a
+# self-test is going to run, and then ends with status 78 without them.
+ok "Bash ${BASH_VERSION%%(*} is 4 or newer"
+if [[ -f "$root/scripts/verify-workflow.conf" ]]; then
+  toolchain_missing="$(environment_toolchain_missing)"
+  if [[ -z "$toolchain_missing" ]]; then
+    ok "the workflow self-tests find their toolchain: Bash 4 or newer, GNU sed, GNU timeout and date, jq, and Git"
+  else
+    while IFS=$'\t' read -r toolchain_what toolchain_install; do
+      [[ -n "$toolchain_what" ]] || continue
+      warn "$toolchain_what is missing: ./scripts/verify.sh ends with status 78 (ENVIRONMENT) when a workflow self-test is going to run" \
+        "Install it: $toolchain_install"
+    done <<<"$toolchain_missing"
+  fi
+fi
+
 if have git; then
   ok "git is installed"
 else
@@ -198,8 +221,8 @@ fi
 if have jq; then
   # The workflow scripts are written for jq 1.6 and later.
   jq_version="$(jq --version 2>/dev/null || true)"
-  if [[ "$jq_version" =~ ^jq-([0-9]+)\.([0-9]+) ]] &&
-    ((BASH_REMATCH[1] < 1 || (BASH_REMATCH[1] == 1 && BASH_REMATCH[2] < 6))); then
+  # The same minimum as the preflight of verify.sh (lib/environment.sh).
+  if ! environment_jq_supports "$jq_version"; then
     missing "jq $jq_version is too old" "Install jq 1.6 or later: 'brew install jq' or 'sudo apt-get install jq'"
   else
     ok "jq is installed"

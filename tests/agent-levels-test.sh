@@ -429,7 +429,7 @@ run_start() {
   shift
   (
     cd "$repo"
-    PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo.log" START_FEATURE_GH_WAIT=0 ./scripts/start-feature.sh "$@" </dev/null
+    PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$repo.log" START_FEATURE_GH_WAIT=0 ./scripts/start-feature.sh "$@" </dev/null
   ) >"$repo.out" 2>&1
 }
 
@@ -476,7 +476,7 @@ recorded "$repo" implementer high level-line "a high feature"
 # The level never falls between sessions: the high path is gone and the
 # feature computes as medium now, but the run record keeps high.
 rm -r "$worktree/src"
-(cd "$worktree" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/check-risk.sh main >"$tmp/risk.out" 2>&1) || true
+(cd "$worktree" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/check-risk.sh main >"$tmp/risk.out" 2>&1) || true
 [[ "$(sed -n 1p "$tmp/risk.out")" == "risk: medium" ]] || fail "the feature without the high path is not medium: $(cat "$tmp/risk.out")"
 : >"$repo.log"
 run_start "$repo" 3 --resume || { cat "$repo.out" >&2; fail "resuming after the level fell failed"; }
@@ -522,17 +522,17 @@ grep -Fq "Level:    medium (computed by check-risk.sh against main)" "$repo_medi
 recorded "$repo_medium" implementer medium plain-line "a medium feature"
 
 # The report shows the calls per level, model, and selection.
-report="$(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/report-runs.sh 3)"
+report="$(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/report-runs.sh 3)"
 grep -Fq "### Per risk level" <<<"$report" || fail "the report has no section per level: $report"
 grep -Fq "| medium | implementer | codex | sonnet | plain-line | 1 |" <<<"$report" || fail "the report lacks the medium call: $report"
 grep -Fq "| high | implementer | claude | fable | level-line | 2 |" <<<"$report" || fail "the report lacks the calls by the level line: $report"
 grep -Fq "| high | implementer | claude | other | command-line | 1 |" <<<"$report" || fail "the report lacks the call by the command line: $report"
-json="$(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/report-runs.sh 3 --json)"
+json="$(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/report-runs.sh 3 --json)"
 [[ "$(jq '.subjects[0].levels | length' <<<"$json")" -eq 4 ]] || fail "the report groups the levels wrongly: $(jq -c '.subjects[0].levels' <<<"$json")"
 [[ "$(jq -r '.subjects[0].levels[0].level' <<<"$json")" == "medium" ]] || fail "the levels are not ordered from low to high"
 # A report without such a call has no section: records from before the
 # levels existed read as before.
-report_old="$(cd "$repo_medium" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/report-runs.sh 4)"
+report_old="$(cd "$repo_medium" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/report-runs.sh 4)"
 grep -Fq "### Per risk level" <<<"$report_old" || fail "a feature with level calls has no section"
 
 # The owner's hints. A label 'risk: high' on the Issue raises a new feature,
@@ -543,7 +543,7 @@ risk_events() {
   cat "$1"/.agents/run/records/*.jsonl | jq -c -s '[.[] | select(.type == "risk")]'
 }
 check_risk() {
-  (cd "$1" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/check-risk.sh main >"$tmp/risk.out" 2>&1) || true
+  (cd "$1" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/check-risk.sh main >"$tmp/risk.out" 2>&1) || true
 }
 repo_label="$(setup_repo label)"
 MOCK_ISSUE_LABELS=$'bug\nrisk: high' run_start "$repo_label" 7 || { cat "$repo_label.out" >&2; fail "starting a labelled feature failed"; }
@@ -558,7 +558,7 @@ check_risk "$worktree_label"
 [[ "$(sed -n 1p "$tmp/risk.out")" == "risk: high" ]] || fail "check-risk.sh does not count the label: $(cat "$tmp/risk.out")"
 grep -Fxq -- "- the Issue is labelled risk: high, which raises the level to high" "$tmp/risk.out" || fail "check-risk.sh does not name the label: $(cat "$tmp/risk.out")"
 grep -Fxq "hint: high issue-label" "$tmp/risk.out" || fail "check-risk.sh does not name the hint and its source: $(cat "$tmp/risk.out")"
-report="$(cd "$repo_label" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/report-runs.sh 7)"
+report="$(cd "$repo_label" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/report-runs.sh 7)"
 grep -Fq "| high | implementer | claude | fable | level-line | 1 |" <<<"$report" || fail "the report lacks the call at the raised level: $report"
 repo_other="$(setup_repo other-label)"
 MOCK_ISSUE_LABELS=$'bug\nrisk: low\nhigh' run_start "$repo_other" 7 || { cat "$repo_other.out" >&2; fail "starting a feature with other labels failed"; }
@@ -595,7 +595,7 @@ run_start "$repo_hint" 9 --resume --risk high || { cat "$repo_hint.out" >&2; fai
   fail "the run record does not note --risk and its source: $(risk_events "$repo_hint")"
 check_risk "$tmp/hint-9-thing"
 [[ "$(sed -n 1p "$tmp/risk.out")" == "risk: medium" ]] || fail "--risk outlived its run: $(cat "$tmp/risk.out")"
-(cd "$tmp/hint-9-thing" && PATH="$tmp/bin:/usr/bin:/bin" WORKFLOW_RISK_HINT=high ./scripts/check-risk.sh main >"$tmp/risk.out" 2>&1) || true
+(cd "$tmp/hint-9-thing" && PATH="$tmp/bin:$ISOLATED_PATH" WORKFLOW_RISK_HINT=high ./scripts/check-risk.sh main >"$tmp/risk.out" 2>&1) || true
 [[ "$(sed -n 1p "$tmp/risk.out")" == "risk: high" ]] || fail "check-risk.sh does not count --risk of the run: $(cat "$tmp/risk.out")"
 grep -Fxq "hint: high command-line" "$tmp/risk.out" || fail "check-risk.sh does not name --risk and its source: $(cat "$tmp/risk.out")"
 
@@ -607,7 +607,7 @@ grep -Fq "the owner gave --risk low for this run, below the computed medium; a h
   fail "--risk low was not reported as ignored: $(cat "$repo_low.out")"
 recorded "$repo_low" implementer medium plain-line "a medium feature with --risk low"
 printf 'other\n' >"$tmp/low-hint-10-thing/other.txt"
-(cd "$tmp/low-hint-10-thing" && PATH="$tmp/bin:/usr/bin:/bin" WORKFLOW_RISK_HINT=low ./scripts/check-risk.sh main >"$tmp/risk.out" 2>&1) || true
+(cd "$tmp/low-hint-10-thing" && PATH="$tmp/bin:$ISOLATED_PATH" WORKFLOW_RISK_HINT=low ./scripts/check-risk.sh main >"$tmp/risk.out" 2>&1) || true
 [[ "$(sed -n 1p "$tmp/risk.out")" == "risk: medium" ]] || fail "--risk low lowered the level of the diff: $(cat "$tmp/risk.out")"
 grep -Fxq -- "- the owner gave --risk low for this run, below the computed medium; a hint cannot lower the computed level and is ignored" "$tmp/risk.out" ||
   fail "check-risk.sh does not report --risk low as ignored: $(cat "$tmp/risk.out")"
@@ -741,7 +741,7 @@ mkdir -p "$repo_review/src/auth"
 printf 'login\n' >"$repo_review/src/auth/login.txt"
 (
   cd "$repo_review"
-  PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo_review.log" MOCK_OUTPUT="$review_result" ./scripts/review-feature.sh 7 </dev/null
+  PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$repo_review.log" MOCK_OUTPUT="$review_result" ./scripts/review-feature.sh 7 </dev/null
 ) >"$repo_review.out" 2>&1 || { cat "$repo_review.out" >&2; fail "reviewing a high feature failed"; }
 started "$repo_review" codex model-rh "the review of a high feature"
 grep -Fq "Level:    high (computed by check-risk.sh against main)" "$repo_review.out" || fail "the review did not show the level: $(cat "$repo_review.out")"
@@ -757,7 +757,7 @@ recorded "$repo_review" reviewer high level-line "the review of a high feature"
 run_review() {
   (
     cd "$repo_review"
-    PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo_review.log" MOCK_OUTPUT="$review_result" ./scripts/review-feature.sh 7 "$@" </dev/null
+    PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$repo_review.log" MOCK_OUTPUT="$review_result" ./scripts/review-feature.sh 7 "$@" </dev/null
   ) >"$repo_review.out" 2>&1
 }
 printf 'implementer: claude sonnet\nimplementer@high: codex model-ih\nreviewer: claude model-r\nreviewer@high: codex model-rh\n' >"$repo_review/.agents/agents.conf"
@@ -885,7 +885,7 @@ review_once() {
   : >"$repo_once.git"
   (
     cd "$repo_once"
-    PATH="${2:-}$tmp/once-bin:$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo_once.log" \
+    PATH="${2:-}$tmp/once-bin:$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$repo_once.log" \
       MOCK_OUTPUT="{\"architecture_impact\": {\"level\": \"$1\", \"rationale\": \"The impact.\", \"checked_against\": []}, \"verdict\": \"PASS\", \"limitations\": \"\", \"findings\": []}" \
       ./scripts/review-feature.sh 7 </dev/null
   ) >"$repo_once.out" 2>&1

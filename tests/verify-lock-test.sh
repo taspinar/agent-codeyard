@@ -75,7 +75,7 @@ run_verify() {
   local output="$2"
 
   shift 2
-  (cd "$worktree" && PATH="${PATH_PREFIX:-}$tmp/bin:/usr/bin:/bin" RECORDS_DISABLED=1 ./scripts/verify.sh "$@") >"$output" 2>&1
+  (cd "$worktree" && PATH="${PATH_PREFIX:-}$tmp/bin:$ISOLATED_PATH" RECORDS_DISABLED=1 ./scripts/verify.sh "$@") >"$output" 2>&1
 }
 
 # start_holder <worktree>: starts a verification in the background that

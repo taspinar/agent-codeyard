@@ -75,7 +75,7 @@ run_revise() {
   (
     cd "$repo"
     printf '%s\n' "$answer" |
-      PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo.log" ./scripts/revise-planning.sh "$@"
+      PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$repo.log" ./scripts/revise-planning.sh "$@"
   ) >"$repo.out" 2>&1
 }
 
@@ -229,7 +229,7 @@ at_terminal() {
   local command
 
   shift 2
-  command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:/usr/bin:/bin") MOCK_AGENT_LOG=$(printf '%q' "$repo.log") ./scripts/revise-planning.sh $(printf '%q ' "$@")"
+  command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:$ISOLATED_PATH") MOCK_AGENT_LOG=$(printf '%q' "$repo.log") ./scripts/revise-planning.sh $(printf '%q ' "$@")"
   if grep -q util-linux <<<"$(script --version 2>/dev/null)"; then
     printf '%s' "$answers" | script -qec "$command" /dev/null >"$repo.out" 2>&1 || true
   else

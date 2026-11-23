@@ -29,6 +29,12 @@ make_bin() {
   shift
 
   mkdir -p "$bin"
+  # The prerequisites of the workflow self-tests that doctor.sh checks
+  # (lib/environment.sh), from the isolated toolchain, apart from git and
+  # jq, which are listed like any tool; MAKE_BIN_WITHOUT leaves one out.
+  for tool in bash sed timeout date; do
+    [[ " ${MAKE_BIN_WITHOUT:-} " == *" $tool "* ]] || ln -sf "$TEST_TOOLCHAIN_BIN/$tool" "$bin/$tool"
+  done
   # The sandbox check needs mkdir, rm and sleep whatever else is present.
   for tool in mkdir rm sleep "$@"; do
     case "$tool" in
@@ -165,6 +171,16 @@ if grep -Eq '^(FAILED|WARNING)' "$tmp/out.log"; then
   fail "complete environment reported a problem"
 fi
 grep -Eq '^OK +git has a commit identity' "$tmp/out.log" || fail "the commit identity was not reported"
+grep -Eq '^OK +the workflow self-tests find their toolchain' "$tmp/out.log" || fail "the toolchain of the self-tests was not reported: $(cat "$tmp/out.log")"
+
+# A missing prerequisite of the workflow self-tests (here GNU sed) is the
+# preflight of verify.sh (lib/environment.sh): a warning with the install
+# command, since verify.sh needs it only when a self-test is going to run.
+bin_without_sed="$(MAKE_BIN_WITHOUT=sed make_bin without-sed git gh jq codex claude)"
+run_doctor "$bin_without_sed" || { cat "$tmp/out.log" >&2; fail "a missing prerequisite of the self-tests was reported as a failure"; }
+grep -Eq '^WARNING +GNU sed for the workflow self-tests is missing: \./scripts/verify\.sh ends with status 78' "$tmp/out.log" ||
+  fail "a missing GNU sed was not reported as a prerequisite of the self-tests: $(cat "$tmp/out.log")"
+grep -Eq '^ +Install it: .*(apt-get install sed|brew install gnu-sed)' "$tmp/out.log" || fail "the install command of GNU sed is missing: $(cat "$tmp/out.log")"
 
 # The Codex sandbox check: the implementer uses codex, so a real unattended
 # session ran in a scratch repository, with the writable roots of agent.sh,

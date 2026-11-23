@@ -51,7 +51,7 @@ check() {
 
   shift
   status=0
-  (cd "$repo" && PATH="/usr/bin:/bin" ./scripts/check-guardrails.sh "$@") >"$repo.out" 2>&1 || status=$?
+  (cd "$repo" && PATH="$ISOLATED_PATH" ./scripts/check-guardrails.sh "$@") >"$repo.out" 2>&1 || status=$?
 }
 
 expect_level() {
@@ -520,7 +520,7 @@ check "$repo" --commits main HEAD
 # decide <repo> <base> <head>: sets 'status', '<repo>.gate/', '<repo>.decision'.
 decide() {
   status=0
-  (cd "$1" && PATH="/usr/bin:/bin" ./scripts/gate-pull-request.sh "$2" "$3" "$1.gate") >"$1.decision" 2>&1 || status=$?
+  (cd "$1" && PATH="$ISOLATED_PATH" ./scripts/gate-pull-request.sh "$2" "$3" "$1.gate") >"$1.decision" 2>&1 || status=$?
 }
 
 # expect_decision <repo> <conclusion> <title> <description>

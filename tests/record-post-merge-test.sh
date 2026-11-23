@@ -84,7 +84,7 @@ run_record() {
   n=$((n + 1))
   log="$tmp/call-$n"
   : >"$log"
-  PATH="$tmp/bin:/usr/bin:/bin" MOCK_GH_LOG="$log" "$source_root/scripts/record-post-merge.sh" "$@" >"$log.out" 2>&1
+  PATH="$tmp/bin:$ISOLATED_PATH" MOCK_GH_LOG="$log" "$source_root/scripts/record-post-merge.sh" "$@" >"$log.out" 2>&1
 }
 
 # Wrong use is refused before GitHub is asked.

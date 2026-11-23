@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+case $0 in */*) bootstrap_dir=${0%/*} ;; *) bootstrap_dir=. ;; esac; [ ! -f "$bootstrap_dir/lib/bootstrap.sh" ] || . "$bootstrap_dir/lib/bootstrap.sh"
 
 set -euo pipefail
 

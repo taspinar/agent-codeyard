@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+case $0 in */*) bootstrap_dir=${0%/*} ;; *) bootstrap_dir=. ;; esac; [ ! -f "$bootstrap_dir/lib/bootstrap.sh" ] || . "$bootstrap_dir/lib/bootstrap.sh"
 
 set -euo pipefail
 
@@ -242,6 +243,17 @@ fi
 tmp_work="$(mktemp -d "${TMPDIR:-/tmp}/review-feature.XXXXXX")"
 trap 'rm -rf "$tmp_work"' EXIT
 
+# environment_stop <status>: ends with status 78 when the verification found a
+# prerequisite of this machine missing (the ENVIRONMENT lines of verify.sh):
+# passed on unchanged, apart from the status 4 of a failed verification, so
+# that a caller does not repair the code for it. Returns otherwise.
+environment_stop() {
+  [[ "$1" -eq 78 ]] || return 0
+  echo "Error: the verification could not run: a prerequisite of this machine is missing (the ENVIRONMENT lines above); the review was not started." >&2
+  records_stop "${0##*/}" "the verification could not run: a prerequisite of this machine is missing; the review was not started."
+  exit 78
+}
+
 verified_tree=""
 if [[ -n "$unverified_reason" ]]; then
   echo "Reviewing without verification: $unverified_reason"
@@ -253,6 +265,7 @@ elif [[ -n "$checks" ]]; then
   # A partial run records nothing (verify.sh --only), so there is no pass to
   # reuse. Status 4 as for a failed verification.
   (cd "$root" && ./scripts/verify.sh --only "$checks") || {
+    environment_stop "$?"
     echo "Error: the checks of the groups ${checks//,/, } failed; the review was not started. Fix the failing check, or review anyway with --unverified \"<reason>\"." >&2
     records_stop "${0##*/}" "the checks of the groups ${checks//,/, } failed; the review was not started. Fix the failing check, or review anyway with --unverified \"<reason>\"."
     exit 4
@@ -270,6 +283,7 @@ else
   # without the trusted passes of a run (VERIFY_TRUSTED_TREES), no recorded
   # pass is reused (lib/verification.sh).
   verification_run "$root" script "$AGENT_UNATTENDED" || {
+    environment_stop "$?"
     echo "Error: verification failed; the review was not started. Fix the failing check, or review anyway with --unverified \"<reason>\"." >&2
     records_stop "${0##*/}" "verification failed; the review was not started. Fix the failing check, or review anyway with --unverified \"<reason>\"."
     exit 4

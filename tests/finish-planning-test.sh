@@ -86,7 +86,7 @@ run_finish() {
 
   (
     cd "$repo"
-    printf '%s\n' "$answer" | PATH="$tmp/bin:/usr/bin:/bin" ./scripts/finish-planning.sh "$@"
+    printf '%s\n' "$answer" | PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/finish-planning.sh "$@"
   ) >"$repo.out" 2>&1
 }
 
@@ -103,7 +103,7 @@ expect_refused() {
 
 check_status() {
   local status=0
-  (cd "$1" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/finish-planning.sh --check >/dev/null 2>&1) || status=$?
+  (cd "$1" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/finish-planning.sh --check >/dev/null 2>&1) || status=$?
   echo "$status"
 }
 
@@ -249,7 +249,7 @@ add_review "$repo" 1 PASS "[]"
 mkfifo "$tmp/answer"
 (
   cd "$repo"
-  PATH="$tmp/bin:/usr/bin:/bin" ./scripts/finish-planning.sh <"$tmp/answer"
+  PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/finish-planning.sh <"$tmp/answer"
 ) >"$repo.out" 2>&1 &
 finisher=$!
 exec 3>"$tmp/answer"
@@ -358,7 +358,7 @@ run_amend() {
   shift 2
   (
     cd "$repo"
-    printf '%s\n' "$answer" | PATH="$tmp/bin:/usr/bin:/bin" ./scripts/finish-planning.sh "$@"
+    printf '%s\n' "$answer" | PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/finish-planning.sh "$@"
   ) >"$repo.out" 2>&1
 }
 
@@ -476,7 +476,7 @@ amend_adr "$repo"
 git -C "$repo" add -A
 git -C "$repo" commit -qm "F07: add a cache, with ADR 002" -m "Issue: #7" -m "Review: round 2, PASS, by codex (model-r)"
 [[ "$(check_status "$repo")" -eq 0 ]] || fail "a feature that updated the architecture made the approval stale"
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/finish-planning.sh --check) >"$repo.out" 2>&1
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/finish-planning.sh --check) >"$repo.out" 2>&1
 grep -Fq "F07: add a cache, with ADR 002" "$repo.out" || fail "the check did not name the commit that updated the architecture"
 
 # An amendment can start from that state: the base is still approved.
@@ -514,7 +514,7 @@ for document in docs/roadmap.md docs/PROJECT_REQUIREMENTS.md; do
   git -C "$repo" add -A
   git -C "$repo" commit -qm "F08: change $document"
   [[ "$(check_status "$repo")" -eq 1 ]] || fail "a change to $document did not make the approval stale"
-  (cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/finish-planning.sh --check) >"$repo.out" 2>&1 || true
+  (cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/finish-planning.sh --check) >"$repo.out" 2>&1 || true
   grep -Fq "only a planning cycle may change those" "$repo.out" || fail "the stale approval did not say what changed"
 done
 
@@ -572,7 +572,7 @@ at_terminal() {
   local command
 
   shift 2
-  command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:/usr/bin:/bin") $(printf '%q ' "$@")"
+  command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:$ISOLATED_PATH") $(printf '%q ' "$@")"
   if grep -q util-linux <<<"$(script --version 2>/dev/null)"; then
     printf '%s\n' "$answer" | script -qec "$command" /dev/null
   else

@@ -247,8 +247,8 @@ records_begin() {
   local latest
   local seq=""
   # The file of the run is created here, and only by this run: subshells of
-  # one process share its id and, in Bash 3.2, the state of $RANDOM, so an id
-  # that another run took is replaced by the next.
+  # one process share its id and may draw the same $RANDOM, so an id that
+  # another run took is replaced by the next.
   local attempt=0
   while true; do
     RECORDS_RUN_ID="$(date -u +'%Y%m%dT%H%M%SZ')-$$-$RANDOM"

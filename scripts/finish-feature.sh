@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+case $0 in */*) bootstrap_dir=${0%/*} ;; *) bootstrap_dir=. ;; esac; [ ! -f "$bootstrap_dir/lib/bootstrap.sh" ] || . "$bootstrap_dir/lib/bootstrap.sh"
 
 set -euo pipefail
 
@@ -219,7 +220,17 @@ fi
 # passes of a run, only one of them; with --unattended and without them,
 # none.
 echo "Checking repository verification..."
-verification_run "$root" script "$unattended" || fail "verification failed; nothing was committed."
+verification_status=0
+verification_run "$root" script "$unattended" || verification_status=$?
+if [[ "$verification_status" -eq 78 ]]; then
+  # A prerequisite of this machine is missing (the ENVIRONMENT lines of
+  # verify.sh): passed on unchanged, so that a caller does not repair the
+  # code for it.
+  echo "Error: the verification could not run: a prerequisite of this machine is missing (the ENVIRONMENT lines above); nothing was committed." >&2
+  records_stop "${0##*/}" "the verification could not run: a prerequisite of this machine is missing; nothing was committed."
+  exit 78
+fi
+[[ "$verification_status" -eq 0 ]] || fail "verification failed; nothing was committed."
 echo
 # The budget results of that verification (lib/verification.sh): a budget
 # over its target passed the verification as a measurement, and the commit

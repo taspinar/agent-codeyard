@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+case $0 in */*) bootstrap_dir=${0%/*} ;; *) bootstrap_dir=. ;; esac; [ ! -f "$bootstrap_dir/lib/bootstrap.sh" ] || . "$bootstrap_dir/lib/bootstrap.sh"
 
 # Checks the mapping of a parallel CI onto the groups of checks
 # (docs/development.md, "A parallel CI"), such as the template's own

@@ -96,6 +96,14 @@ A feature cannot be reviewed or committed until the checks pass. An unattended r
 
 **Exception:** to have the feature reviewed anyway, `review-feature.sh <issue> --unverified "<reason>"` records the reason; it is an exception, not a pass, and the commit still needs every check.
 
+### "ENVIRONMENT  … — <install command>"
+
+- **First fix:** install what the line names, with the command after the dash, then run the same command again.
+- **Recovered when:** the command runs its checks instead of printing `ENVIRONMENT`.
+- **Output:** one `ENVIRONMENT` line per missing prerequisite in the output of `verify.sh` or of the script that stopped; the exit status is 78.
+
+A prerequisite of the machine is missing: Bash 4 or newer, Git, or `jq` 1.6 or newer for every run, or, only when a workflow self-test is going to run, GNU `sed`, GNU `timeout` and `date`. Nothing was checked and nothing is wrong with your code: an unattended run stops at once instead of retrying or starting a repair. `./scripts/doctor.sh` lists every prerequisite with its install command.
+
 ### "BUSY  the slot for heavy verification of this machine is held by …"
 
 - **First fix:** wait until the run it names has ended, then run the same command again.

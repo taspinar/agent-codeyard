@@ -102,7 +102,7 @@ run_review() {
 
   (
     cd "$repo"
-    PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo.log" \
+    PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$repo.log" \
       ./scripts/review-feature.sh "$@"
   ) >"$repo.out" 2>&1
 }
@@ -294,7 +294,7 @@ done
 repo="$(setup_repo subdirectory)"
 (
   cd "$repo/docs"
-  PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo.log" ../scripts/review-feature.sh 7
+  PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$repo.log" ../scripts/review-feature.sh 7
 ) >"$repo.out" 2>&1 || {
   cat "$repo.out" >&2
   fail "review from a subdirectory failed"
@@ -331,7 +331,7 @@ run_review "$repo" 7 || fail "a review of changed content failed"
 # and gives the tree of its pass to the scripts it starts (here gh), never
 # to the reviewer, whose environment is marked as an agent session.
 repo="$(setup_repo unattended-verified)"
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh >/dev/null 2>&1) || fail "the first verification failed"
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh >/dev/null 2>&1) || fail "the first verification failed"
 [[ "$(verification_runs "$repo")" -eq 1 ]] || fail "the first verification did not run"
 run_review "$repo" 7 || fail "a review at a terminal failed"
 [[ "$(verification_runs "$repo")" -eq 1 ]] || fail "a review at a terminal did not reuse the pass, as before"
@@ -438,6 +438,18 @@ expect_no_review "$repo" "verification fails" 7
 [[ ! -e "$repo.log" ]] || fail "a reviewer started although verification failed"
 grep -Fq "FAIL  broken" "$repo.out" || fail "the failing check was not named"
 grep -Fq -- "--unverified" "$repo.out" || fail "the refusal did not name the override"
+
+# A missing prerequisite of the machine (status 78 of verify.sh and its
+# ENVIRONMENT line) is passed on unchanged, apart from the status 4 of a
+# failed verification: no reviewer starts, and the caller does not repair.
+repo="$(setup_repo environment-missing)"
+fake_missing_prerequisite "$repo"
+status=0
+run_review "$repo" 7 || status=$?
+[[ "$status" -eq 78 ]] || { cat "$repo.out" >&2; fail "a missing prerequisite did not end the review with status 78 ($status)"; }
+[[ ! -e "$repo.log" ]] || fail "a reviewer started although a prerequisite is missing"
+grep -q '^ENVIRONMENT  faked-tool for this test — install faked-tool$' "$repo.out" || fail "the ENVIRONMENT line of verify.sh was not shown: $(cat "$repo.out")"
+if compgen -G "$repo/.agents/reviews/*" >/dev/null; then fail "a review was stored although a prerequisite is missing"; fi
 
 # A check that passes but changes a file verified other content than the
 # review would cover, so no review starts.

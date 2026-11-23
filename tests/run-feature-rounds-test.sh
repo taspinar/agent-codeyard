@@ -103,11 +103,11 @@ if grep -Fq "MERGE APPROVAL REQUIRED" "$repo_develop.out"; then
 fi
 # Run by hand in the worktree, without a base, the checks take the recorded
 # base, not main.
-(cd "$repo_develop-2-thing" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/check-guardrails.sh) >"$repo_develop.guardrails" 2>&1 ||
+(cd "$repo_develop-2-thing" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/check-guardrails.sh) >"$repo_develop.guardrails" 2>&1 ||
   fail "check-guardrails.sh failed on the recorded base: $(cat "$repo_develop.guardrails")"
 grep -Fqx "level: none" <<<"$(sed -n 1p "$repo_develop.guardrails")" ||
   fail "check-guardrails.sh did not compare with the recorded base: $(cat "$repo_develop.guardrails")"
-(cd "$repo_develop-2-thing" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/check-risk.sh) >"$repo_develop.risk" 2>&1 || true
+(cd "$repo_develop-2-thing" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/check-risk.sh) >"$repo_develop.risk" 2>&1 || true
 if grep -Fq "decisions" "$repo_develop.risk"; then
   fail "check-risk.sh did not compare with the recorded base: $(cat "$repo_develop.risk")"
 fi
@@ -447,7 +447,7 @@ run_at_terminal() {
   local command
 
   shift
-  command="PATH=$(printf '%q' "$tmp/bin:/usr/bin:/bin") RUN_CONTROL=$(printf '%q' "$repo.control") RUN_ISSUE=$1 GIT_EDITOR=false RUN_FEATURE_RETRY_WAIT=0 START_FEATURE_GH_WAIT=0 ${AT_TERMINAL_ENV:-} ./scripts/run-feature.sh $*"
+  command="PATH=$(printf '%q' "$tmp/bin:$ISOLATED_PATH") RUN_CONTROL=$(printf '%q' "$repo.control") RUN_ISSUE=$1 GIT_EDITOR=false RUN_FEATURE_RETRY_WAIT=0 START_FEATURE_GH_WAIT=0 ${AT_TERMINAL_ENV:-} ./scripts/run-feature.sh $*"
   status=0
   (
     cd "$repo"

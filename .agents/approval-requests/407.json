@@ -1,0 +1,27 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "92f378823985e368acf33d24e8b6973e0f684214",
+  "commit": {
+    "branch": "feature/407-macos-reliability-isolated-test",
+    "parent": "bb6bc8762899d51da82c14cedd9c5914cb9c9676",
+    "base": "bb6bc8762899d51da82c14cedd9c5914cb9c9676"
+  },
+  "review": {
+    "round": 6,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".github/workflows/macos.yml: the file defines or carries out the workflow and its gate",
+    "scripts/check-guardrails.sh: the file defines or carries out the workflow and its gate",
+    "scripts/check-risk.sh: the file defines or carries out the workflow and its gate",
+    "scripts/finish-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/gate-pull-request.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/risk.sh: the file defines or carries out the workflow and its gate",
+    "scripts/publish-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/review-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The feature adds shared prerequisite and toolchain infrastructure used by verification, doctor, workflow scripts, and self-tests, and adds a macOS CI workflow. These changes extend the project’s verification and runtime environment contracts. No conflict with the template architecture or an accepted ADR was found. "
+  ],
+  "explanation": "Issue #407: macOS reliability: isolated test toolchain, bash 4 bootstrap, and an environment status through the whole chain. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

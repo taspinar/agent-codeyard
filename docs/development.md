@@ -2,6 +2,9 @@
 
 ## Prerequisites
 
+- Bash 4 or newer. Every script of `scripts/` checks it first
+  (`scripts/lib/bootstrap.sh`), before it sources a library, and stops with
+  status 78 and the install command below Bash 4.
 - Git
 - GitHub CLI (`gh`), installed and authenticated
 - `jq` 1.6 or later
@@ -18,10 +21,23 @@
   it is installed; when Chromium cannot be installed or does not start for
   missing system libraries, it stops with the command to run. A project
   without `website/` needs none of this.
+- For the workflow self-tests (`tests/*-test.sh`, see "Workflow self-tests"):
+  GNU `sed`, GNU `timeout` and `date` (GNU coreutils), next to Bash 4, Git,
+  and `jq`. A Linux system has them. On macOS install them once with
+  `brew install bash coreutils gnu-sed jq`, and put Homebrew's `bin`
+  directory and its GNU directories before `/bin` on `PATH`:
+  `$(brew --prefix)/opt/coreutils/libexec/gnubin`,
+  `$(brew --prefix)/opt/gnu-sed/libexec/gnubin`, and `$(brew --prefix)/bin`.
+  The self-tests find the GNU tools in those directories also when they do
+  not come first, but the workflow scripts themselves use GNU `stat` and
+  `date`. The template's own CI runs `./scripts/verify.sh --all` on macOS
+  too, on every pull request and every night.
 - Project-specific tools documented in this file after the template is adopted
 
 Run `./scripts/doctor.sh` to check these prerequisites, including that you can
-push to `origin` with the Git identity in use. It reports each check
+push to `origin` with the Git identity in use. It runs the preflight of
+`./scripts/verify.sh` read-only (see "Missing prerequisites"): a missing
+prerequisite of the self-tests is a warning with its install command. It reports each check
 as `OK`, `WARNING`, or `FAILED` with a fix hint, exits non-zero when a required
 prerequisite is missing, and never modifies anything of the project. A missing
 agent CLI fails when `.agents/agents.conf` assigns it to a role and is a
@@ -842,6 +858,48 @@ the file `owner` name its process group. List it with
 Like any line of these files, adding the `heavy:` line is sensitive and
 changing or removing it is protected by the merge approval gate.
 
+### Missing prerequisites
+
+Before a check starts, `./scripts/verify.sh` runs a preflight
+(`scripts/lib/environment.sh`) with two levels:
+
+- general, on every run: what the workflow scripts need, Bash 4 or newer,
+  Git, and `jq` 1.6 or newer;
+- the workflow self-tests, only when a self-test is going to run (a workflow
+  file changed, `--all`, or `--changed` with a self-test selected), or when
+  `--reuse` finds a recorded pass for this content that ran them: their
+  isolated toolchain, Bash 4 or newer, GNU `sed`, GNU `timeout` and `date`,
+  `jq` 1.6 or newer, and Git (see "Workflow self-tests").
+
+The preflight runs before `--reuse` accepts a recorded pass: a pass that
+covered the self-tests stands in for them only on a machine that can run
+them.
+
+A missing prerequisite is a fact of the machine, not a failure of the code.
+The run starts no check, records nothing (an existing record of a pass stays
+as it is), and exits with status 78 (`EX_CONFIG`). Its summary shows one line
+per missing prerequisite, with the command that installs it:
+
+```text
+ENVIRONMENT  GNU sed for the workflow self-tests — brew install gnu-sed
+```
+
+A run that runs no self-test, such as `--only default` or a run in which no
+workflow file changed, needs none of their prerequisites and is not stopped
+by them. Below Bash 4 every script of `scripts/` stops the same way before it
+does anything (`scripts/lib/bootstrap.sh`): on macOS `/bin/bash` is 3.2, and
+`#!/usr/bin/env bash` finds it when no newer Bash comes first on `PATH`.
+
+`review-feature.sh`, `finish-feature.sh`, and `apply-triage.sh` pass the
+status 78 on unchanged, apart from the status 4 of a failed verification, and
+`run-feature.sh` stops on it, or on an `ENVIRONMENT` line in the output of a
+step that failed, with status 78: no retry, no repeat of the verification,
+no repair session, and it never counts as an unstable check. Only what the
+preflight establishes is an environment failure: a check or a self-test that
+exits non-zero, also for a tool it lacks, stays a failure of the code. Install
+what the lines name, then run again; `./scripts/doctor.sh` reports the same
+prerequisites.
+
 ### References in the documentation
 
 `./scripts/check-docs.sh` checks that the tracked Markdown files name files
@@ -980,6 +1038,29 @@ load of the host (Issue #456). Write `grep -q pattern <<<"$(producer)"`
 instead; `>/dev/null` in place of `-q` is no remedy, since GNU grep then stops
 at the first match as well. `tests/pipe-grep-test.sh` fails on such a pipe in
 `tests/*.sh`, also one that continues on the next line.
+
+The self-tests run the workflow scripts with a restricted `PATH`, so that
+fakes stand in for the agent CLIs and `gh` and nothing else of the machine is
+found by accident. They never use a fixed `/usr/bin:/bin` alone: on macOS
+that is Bash 3.2, a BSD `sed`, and no `timeout`. `tests/lib-fakes.sh` builds
+the isolated test toolchain (`scripts/lib/environment.sh`): a directory of
+links to explicitly selected tools only, Bash 4 or newer, GNU `sed`, GNU
+`timeout` and the coreutils the scripts use, `jq`, and Git, taken from
+Homebrew's GNU directories first, then from `PATH`; never an agent CLI, `gh`,
+or another network tool. On Linux the links point at the system's tools. It
+is kept once per user and content under `${TMPDIR:-/tmp}`
+(`codeyard-test-toolchain.*`), and a test uses it by intent:
+
+- normal isolated execution: `PATH="$ISOLATED_PATH"`, the toolchain followed
+  by `/usr/bin:/bin`;
+- with fakes in front: `PATH="<fakes>:$ISOLATED_PATH"`;
+- a tool made unavailable on purpose, such as Bash or `jq`: a `PATH` of the
+  test's own without the toolchain, or with only the links of
+  `$TEST_TOOLCHAIN_BIN` it wants, as `tests/doctor-test.sh` does, so that the
+  test still proves how the workflow handles the missing tool.
+
+Without a required tool a self-test stops at its start with the
+`ENVIRONMENT` line and status 78.
 
 The self-tests start `jq`, `git`, and `bash` thousands of times. On an Apple
 Silicon Mac an x86_64 `jq`, such as the one Anaconda installs, runs under
@@ -3027,6 +3108,7 @@ only together with what it recorded:
 | Completed | The step exits 0 | Goes on |
 | Temporary | An agent or a connection fails: a usage limit, a timeout, the network | Tries the step again, three times, with a wait that doubles from two minutes. A fix session that had already changed the content is taken up with `apply-triage.sh <triage-json> --continue`: the same findings, contract, and protections, for the session of this triage that was left unfinished, and for nothing else |
 | Unstable check | The verification is repeated once, and no check failed in both runs | Records the checks and goes on, at most three times in a run |
+| Missing prerequisite | A step ends with status 78, or failed with an `ENVIRONMENT` line of the preflight of `verify.sh` in its output (see "Missing prerequisites") | Stops with status 78: no retry, no repeat of the verification, no repair session, and never an unstable check. Notes `environment` with what is missing |
 | Base moved | A check failed in both runs, and the base moved since the feature started and merges cleanly | Merges the base into the branch, notes `base merged`, and does the step again on the merged content, without a session of the implementer; see "Bringing a finished feature up to date with its base" |
 | Failed verification | A check failed in both runs, and the base did not move | Resumes the implementer with those checks in the handoff note, at most three times (`AGENTS.md`); a review follows. A repair session is retried like any other |
 | Budget exceeded | The verification passed, and a budget check (`<name> [<group>] budget: <command>`, see "Budgets") exceeded its target | Goes on: no repair session, whatever the measurement. Writes the measurement to the handoff note, with the note that it is not a repair order, and to the log and the run record, once per result and only where a note cannot make a review stale. The heading of the note names the result (`budget result <digest>`, of the budgets that exceeded their targets): a run that starts again, as after an owner exception, finds it and writes no second note, which would make the review and the exception stale (before a review round, after the verification of an unreviewed `low` feature, after the commit). The reviewer's context, the commit message, and the pull request get it from the verification record |
@@ -3050,6 +3132,7 @@ The run stops with a non-zero status, and keeps the worktree, when:
 | An agent needs a decision of yours, or reports a conflict with the Issue's scope, the architecture, or an ADR. Its question is in the handoff note | 3 |
 | An agent or a connection keeps failing after the retries | 1 |
 | The verification still fails after three repairs, or checks are unstable more than three times | 1 |
+| A prerequisite of the machine is missing (status 78 of `verify.sh`, its `ENVIRONMENT` lines); install it, then run again | 78 |
 | The verification fails, the base moved, and its merge conflicts with the branch or the uncommitted work of the feature, would write over an untracked file (also one that Git ignores), meets staged changes in the index, or leaves untracked paths behind that the branch ignored; the files are named | 1 |
 | The proposed triage is invalid, for example because it defers a critical or major finding | 1 |
 | Five rounds (or the limit of `--rounds`) are used and the last one still has a finding that must be fixed, or was an intermediate round (only the changes, or partially checked content); the stop proposes `--rounds` with two rounds more, or, at the ceiling of 20, says that it is reached and proposes only the steps by hand | 1 |
