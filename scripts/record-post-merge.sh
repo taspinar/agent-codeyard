@@ -36,6 +36,7 @@ marker="<!-- post-merge-evidence -->"
 [[ "$criterion" != *$'\n'* ]] || fail "the criterion must be one line, as the pull request lists it."
 command -v gh >/dev/null 2>&1 || fail "GitHub CLI 'gh' is not installed."
 command -v jq >/dev/null 2>&1 || fail "jq is required."
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/github.sh"
 
 # The merged pull request of the feature lists what is pending. A pull request
 # that is not merged yet has no post-merge evidence to record.
@@ -67,8 +68,7 @@ if ! printf '%s\n' "$pending" | grep -Fqx -- "$criterion"; then
   exit 1
 fi
 
-recorded="$(gh api "repos/{owner}/{repo}/issues/$issue/comments" --paginate \
-  --jq ".[] | select(.body | startswith(\"$marker\")) | .body | split(\"\\n\") | map(select(startswith(\"Criterion: \"))) | first // empty | .[11:]")" ||
+recorded="$(github_post_merge_recorded "$issue")" ||
   fail "could not read the comments of Issue #$issue."
 if printf '%s\n' "$recorded" | grep -Fqx -- "$criterion"; then
   fail "the evidence of this criterion is recorded already on Issue #$issue."

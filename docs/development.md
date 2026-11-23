@@ -3132,24 +3132,35 @@ The columns:
   (`orchestrator`, `script`, `agent-session`, `manual`; see "Recorded
   verification").
 - **Pull request**: its number, its CI checks (`checks pass`, `checks fail
-  (<n> of <m>)`, `checks pending`), and whether it is `mergeable` or
-  `conflicting`.
+  (<n> of <m>)`, `checks pending`, `no checks`), and whether it is
+  `mergeable` or `conflicting`.
 - **Owner decision needed**: what only you can do now, with the command or
   the link that does it, and empty when nothing is needed. A run that stopped
   for your decision (status 3) or a blocked completion record: the question
   that its handoff note holds under "Open questions", to answer in
   `.agents/handoffs/<issue>.md`. A pull request with an approval
-  request (`.agents/approval-requests/<issue>.json`) that you have not
-  approved. Review rounds that are used up: `--rounds <m>` or an exception.
-  A conflict with the base: `./scripts/update-feature.sh <issue>`. Failing
-  checks. A pull request that is ready: merge it. A merged feature with a
-  pending `post_merge` criterion: `./scripts/record-post-merge.sh`. Any other
-  stop, with its reason and the command that continues.
+  request (`.agents/approval-requests/<issue>.json`) at the head commit of
+  the pull request that you have not approved. Review rounds that are used
+  up: `--rounds <m>` or an exception. A conflict with the base:
+  `./scripts/update-feature.sh <issue>`. Failing checks, or no checks at
+  all. A review that requests changes, or an approving review that GitHub
+  still requires (`REVIEW_REQUIRED`). A pull request that is ready: merge
+  it, offered only when its checks exist and pass, no review requests
+  changes, no required review is missing, and the approval request is read
+  at the pull request's own head and is approved or absent. A head that is neither in this repository nor
+  readable on GitHub makes the need for your approval unknown, which the
+  column says, and no merge is offered: a missing or outdated branch here is
+  not taken for a head without an approval request. A merged feature with a
+  `post_merge` criterion whose evidence is not recorded on the Issue yet:
+  `./scripts/record-post-merge.sh`. Any other stop, with its reason and the
+  command that continues.
 
 Nothing in the overview is a status of its own. The phase, the exit status,
 and the verification come from the run records (see "Run records"), the
 implementer's state from the completion gate, the pull request from GitHub
-with `gh`, and the need for your approval from the approval request. A run is
+with `gh`, and the need for your approval from the approval request. Every
+open pull request is read, however many there are: a query that fills its
+limit is repeated with a larger one. A run is
 running while its record has no end and the process in its run id lives;
 the records are on this machine, so a run on another machine is not seen. A
 verification you start by hand is shown, but does not change the phase.
@@ -3161,7 +3172,13 @@ the primary checkout, which Git ignores. It prints nothing when nothing
 changed; otherwise the rows that changed, the features that are no longer
 listed, and under "New owner decisions:" every decision that is new. Without
 GitHub it fails and keeps the previous overview, so that no change is
-reported that did not happen.
+reported that did not happen. One `--changes` runs at a time: it holds the
+lock `.agents/status/lock` from reading the previous overview to keeping
+the new one, so a run by hand and a scheduled one do not report the same
+change twice. Another run waits up to five minutes (`STATUS_LOCK_WAIT`
+seconds), then fails and changes nothing; a lock whose process is gone is
+taken over, and so is one without an owner (a run killed while taking it)
+once it is older than a minute.
 
 To be told, name a command in `.agents/notify.conf` of the primary checkout:
 one line `command: <shell command>`. It gets exactly the output of
@@ -3180,10 +3197,11 @@ command: gh issue comment <tracking-issue> --body-file -
 
 Run it by hand, after each `run-feature.sh`
 (`./scripts/run-feature.sh 12; ./scripts/status.sh --changes`), or on a
-schedule. With cron, every ten minutes:
+schedule. With cron, every ten minutes; the log is in `.agents/status/`,
+which is created first, as a fresh checkout does not have it:
 
 ```text
-*/10 * * * * cd /path/to/project && ./scripts/status.sh --changes >/dev/null 2>>.agents/status/cron.log
+*/10 * * * * cd /path/to/project && mkdir -p .agents/status && ./scripts/status.sh --changes >/dev/null 2>>.agents/status/cron.log
 ```
 
 With launchd on macOS, `~/Library/LaunchAgents/local.feature-status.plist`,

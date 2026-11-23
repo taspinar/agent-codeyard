@@ -37,7 +37,30 @@ The feature has recovered when the next session starts from the handoff note ins
 
 `./scripts/status.sh` shows every feature that has a worktree or an open pull request, one row each: the Issue, the phase of its run (implementing, review round 2 of 5, stopped, published, merged), the exit status of a run that stopped, the last verification and whether it counts as trusted evidence, the pull request with its checks and whether it merges, and the column **Owner decision needed**. That column is empty when nothing is needed from you; otherwise it names the decision and the command or link that settles it: a question to answer, a pull request to approve or merge, review rounds that are used up, a conflict with the base, post-merge evidence to record. `--markdown` gives a table to post as a comment.
 
-You do not need to watch it. `./scripts/status.sh --changes` prints only what changed since its last call, and nothing when nothing did. Name a command in `.agents/notify.conf`, such as `command: gh issue comment <tracking-issue> --body-file -`, a desktop notification, or a mail command, and it receives exactly those changes. If the command fails, the changes are kept and sent again the next time. Run it after each `run-feature.sh`, or every few minutes from cron or launchd; the [development guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#the-overview-of-every-feature) has both examples.
+You do not need to watch it. `./scripts/status.sh --changes` prints only what changed since its last call, and nothing when nothing did. Name a command in `.agents/notify.conf`, such as `command: gh issue comment <tracking-issue> --body-file -`, a desktop notification, or a mail command, and it receives exactly those changes. If the command fails, the changes are kept and sent again the next time. Run it after each `run-feature.sh`, or every few minutes from a scheduler. With cron, every ten minutes; the log goes to `.agents/status/`, which the line creates first, as a fresh checkout does not have it:
+
+```text
+*/10 * * * * cd /path/to/project && mkdir -p .agents/status && ./scripts/status.sh --changes >/dev/null 2>>.agents/status/cron.log
+```
+
+With launchd on macOS, save this as `~/Library/LaunchAgents/local.feature-status.plist` and load it with `launchctl load ~/Library/LaunchAgents/local.feature-status.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>local.feature-status</string>
+  <key>WorkingDirectory</key><string>/path/to/project</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/bash</string><string>-lc</string><string>./scripts/status.sh --changes</string></array>
+  <key>StartInterval</key><integer>600</integer>
+  <key>StandardErrorPath</key><string>/tmp/feature-status.log</string>
+</dict>
+</plist>
+```
+
+A scheduler starts with a short `PATH`: `gh` and `jq` must be on it, and `gh` must be logged in for that user. The [development guide](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#the-overview-of-every-feature) has the details.
 
 ### When the plan changes
 

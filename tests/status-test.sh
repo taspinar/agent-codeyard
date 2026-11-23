@@ -22,21 +22,50 @@ fail() {
 
 source "$source_root/tests/lib-fakes.sh"
 
-# The fake GitHub CLI: 'pr list --state open|merged' prints $tmp/gh/open.json
-# or merged.json, 'issue view <n>' the title "Title <n>". FAKE_GH_FAIL makes
-# every call fail.
+# The fake GitHub CLI, answering from $FAKE_GH_DIR:
+# - 'pr list --state open|merged [--head <branch>] --limit <n>': the first <n>
+#   of open.json or merged.json (of <branch>); every call is logged in 'log';
+# - 'issue view <n>': the title "Title <n>";
+# - 'api .../issues/<n>/comments --jq <filter>': comments-<n>.json, filtered;
+# - 'api .../contents/<path>?ref=<oid>': found when has-<oid> exists, HTTP 404
+#   when lacks-<oid> exists, and an error otherwise.
+# FAKE_GH_FAIL makes every call fail.
 mkdir -p "$tmp/bin" "$tmp/gh"
 ln -sf "$(command -v jq)" "$tmp/bin/jq"
-cat >"$tmp/bin/gh" <<GH
+cat >"$tmp/bin/gh" <<'GH'
 #!/usr/bin/env bash
-[[ -z "\${FAKE_GH_FAIL:-}" ]] || exit 1
-case "\$1 \$2" in
+[[ -z "${FAKE_GH_FAIL:-}" ]] || exit 1
+dir="$FAKE_GH_DIR"
+printf '%s\n' "$*" >>"$dir/log"
+state="open" head="" limit=30 filter="."
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  case "${args[$i]}" in
+    --state) state="${args[$((i + 1))]}" ;;
+    --head) head="${args[$((i + 1))]}" ;;
+    --limit) limit="${args[$((i + 1))]}" ;;
+    --jq) filter="${args[$((i + 1))]}" ;;
+  esac
+done
+case "$1 $2" in
   "pr list")
-    state="open"
-    [[ "\$*" != *"--state merged"* ]] || state="merged"
-    cat "$tmp/gh/\$state.json"
+    jq -c --arg head "$head" --argjson limit "$limit" \
+      '[.[] | select($head == "" or .headRefName == $head)] | .[:$limit]' "$dir/$state.json"
     ;;
-  "issue view") echo "Title \$3" ;;
+  "issue view") echo "Title $3" ;;
+  "api repos/{owner}/{repo}/issues/"*"/comments")
+    n="${2#repos/\{owner\}/\{repo\}/issues/}"
+    n="${n%/comments}"
+    [[ -f "$dir/comments-$n.json" ]] || { echo '[]' >"$dir/comments-$n.json"; }
+    jq -r "$filter" "$dir/comments-$n.json"
+    ;;
+  "api repos/{owner}/{repo}/contents/"*)
+    ref="${2##*ref=}"
+    if [[ -e "$dir/has-$ref" ]]; then exit 0; fi
+    if [[ -e "$dir/lacks-$ref" ]]; then echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi
+    echo "gh: error connecting to api.github.com" >&2
+    exit 1
+    ;;
   *) exit 1 ;;
 esac
 GH
@@ -47,7 +76,8 @@ echo '[]' >"$tmp/gh/merged.json"
 repo="$tmp/repo"
 mkdir -p "$repo/scripts/lib"
 cp "$source_root/scripts/status.sh" "$repo/scripts/"
-cp "$source_root/scripts/lib/records.sh" "$source_root/scripts/lib/experience.sh" "$source_root/scripts/lib/completion.sh" "$repo/scripts/lib/"
+cp "$source_root/scripts/lib/records.sh" "$source_root/scripts/lib/experience.sh" "$source_root/scripts/lib/completion.sh" \
+  "$source_root/scripts/lib/github.sh" "$source_root/scripts/lib/verify-lock.sh" "$repo/scripts/lib/"
 workflow_gitignore "$repo/.gitignore"
 git -C "$repo" init -q -b main
 git -C "$repo" -c user.name=t -c user.email=t@example.com add -A
@@ -81,7 +111,13 @@ completion() {
 }
 
 status() {
-  (cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/status.sh "$@")
+  (cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" FAKE_GH_DIR="$tmp/gh" ./scripts/status.sh "$@")
+}
+
+# open_pr <number> <jq-update>: changes an open pull request of the fake.
+open_pr() {
+  jq --argjson n "$1" "(.[] | select(.number == \$n)) |= ($2)" "$tmp/gh/open.json" >"$tmp/gh/open.tmp" &&
+    mv "$tmp/gh/open.tmp" "$tmp/gh/open.json"
 }
 
 # row <output> <issue>: the block of a feature in the terminal output.
@@ -89,8 +125,33 @@ row() {
   awk -v head="#$2 " 'index($0, head) == 1 { on = 1 } on && /^$/ { exit } on' <<<"$1"
 }
 
+main_oid="$(git -C "$repo" rev-parse main)"
+
 # 1. Nothing to show.
 [[ "$(status)" == "No feature has a worktree or an open pull request." ]] || fail "an empty overview is not said plainly"
+
+# The cron line of docs/development.md works in a fresh checkout, before
+# .agents/status/ exists: its log is in that directory.
+cron_line="$(grep -E '^\*/10 \* \* \* \* ' "$source_root/docs/development.md")" || fail "the cron example is not found"
+cron_command="$(sed -E 's/^([^ ]+ ){5}//; s#/path/to/project#'"$repo"'#' <<<"$cron_line")"
+[[ ! -e "$repo/.agents/status" ]] || fail "the fresh checkout has .agents/status already"
+(cd / && PATH="$tmp/bin:/usr/bin:/bin" FAKE_GH_DIR="$tmp/gh" sh -c "$cron_command") ||
+  fail "the cron example fails in a fresh checkout: $cron_command"
+[[ -f "$repo/.agents/status/cron.log" ]] || fail "the cron example does not log: $cron_command"
+[[ ! -e "$repo/.agents/status/lock" ]] || fail "--changes leaves its lock behind"
+
+# The site's "How the workflow works" page shows the same cron and launchd
+# examples as docs/development.md (a project without the site skips this).
+site_page="$source_root/website/src/content/docs/detailed-workflow.md"
+if [[ -f "$site_page" ]]; then
+  site_cron="$(grep -E '^\*/10 \* \* \* \* ' "$site_page")" || fail "the site page has no cron example"
+  [[ "$site_cron" == "$cron_line" ]] || fail "the site's cron example differs from docs/development.md: $site_cron"
+  plist() { awk '/^<\?xml /{ on = 1 } on { print } /^<\/plist>/{ exit }' "$1"; }
+  site_plist="$(plist "$site_page")"
+  [[ -n "$site_plist" ]] || fail "the site page has no launchd example"
+  [[ "$site_plist" == "$(plist "$source_root/docs/development.md")" ]] ||
+    fail "the site's launchd example differs from docs/development.md"
+fi
 
 # 2. A running feature: its run has no end, and the PID in its run id lives.
 feature 11
@@ -135,6 +196,9 @@ run="20261101T100000Z-999999999-3"
 run_start 13 "$run" 1000
 event 13 "$run" 1020 run-end '{"status":0}'
 echo '{}' >"$tmp/wt-13/.agents/approval-requests/13.json"
+git -C "$tmp/wt-13" add -f .agents/approval-requests/13.json
+git -C "$tmp/wt-13" -c user.name=t -c user.email=t@example.com commit -q -m request
+oid_13="$(git -C "$tmp/wt-13" rev-parse HEAD)"
 
 # 5. A conflicting pull request with a failing check.
 feature 14
@@ -144,15 +208,15 @@ feature 15
 completion 15 awaiting_evidence '[{"criterion":"the site deploys","gate":"post_merge","status":"pending","evidence":"after the merge"}]'
 
 # 7. An open pull request of a feature without a worktree here, ready to merge.
-jq -n '[
-  {number: 113, title: "PR 13", url: "https://github.test/pull/113", headRefName: "feature/13-x", isDraft: false,
+jq -n --arg oid13 "$oid_13" --arg main "$main_oid" '[
+  {number: 113, title: "PR 13", url: "https://github.test/pull/113", headRefName: "feature/13-x", headRefOid: $oid13, isDraft: false,
    mergeable: "MERGEABLE", reviewDecision: "REVIEW_REQUIRED",
    statusCheckRollup: [{__typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS"}]},
-  {number: 114, title: "PR 14", url: "https://github.test/pull/114", headRefName: "feature/14-x", isDraft: false,
+  {number: 114, title: "PR 14", url: "https://github.test/pull/114", headRefName: "feature/14-x", headRefOid: $main, isDraft: false,
    mergeable: "CONFLICTING", reviewDecision: "",
    statusCheckRollup: [{__typename: "CheckRun", status: "COMPLETED", conclusion: "FAILURE"},
                        {__typename: "StatusContext", state: "SUCCESS"}]},
-  {number: 116, title: "PR 16", url: "https://github.test/pull/116", headRefName: "feature/16-y", isDraft: false,
+  {number: 116, title: "PR 16", url: "https://github.test/pull/116", headRefName: "feature/16-y", headRefOid: $main, isDraft: false,
    mergeable: "MERGEABLE", reviewDecision: "",
    statusCheckRollup: [{__typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS"}]}
 ]' >"$tmp/gh/open.json"
@@ -193,6 +257,86 @@ grep -Fq 'record the post-merge evidence: ./scripts/record-post-merge.sh 15 "the
 
 r="$(row "$out" 16)"
 grep -Fq "merge #116: https://github.test/pull/116" <<<"$r" || fail "a pull request ready to merge is not offered: $r"
+# GitHub requires an approving review and no approval request is at the
+# head: no merge until that review exists.
+open_pr 116 '.reviewDecision = "REVIEW_REQUIRED"'
+r="$(row "$(status)" 16)"
+if grep -Fq "merge #116" <<<"$r"; then fail "a pull request whose required review is missing is offered to merge: $r"; fi
+grep -Fq "a required review is missing on #116" <<<"$r" || fail "the required review is not a decision: $r"
+open_pr 116 '.reviewDecision = ""'
+
+# Evidence that record-post-merge.sh recorded on the Issue settles the
+# criterion: the merged feature no longer asks for it.
+jq -n '[{body: "an unrelated comment\nCriterion: the site deploys"},
+        {body: "<!-- post-merge-evidence -->\nPost-merge evidence (recorded by record-post-merge.sh)\n\nCriterion: the site deploys\n\nEvidence: the run on main"}]' \
+  >"$tmp/gh/comments-15.json"
+r="$(row "$(status)" 15)"
+grep -Fq "phase: merged" <<<"$r" || fail "the merged feature is not shown as merged: $r"
+grep -Fq "owner decision needed: none" <<<"$r" || fail "a criterion with recorded evidence is still a decision: $r"
+# One criterion recorded of two: only the other one is asked for.
+completion 15 awaiting_evidence '[{"criterion":"the site deploys","gate":"post_merge","status":"pending","evidence":"after the merge"},
+  {"criterion":"the page is live","gate":"post_merge","status":"pending","evidence":"after the merge"}]'
+r="$(row "$(status)" 15)"
+if grep -Fq '"the site deploys"' <<<"$r"; then fail "the recorded criterion is asked for again: $r"; fi
+grep -Fq 'record-post-merge.sh 15 "the page is live"' <<<"$r" || fail "the criterion without evidence is not asked for: $r"
+completion 15 awaiting_evidence '[{"criterion":"the site deploys","gate":"post_merge","status":"pending","evidence":"after the merge"}]'
+
+# Whether a merge is offered: only with checks that pass, no review that
+# requests changes, and an approval request that is read at the pull
+# request's own head.
+open_pr 116 '.reviewDecision = "CHANGES_REQUESTED"'
+r="$(row "$(status)" 16)"
+grep -Fq "a review requests changes on #116" <<<"$r" || fail "requested changes are not a decision: $r"
+if grep -Fq "merge #116" <<<"$r"; then fail "a pull request with requested changes is offered to merge: $r"; fi
+open_pr 116 '.reviewDecision = "" | .statusCheckRollup = []'
+r="$(row "$(status)" 16)"
+grep -Fq "#116 (no checks, mergeable)" <<<"$r" || fail "absent checks are not shown: $r"
+grep -Fq "no CI check has reported on #116" <<<"$r" || fail "absent checks are not a decision: $r"
+if grep -Fq "merge #116" <<<"$r"; then fail "a pull request without checks is offered to merge: $r"; fi
+open_pr 116 '.statusCheckRollup = [{__typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS"}]'
+# A head that is neither here nor readable on GitHub: unknown, no merge,
+# also when a stale branch here holds no approval request.
+unknown_oid="1111111111111111111111111111111111111111"
+open_pr 116 ".headRefOid = \"$unknown_oid\""
+git -C "$repo" update-ref refs/remotes/origin/feature/16-y main
+r="$(row "$(status)" 16)"
+grep -Fq "whether #116 needs your approval is unknown: its head 111111111111" <<<"$r" || fail "an unreadable head is not unknown: $r"
+if grep -Fq "merge #116" <<<"$r"; then fail "a stale branch is taken for a head without an approval request: $r"; fi
+git -C "$repo" update-ref -d refs/remotes/origin/feature/16-y
+r="$(row "$(status)" 16)"
+grep -Fq "needs your approval is unknown" <<<"$r" || fail "a missing branch is taken for a head without an approval request: $r"
+# GitHub answers for the head: with the request, the approval is asked for;
+# without it (HTTP 404), the merge is offered.
+touch "$tmp/gh/has-$unknown_oid"
+r="$(row "$(status)" 16)"
+grep -Fq "your approval: review and approve #116" <<<"$r" || fail "the approval request on GitHub's head is not read: $r"
+rm -f "$tmp/gh/has-$unknown_oid"
+touch "$tmp/gh/lacks-$unknown_oid"
+r="$(row "$(status)" 16)"
+grep -Fq "merge #116: https://github.test/pull/116" <<<"$r" || fail "a head without a request on GitHub is not offered to merge: $r"
+rm -f "$tmp/gh/lacks-$unknown_oid"
+open_pr 116 ".headRefOid = \"$main_oid\""
+
+# More pull requests than one query returns: none is left out. 250 open
+# pull requests of other branches come before the feature's, and 250 merged
+# ones of feature 15's branch before its latest.
+cp "$tmp/gh/open.json" "$tmp/gh/open.saved"
+cp "$tmp/gh/merged.json" "$tmp/gh/merged.saved"
+jq --arg main "$main_oid" '[range(1; 251) | {number: (1000 + .), title: "other", url: "https://github.test/pull/\(1000 + .)",
+    headRefName: "deps/\(.)", headRefOid: $main, isDraft: false, mergeable: "MERGEABLE", reviewDecision: "", statusCheckRollup: []}] + .' \
+  "$tmp/gh/open.saved" >"$tmp/gh/open.json"
+jq '[range(1; 251) | {number: (. % 100), url: "https://github.test/pull/\(. % 100)", headRefName: "feature/15-x"}] + .' \
+  "$tmp/gh/merged.saved" >"$tmp/gh/merged.json"
+: >"$tmp/gh/log"
+out="$(status)"
+for issue in 13 14 16; do
+  grep -q "^#$issue  Title $issue\$" <<<"$out" || fail "feature $issue beyond the first page is left out: $out"
+done
+grep -Fq "pull request: #115 (merged)" <<<"$(row "$out" 15)" || fail "the merged pull request beyond the first page is left out: $(row "$out" 15)"
+grep -Eq -- "--state open --limit 1000" "$tmp/gh/log" || fail "the open pull requests are not asked for again: $(cat "$tmp/gh/log")"
+grep -Eq -- "--state merged --head feature/15-x --limit 1000" "$tmp/gh/log" || fail "the merged pull requests are not asked for again: $(cat "$tmp/gh/log")"
+mv "$tmp/gh/open.saved" "$tmp/gh/open.json"
+mv "$tmp/gh/merged.saved" "$tmp/gh/merged.json"
 
 # A blocked record that no stopped run names: the question of its note too.
 completion 11 blocked '[{"criterion":"c","status":"not_met","evidence":"waiting"}]'
@@ -207,7 +351,8 @@ grep -Fq "the implementer is blocked on a question: answer it in .agents/handoff
   fail "a note without a question is not handled: $r"
 rm -f "$tmp/wt-11/.agents/completion/11.json" "$tmp/wt-11/.agents/handoffs/11.md"
 
-# Without a worktree, the approval request is read from the fetched branch.
+# Without a worktree, the approval request is read from the head commit of
+# the pull request, which a fetch brought here.
 git -C "$repo" branch -q approval-16 main
 git -C "$repo" worktree add -q "$tmp/wt-a" approval-16
 mkdir -p "$tmp/wt-a/.agents/approval-requests" && echo '{}' >"$tmp/wt-a/.agents/approval-requests/16.json"
@@ -215,9 +360,11 @@ git -C "$tmp/wt-a" add -f .agents/approval-requests/16.json
 git -C "$tmp/wt-a" -c user.name=t -c user.email=t@example.com commit -q -m request
 git -C "$repo" update-ref refs/remotes/origin/feature/16-y approval-16
 git -C "$repo" worktree remove --force "$tmp/wt-a"
+open_pr 116 ".headRefOid = \"$(git -C "$repo" rev-parse approval-16)\""
 r="$(row "$(status)" 16)"
 grep -Fq "your approval: review and approve #116" <<<"$r" || fail "the approval request of a fetched branch is not read: $r"
 git -C "$repo" update-ref -d refs/remotes/origin/feature/16-y
+open_pr 116 ".headRefOid = \"$main_oid\""
 
 # A feature with nothing to decide has an empty column in the table.
 md="$(status --markdown)"
@@ -296,6 +443,55 @@ grep -q '^#16 ' "$tmp/first" || fail "the change is not printed when the hook fa
 printf 'command: cat >"%s/notified"\n' "$tmp" >"$repo/.agents/notify.conf"
 [[ "$(status --changes)" == "$(cat "$tmp/first")" ]] || fail "the change that the hook did not deliver is lost"
 [[ "$(cat "$tmp/notified")" == "$(cat "$tmp/first")" ]] || fail "the change was not delivered the second time"
+
+# Two --changes at the same time notify a change once: the lock holds the
+# second until the first has kept its overview.
+printf 'command: echo call >>"%s/calls"; cat >/dev/null; sleep 2\n' "$tmp" >"$repo/.agents/notify.conf"
+open_pr 116 '.isDraft = true'
+status --changes >"$tmp/a.out" 2>&1 &
+first=$!
+status --changes >"$tmp/b.out" 2>&1 &
+second=$!
+code=0
+wait "$first" || code=$?
+wait "$second" || code=$?
+[[ "$code" -eq 0 ]] || fail "concurrent --changes failed: $(cat "$tmp/a.out" "$tmp/b.out")"
+[[ "$(wc -l <"$tmp/calls")" -eq 1 ]] || fail "concurrent --changes notified $(wc -l <"$tmp/calls") times"
+[[ ! -e "$repo/.agents/status/lock" ]] || fail "--changes leaves its lock behind"
+# A lock whose process is gone is stale and taken over; a held lock makes
+# --changes fail after its wait, and keeps the previous overview.
+open_pr 116 '.isDraft = false'
+mkdir "$repo/.agents/status/lock"
+printf 'pid=999999999\nstarted=never\n' >"$repo/.agents/status/lock/owner"
+grep -q '^#16 ' <<<"$(status --changes)" || fail "a stale lock is not taken over"
+[[ "$(wc -l <"$tmp/calls")" -eq 2 ]] || fail "the change after a stale lock is not notified"
+open_pr 116 '.isDraft = true'
+mkdir "$repo/.agents/status/lock"
+printf 'pid=%s\nstarted=%s\n' "$$" "$(LC_ALL=C ps -o lstart= -p "$$" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')" >"$repo/.agents/status/lock/owner"
+code=0
+err="$(STATUS_LOCK_WAIT=1 status --changes 2>&1)" || code=$?
+[[ "$code" -ne 0 ]] || fail "--changes does not wait for a held lock"
+grep -Fq "another --changes holds" <<<"$err" || fail "a held lock is not reported: $err"
+[[ -d "$repo/.agents/status/lock" ]] || fail "a held lock is removed"
+rm -rf "$repo/.agents/status/lock"
+grep -q '^#16 ' <<<"$(status --changes)" || fail "the change is lost while the lock was held"
+# A lock without an owner (a run killed between mkdir and writing it) is
+# taken over once it is older than the grace period; a young one is held.
+open_pr 116 '.isDraft = false'
+mkdir "$repo/.agents/status/lock"
+code=0
+err="$(STATUS_LOCK_WAIT=1 status --changes 2>&1)" || code=$?
+[[ "$code" -ne 0 && -d "$repo/.agents/status/lock" ]] || fail "a lock that is being taken right now is removed: $err"
+touch -t 202001010000 "$repo/.agents/status/lock"
+grep -q '^#16 ' <<<"$(STATUS_LOCK_WAIT=1 status --changes 2>&1)" || fail "an old lock without an owner is not taken over"
+[[ ! -e "$repo/.agents/status/lock" ]] || fail "--changes leaves its lock behind"
+# So is a recovery lock of a run killed while it removed a stale lock.
+open_pr 116 '.isDraft = true'
+mkdir "$repo/.agents/status/lock" "$repo/.agents/status/lock.recover"
+touch -t 202001010000 "$repo/.agents/status/lock" "$repo/.agents/status/lock.recover"
+grep -q '^#16 ' <<<"$(STATUS_LOCK_WAIT=1 status --changes 2>&1)" || fail "an old recovery lock blocks --changes for good"
+[[ ! -e "$repo/.agents/status/lock.recover" ]] || fail "an old recovery lock is left behind"
+printf 'command: cat >"%s/notified"\n' "$tmp" >"$repo/.agents/notify.conf"
 
 # GitHub that cannot be read: the overview says so, --changes keeps the
 # previous overview.

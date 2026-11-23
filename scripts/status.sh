@@ -27,6 +27,8 @@ usage() {
   echo "              ignores. When .agents/notify.conf of the primary checkout names"
   echo "              a 'command:', the changes are passed to it on standard input;"
   echo "              when it fails, the changes are kept and sent again next time."
+  echo "              One --changes runs at a time; another waits for its lock"
+  echo "              (.agents/status/lock) up to STATUS_LOCK_WAIT seconds (300)."
   echo
   echo "Examples:"
   echo "  $0"
@@ -43,6 +45,8 @@ fail() {
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/records.sh"
 source "$script_dir/lib/completion.sh"
+source "$script_dir/lib/github.sh"
+source "$script_dir/lib/verify-lock.sh"
 
 markdown=0
 changes=0
@@ -59,6 +63,92 @@ command -v jq >/dev/null 2>&1 || fail "jq is required."
 primary="$(records_primary)"
 [[ -n "$primary" ]] || fail "run it inside a checkout of the repository."
 
+# --changes is one transaction: read the previous overview, compare, notify,
+# and keep the new overview. Two at the same time (cron and a run by hand)
+# would both notify the same change, or keep their overviews in the wrong
+# order, so the whole run holds a lock: a directory created with mkdir, which
+# is atomic on Linux and macOS alike. Its file 'owner' names the process; a
+# lock whose process is gone (a crash, SIGKILL), or that has no owner and is
+# older than a grace period, is stale and is removed under a second lock, so
+# that two runs do not both remove it. A run that waits
+# longer than STATUS_LOCK_WAIT seconds (default 300) fails and changes
+# nothing.
+state_dir="$primary/.agents/status"
+lock_dir="$state_dir/lock"
+lock_held=0
+release_lock() {
+  [[ "$lock_held" -eq 0 ]] || rm -rf "$lock_dir"
+  lock_held=0
+}
+# lock_stale <owner-text>: whether the process that the text names is
+# confirmedly gone, or its PID now belongs to another process. A process that
+# cannot be inspected holds the lock.
+lock_stale() {
+  local pid started now exists=0
+
+  pid="$(sed -n 's/^pid=//p' <<<"$1")"
+  started="$(sed -n 's/^started=//p' <<<"$1")"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  verify_lock_exists "$pid" || exists=$?
+  case "$exists" in
+    0)
+      now="$(verify_lock_started "$pid")"
+      [[ -n "$now" && -n "$started" && "$now" != "$started" ]]
+      ;;
+    1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+# lock_old <dir>: whether the directory is older than the grace period
+# (VERIFY_LOCK_RECOVER_SECONDS). A lock without an owner is being taken right
+# now, or was left by a run killed between mkdir and writing its owner; only
+# an old one is stale. The same holds for a recovery lock.
+lock_old() {
+  [[ -e "$1" && $(($(date +%s) - $(verify_lock_mtime "$1"))) -gt "$VERIFY_LOCK_RECOVER_SECONDS" ]]
+}
+# recover_lock <owner-text>: removes the stale lock under the recovery lock,
+# only when it is still the lock that was seen: the same owner, or still no
+# owner and still old. An old recovery lock of a killed run is taken over.
+recover_lock() {
+  local recover="$lock_dir.recover"
+
+  if ! mkdir "$recover" 2>/dev/null; then
+    lock_old "$recover" && rmdir "$recover" 2>/dev/null && mkdir "$recover" 2>/dev/null || return 1
+  fi
+  if [[ "$(cat "$lock_dir/owner" 2>/dev/null)" == "$1" ]] && { [[ -n "$1" ]] || { [[ ! -e "$lock_dir/owner" ]] && lock_old "$lock_dir"; }; }; then
+    rm -rf "$lock_dir"
+  fi
+  rmdir "$recover" 2>/dev/null || true
+}
+take_lock() {
+  local waited=0 limit="${STATUS_LOCK_WAIT:-300}" owner
+
+  while :; do
+    if mkdir "$lock_dir" 2>/dev/null; then
+      lock_held=1
+      trap release_lock EXIT
+      printf 'pid=%s\nstarted=%s\n' "$$" "$(verify_lock_started "$$")" >"$lock_dir/owner.tmp" &&
+        mv "$lock_dir/owner.tmp" "$lock_dir/owner"
+      return 0
+    fi
+    owner="$(cat "$lock_dir/owner" 2>/dev/null)" || owner=""
+    if { if [[ -n "$owner" ]]; then lock_stale "$owner"; else [[ ! -e "$lock_dir/owner" ]] && lock_old "$lock_dir"; fi; } &&
+      recover_lock "$owner"; then
+      continue
+    fi
+    [[ "$waited" -lt "$limit" ]] ||
+      fail "another --changes holds $lock_dir ($(tr '\n' ' ' <<<"$owner")); nothing was compared or kept. When no status.sh runs, remove that directory."
+    sleep 1
+    waited=$((waited + 1))
+  done
+}
+if [[ "$changes" -eq 1 ]]; then
+  git -C "$primary" check-ignore -q ".agents/status/overview.json" 2>/dev/null ||
+    fail "Git does not ignore .agents/status/, where --changes keeps the previous overview. Take over the template's .gitignore with ./scripts/sync-template.sh."
+  mkdir -p "$state_dir" || fail "$state_dir cannot be created."
+  take_lock
+fi
+
 # ------------------------------------------------------------ the features
 
 # The feature worktrees: '<issue> TAB <path> TAB <branch>', one per Issue.
@@ -72,22 +162,49 @@ worktrees="$(git -C "$primary" worktree list --porcelain | awk '
     if (!(issue in seen)) { seen[issue] = 1; print issue "\t" path "\t" branch }
   }')"
 
-# The pull requests of feature branches. GitHub that cannot be read leaves
-# the pull request unknown, never absent.
+# pr_list <fields> <arguments of gh pr list>: every pull request that the
+# query finds, as one JSON array. gh pr list returns at most --limit of them,
+# and a result that fills the limit may be cut off: the query is repeated
+# with a larger limit until the result is shorter than the limit, so that no
+# feature is left out without a word.
+pr_list() {
+  local fields="$1" limit=200 result
+  shift
+
+  while :; do
+    result="$(cd "$primary" && gh pr list "$@" --limit "$limit" --json "$fields" 2>/dev/null)" || return 1
+    jq -e 'type == "array"' <<<"$result" >/dev/null 2>&1 || return 1
+    if [[ "$(jq length <<<"$result")" -lt "$limit" ]]; then
+      printf '%s' "$result"
+      return 0
+    fi
+    limit=$((limit * 5))
+  done
+}
+
+# The pull requests of feature branches: every open one, and the merged
+# pull request of each worktree's branch that has no open one. GitHub that
+# cannot be read leaves the pull request unknown, never absent.
 github=1
 open_prs="[]"
 merged_prs="[]"
 if ! command -v gh >/dev/null 2>&1; then
   github=0
-elif ! open_prs="$(cd "$primary" && gh pr list --state open --limit 200 \
-  --json number,title,url,headRefName,isDraft,mergeable,reviewDecision,statusCheckRollup 2>/dev/null)" ||
-  ! jq -e 'type == "array"' <<<"$open_prs" >/dev/null 2>&1; then
+elif ! open_prs="$(pr_list number,title,url,headRefName,headRefOid,isDraft,mergeable,reviewDecision,statusCheckRollup --state open)"; then
   github=0
   open_prs="[]"
-elif [[ -n "$worktrees" ]] && ! merged_prs="$(cd "$primary" && gh pr list --state merged --limit 200 \
-  --json number,url,headRefName 2>/dev/null)"; then
-  github=0
-  merged_prs="[]"
+else
+  while IFS=$'\t' read -r w_issue _ w_branch; do
+    [[ -n "$w_issue" ]] || continue
+    ! jq -e --arg prefix "feature/$w_issue-" 'any(.[]; .headRefName | startswith($prefix))' <<<"$open_prs" >/dev/null || continue
+    if ! found="$(pr_list number,url,headRefName --state merged --head "$w_branch")"; then
+      github=0
+      open_prs="[]"
+      merged_prs="[]"
+      break
+    fi
+    merged_prs="$(jq -c --argjson found "$found" '. + $found' <<<"$merged_prs")"
+  done <<<"$worktrees"
 fi
 if [[ "$github" -eq 0 ]]; then
   echo "Warning: GitHub could not be read with 'gh'; the pull requests and the titles are unknown." >&2
@@ -212,6 +329,28 @@ handoff_question() {
     }' "$1"
 }
 
+# approval_request <issue> <head-oid>: whether the commit at the head of the
+# pull request holds the approval request that finish-feature.sh commits:
+# 'yes', 'no', or 'unknown'. The commit is read here when Git has it, in any
+# worktree or fetched ref; otherwise from GitHub. A head that cannot be read
+# is unknown, never a head without a request: a missing or stale branch here
+# says nothing about the pull request.
+approval_request() {
+  local path=".agents/approval-requests/$1.json" err
+
+  if [[ ! "$2" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]; then
+    echo unknown
+  elif git -C "$primary" cat-file -e "$2^{commit}" 2>/dev/null; then
+    if git -C "$primary" cat-file -e "$2:$path" 2>/dev/null; then echo yes; else echo no; fi
+  elif err="$(cd "$primary" && gh api "repos/{owner}/{repo}/contents/$path?ref=$2" --silent 2>&1)"; then
+    echo yes
+  elif grep -q "HTTP 404" <<<"$err"; then
+    echo no
+  else
+    echo unknown
+  fi
+}
+
 # A row per feature, as one JSON object:
 # {issue, title, phase, exit, verification, pull_request, url, decisions}.
 rows="[]"
@@ -308,22 +447,30 @@ while IFS= read -r issue; do
     draft=""
     [[ "$(jq -r '.isDraft' <<<"$pr")" != "true" ]] || draft="draft, "
     pull_request="#$number (${draft}$checks, $merge_text)"
-    approval=0
-    if [[ -n "$worktree" ]]; then
-      [[ ! -f "$worktree/.agents/approval-requests/$issue.json" ]] || approval=1
-    elif git -C "$primary" cat-file -e "refs/remotes/origin/$(jq -r '.headRefName' <<<"$pr"):.agents/approval-requests/$issue.json" 2>/dev/null; then
-      # Without a worktree here, the branch as it was last fetched.
-      approval=1
-    fi
+    head="$(jq -r '.headRefOid // empty' <<<"$pr")"
+    approval="$(approval_request "$issue" "$head")"
+    review="$(jq -r '.reviewDecision // ""' <<<"$pr")"
     if [[ "$mergeable" == "CONFLICTING" ]]; then
       decisions+=("the pull request #$number conflicts with its base: run ./scripts/update-feature.sh $issue in the feature worktree")
     fi
     if [[ "$checks" == "checks fail"* ]]; then
       decisions+=("$checks on #$number: $url")
     fi
-    if [[ "$approval" -eq 1 && "$(jq -r '.reviewDecision // ""' <<<"$pr")" != "APPROVED" ]]; then
+    # A merge is offered only when nothing stands in its way: checks that
+    # exist and pass, no review that requests changes, no approving review
+    # that GitHub still requires, and an approval request of the pull
+    # request's own head that is read, and approved when there is one.
+    if [[ "$review" == "CHANGES_REQUESTED" ]]; then
+      decisions+=("a review requests changes on #$number: settle the review before a merge: $url")
+    elif [[ "$approval" == "unknown" ]]; then
+      decisions+=("whether #$number needs your approval is unknown: its head ${head:0:12} cannot be read here or on GitHub; fetch it with git fetch origin and run ./scripts/status.sh again, or look at $url")
+    elif [[ "$approval" == "yes" && "$review" != "APPROVED" ]]; then
       decisions+=("your approval: review and approve #$number, which only you may merge (.agents/approval-requests/$issue.json): $url")
-    elif [[ -z "$draft" && "$mergeable" == "MERGEABLE" && "$checks" != "checks fail"* && "$checks" != "checks pending"* ]]; then
+    elif [[ "$review" == "REVIEW_REQUIRED" ]]; then
+      decisions+=("a required review is missing on #$number: GitHub needs an approving review before a merge: $url")
+    elif [[ -z "$draft" && "$checks" == "no checks" ]]; then
+      decisions+=("no CI check has reported on #$number: look at its checks before a merge: $url")
+    elif [[ -z "$draft" && "$mergeable" == "MERGEABLE" && "$checks" == "checks pass" ]]; then
       decisions+=("merge #$number: $url")
     fi
   elif [[ -n "$merged" ]]; then
@@ -333,10 +480,21 @@ while IFS= read -r issue; do
     phase="merged"
     exit_status=""
     decisions=()
+    # A criterion whose evidence record-post-merge.sh recorded on the Issue
+    # is no longer pending: the completion record is not changed after the
+    # merge, the comments are.
     pending="$(sed -n 's/^pending at post_merge: //p' <<<"$gate")"
     if [[ -n "$pending" ]]; then
+      recorded_known=1
+      recorded="$(cd "$primary" && github_post_merge_recorded "$issue" 2>/dev/null)" || recorded_known=0
       while IFS= read -r criterion; do
-        decisions+=("record the post-merge evidence: ./scripts/record-post-merge.sh $issue \"$criterion\" \"<evidence>\"")
+        if [[ "$recorded_known" -eq 1 ]] && printf '%s\n' "$recorded" | grep -Fqx -- "$criterion"; then
+          continue
+        fi
+        decision="record the post-merge evidence: ./scripts/record-post-merge.sh $issue \"$criterion\" \"<evidence>\""
+        [[ "$recorded_known" -eq 1 ]] ||
+          decision+=" (the comments of Issue #$issue cannot be read: the evidence may be recorded already)"
+        decisions+=("$decision")
       done <<<"$pending"
     fi
   fi
@@ -391,10 +549,7 @@ if [[ "$changes" -eq 0 ]]; then
 fi
 
 # --changes: what differs from the previous overview, which is kept in a
-# directory that Git ignores, like the run records.
-state_dir="$primary/.agents/status"
-git -C "$primary" check-ignore -q ".agents/status/overview.json" 2>/dev/null ||
-  fail "Git does not ignore .agents/status/, where --changes keeps the previous overview. Take over the template's .gitignore with ./scripts/sync-template.sh."
+# directory that Git ignores, like the run records. The lock is held.
 previous_file="$state_dir/overview.json"
 previous="[]"
 if [[ -f "$previous_file" ]] && jq -e 'type == "array"' "$previous_file" >/dev/null 2>&1; then
@@ -442,6 +597,5 @@ fi
 
 # The overview is kept only now, so a change that the hook did not deliver
 # is reported again.
-mkdir -p "$state_dir" || fail "$state_dir cannot be created."
 printf '%s\n' "$rows" >"$previous_file.tmp" && mv "$previous_file.tmp" "$previous_file" ||
   fail "the overview could not be kept in $previous_file."
