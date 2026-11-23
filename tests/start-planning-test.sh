@@ -354,7 +354,7 @@ fi
 # A Draft without findings: one read-only review of the Draft, recorded with
 # the owner's approval, and the plain approval question.
 [[ "$(grep -c '^REVIEW=' "$codex_log")" -eq 1 ]] || fail "the Draft was not reviewed exactly once"
-grep '^REVIEW_ARGS=' "$codex_log" | grep -Fq -- "--sandbox read-only" ||
+grep -Fq -- "--sandbox read-only" <<<"$(grep '^REVIEW_ARGS=' "$codex_log")" ||
   fail "the Draft reviewer did not run read-only"
 grep -Fq "Status: Draft" "$codex_log.review-stdin" && grep -Fq "## docs/PROJECT_REQUIREMENTS.md" "$codex_log.review-stdin" ||
   fail "the Draft reviewer did not get the Draft requirements"
@@ -389,7 +389,7 @@ fi
 if grep -Fq "No such file or directory" "$tmp/claude-success.err"; then
   fail "Claude happy path emitted a missing optional ADR directory error"
 fi
-grep '^REVIEW_ARGS=' "$claude_log" | grep -Fq -- "--tools Read,Glob,Grep" ||
+grep -Fq -- "--tools Read,Glob,Grep" <<<"$(grep '^REVIEW_ARGS=' "$claude_log")" ||
   fail "the Claude Draft reviewer did not run read-only"
 jq -e '.findings == [] and .decision.choice == "approve"' \
   "$claude_worktree/.agents/reviews/requirements-architecture-refresh-review-01.json" >/dev/null ||
@@ -444,7 +444,7 @@ grep -Fqx "Status: Approved" "$tmp/review-approve-repo-planning-project-bootstra
   fail "approving with open findings did not approve the requirements"
 jq -e '[.findings[].id] == ["D1", "D2"] and .decision.choice == "approve" and .decision.open_findings == ["D1", "D2"]' \
   "$(draft_review_file review-approve 01)" >/dev/null || fail "the approval with open findings was not recorded"
-draft_interventions review-approve | grep -Fqx "approved the project requirements with 2 open Draft review finding(s)" ||
+grep -Fqx "approved the project requirements with 2 open Draft review finding(s)" <<<"$(draft_interventions review-approve)" ||
   fail "the run records do not show the approval with open findings"
 
 # Mark single findings as not applicable: an unknown one is refused, a marked
@@ -459,7 +459,7 @@ jq -e '(.not_applicable | map({finding_id, reason})) == [{finding_id: "D2", reas
   and .decision.choice == "approve" and .decision.open_findings == ["D1"]' \
   "$(draft_review_file review-not-applicable 01)" >/dev/null ||
   fail "the finding marked as not applicable was not recorded"
-draft_interventions review-not-applicable | grep -Fqx "marked Draft review finding(s) D2 as not applicable" ||
+grep -Fqx "marked Draft review finding(s) D2 as not applicable" <<<"$(draft_interventions review-not-applicable)" ||
   fail "the run records do not show the finding marked as not applicable"
 
 # Once every finding is marked, the question is the plain approval.
@@ -487,7 +487,7 @@ jq -e '.decision.choice == "resume-grill" and .decision.open_findings == ["D1", 
   "$(draft_review_file review-resume 01)" >/dev/null || fail "resuming Project Grill was not recorded"
 jq -e '.round == 2 and .findings == [] and .decision.choice == "approve"' \
   "$(draft_review_file review-resume 02)" >/dev/null || fail "the second Draft review was not recorded"
-draft_interventions review-resume | grep -Fqx "resumed Project Grill with 2 Draft review finding(s)" ||
+grep -Fqx "resumed Project Grill with 2 Draft review finding(s)" <<<"$(draft_interventions review-resume)" ||
   fail "the run records do not show the resumed Project Grill"
 
 # Stop: nothing is approved, the planner does not run, and the stop is recorded.

@@ -565,8 +565,7 @@ jq -e '(.verification[0] | .directory == "nextjs" and .isolated
 grep -Fq -- '- `.env.example`: the application is in nextjs/' "$report" &&
   grep -Fq -- '- build: `npm run build` in `nextjs`' "$report" &&
   grep -Fq -- '  - external actions it may take: ' "$report" && grep -Fq 'database, a database migration or client; it reaches the database it is configured for (`prisma migrate deploy`)' "$report" &&
-  grep -A 1 -F -- '- smoke: `curl -fsS https://example.com/health` in `nextjs`' "$report" | grep -F -- '  - external actions it may take: ' |
-    grep -Fq 'external-api, a download or a request to a server (`curl`)' &&
+  grep -Fq 'external-api, a download or a request to a server (`curl`)' <<<"$(grep -A 1 -F -- '- smoke: `curl -fsS https://example.com/health` in `nextjs`' "$report" | grep -F -- '  - external actions it may take: ')" &&
   grep -Fq -- '- `NEXT_TELEMETRY_DISABLED=1`: Next.js sends telemetry during a build' "$report" &&
   grep -Fq '## External actions the checks may take' <(sed 's/^###/##/' "$report") &&
   grep -Fq '**A merge into `main` triggers a deployment**, also the merge of the adoption:' "$report" &&

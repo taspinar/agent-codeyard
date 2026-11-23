@@ -1219,7 +1219,7 @@ run_finish "$repo" 12 "Add the marker" || {
 }
 grep -Fq "Triage mode: light (" "$repo.out" || fail "the triage mode of the policy was not shown"
 grep -Fq "triage published on #12" <<<"$(message "$repo")" || fail "the commit message does not mention the light triage as published"
-if message "$repo" | grep -Fq "Triage mode"; then fail "the commit message carries the triage mode"; fi
+if grep -Fq "Triage mode" <<<"$(message "$repo")"; then fail "the commit message carries the triage mode"; fi
 repo="$(setup_repo light-high-refused PASS_WITH_MINOR_FINDINGS "$minor")"
 set_impact "$repo" minor
 add_triage "$repo" ACCEPT
@@ -1487,7 +1487,7 @@ run_finish "$repo" 12 "Add the marker" || {
   fail "finishing again after the undone commit failed"
 }
 [[ "$(git -C "$repo" rev-list --count HEAD)" -eq 2 ]] || fail "the feature was not committed after the undone commit"
-if message "$repo" | grep -Fq "noreply@anthropic.com"; then fail "the second commit carries the trailer"; fi
+if grep -Fq "noreply@anthropic.com" <<<"$(message "$repo")"; then fail "the second commit carries the trailer"; fi
 
 # Generated attribution text in the message is refused as well: it would
 # become the pull request description.

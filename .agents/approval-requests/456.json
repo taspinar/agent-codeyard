@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "118a392bfe596fac13f649559946f595b7c7c31b",
+  "commit": {
+    "branch": "feature/456-flaky-tests-producer-grep",
+    "parent": "17605c2f4d587dff0458ff08418d562b2a8ded89",
+    "base": "17605c2f4d587dff0458ff08418d562b2a8ded89"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS WITH MINOR FINDINGS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the review could not confirm: `./scripts/verify.sh --all` passes."
+  ],
+  "explanation": "Issue #456: Flaky tests: '<producer> | grep -q' under pipefail fails on a broken pipe. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

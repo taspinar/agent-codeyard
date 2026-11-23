@@ -308,7 +308,7 @@ for profile in none standard light; do
   grep -Fqx -- "- profile: $profile" "$repo.control/pr-body" || fail "the pull request does not name the profile $profile"
   jq -e -s --arg profile "$profile" 'map(select(.type == "risk")) | length > 0 and all(.profile == $profile)' \
     "$repo"/.agents/run/records/*.jsonl >/dev/null || fail "the run record does not name the profile $profile"
-  (cd "$repo" && "$source_root/scripts/report-runs.sh" 2) | grep -Fqx "| Workflow profile | $profile |" || fail "the run report does not show the profile $profile"
+  grep -Fqx "| Workflow profile | $profile |" <<<"$(cd "$repo" && "$source_root/scripts/report-runs.sh" 2)" || fail "the run report does not show the profile $profile"
   if [[ "$profile" == "light" ]]; then
     expect_sessions "$repo" 1 0 0 0
     grep -Fqx "Risk: low" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" || fail "light did not make the documentation-only feature low"

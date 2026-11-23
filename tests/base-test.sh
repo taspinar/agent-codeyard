@@ -115,7 +115,7 @@ leftovers="$(base_leftovers "$repo" "$before" "$tmp")"
 [[ "$(base_uncommitted_work "$repo" "$before" "$tmp")" == "?? mixed/notes.txt" ]] ||
   fail "the uncommitted work is not the untracked file alone: $(base_uncommitted_work "$repo" "$before" "$tmp")"
 [[ -n "$(base_uncommitted_work "$repo" HEAD "$tmp")" ]] || fail "leftovers by the rules of HEAD are no uncommitted work"
-base_leftover_report "old/" | grep -Fqx "  old/    remove with: rm -rf -- old/" || fail "the removal command was not printed"
+grep -Fqx "  old/    remove with: rm -rf -- old/" <<<"$(base_leftover_report "old/")" || fail "the removal command was not printed"
 [[ -f "$repo/old/build/app.js" ]] || fail "a leftover was deleted"
 
 echo "base tests passed"

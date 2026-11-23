@@ -744,7 +744,7 @@ if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
         fail "the job $job of ci.yml sets up or reports the website, which is checked in group-$website_group"
     fi
   done
-  ci_job_block "$ci_workflow" "group-$website_group" | grep -Fq 'playwright install' ||
+  grep -Fq 'playwright install' <<<"$(ci_job_block "$ci_workflow" "group-$website_group")" ||
     fail "the job group-$website_group of ci.yml does not install the browser for the website check"
 
   # The aggregate job 'verify' is the required check: it always runs, needs
