@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "3a8ac99053fcb8d0c2bd7276f33260c1db8a0866",
+  "commit": {
+    "branch": "feature/362-status-sh-one-overview",
+    "parent": "87655ee9003e85bad82247038400757b9afa5a6b",
+    "base": "bb6bc8762899d51da82c14cedd9c5914cb9c9676"
+  },
+  "review": {
+    "round": 7,
+    "verdict": "CHANGES REQUIRED",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the owner recorded an exception (not-applicable) to the blocking finding M1 of review round 7: .agents/exceptions/feature-362-status-sh-one-overview-review-07-M1.json sha256 b0d653839d1374942f47e792cf2a7e8bcec513f69b13c609f8f4fa093c605cb0",
+    "the review could not confirm: ./scripts/verify.sh --all passes."
+  ],
+  "explanation": "Issue #362: status.sh: one overview of every feature, with the owner's open decisions, notifying on change (supervisor 1 of 5). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

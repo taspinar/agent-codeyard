@@ -33,3 +33,14 @@ github_default_branch() {
   [[ -n "$name" ]] || return 1
   printf '%s\n' "$name"
 }
+
+# github_post_merge_recorded <issue>
+# Prints the post_merge criteria whose evidence record-post-merge.sh recorded
+# on the Issue, one per line: the first 'Criterion: ' line of each comment
+# that starts with the marker '<!-- post-merge-evidence -->'. Fails when the
+# comments cannot be read. record-post-merge.sh and status.sh read the
+# recorded evidence with it, so that both agree on what is still pending.
+github_post_merge_recorded() {
+  gh api "repos/{owner}/{repo}/issues/$1/comments" --paginate \
+    --jq '.[] | select(.body | startswith("<!-- post-merge-evidence -->")) | .body | split("\n") | map(select(startswith("Criterion: "))) | first // empty | .[11:]'
+}
