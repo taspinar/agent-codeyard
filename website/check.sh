@@ -26,7 +26,9 @@
 #   ./website/check.sh --build
 #       Runs the unit tests of src/, checks the tokens of src/styles/, builds
 #       the site under the project path (/agent-codeyard/) and under
-#       the root (/), and checks both outputs. Needs the dependencies: npm ci
+#       the root (/), and checks both outputs: in the browser, every check
+#       under the project path, and under the root the checks that depend on
+#       the base path (browser-check.mjs, its parts). Needs the dependencies: npm ci
 #       in website/ first. After a rename, update the project path in
 #       the build loop below and this comment; keep default_site_url in sync
 #       with the site origin in site.config.ts.
@@ -224,7 +226,21 @@ if [[ "${1:-}" == "--build" || "${1:-}" == "--browser" ]]; then
       { echo "website: the build under $base failed" >&2; exit 1; }
     check_output "$output" "$base" "$default_site_url"
     node "$site/search-test.mjs" "$output" "$base"
-    (cd "$site" && node browser-check.mjs "$output" "$base")
+    # The full browser matrix under the Pages base, which is deployed; under
+    # '/' only the checks that depend on the base path (validation.md).
+    parts=all
+    [[ "$base" == / ]] && parts=pages,routing
+    browser_log="$(mktemp)"
+    (cd "$site" && node browser-check.mjs "$output" "$base" "$parts") | tee "$browser_log"
+    if [[ "$parts" == all ]]; then
+      # The summary line of the Pages base is that of main, counts included.
+      html_files="$(find "$output" -name '*.html' | wc -l | tr -d ' ')"
+      redirect_files="$(grep -rlF --include='*.html' '<meta http-equiv="refresh"' "$output" | wc -l | tr -d ' ')"
+      summary="browser-check: $((html_files - redirect_files)) pages, both themes, five or six widths; $redirect_files redirect pages; keyboard checks passed ($base)."
+      grep -Fxq "$summary" "$browser_log" ||
+        { echo "website: browser-check.mjs under $base did not print the summary line: $summary" >&2; rm -f "$browser_log"; exit 1; }
+    fi
+    rm -f "$browser_log"
   done
 elif [[ "${1:-}" == "--tokens" && $# -ge 2 ]]; then
   shift

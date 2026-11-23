@@ -5,7 +5,8 @@ is also run by the repository's verification, which runs `npm ci` only when
 `node_modules` is missing or older than `package-lock.json`, and by the Pages
 workflow. The check builds and link-checks the project path (currently
 `/agent-codeyard/`) and `/`, runs the site's
-unit and search tests, and uses Playwright Chromium and axe-core on every
+unit and search tests, and, under the project path, uses Playwright Chromium
+and axe-core on every
 built HTML page, including 404, in light and dark themes at 375, 768 and
 1440 pixels, and Technical Documentation (`/docs/` and its Appendix page, `/docs/history/`) at
 320, 390, 768, 1280 and 1440 pixels. A redirect page of a retired route is
@@ -75,8 +76,39 @@ old addresses (`src/lib/redirects.ts`) on the built site and compares the
 headings and code blocks of the old docs pages (`docs-before.json`) with the
 one page.
 
+## Which checks run under which base path
+
+`browser-check.mjs` has four parts (`node browser-check.mjs <output> <base>
+[all|pages,routing,interactions,matrix]`). `check.sh --build` runs all of
+them under the project path, which Pages deploys, and under `/` only the two
+that depend on the base path. A hard-coded path shows under one base and not
+under the other: an asset under `/` or an absolute `/docs/` link only under
+the project path, a route written for the project path or a base joined with
+a second slash (`//fonts/`) only under `/`.
+
+| Part | What it checks | Depends on the base path | Runs under |
+|---|---|---|---|
+| `pages` | every page at 390 and 1440 px: no request of the site fails, no third-party request, no JavaScript error, every link rendered on it (also one a script writes) is a page of the output under the base path | yes: it loads every page and its assets under the base | both |
+| `routing` | `/docs/`: Quick Start by default, the sections and deep links, back and forward, the old ids, search into its topic, the section picker; every redirect page with and without JavaScript; the old anchors of `/workflow/`, the copy button; the Features questions by their anchors | yes: the client-side router, the redirect table and search build addresses from the base | both |
+| `interactions` | the keyboard checks in both themes at 375 and 1440 px (skip link, navigation, theme toggle, workflow map, step panel with axe, Projects page), the home page demo in both themes at three sizes with axe, the docs disclosures at 760 and 768 px and the fallback without JavaScript | no: what it follows is relative to the page (`#…`) or a link that `pages` checks on every page | the project path |
+| `matrix` | every page in both themes at five or six widths: overflow, header and footer, axe, SVG text contrast, the content checks of Features, About and History, the screenshots and the page-weight report | no: the content, the theme and the layout; its assets are those that `pages` loads | the project path |
+
+The matrix runs over `BROWSER_CHECK_WORKERS` parallel browser contexts
+(default 3), each cell a page in a theme at a width; a failed cell fails the
+check with its page, theme and width. The report keeps the order of a run
+in one context: the check fails when its cells are not page by page, light
+before dark, the widths rising, when a cell or its screenshot is missing, or
+when the page reports are not one per page in page order; `check.sh` fails
+when the summary line under the project path is not that of a run of every
+part (`… pages, both themes, five or six widths; … redirect pages; keyboard
+checks passed (/agent-codeyard/).`, with the counts of the output).
+`check-test.sh` checks this on a small output, the report in full, and that
+`pages` finds each of the four hard-coded paths above under the base where it
+shows. The output names the duration of each part.
+
 The check writes full-page screenshots and `report.json` under
-`website/reports/{project,root}/` (ignored by Git). Set
+`website/reports/project/`, and the `report.json` of the parts under `/` in
+`website/reports/root/` (ignored by Git). Set
 `DOCUMENTATION_REPORT_DIR` to retain them elsewhere. Reports include axe
 results and cases requiring manual inspection, total JavaScript bytes per
 page (inline plus loaded scripts), and the largest total page weight (HTML

@@ -1,13 +1,38 @@
 // Check the actual static output, including 404, at both configured base paths.
+//
+// Usage: node browser-check.mjs <output> <base> [<parts>]
+//
+// <parts> is 'all' (the default) or a comma-separated list of:
+// - pages: every page loads at 390 and 1440 px with no failed request of the
+//   site, no third-party request and no JavaScript error, and every link
+//   rendered on it, also one that a script writes, is a page of the output
+//   under the base path;
+// - routing: the client-side routing of /docs/, its deep links and search,
+//   the walk of every redirect page with and without JavaScript, the old
+//   anchors of /workflow/ and of the Features questions;
+// - interactions: the keyboard checks in both themes at 375 and 1440 px, the
+//   workflow demo of the home page, the disclosures of the docs and the
+//   no-JavaScript fallback;
+// - matrix: every page in both themes at five or six widths with axe, the
+//   content checks, the full-page screenshots and the page-weight reports,
+//   over BROWSER_CHECK_WORKERS parallel browser contexts (default 3).
+// The parts 'pages' and 'routing' depend on the base path; check.sh runs
+// all parts under the Pages base and only those two under '/'
+// (website/validation.md, "Which checks run under which base path").
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
+import { readFile, readdir, mkdir, writeFile, stat } from 'node:fs/promises';
 import { resolve, join, extname } from 'node:path';
 import { chromium } from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
 
-const [output, base] = process.argv.slice(2);
-assert(output && base, 'Usage: node browser-check.mjs <output> <base>');
+const [output, base, partList = 'all'] = process.argv.slice(2);
+assert(output && base, 'Usage: node browser-check.mjs <output> <base> [all|pages,routing,interactions,matrix]');
+const allParts = ['pages', 'routing', 'interactions', 'matrix'];
+const parts = new Set(partList === 'all' ? allParts : partList.split(','));
+for (const name of parts) assert(allParts.includes(name), `Unknown part ${name}; the parts are all or ${allParts.join(', ')}`);
+const workers = Number(process.env.BROWSER_CHECK_WORKERS || 3);
+assert(Number.isInteger(workers) && workers >= 1, 'BROWSER_CHECK_WORKERS must be a whole number of at least 1');
 const reportDir = resolve(process.env.DOCUMENTATION_REPORT_DIR || 'reports', base === '/' ? 'root' : 'project');
 await mkdir(reportDir, { recursive: true });
 async function pagesIn(dir, prefix = '') {
@@ -32,28 +57,47 @@ const server = createServer(async (req, res) => {
 });
 await new Promise(r => server.listen(0, '127.0.0.1', r));
 const origin = `http://127.0.0.1:${server.address().port}`;
+// inOutput <pathname>: whether the server answers that address with a file of the output.
+async function inOutput(pathname) {
+  if (!pathname.startsWith(base)) return false;
+  const file = resolve(output, pathname.slice(base.length) + (pathname.endsWith('/') ? 'index.html' : ''));
+  if (!file.startsWith(resolve(output) + '/')) return false;
+  return stat(file).then(s => s.isFile(), () => false);
+}
 let browser;
-const report = { base, pages: [], accessibility: [], screenshots: [], keyboard: [] };
+const report = { base, parts: [...parts], pages: [], accessibility: [], screenshots: [], keyboard: [], timings: {} };
+// timed <name> <run>: runs a part of the check and records its duration in seconds.
+async function timed(name, run) {
+  const start = performance.now();
+  await run();
+  report.timings[name] = Math.round(performance.now() - start) / 1000;
+  console.log(`  ${name}: ${report.timings[name]} s`);
+}
 try {
   browser = await chromium.launch();
-  const context = await browser.newContext({ reducedMotion: 'reduce' });
-  const page = await context.newPage();
   // No JavaScript error on any page (#373).
   const errors = [];
   const watch = p => {
     p.on('pageerror', error => errors.push(`${p.url()}: ${error.message}`));
     p.on('console', message => { if (message.type() === 'error') errors.push(`${p.url()}: ${message.text()}`); });
   };
-  watch(page);
   const external = new Set();
-  await context.route('**/*', route => {
-    if (new URL(route.request().url()).origin !== origin) { external.add(route.request().url()); return route.abort(); }
-    return route.continue();
-  });
-  await page.addInitScript(() => {
-    const theme = new URL(location.href).searchParams.get('theme');
-    if (theme) localStorage.setItem('act-theme', theme);
-  });
+  // A context in which no request leaves the site and ?theme= sets the theme.
+  const siteContext = async () => {
+    const context = await browser.newContext({ reducedMotion: 'reduce' });
+    await context.route('**/*', route => {
+      if (new URL(route.request().url()).origin !== origin) { external.add(route.request().url()); return route.abort(); }
+      return route.continue();
+    });
+    await context.addInitScript(() => {
+      const theme = new URL(location.href).searchParams.get('theme');
+      if (theme) localStorage.setItem('act-theme', theme);
+    });
+    return context;
+  };
+  const context = await siteContext();
+  const page = await context.newPage();
+  watch(page);
   // Tab through actual navigation, radio groups and buttons; no focus() or mouse.
   async function tabTo(selector) {
     for (let i = 0; i < 160; i++) {
@@ -210,6 +254,7 @@ try {
     const results = await new AxeBuilder({ page }).include('[id="workflow-map/step-panel"]').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
     assert.deepEqual(results.violations.filter(v => ['serious', 'critical'].includes(v.impact) || v.id === 'color-contrast'), [], 'Accessibility of the step detail panel');
   };
+  const keyboard = async () => {
   for (const theme of ['light', 'dark']) {
     for (const width of [375, 1440]) {
       await page.setViewportSize({ width, height: 900 });
@@ -445,6 +490,7 @@ try {
       report.keyboard.push({ theme, width, pages: ['home', 'docs', 'workflow map', 'examples'], passed: true });
     }
   }
+  };
   // The workflow demo of the home page (#370), at 1280 × 800, 390 × 844 and
   // 320 × 640 in both themes: nothing plays on load; every moment shows a
   // caption, the terminals and the tree, and the way back of its lane when it
@@ -452,6 +498,7 @@ try {
   // top to bottom, whole within the viewport, with the same state as the
   // horizontal map of the desktop; the controls and the dialogs work by
   // keyboard, the dialogs take the focus and give it back; no error.
+  const demo = async () => {
   for (const theme of ['light', 'dark']) {
     for (const [width, height] of [[1280, 800], [390, 844], [320, 640]]) {
       const demoContext = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce' });
@@ -587,7 +634,9 @@ try {
       await demoContext.close();
     }
   }
+  };
   // Disclosure breakpoint and no-JS fallback, including search-before-navigation.
+  const disclosures = async () => {
   for (const javaScriptEnabled of [true, false]) {
     const docs = await browser.newContext({ javaScriptEnabled, viewport: { width: 760, height: 900 } });
     const p = await docs.newPage();
@@ -630,9 +679,10 @@ try {
     }
     await docs.close();
   }
+  };
   // The workflow map and the workflow reference: an old anchor of /workflow/ goes on to its place,
   // "On this page" stays beside the text on a wide screen, and a code block copies.
-  {
+  const workflowAnchors = async () => {
     const wide = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
     const p = await wide.newPage();
     await p.goto(origin + base + 'workflow/#workflow-words');
@@ -653,135 +703,190 @@ try {
     await p.locator('.code-block .copy').first().click();
     assert.equal(await p.evaluate(() => navigator.clipboard.readText()), await p.locator('.code-block pre').first().evaluate(e => e.innerText.replace(/\n$/, '')));
     await wide.close();
-  }
-  await docsInterface();
-  for (const file of pages) {
-    const path = base + file.replace(/index\.html$/, '');
-    const slug = file.replace(/\/index\.html$/, '').replace(/\.html$/, '').replaceAll('/', '-');
-    for (const theme of ['light', 'dark']) {
-      await page.emulateMedia({ colorScheme: theme });
-
-      // Technical Documentation at the widths of #373; Features (#374) and About (#376) also
-      // at the narrowest phone width and at 1280 px; the other pages at three.
-      // Every page at the widths of #377, the docs at those of #373; the
-      // other pages also at 375 px, the width of the keyboard checks.
-      for (const width of path.startsWith(base + 'docs/') ? [320, 390, 768, 1280, 1440] : [320, 375, 390, 768, 1280, 1440]) {
-        await page.setViewportSize({ width, height: 900 });
-        await page.goto(origin + path + '?theme=' + theme);
-        await page.evaluate(() => document.fonts.ready);
-        assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
-        assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Horizontal overflow: ${path} ${width}`);
-        // Every header link and the theme toggle in view, without scrolling the header.
-        assert.deepEqual(await page.evaluate(() => {
-          const nav = document.querySelector('.top .nav');
-          const hidden = [...nav.querySelectorAll('a, .theme')].filter(e => {
-            const box = e.getBoundingClientRect();
-            return box.left < 0 || box.right > innerWidth;
-          }).map(e => e.textContent.trim());
-          return nav.scrollWidth > nav.clientWidth ? ['the header scrolls', ...hidden] : hidden;
-        }), [], `Header cut off: ${path} ${width}`);
-        // The same header and footer on every page (#377); no Get Started in it (#390).
-        assert.deepEqual(await page.locator('.top .nav a').allInnerTexts(), ['Home', 'Features', 'About', 'Docs', 'GitHub'], `Header: ${path}`);
-        assert.equal(await page.locator('.top .nav .btn').count(), 0, `Header: ${path} has a button link`);
-        assert(await page.locator('.top .theme').isVisible(), `Theme toggle: ${path}`);
-        assert.deepEqual(await page.locator('footer nav a').allInnerTexts(), ['Open source · MIT', 'GitHub / Source', 'Contributing', 'Security policy', 'Technical Documentation'], `Footer: ${path}`);
-        const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
-        const violations = results.violations.filter(v => ['serious', 'critical'].includes(v.impact) || v.id === 'color-contrast');
-        report.accessibility.push({ path, theme, width, violations, incomplete: results.incomplete.map(v => ({ id: v.id, targets: v.nodes.map(n => n.target) })) });
-        assert.deepEqual(violations, [], `Accessibility: ${path} ${theme} ${width}`);
-        if (width === 1440) {
-          const lowContrast = await page.locator('svg text').evaluateAll(elements => {
-            const luminance = color => {
-              const rgb = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
-              return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722;
-            };
-            const ground = luminance(getComputedStyle(document.body).backgroundColor);
-            return elements.filter(e => e.getBoundingClientRect().width && e.checkVisibility()).flatMap(e => {
-              const ink = luminance(getComputedStyle(e).fill);
-              const ratio = (Math.max(ink, ground) + .05) / (Math.min(ink, ground) + .05);
-              return ratio < 4.5 ? [{ text: e.textContent, ratio }] : [];
-            });
-          });
-          assert.deepEqual(lowContrast, [], `SVG text contrast: ${path} ${theme}`);
-        }
-        const screenshot = `${slug}-${theme}-${width}.png`;
-        await page.screenshot({ path: join(reportDir, screenshot), fullPage: true });
-        report.screenshots.push(screenshot);
-        if (theme === 'light' && width === 1440) {
-          const resources = await page.evaluate(() => performance.getEntriesByType('resource').map(r => ({ url: r.name, bytes: r.decodedBodySize, kind: r.initiatorType })));
-          const html = await readFile(join(output, file), 'utf8');
-          const inlineJS = [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].reduce((sum, m) => sum + Buffer.byteLength(m[1]), 0);
-          report.pages.push({ path, javascriptBytes: inlineJS + resources.filter(r => r.kind === 'script').reduce((s, r) => s + r.bytes, 0), pageBytes: Buffer.byteLength(html) + resources.reduce((s, r) => s + r.bytes, 0), resources });
-        }
-        // Features (#374): with the questions closed, at most 900 visible words
-        // in <main> and at most 6000 px high at 1440 px.
-        if (path === base + 'features/' && width === 1440) {
-          const length = await page.evaluate(() => ({
-            open: document.querySelectorAll('main details[open]').length,
-            words: document.querySelector('main').innerText.split(/\s+/).filter(Boolean).length,
-            height: document.documentElement.scrollHeight,
-          }));
-          report.features ??= [];
-          report.features.push({ theme, ...length });
-          console.log(`  ${path} ${theme} 1440 px, questions closed: ${length.words} words, ${length.height} px high.`);
-          assert.equal(length.open, 0, `Disclosures open on ${path}`);
-          assert(length.words <= 900, `${path} shows ${length.words} words, more than 900`);
-          assert(length.height <= 6000, `${path} is ${length.height} px high at 1440 px, more than 6000`);
-          // No illustrative example; "Learn from your runs" is its own section after "Verify before you accept", and #learn lands there (#390).
-          const features = await page.evaluate(() => ({
-            sections: [...document.querySelectorAll('main section[id]')].map(section => section.id),
-            illustrative: [...document.querySelectorAll('main p')].filter(p => p.innerText.trim().startsWith('Illustrative example.')).length,
-            learn: ['learn-h', 'learn-t', 'learn-words'].map(id => document.getElementById(id)?.closest('section')?.id),
-          }));
-          assert.deepEqual(features.sections.slice(0, 4), ['agree', 'independent', 'verify', 'learn'], 'The sections of Features and their order');
-          assert.equal(features.illustrative, 0, 'Features still has an illustrative example');
-          assert.deepEqual(features.learn, ['learn', 'learn', 'learn'], 'The old ids of learning are not in its section');
-          assert.equal(await page.locator('#learn-h').innerText(), 'Learn from your runs');
-        }
-        // History (#390): the owner's story with "What comes next" first, then the research; the removed sections' ids,
-        // the period list's #history among them (the owner's correction of 12 November), at the top where the story starts.
-        if (path === base + 'docs/history/' && width === 1440) {
-          const history = await page.evaluate(() => ({
-            title: document.querySelector('main h1').innerText,
-            headings: [...document.querySelectorAll('.docs-body h2')].map(h => h.innerText),
-            toc: [...document.querySelectorAll('.docs-toc a')].map(a => a.innerText),
-            top: ['history', 'phases', 'principles', 'decisions'].map(id => document.getElementById(id)?.nextElementSibling?.tagName ?? 'missing'),
-            first: document.querySelector('.docs-body .prose > p')?.innerText,
-            timeline: document.querySelectorAll('main .timeline').length,
-            pulls: [...document.querySelectorAll('main a')].filter(a => a.href.includes('/pull/')).length,
-            next: [...document.querySelectorAll('#what-comes-next ~ p')].slice(0, 2).map(p => p.innerText),
-          }));
-          const parts = ['Giving each agent a job', 'Making the handoffs reliable', 'From an issue to a pull request', 'Learning from real projects', 'What comes next', 'Research'];
-          assert.equal(history.title, 'How Agent Codeyard began');
-          assert.deepEqual(history.headings, parts, 'The parts of History and their order');
-          assert.deepEqual(history.toc, parts, 'On this page of History');
-          assert.deepEqual(history.top, ['SPAN', 'SPAN', 'SPAN', 'P'], 'The old ids of the removed sections are not at the top of History');
-          assert(history.first?.startsWith('I started Agent Codeyard with a question'), 'History does not open with the story');
-          assert.equal(history.timeline + history.pulls, 0, 'History still has the period list with its pull requests');
-          assert(history.next[0]?.startsWith('Today I start each feature run myself.') && history.next[0].includes('I’m planning a supervisor'), 'What comes next: the supervisor');
-          assert(history.next[1]?.startsWith('I also want to use models that run on my own machine.') && history.next[1].includes('read-only roles such as review and triage'), 'What comes next: local models');
-        }
-        // About (#376): three parts in order, 300 to 500 visible words in <main>,
-        // one link to History and research, and every old anchor in the page.
-        if (path === base + 'about/' && width === 1440) {
-          const about = await page.evaluate(() => ({
-            parts: [...document.querySelectorAll('main section > .wrap h2')].map(h => h.closest('section').id),
-            words: document.querySelector('main').innerText.split(/\s+/).filter(Boolean).length,
-            history: [...document.querySelectorAll('main a')].filter(a => new URL(a.href).pathname.endsWith('/docs/history/')).map(a => a.innerText),
-            projects: [...document.querySelectorAll('main a')].filter(a => /\/(examples|docs\/engineering-records)\/$/.test(new URL(a.href).pathname)).length,
-            missing: ['maker', 'maker-h', 'why', 'limits', 'limits-h', 'history', 'decisions', 'research', 'contribute', 'contribute-h', 'source', 'source-h', 'improvements'].filter(id => !document.getElementById(id)),
-          }));
-          console.log(`  ${path} ${theme} 1440 px: ${about.words} words.`);
-          assert.deepEqual(about.parts, ['maker', 'why', 'contribute'], 'The parts of About and their order');
-          assert(about.words >= 300 && about.words <= 500, `${path} shows ${about.words} words, not 300 to 500`);
-          assert.deepEqual(about.history, ['How Agent Codeyard began'], 'About links the story on History once');
-          assert.equal(about.projects, 0, 'About links Projects or Engineering records');
-          assert.deepEqual(about.missing, [], 'Every old anchor of About resolves');
+  };
+  // One cell of the page matrix: a page in a theme at a width, on a page of a
+  // worker's own context. What it records goes to out, in the order of the matrix.
+  const matrixCell = async (page, { file, path, slug, theme, width }, out) => {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(origin + path + '?theme=' + theme);
+    await page.evaluate(() => document.fonts.ready);
+    assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Horizontal overflow: ${path} ${width}`);
+    // Every header link and the theme toggle in view, without scrolling the header.
+    assert.deepEqual(await page.evaluate(() => {
+      const nav = document.querySelector('.top .nav');
+      const hidden = [...nav.querySelectorAll('a, .theme')].filter(e => {
+        const box = e.getBoundingClientRect();
+        return box.left < 0 || box.right > innerWidth;
+      }).map(e => e.textContent.trim());
+      return nav.scrollWidth > nav.clientWidth ? ['the header scrolls', ...hidden] : hidden;
+    }), [], `Header cut off: ${path} ${width}`);
+    // The same header and footer on every page (#377); no Get Started in it (#390).
+    assert.deepEqual(await page.locator('.top .nav a').allInnerTexts(), ['Home', 'Features', 'About', 'Docs', 'GitHub'], `Header: ${path}`);
+    assert.equal(await page.locator('.top .nav .btn').count(), 0, `Header: ${path} has a button link`);
+    assert(await page.locator('.top .theme').isVisible(), `Theme toggle: ${path}`);
+    assert.deepEqual(await page.locator('footer nav a').allInnerTexts(), ['Open source · MIT', 'GitHub / Source', 'Contributing', 'Security policy', 'Technical Documentation'], `Footer: ${path}`);
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
+    const violations = results.violations.filter(v => ['serious', 'critical'].includes(v.impact) || v.id === 'color-contrast');
+    out.accessibility.push({ path, theme, width, violations, incomplete: results.incomplete.map(v => ({ id: v.id, targets: v.nodes.map(n => n.target) })) });
+    assert.deepEqual(violations, [], `Accessibility: ${path} ${theme} ${width}`);
+    if (width === 1440) {
+      const lowContrast = await page.locator('svg text').evaluateAll(elements => {
+        const luminance = color => {
+          const rgb = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+          return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722;
+        };
+        const ground = luminance(getComputedStyle(document.body).backgroundColor);
+        return elements.filter(e => e.getBoundingClientRect().width && e.checkVisibility()).flatMap(e => {
+          const ink = luminance(getComputedStyle(e).fill);
+          const ratio = (Math.max(ink, ground) + .05) / (Math.min(ink, ground) + .05);
+          return ratio < 4.5 ? [{ text: e.textContent, ratio }] : [];
+        });
+      });
+      assert.deepEqual(lowContrast, [], `SVG text contrast: ${path} ${theme}`);
+    }
+    const screenshot = `${slug}-${theme}-${width}.png`;
+    await page.screenshot({ path: join(reportDir, screenshot), fullPage: true });
+    out.screenshots.push(screenshot);
+    if (theme === 'light' && width === 1440) {
+      const resources = await page.evaluate(() => performance.getEntriesByType('resource').map(r => ({ url: r.name, bytes: r.decodedBodySize, kind: r.initiatorType })));
+      const html = await readFile(join(output, file), 'utf8');
+      const inlineJS = [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].reduce((sum, m) => sum + Buffer.byteLength(m[1]), 0);
+      out.pages.push({ path, javascriptBytes: inlineJS + resources.filter(r => r.kind === 'script').reduce((s, r) => s + r.bytes, 0), pageBytes: Buffer.byteLength(html) + resources.reduce((s, r) => s + r.bytes, 0), resources });
+    }
+    // Features (#374): with the questions closed, at most 900 visible words
+    // in <main> and at most 6000 px high at 1440 px.
+    if (path === base + 'features/' && width === 1440) {
+      const length = await page.evaluate(() => ({
+        open: document.querySelectorAll('main details[open]').length,
+        words: document.querySelector('main').innerText.split(/\s+/).filter(Boolean).length,
+        height: document.documentElement.scrollHeight,
+      }));
+      out.features.push({ theme, ...length });
+      out.logs.push(`  ${path} ${theme} 1440 px, questions closed: ${length.words} words, ${length.height} px high.`);
+      assert.equal(length.open, 0, `Disclosures open on ${path}`);
+      assert(length.words <= 900, `${path} shows ${length.words} words, more than 900`);
+      assert(length.height <= 6000, `${path} is ${length.height} px high at 1440 px, more than 6000`);
+      // No illustrative example; "Learn from your runs" is its own section after "Verify before you accept", and #learn lands there (#390).
+      const features = await page.evaluate(() => ({
+        sections: [...document.querySelectorAll('main section[id]')].map(section => section.id),
+        illustrative: [...document.querySelectorAll('main p')].filter(p => p.innerText.trim().startsWith('Illustrative example.')).length,
+        learn: ['learn-h', 'learn-t', 'learn-words'].map(id => document.getElementById(id)?.closest('section')?.id),
+      }));
+      assert.deepEqual(features.sections.slice(0, 4), ['agree', 'independent', 'verify', 'learn'], 'The sections of Features and their order');
+      assert.equal(features.illustrative, 0, 'Features still has an illustrative example');
+      assert.deepEqual(features.learn, ['learn', 'learn', 'learn'], 'The old ids of learning are not in its section');
+      assert.equal(await page.locator('#learn-h').innerText(), 'Learn from your runs');
+    }
+    // History (#390): the owner's story with "What comes next" first, then the research; the removed sections' ids,
+    // the period list's #history among them (the owner's correction of 12 November), at the top where the story starts.
+    if (path === base + 'docs/history/' && width === 1440) {
+      const history = await page.evaluate(() => ({
+        title: document.querySelector('main h1').innerText,
+        headings: [...document.querySelectorAll('.docs-body h2')].map(h => h.innerText),
+        toc: [...document.querySelectorAll('.docs-toc a')].map(a => a.innerText),
+        top: ['history', 'phases', 'principles', 'decisions'].map(id => document.getElementById(id)?.nextElementSibling?.tagName ?? 'missing'),
+        first: document.querySelector('.docs-body .prose > p')?.innerText,
+        timeline: document.querySelectorAll('main .timeline').length,
+        pulls: [...document.querySelectorAll('main a')].filter(a => a.href.includes('/pull/')).length,
+        next: [...document.querySelectorAll('#what-comes-next ~ p')].slice(0, 2).map(p => p.innerText),
+      }));
+      const parts = ['Giving each agent a job', 'Making the handoffs reliable', 'From an issue to a pull request', 'Learning from real projects', 'What comes next', 'Research'];
+      assert.equal(history.title, 'How Agent Codeyard began');
+      assert.deepEqual(history.headings, parts, 'The parts of History and their order');
+      assert.deepEqual(history.toc, parts, 'On this page of History');
+      assert.deepEqual(history.top, ['SPAN', 'SPAN', 'SPAN', 'P'], 'The old ids of the removed sections are not at the top of History');
+      assert(history.first?.startsWith('I started Agent Codeyard with a question'), 'History does not open with the story');
+      assert.equal(history.timeline + history.pulls, 0, 'History still has the period list with its pull requests');
+      assert(history.next[0]?.startsWith('Today I start each feature run myself.') && history.next[0].includes('I’m planning a supervisor'), 'What comes next: the supervisor');
+      assert(history.next[1]?.startsWith('I also want to use models that run on my own machine.') && history.next[1].includes('read-only roles such as review and triage'), 'What comes next: local models');
+    }
+    // About (#376): three parts in order, 300 to 500 visible words in <main>,
+    // one link to History and research, and every old anchor in the page.
+    if (path === base + 'about/' && width === 1440) {
+      const about = await page.evaluate(() => ({
+        parts: [...document.querySelectorAll('main section > .wrap h2')].map(h => h.closest('section').id),
+        words: document.querySelector('main').innerText.split(/\s+/).filter(Boolean).length,
+        history: [...document.querySelectorAll('main a')].filter(a => new URL(a.href).pathname.endsWith('/docs/history/')).map(a => a.innerText),
+        projects: [...document.querySelectorAll('main a')].filter(a => /\/(examples|docs\/engineering-records)\/$/.test(new URL(a.href).pathname)).length,
+        missing: ['maker', 'maker-h', 'why', 'limits', 'limits-h', 'history', 'decisions', 'research', 'contribute', 'contribute-h', 'source', 'source-h', 'improvements'].filter(id => !document.getElementById(id)),
+      }));
+      out.logs.push(`  ${path} ${theme} 1440 px: ${about.words} words.`);
+      assert.deepEqual(about.parts, ['maker', 'why', 'contribute'], 'The parts of About and their order');
+      assert(about.words >= 300 && about.words <= 500, `${path} shows ${about.words} words, not 300 to 500`);
+      assert.deepEqual(about.history, ['How Agent Codeyard began'], 'About links the story on History once');
+      assert.equal(about.projects, 0, 'About links Projects or Engineering records');
+      assert.deepEqual(about.missing, [], 'Every old anchor of About resolves');
+    }
+  };
+  // The page matrix over parallel browser contexts: each worker takes the next
+  // cell; a failed assertion stops the others taking more and fails the check
+  // with the page, the theme and the width of the cell.
+  const matrix = async () => {
+    const cells = [];
+    for (const file of pages) {
+      const path = base + file.replace(/index\.html$/, '');
+      const slug = file.replace(/\/index\.html$/, '').replace(/\.html$/, '').replaceAll('/', '-');
+      for (const theme of ['light', 'dark']) {
+        // Technical Documentation at the widths of #373; Features (#374) and About (#376) also
+        // at the narrowest phone width and at 1280 px; the other pages at three.
+        // Every page at the widths of #377, the docs at those of #373; the
+        // other pages also at 375 px, the width of the keyboard checks.
+        for (const width of path.startsWith(base + 'docs/') ? [320, 390, 768, 1280, 1440] : [320, 375, 390, 768, 1280, 1440]) {
+          cells.push({ file, path, slug, theme, width, out: { accessibility: [], screenshots: [], pages: [], features: [], logs: [] } });
         }
       }
     }
-    console.log(`  Checked ${path} in both themes at all its widths.`);
-  }
+    let next = 0;
+    const failures = [];
+    const worker = async () => {
+      const context = await siteContext();
+      const page = await context.newPage();
+      watch(page);
+      try {
+        while (next < cells.length && failures.length === 0) {
+          const cell = cells[next++];
+          try {
+            await matrixCell(page, cell, cell.out);
+          } catch (error) {
+            // The stack, which Node prints, carries the message it had when it was thrown.
+            const message = `${cell.path} ${cell.theme} ${cell.width} px: ${error.message}`;
+            if (typeof error.stack === 'string') error.stack = error.stack.replace(error.message, message);
+            error.message = message;
+            failures.push(error);
+          }
+        }
+      } finally {
+        await context.close();
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(workers, cells.length) }, worker));
+    if (failures.length) {
+      for (const error of failures.slice(1)) console.error(`browser-check: also failed: ${error.message.split('\n')[0]}`);
+      throw failures[0];
+    }
+    for (const { path, out } of cells) {
+      report.accessibility.push(...out.accessibility);
+      report.screenshots.push(...out.screenshots);
+      report.pages.push(...out.pages);
+      if (out.features.length) (report.features ??= []).push(...out.features);
+      for (const line of out.logs) console.log(line);
+      if (out === cells.findLast(cell => cell.path === path).out) console.log(`  Checked ${path} in both themes at all its widths.`);
+    }
+    // The report in the order of the run of one context: page by page, light
+    // before dark, the widths rising; one screenshot per cell, named after it,
+    // and one page report per page, in the order of the pages.
+    const rank = cell => [pages.indexOf(cell.path.slice(base.length) + (cell.path.endsWith('/') ? 'index.html' : '')), cell.theme === 'light' ? 0 : 1, cell.width];
+    const before = (a, b) => { const x = rank(a), y = rank(b); const k = x.findIndex((v, i) => v !== y[i]); return k >= 0 && x[k] < y[k]; };
+    const ordered = report.accessibility.every((cell, i) => i === 0 || before(report.accessibility[i - 1], cell));
+    assert(ordered, 'The cells of the report are not in the order page, theme, width');
+    assert.equal(report.accessibility.length, pages.reduce((n, file) => n + 2 * (file.startsWith('docs/') ? 5 : 6), 0), 'The report has not every cell of the matrix');
+    assert.deepEqual(report.screenshots, report.accessibility.map(({ path, theme, width }) =>
+      `${pages[rank({ path, theme, width })[0]].replace(/\/index\.html$/, '').replace(/\.html$/, '').replaceAll('/', '-')}-${theme}-${width}.png`), 'The screenshots of the report are not those of its cells');
+    assert.deepEqual(report.pages.map(p => p.path), pages.map(file => base + file.replace(/index\.html$/, '')), 'The page reports are not one per page in the order of the pages');
+  };
+  const featureAnchors = async () => {
   // A link to a question of Features, as the redirect of /faq/ makes, opens its answer (#374).
   for (const id of ['cost', 'data-h']) {
     await page.goto(origin + base + 'features/#' + id);
@@ -797,13 +902,71 @@ try {
     assert.deepEqual(featureErrors, [], `features/${hash} raises a script error`);
   }
   page.off('pageerror', onError);
+  };
+  // The base path on every page: each page loads at 390 and 1440 px with no
+  // request of the site that fails, no third-party request and no JavaScript
+  // error, and every link rendered on it, also one a script writes, is a page
+  // of the output under the base path. This is what the page matrix finds of
+  // a hard-coded path, at a fraction of its cost, so the second base path
+  // runs this instead of the matrix.
+  const pageLoads = async () => {
+    const context = await siteContext();
+    const p = await context.newPage();
+    const problems = [];
+    let at = '';
+    p.on('pageerror', error => problems.push(`${at}: JavaScript error: ${error.message}`));
+    p.on('console', message => { if (message.type() === 'error') problems.push(`${at}: console error: ${message.text()}`); });
+    p.on('response', response => { if (new URL(response.url()).origin === origin && response.status() >= 400) problems.push(`${at}: ${response.url().slice(origin.length)} answers ${response.status()}`); });
+    p.on('requestfailed', request => {
+      const url = new URL(request.url());
+      // The next navigation cancels what the page still loads: not a failure of its own.
+      if (url.origin === origin && request.failure()?.errorText === 'net::ERR_ABORTED') return;
+      problems.push(url.origin === origin ? `${at}: ${request.url().slice(origin.length)} failed` : `${at}: requests ${request.url()}, which is not on the site`);
+    });
+    for (const file of pages) {
+      const path = base + file.replace(/index\.html$/, '');
+      for (const width of [390, 1440]) {
+        at = `${path} at ${width} px`;
+        await p.setViewportSize({ width, height: 900 });
+        await p.goto(origin + path);
+        await p.waitForLoadState('load');
+        await p.evaluate(() => document.fonts.ready);
+        const links = await p.evaluate(() => [...document.querySelectorAll('a[href]')].map(a => ({ href: a.getAttribute('href'), url: a.href })));
+        for (const { href, url } of links) {
+          const target = new URL(url);
+          if (target.origin !== origin) continue;
+          if (!target.pathname.startsWith(base)) problems.push(`${at}: links to ${href}, which is outside the base path ${base}`);
+          else if (!await inOutput(decodeURIComponent(target.pathname))) problems.push(`${at}: links to ${href}, which is not in the output`);
+        }
+      }
+    }
+    await context.close();
+    assert.deepEqual([...new Set(problems)], [], 'The base path on every page');
+    console.log(`  Pages: ${pages.length} pages loaded under ${base} at 390 and 1440 px; their requests and rendered links stay in the output.`);
+  };
+  if (parts.has('pages')) await timed('pages', pageLoads);
+  if (parts.has('routing')) {
+    await timed('routing: workflow anchors and copy', workflowAnchors);
+    await timed('routing: docs, search and redirects', docsInterface);
+    await timed('routing: Features anchors', featureAnchors);
+  }
+  if (parts.has('interactions')) {
+    await timed('interactions: keyboard', keyboard);
+    await timed('interactions: demo', demo);
+    await timed('interactions: disclosures', disclosures);
+  }
+  if (parts.has('matrix')) await timed(`matrix (${workers} contexts)`, matrix);
   assert.deepEqual([...external], [], 'Third-party resources are forbidden');
   assert.deepEqual(errors, [], 'JavaScript errors');
 
-  report.largestPage = report.pages.reduce((a, b) => a.pageBytes > b.pageBytes ? a : b);
-  console.log(`browser-check: ${pages.length} pages, both themes, five or six widths; ${redirects.length} redirect pages; keyboard checks passed (${base}).`);
-  for (const p of report.pages) console.log(`  ${p.path}: JS ${p.javascriptBytes} bytes; page ${p.pageBytes} bytes (uncompressed, cold load)`);
-  console.log(`  Largest page: ${report.largestPage.path}, ${report.largestPage.pageBytes} bytes. No third-party requests.`);
+  if (parts.has('matrix')) {
+    report.largestPage = report.pages.reduce((a, b) => a.pageBytes > b.pageBytes ? a : b);
+    console.log(`browser-check: ${pages.length} pages, both themes, five or six widths; ${redirects.length} redirect pages; ${parts.has('interactions') ? 'keyboard checks' : `the parts ${[...parts].join(', ')}`} passed (${base}).`);
+    for (const p of report.pages) console.log(`  ${p.path}: JS ${p.javascriptBytes} bytes; page ${p.pageBytes} bytes (uncompressed, cold load)`);
+    console.log(`  Largest page: ${report.largestPage.path}, ${report.largestPage.pageBytes} bytes. No third-party requests.`);
+  } else {
+    console.log(`browser-check: ${pages.length} pages, ${redirects.length} redirect pages; the parts ${[...parts].join(', ')} passed (${base}).`);
+  }
 } finally {
   await writeFile(join(reportDir, 'report.json'), JSON.stringify(report, null, 2));
   await browser?.close();
