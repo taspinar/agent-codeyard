@@ -21,7 +21,8 @@ How the workflow itself runs is not described here: the steps are in
 [`docs/development.md`](development.md).
 
 A new repository also holds the website of the template itself. Delete
-`website/` and `.github/workflows/pages.yml`: they are not part of
+`website/` and `.github/workflows/pages.yml`, and the template's macOS run,
+the workflow `macos.yml` in `.github/workflows/`: they are not part of
 your project. It also copies `LICENSE`, the MIT licence of the template:
 keep it, replace it with the licence of your project, or remove it.
 `sync-template.sh` never overwrites it.
@@ -149,10 +150,12 @@ commit message and the pull request. In a team, turn it on.
 ## 4. Required status checks
 
 The template's CI runs `./scripts/verify.sh` in parallel jobs, one per group
-of checks (with `--all` on `main`, every night, and in the template on every
-pull request; see "Workflow self-tests" and "A parallel CI" in
+of checks (in the template with `--all` on every pull request and push; in
+a project the self-tests run only when a workflow file changed, and by hand
+with `workflow_dispatch`; see "Workflow self-tests" and "A parallel CI" in
 [`docs/development.md`](development.md)). The required check is the
-aggregate job `verify`, which passes only when every group job succeeded;
+aggregate job `verify`, which passes only when every group job succeeded or
+was not started because the job `scope` found nothing for it to run;
 the jobs `scope`, `mapping`, and `group-<group>` are not required checks.
 Add `verify` to the `main` ruleset as a required status
 check: enable "Require status checks to pass" and add `verify`. GitHub lists a
@@ -177,7 +180,7 @@ branch. Its job `Approval gate` reports the decision as a check named
 | --- | --- | --- |
 | changes nothing that only the owner may approve and carries no approval request | success, "No owner approval needed" | succeeds |
 | carries an approval request that names its content tree, with or without a protected path | "Action required", "Owner approval required", with the protected paths, the reasons of the request, and the request | succeeds |
-| changes a protected path without an approval request | failure, "Approval request missing", with the protected paths | fails |
+| changes a protected path without an approval request, such as a project's setup made by hand | "Action required", "Owner approval required", with the protected paths and the line "no approval request: a pull request made outside the feature workflow, such as a project's setup" | succeeds |
 | carries an approval request that is malformed or names another content tree | failure, "Approval request refused", with the reason | fails |
 | cannot be checked (the gate itself fails) | failure, "The merge approval gate could not run" | fails |
 
@@ -185,7 +188,11 @@ Any approval request makes the check `action_required`, not only a
 protected path: `finish-feature.sh` also writes one when the review rated
 the impact on the architecture as major, when the feature was committed
 without a review, or for another reason it records, and the check then
-waits for you as `finish-feature.sh` does.
+waits for you as `finish-feature.sh` does. A protected change without a
+request waits for you the same way: it comes from a pull request made by
+hand, such as the setup of a new project, since `publish-feature.sh` pushes
+no feature that changes a protected path without the request of its finish
+commit.
 
 "Owner approval required" is not a defect: it says the pull request waits
 for you. A red failure is a defect of the pull request or the gate. The
@@ -213,9 +220,10 @@ workflow: its required checks stay what they were. The project's commands
 that CI runs are also the checks of `scripts/verify.conf`, so a feature runs
 them before its commit. To make `verify.sh` the gate on GitHub as well, add
 a step `./scripts/verify.sh` to the project's CI, in a reviewed change,
-and require that job; run `./scripts/verify.sh --all` on `main` or on a
-schedule, as the template's `ci.yml` does, so that the workflow self-tests
-still run regularly. A known failure of the baseline fails that step too,
+and require that job; `./scripts/verify.sh` runs the workflow self-tests
+whenever a change touches a workflow file, and `./scripts/verify.sh --all`
+in a run started by hand runs them regardless, as the template's `ci.yml`
+does with `workflow_dispatch`. A known failure of the baseline fails that step too,
 until it is fixed or accepted ("The baseline of an adopted project" in
 [`docs/development.md`](development.md)).
 
@@ -408,7 +416,8 @@ template.
 ### General
 
 -   [ ] Repository created from template
--   [ ] `website/` and `.github/workflows/pages.yml` deleted
+-   [ ] `website/`, `.github/workflows/pages.yml`, and the workflow `macos.yml` deleted
+-   [ ] The template's checks in `scripts/verify.conf` replaced with the project's own
 -   [ ] `LICENSE` kept, replaced, or removed for your project
 -   [ ] Correct visibility configured
 -   [ ] Issues enabled

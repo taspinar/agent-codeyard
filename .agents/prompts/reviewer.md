@@ -6,6 +6,13 @@ Read `AGENTS.md`, the active plan, relevant architecture/ADRs, and `docs/evaluat
 
 Check correctness, issue/plan compliance, architecture, security, edge cases, test coverage, reliability, and unnecessary complexity.
 
+A finding may ask for less as well as for more: it may recommend removing a
+test, narrowing a trigger, or moving a check to where its inputs change.
+Recurring work that the change adds beyond what the Issue asked for (a
+trigger, a schedule, a CI job, a self-test, or a check that always runs) is a
+finding that the triage decides like any other (`docs/development.md`,
+"Recurring work in an Issue").
+
 The Definition of Done in `AGENTS.md` asks that the documentation site
 (`website/`) is updated where it describes the changed behavior; a
 project without the site skips this. Report a behavior change that the site

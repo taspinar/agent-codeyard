@@ -1,0 +1,21 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "792f7e360ff0448da9ed18e07e1d164e3b21428b",
+  "commit": {
+    "branch": "feature/472-a-project-made-from",
+    "parent": "795333c35987e978923fde78a22f0413b51e5654",
+    "base": "795333c35987e978923fde78a22f0413b51e5654"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".github/workflows/guardrails.yml: the file defines or carries out the workflow and its gate",
+    "scripts/gate-pull-request.sh: the file defines or carries out the workflow and its gate",
+    "scripts/publish-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The change alters the shared approval gate’s conclusion for protected pull requests and adds an enforcement check in publish-feature.sh so workflow-created features with protected changes cannot be published without an approval request. This changes shared workflow behavior beyond documentation. "
+  ],
+  "explanation": "Issue #472: A project made from the template gets a red first pull request when it follows the README. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

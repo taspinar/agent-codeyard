@@ -196,6 +196,27 @@ expect "$repo" 1 "the job preview ended with 'failure'" "a failure of a job that
 check "$repo" --results "$needs_ok" --may-skip group-e2e
 expect "$repo" 2 "a group job may not be skipped" "a group job declared skippable"
 
+# A group job may be skipped when the scope job named in --scope succeeded
+# and its output 'skip' names it (Issue 408); never otherwise.
+needs_scoped="$(jq -c '. + {"scope":{"result":"success","outputs":{"skip":" group-e2e group-other "}}} | ."group-e2e".result = "skipped"' <<<"$needs_ok")"
+check "$repo" --results "$needs_scoped" --scope scope
+expect "$repo" 0 "SKIP  group-e2e (not started: the job scope found nothing for it to run)" "a group job the scope did not start"
+check "$repo" --results "$needs_scoped"
+expect "$repo" 1 "the job group-e2e ended with 'skipped'" "a group job the scope did not start, without --scope"
+check "$repo" --results "$(jq -c '.scope.outputs.skip = " group-e2ex group-build "' <<<"$needs_scoped")" --scope scope
+expect "$repo" 1 "the job group-e2e ended with 'skipped'" "a skipped group job the scope did not name"
+check "$repo" --results "$(jq -c '.scope.result = "failure"' <<<"$needs_scoped")" --scope scope
+expect "$repo" 1 "the job group-e2e ended with 'skipped'" "a skipped group job after the scope failed"
+grep -Fq "the job scope ended with 'failure'" "$repo.out" || fail "a failed scope job passed: $(cat "$repo.out")"
+check "$repo" --results "$(jq -c '."group-e2e".result = "failure"' <<<"$needs_scoped")" --scope scope
+expect "$repo" 1 "the job group-e2e ended with 'failure'" "a failed group job the scope named"
+check "$repo" --results "$(jq -c 'del(.scope)' <<<"$needs_scoped")" --scope scope
+expect "$repo" 1 "the scope job scope is not among the needs" "a scope job missing from the needs"
+check "$repo" --results "$needs_ok" --scope scope
+expect "$repo" 1 "the scope job scope is not among the needs" "a scope job missing from the needs, nothing skipped"
+check "$repo" --workflow ci.yml --scope scope
+expect "$repo" 2 "--scope requires --results" "--scope without --results"
+
 # The CI of the template (.github/workflows/ci.yml, Issue 448) runs every
 # group in a job of its own, with the aggregate job 'verify' as the required
 # check. A project that syncs the template gets this file with the

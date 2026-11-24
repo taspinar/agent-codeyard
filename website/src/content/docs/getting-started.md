@@ -87,7 +87,7 @@ cd my-project
 
 `my-project` is the name of your repository, and of the folder it is cloned into; choose your own. Later commands call that folder `<repository>`.
 
-Then delete `website/` and `.github/workflows/pages.yml`: they are this website, not part of your project. Keep, replace, or remove `LICENSE`, the MIT licence of the template, for your own project.
+Then delete `website/`, `.github/workflows/pages.yml`, and the template's macOS run `.github/workflows/macos.yml`: they are this website and the template's own tests, not part of your project. Replace the template's checks in `scripts/verify.conf` with your project's own, so that CI runs your tests; your project installs their tools in `.github/actions/project-setup/` (see <a href="#verification-and-review/project-ci-setup">your project's tools in CI</a>). Keep, replace, or remove `LICENSE`, the MIT licence of the template, for your own project.
 
 Have an existing repository instead? It adopts the workflow on a branch you review, without a new repository: <a href="#adopting">Adopting Agent Codeyard in an existing repository</a>.
 

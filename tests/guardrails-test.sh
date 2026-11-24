@@ -515,8 +515,9 @@ check "$repo" --commits main HEAD
 
 # The decision of the workflow for a pull request (gate-pull-request.sh): a
 # protected change with an accepted approval request is not a failure but
-# 'action_required', which no required check counts as passed; a missing or
-# refused request fails; a pull request with nothing protected passes.
+# 'action_required', which no required check counts as passed, and so is
+# one without a request, such as a project's setup made by hand; a refused
+# request fails; a pull request with nothing protected passes.
 # decide <repo> <base> <head>: sets 'status', '<repo>.gate/', '<repo>.decision'.
 decide() {
   status=0
@@ -577,9 +578,11 @@ repo="$(setup_repo decision-missing)"
 printf '# ADR 002: Other\n\nStatus: Proposed\n' >"$repo/docs/decisions/002-other.md"
 commit_feature "$repo" "A protected change without a request"
 decide "$repo" main HEAD
-expect_decision "$repo" failure "Approval request missing" "a protected change carries no request"
+expect_decision "$repo" action_required "Owner approval required" "a protected change carries no request"
 grep -Fxq -- "- docs/decisions/002-other.md (an ADR is added, changed, or removed)" "$repo.gate/summary.md" ||
   fail "the protected path is not named when the request is missing"
+grep -Fxq "no approval request: a pull request made outside the feature workflow, such as a project's setup" "$repo.gate/summary.md" ||
+  { cat "$repo.gate/summary.md" >&2; fail "the summary does not say that the pull request carries no approval request"; }
 
 repo="$(setup_repo decision-other-tree)"
 printf '# ADR 002: Other\n\nStatus: Proposed\n' >"$repo/docs/decisions/002-other.md"
