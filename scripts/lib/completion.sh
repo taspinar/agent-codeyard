@@ -74,7 +74,7 @@ completion_budget_checks() {
 
   for file in "$1/scripts/verify.conf" "$1/scripts/verify-workflow.conf"; do
     [[ -f "$file" ]] || continue
-    sed -nE 's/^([a-z0-9][a-z0-9-]*)([[:space:]]*\[[a-z0-9][a-z0-9-]*\])?[[:space:]]+budget:.*$/\1/p' "$file"
+    sed -nE 's/^([a-z0-9][a-z0-9-]*)([[:space:]]*\[[a-z0-9][a-z0-9-]*\])?[[:space:]]+budget([[:space:]]+framework)?:.*$/\1/p' "$file"
     if grep -Eq '^budget-seconds:' "$file"; then echo "budget-seconds"; fi
   done | sort -u
 }

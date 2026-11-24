@@ -960,7 +960,8 @@ always runs them.
 In CI, `.github/workflows/ci.yml` decides when to pass `--all`. Its job
 `scope` tells the template from a project by `.agents/template.conf`: the
 repository that its `repository:` names is the template, any other is a
-project.
+project. It decides with `scripts/lib/template-repository.sh`, the predicate
+of "Framework-only self-tests" below, given the repository of the run.
 
 | Event | The template | A project |
 |---|---|---|
@@ -1079,6 +1080,99 @@ The self-tests start `jq`, `git`, and `bash` thousands of times. On an Apple
 Silicon Mac an x86_64 `jq`, such as the one Anaconda installs, runs under
 Rosetta and roughly doubles their duration; `file "$(command -v jq)"` shows
 which one is first on your `PATH`.
+
+### Framework-only self-tests
+
+Some self-tests test the template as a framework, not the project that uses
+it. `tests/adopted-project-test.sh` builds a fixture project from the files
+of the repository it runs in and runs every other self-test there: in the
+template that is the proof, before a release, that no self-test reads a file
+of the repository hosting it (#304, #392 and #411 broke in projects that
+way). In a project the fixture is built from the project's own files, so it
+repeats the direct self-tests, which already run on the project's real
+state, at 8 to 12 minutes of CI per run. Such a check is marked in
+`scripts/verify-workflow.conf` with the keyword `framework` before the
+colon:
+
+```text
+adopted-project [adopted-project] framework: ./tests/adopted-project-test.sh
+```
+
+Only a self-test of `scripts/verify-workflow.conf` can be framework-only;
+`verify.sh` refuses the keyword in `scripts/verify.conf`, whose checks are
+the project's own. A keyword and not a group, because the group says in
+which CI job a check runs, which is a matter of its duration, not of where
+it belongs.
+
+The checks marked so, and why:
+
+| Check | Framework-only | Why |
+|---|---|---|
+| `adopted-project` | yes | It repeats the direct self-tests in a project; its distinct catches were all in the template's own CI. |
+| `adoption`, `adopt-repository`, `assess-repository` | yes | The adoption tooling runs from a clone of the template, never from a project. |
+| `scenario-register` | no | It costs seconds and guards a project's own edits of the parts of the tests of `run-feature.sh`. |
+| `sync-template` | no | Projects use `sync-template.sh`. |
+
+**Whether this is the template.** `scripts/lib/template-repository.sh` holds
+the one predicate that `verify.sh` and the job `scope` of `ci.yml` use. The
+repository is the template when its origin (`git remote get-url origin`; in
+CI the repository of the run, which `actions/checkout` makes the origin) is
+the repository that `repository:` of `.agents/template.conf` names. Both are
+compared as `<host>/<path>` in lower case, without a user, a port, a
+trailing `/` or `.git`, so the HTTPS and the SSH form of one repository are
+the same. A framework-only check is skipped only on a positive "not the
+template": `template.conf` names a URL, the origin is a URL, and they
+differ. With no `template.conf`, no `repository:`, a local path on either
+side, or no or an unreadable origin, it runs.
+
+**A skip is explicit.** The summary shows one line per skipped check, with
+the reason:
+
+```text
+SKIP  adopted-project (framework-only): this repository (github.com/owner/project) is not the template that .agents/template.conf names (github.com/taspinar/agent-codeyard); it tests the template itself and runs there; --framework-checks runs it here
+```
+
+The record of the pass says `framework-checks: skipped` next to
+`workflow-tests: ran` (`ran` when they ran, `none` when no self-test ran).
+`--reuse` does not take a pass that skipped them for a run that runs them.
+`./scripts/verify.sh --framework-checks` runs them in any repository, also
+with `--all`, `--only`, and `--changed`: before a project proposes a change
+of the workflow upstream, or to reproduce a failure of the template's CI.
+
+**In CI** nothing changes in the template. In a project the job
+`group-adopted-project` still runs: its `verify.sh --all --only
+adopted-project` prints the `SKIP` line and passes, so the job succeeds, and
+`check-ci-groups.sh --results` in the aggregate `verify` passes as for any
+group. A group job is never skipped by a condition of the workflow: a
+skipped group job still fails the aggregate check, and the reason belongs in
+the job's log. `tests/template-repository-test.sh` runs the predicate, the
+skip, the record, the option, the step `scope`, and the group job of
+`ci.yml` with `check-ci-groups.sh --results`.
+
+**Three layers.** The checks of a project fall into three layers, each with
+its own responsibility:
+
+- *Framework regression*, in the template only: the framework-only
+  self-tests. They show that the template works in any project before it is
+  released.
+- *Project integration*: the direct self-tests, on the project's real state
+  (its policies, its `template.conf`, its CI, its edits). They show that
+  this project's copy of the workflow works here.
+- *Application checks*: the project's own checks of `scripts/verify.conf`.
+
+When each runs, in a project unless the row says otherwise:
+
+| Situation | Framework regression | Project integration | Application checks |
+|---|---|---|---|
+| An application feature (no workflow file changed) | no | no: `SKIP workflow self-tests` | yes |
+| A sync of the template | no (`SKIP`) | yes: the sync changes workflow files | yes |
+| The adoption | no (`SKIP`): `template.conf` names the template, the origin is the project | yes: the workflow files are new | yes |
+| A change of configuration under `paths:` (`.agents/policies`, `template.conf`, `.github/workflows`) | no (`SKIP`) | yes | yes |
+| A change of `scripts/verify.conf` only | no | no: it is not a workflow file | yes |
+| Custom edits of workflow code | no (`SKIP`); `--framework-checks` before proposing them upstream | yes | yes |
+| Push to `main` and the nightly run | no (`SKIP`) | yes (`--all`) | yes |
+| An unknown origin (no `template.conf`, a local path, no or an unreadable origin) | yes, whenever the self-tests run | as the event decides | yes |
+| The template itself | yes, whenever the self-tests run | yes | yes |
 
 ## Configuring agents
 

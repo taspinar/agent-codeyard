@@ -48,6 +48,19 @@ records_arguments=("$@")
 # 127, the statuses of 'timeout' and the shell for a command that was not
 # invoked) is a FAIL like any check.
 #
+# A self-test of scripts/verify-workflow.conf may be framework-only:
+# '<name> [<group>] framework: <command>'. It tests the template as the
+# framework, not the project that uses it, and runs only in the template
+# itself. Outside it, decided by scripts/lib/template-repository.sh (the
+# predicate that the job 'scope' of .github/workflows/ci.yml uses too), it
+# is skipped with a SKIP line that gives the reason, and the record of the
+# pass says 'framework-checks: skipped'. It is skipped only when the
+# repository is positively not the template: .agents/template.conf names
+# the template by a URL and the origin is another one. Without
+# template.conf, with a local path, or with no or an unreadable origin, it
+# runs. --framework-checks runs it anywhere, as when a project proposes a
+# change of the workflow upstream.
+#
 # Every check is timed. The durations are recorded with the pass and in the
 # run record (lib/verification.sh). Each of the two files may declare one
 # 'budget-seconds: <n>': the target for the duration of all of its checks
@@ -125,13 +138,13 @@ baseline_file="$root/$baseline_relative"
 accepted_lists_relative=".agents/accepted-failures"
 
 comment_pattern='^[[:space:]]*(#.*)?$'
-check_pattern='^([a-z0-9][a-z0-9-]*)([[:space:]]*\[([a-z0-9][a-z0-9-]*)\])?([[:space:]]+partition[[:space:]]+([^[:space:]:]+))?([[:space:]]+budget)?:[[:space:]]*(.*[^[:space:]])[[:space:]]*$'
+check_pattern='^([a-z0-9][a-z0-9-]*)([[:space:]]*\[([a-z0-9][a-z0-9-]*)\])?([[:space:]]+partition[[:space:]]+([^[:space:]:]+))?([[:space:]]+budget)?([[:space:]]+framework)?:[[:space:]]*(.*[^[:space:]])[[:space:]]*$'
 default_group="default"
 
 usage() {
-  echo "Usage: $0 [--all] [--reuse]"
-  echo "       $0 [--all] --only <group>[,<group>...]"
-  echo "       $0 --changed"
+  echo "Usage: $0 [--all] [--reuse] [--framework-checks]"
+  echo "       $0 [--all] [--framework-checks] --only <group>[,<group>...]"
+  echo "       $0 [--framework-checks] --changed"
   echo "       $0 --baseline"
   echo "       $0 --groups"
   echo "       $0 --partitions"
@@ -157,6 +170,11 @@ usage() {
   echo "as '<name> [<group>]: <command>'; one without a group is in 'default'."
   echo "A partial run records nothing and cannot be combined with --reuse: only"
   echo "a run of every check verifies the content."
+  echo
+  echo "A self-test declared as '<name> [<group>] framework: <command>' in"
+  echo "scripts/verify-workflow.conf is framework-only: it runs in the template, and"
+  echo "is skipped with a SKIP line in a repository whose origin is not the template"
+  echo "that .agents/template.conf names. --framework-checks runs it anywhere."
   echo
   echo "--groups prints the groups that have a check, one per line."
   echo
@@ -218,7 +236,7 @@ usage() {
 
 config_fail() {
   echo "Error: $*" >&2
-  echo "Declare required checks as '<name>: <command>', '<name> [<group>]: <command>', '<name> [<group>] partition <file>: <command>', or '<name> [<group>] budget: <command>', a target for their duration as 'budget-seconds: <n>', the number of checks at a time as 'parallel: <n>' (scripts/verify.conf only), and the checks that need the machine to themselves as 'heavy: <check>...'." >&2
+  echo "Declare required checks as '<name>: <command>', '<name> [<group>]: <command>', '<name> [<group>] partition <file>: <command>', or '<name> [<group>] budget: <command>' (a self-test of scripts/verify-workflow.conf may add 'framework' before the colon), a target for their duration as 'budget-seconds: <n>', the number of checks at a time as 'parallel: <n>' (scripts/verify.conf only), and the checks that need the machine to themselves as 'heavy: <check>...'." >&2
   exit 1
 }
 
@@ -230,11 +248,13 @@ only=""
 partial=0
 changed_mode=0
 baseline_mode=0
+force_framework=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --all) run_all=1 ;;
     --baseline) baseline_mode=1 ;;
     --reuse) reuse=1 ;;
+    --framework-checks) force_framework=1 ;;
     --groups) list_groups=1 ;;
     --partitions)
       list_groups=1
@@ -262,10 +282,10 @@ if [[ "$partial" -eq 1 && "$reuse" -eq 1 ]]; then
   echo "Error: --only and --changed cannot be combined with --reuse: a partial run is not a verification, so there is nothing to reuse." >&2
   exit 1
 fi
-if [[ "$list_groups" -eq 1 && ( "$partial" -eq 1 || "$reuse" -eq 1 || "$run_all" -eq 1 ) ]]; then
+if [[ "$list_groups" -eq 1 && ( "$partial" -eq 1 || "$reuse" -eq 1 || "$run_all" -eq 1 || "$force_framework" -eq 1 ) ]]; then
   usage
 fi
-if [[ "$baseline_mode" -eq 1 && ( "$partial" -eq 1 || "$reuse" -eq 1 || "$run_all" -eq 1 || "$list_groups" -eq 1 ) ]]; then
+if [[ "$baseline_mode" -eq 1 && ( "$partial" -eq 1 || "$reuse" -eq 1 || "$run_all" -eq 1 || "$list_groups" -eq 1 || "$force_framework" -eq 1 ) ]]; then
   echo "Error: --baseline runs every check of scripts/verify.conf on its own; it takes no other option." >&2
   exit 1
 fi
@@ -404,6 +424,7 @@ commands=()
 groups=()
 partitions=()
 budgets=()
+frameworks=()
 workflow_paths=""
 budget_seconds=""
 project_budget_seconds=""
@@ -428,7 +449,9 @@ completed_status() {
 
 # load_checks <file> <paths-entry>
 # Appends the checks of <file> to names, commands, groups, partitions (the
-# declared partition file, or empty), and budgets ('yes' for a budget check). With <paths-entry> 'yes', the reserved entry 'paths:'
+# declared partition file, or empty), budgets ('yes' for a budget check), and
+# frameworks ('yes' for a framework-only self-test, which only
+# scripts/verify-workflow.conf may declare). With <paths-entry> 'yes', the reserved entry 'paths:'
 # sets workflow_paths instead of declaring a check. The reserved entry
 # 'budget-seconds:' sets budget_seconds, the target for the duration of the
 # checks of <file>. The reserved entry 'heavy:' sets heavy to 'yes' for the
@@ -451,6 +474,7 @@ load_checks() {
   local group
   local partition
   local budget
+  local framework
   local value
   local existing
   local scope
@@ -473,7 +497,17 @@ load_checks() {
     group="${BASH_REMATCH[3]}"
     partition="${BASH_REMATCH[5]}"
     budget="${BASH_REMATCH[6]:+yes}"
-    value="${BASH_REMATCH[7]}"
+    framework="${BASH_REMATCH[7]:+yes}"
+    value="${BASH_REMATCH[8]}"
+    if [[ -n "$framework" ]]; then
+      [[ "$paths_entry" == "yes" ]] ||
+        config_fail "'framework' marks a self-test of scripts/verify-workflow.conf that runs only in the template; a check of $label is the project's own and always runs, on line $line_number of $label."
+      case "$name" in
+        paths | budget-seconds | accepted-failure | parallel | heavy)
+          config_fail "'$name' is not a check and cannot be framework-only, on line $line_number of $label."
+          ;;
+      esac
+    fi
     if [[ "$paths_entry" == "yes" && "$name" == "paths" ]]; then
       [[ -z "$group" ]] || config_fail "'paths' takes no group on line $line_number of $label."
       [[ -z "$partition" ]] || config_fail "'paths' is not a check and declares no partition, on line $line_number of $label."
@@ -565,6 +599,7 @@ load_checks() {
     groups+=("${group:-$default_group}")
     partitions+=("$partition")
     budgets+=("${budget:-no}")
+    frameworks+=("${framework:-no}")
     heavy+=(no)
   done <"$file"
 
@@ -858,16 +893,25 @@ select_changed_tests() {
   fi
 }
 
-# skipped_check <index>
+# partial_skipped <index>
 # Succeeds when a partial run leaves out the check <index>: one outside the
 # groups of --only, or a self-test that --changed does not select.
-skipped_check() {
+partial_skipped() {
   [[ "$partial" -eq 1 ]] || return 1
   if [[ "$changed_mode" -eq 1 ]]; then
     [[ "$1" -ge "$project_count" && "${selected_tests[$1]:-}" != "yes" ]]
   else
     ! in_list "${groups[$1]}" "$only"
   fi
+}
+
+# skipped_check <index>
+# Succeeds when this run leaves out the check <index>: a partial run
+# (partial_skipped), or a framework-only self-test outside the template
+# (framework_skipped).
+framework_skipped=()
+skipped_check() {
+  partial_skipped "$1" || [[ "${framework_skipped[$1]:-}" == "yes" ]]
 }
 
 [[ "$list_groups" -eq 1 ]] || echo "== Agentic project verification =="
@@ -983,6 +1027,48 @@ if [[ -f "$workflow_config" ]]; then
   fi
 fi
 
+# The framework-only self-tests: whether this repository is the template
+# (scripts/lib/template-repository.sh). They are left out only when it is
+# positively not the template; a doubt runs them, and so does
+# --framework-checks. framework_state is what the record of a pass says of
+# them: 'ran', 'skipped', or 'none' (no such check, or no self-test ran).
+framework_state="none"
+framework_lines=()
+framework_reason=""
+if [[ "$list_groups" -eq 0 && "${#names[@]}" -gt "$project_count" && -z "$workflow_skipped" ]]; then
+  framework_count=0
+  for ((index = project_count; index < ${#names[@]}; index++)); do
+    [[ "${frameworks[$index]}" == "yes" ]] || continue
+    partial_skipped "$index" || framework_count=$((framework_count + 1))
+  done
+  if [[ "$framework_count" -gt 0 ]]; then
+    framework_state="ran"
+    framework_role="unknown"
+    if [[ "$force_framework" -eq 1 ]]; then
+      framework_reason="--framework-checks runs them in any repository"
+    elif [[ -f "$root/scripts/lib/template-repository.sh" ]]; then
+      source "$root/scripts/lib/template-repository.sh"
+      {
+        IFS= read -r framework_role
+        IFS= read -r framework_reason
+      } < <(template_repository_role "$root" || true)
+    else
+      framework_reason="scripts/lib/template-repository.sh is missing, so the template cannot be told"
+    fi
+    if [[ "$framework_role" == "project" ]]; then
+      framework_state="skipped"
+      for ((index = project_count; index < ${#names[@]}; index++)); do
+        [[ "${frameworks[$index]}" == "yes" ]] || continue
+        partial_skipped "$index" && continue
+        framework_skipped[$index]=yes
+        framework_lines+=("SKIP  ${names[$index]} (framework-only): $framework_reason; it tests the template itself and runs there; --framework-checks runs it here")
+      done
+    else
+      workflow_note+="; the framework-only self-tests run: ${framework_reason:-the template cannot be told}"
+    fi
+  fi
+fi
+
 # The groups that have a check, in the order of their first check.
 known_groups=""
 for group in "${groups[@]}"; do
@@ -1017,6 +1103,13 @@ if [[ "$recordable" -eq 1 && "$reuse" -eq 1 && -n "$tree_before" &&
   "$(verification_field "$root" tree)" == "$tree_before" ]]; then
   reuse_candidate=1
   recorded_workflow="$(verification_field "$root" workflow-tests)"
+  # A pass that left out the framework-only self-tests does not stand in for
+  # a run that runs them.
+  if [[ "$(verification_field "$root" framework-checks)" == "skipped" && "$framework_state" == "ran" ]]; then
+    reuse_candidate=0
+    echo
+    echo "A pass is recorded for this content, but it skipped the framework-only self-tests, which this run runs; every check runs."
+  fi
 fi
 
 # The preflight (scripts/lib/environment.sh): the general prerequisites of the
@@ -1889,6 +1982,7 @@ echo
 echo "== Verification summary =="
 [[ "${#results[@]}" -eq 0 ]] || printf '%s\n' "${results[@]}"
 [[ -z "$workflow_skipped" ]] || echo "$workflow_skipped"
+[[ "${#framework_lines[@]}" -eq 0 ]] || printf '%s\n' "${framework_lines[@]}"
 if [[ "$duration_exceeded" -gt 0 ]]; then
   echo "The checks took longer than the target of 'budget-seconds' (BUDGET): a measurement, not a failure. The owner decides whether to change the target or the checks; nothing repairs it automatically."
 fi
@@ -1968,7 +2062,8 @@ if [[ "$recordable" -eq 1 ]]; then
     else
       workflow_state="ran"
     fi
-    verification_write "$root" "$tree_before" "$workflow_state" "$budgets_file" "$durations_file" ||
+    [[ "$workflow_state" == "ran" ]] || framework_state="none"
+    verification_write "$root" "$tree_before" "$workflow_state" "$budgets_file" "$durations_file" "$framework_state" ||
       echo "Warning: could not record the passed verification." >&2
   else
     verification_forget "$root"
