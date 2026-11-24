@@ -3,8 +3,7 @@ on:
   pull_request:
   push:
     branches: [main]
-  schedule:
-    - cron: '17 3 * * *'
+  workflow_dispatch:
 
 # The GITHUB_TOKEN of every job is read-only, whatever the repository's
 # default workflow permissions are: contents for the checkout, packages for a
@@ -18,17 +17,21 @@ permissions:
   packages: read
 
 # The workflow self-tests (scripts/verify-workflow.conf) take far longer than
-# most projects' own checks. The template runs them on every pull request. A
-# project runs them on a pull request only when it changes a workflow file
-# (verify.sh without --all decides; a sync of the template changes them), and
-# always on main and every night. The template is the repository that
-# .agents/template.conf names under 'repository:'; it needs no nightly run.
-# The job 'scope' tells them apart with scripts/lib/template-repository.sh,
-# the predicate with which ./scripts/verify.sh skips the framework-only
-# self-tests outside the template: in a project, the job of such a group
-# runs, and its verify.sh ends with a SKIP line that gives the reason, so the
-# job succeeds and the aggregate 'verify' passes (docs/development.md,
-# "Framework-only self-tests").
+# most projects' own checks. The template runs them on every pull request and
+# every push. A project runs them on a pull request, and on a push to main,
+# only when a workflow file changed since the base of the pull request or the
+# commit before the push (a sync of the template changes them), and runs
+# everything when that commit cannot be determined (a first or a forced
+# push). There is no nightly run: a run started by hand (workflow_dispatch)
+# runs everything, in the template and in a project. The template is the
+# repository that .agents/template.conf names under 'repository:'. The job
+# 'scope' tells them apart with scripts/lib/template-repository.sh, the
+# predicate with which ./scripts/verify.sh skips the framework-only
+# self-tests outside the template, and names the group jobs that have
+# nothing to run, which then do not start: the groups of self-tests when no
+# workflow file changed, and in a project the groups whose self-tests are
+# all framework-only. The aggregate 'verify' accepts exactly those skips
+# (docs/development.md, "Workflow self-tests").
 #
 # The checks run in parallel jobs, one per group of checks
 # (docs/development.md, "A parallel CI"): 'group-<group>' declares its group
@@ -46,21 +49,35 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       verify: ${{ steps.scope.outputs.verify }}
+      skip: ${{ steps.scope.outputs.skip }}
     steps:
+      # The history without the file contents: the step compares commits,
+      # and reads only the files it checks out.
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
+          filter: blob:none
           sparse-checkout: |
             .agents/template.conf
             scripts/lib/template-repository.sh
+            scripts/verify.conf
+            scripts/verify-workflow.conf
           sparse-checkout-cone-mode: false
       - name: Decide which checks run
         id: scope
         env:
           EVENT: ${{ github.event_name }}
           REPOSITORY: ${{ github.server_url }}/${{ github.repository }}
+          # The commit to compare with: the one before a push, the base of a
+          # pull request; empty on any other event.
+          BASE: ${{ github.event_name == 'push' && github.event.before || github.event.pull_request.base.sha }}
         run: |
-          # verify: 'all' (--all), 'changed' (the self-tests only when a
-          # workflow file changed), or 'none' (nothing to run).
+          # verify: 'all' (--all) or 'changed' (without --all, only when
+          # no workflow file changed). This step decides, not verify.sh,
+          # which compares with the project's base branch and not with
+          # BASE: with a workflow change, or when it cannot tell, the
+          # group jobs run with --all. skip: the group jobs that do not
+          # start, as ' group-<group> ... ', for the aggregate 'verify'.
           # The template: the predicate that verify.sh uses for the
           # framework-only self-tests, with the repository of the run.
           role=unknown
@@ -69,15 +86,60 @@ jobs:
             role="$(template_repository_role . "$REPOSITORY")"
             role="${role%%$'\n'*}"
           fi
+          # workflow: whether a file under paths: of
+          # scripts/verify-workflow.conf differs between BASE and HEAD:
+          # yes, no, or unknown. Unknown without BASE, with the zeros of a
+          # first push, and with a BASE that is not an ancestor of HEAD,
+          # as after a forced push.
+          workflow=unknown
+          paths=""
+          if [[ -f scripts/verify-workflow.conf ]]; then
+            paths="$(sed -n '/^paths:/{s/^paths:[[:space:]]*//p;q;}' scripts/verify-workflow.conf)"
+          fi
+          if [[ -n "$paths" && "${BASE:-}" =~ ^[0-9a-f]{40,64}$ && "$BASE" =~ [1-9a-f] ]] &&
+            git merge-base --is-ancestor "$BASE" HEAD 2>/dev/null; then
+            read -r -a specs <<<"$paths"
+            if changed="$(git diff --no-renames --name-only "$BASE" HEAD -- "${specs[@]}")"; then
+              if [[ -n "$changed" ]]; then workflow=yes; else workflow=no; fi
+            fi
+          fi
+          # self_tests: whether the self-tests can run at all.
           if [[ "$role" == template ]]; then
-            if [[ "$EVENT" == schedule ]]; then verify=none; else verify=all; fi
-          elif [[ "$EVENT" == pull_request ]]; then
-            verify=changed
+            verify=all self_tests=run
+          elif [[ ( "$EVENT" == pull_request || "$EVENT" == push ) && "$workflow" == no ]]; then
+            verify=changed self_tests=skip
           else
-            verify=all
+            verify=all self_tests=run
+          fi
+          # A group of the self-tests does not start when they cannot run,
+          # nor in a project when all its self-tests are framework-only. A
+          # group that has a check of scripts/verify.conf, or 'default',
+          # always starts.
+          skip=" "
+          if [[ -f scripts/verify-workflow.conf ]]; then
+            pattern='^[a-z0-9][a-z0-9-]*[[:space:]]*\[([a-z0-9][a-z0-9-]*)\]([[:space:]]+partition[[:space:]]+[^[:space:]:]+)?([[:space:]]+budget)?([[:space:]]+framework)?:'
+            declare -A own=() tests=() plain=()
+            if [[ -f scripts/verify.conf ]]; then
+              while IFS= read -r line || [[ -n "$line" ]]; do
+                [[ ! "$line" =~ $pattern ]] || own[${BASH_REMATCH[1]}]=1
+              done <scripts/verify.conf
+            fi
+            while IFS= read -r line || [[ -n "$line" ]]; do
+              [[ "$line" =~ $pattern ]] || continue
+              tests[${BASH_REMATCH[1]}]=1
+              [[ -n "${BASH_REMATCH[4]}" ]] || plain[${BASH_REMATCH[1]}]=1
+            done <scripts/verify-workflow.conf
+            for group in $(printf '%s\n' "${!tests[@]}" | sort); do
+              [[ "$group" != default && -z "${own[$group]:-}" ]] || continue
+              if [[ "$self_tests" == skip || ( "$role" == project && -z "${plain[$group]:-}" ) ]]; then
+                skip+="group-$group "
+              fi
+            done
           fi
           echo "verify=$verify" >>"$GITHUB_OUTPUT"
-          echo "Verification scope: $verify"
+          echo "skip=$skip" >>"$GITHUB_OUTPUT"
+          echo "Verification scope: $verify (workflow files changed: $workflow)"
+          echo "Group jobs that do not start:${skip% }"
 
   # The mapping of the groups onto the jobs of this file, as the jobs declare
   # it: every group of ./scripts/verify.sh --groups has exactly one job
@@ -95,8 +157,8 @@ jobs:
   group-default:
     needs: scope
     # Runs also when the scope could not be decided, then with --all; only
-    # a cancelled run or the scope 'none' skips it.
-    if: ${{ !cancelled() && needs.scope.outputs.verify != 'none' }}
+    # a cancelled run skips it.
+    if: ${{ !cancelled() }}
     env:
       VERIFY_GROUP: default
     runs-on: ubuntu-latest
@@ -158,9 +220,10 @@ jobs:
   # (scripts/verify-workflow.conf).
   group-adopted-project:
     needs: scope
-    # Runs also when the scope could not be decided, then with --all; only
-    # a cancelled run or the scope 'none' skips it.
-    if: ${{ !cancelled() && needs.scope.outputs.verify != 'none' }}
+    # Runs also when the scope could not be decided, then with --all; a
+    # cancelled run skips it, and so does the scope when the group has
+    # nothing to run.
+    if: ${{ !cancelled() && !contains(needs.scope.outputs.skip, ' group-adopted-project ') }}
     env:
       VERIFY_GROUP: adopted-project
     runs-on: ubuntu-latest
@@ -191,9 +254,10 @@ jobs:
 
   group-self-tests-1:
     needs: scope
-    # Runs also when the scope could not be decided, then with --all; only
-    # a cancelled run or the scope 'none' skips it.
-    if: ${{ !cancelled() && needs.scope.outputs.verify != 'none' }}
+    # Runs also when the scope could not be decided, then with --all; a
+    # cancelled run skips it, and so does the scope when the group has
+    # nothing to run.
+    if: ${{ !cancelled() && !contains(needs.scope.outputs.skip, ' group-self-tests-1 ') }}
     env:
       VERIFY_GROUP: self-tests-1
     runs-on: ubuntu-latest
@@ -224,9 +288,10 @@ jobs:
 
   group-self-tests-2:
     needs: scope
-    # Runs also when the scope could not be decided, then with --all; only
-    # a cancelled run or the scope 'none' skips it.
-    if: ${{ !cancelled() && needs.scope.outputs.verify != 'none' }}
+    # Runs also when the scope could not be decided, then with --all; a
+    # cancelled run skips it, and so does the scope when the group has
+    # nothing to run.
+    if: ${{ !cancelled() && !contains(needs.scope.outputs.skip, ' group-self-tests-2 ') }}
     env:
       VERIFY_GROUP: self-tests-2
     runs-on: ubuntu-latest
@@ -257,9 +322,10 @@ jobs:
 
   group-self-tests-3:
     needs: scope
-    # Runs also when the scope could not be decided, then with --all; only
-    # a cancelled run or the scope 'none' skips it.
-    if: ${{ !cancelled() && needs.scope.outputs.verify != 'none' }}
+    # Runs also when the scope could not be decided, then with --all; a
+    # cancelled run skips it, and so does the scope when the group has
+    # nothing to run.
+    if: ${{ !cancelled() && !contains(needs.scope.outputs.skip, ' group-self-tests-3 ') }}
     env:
       VERIFY_GROUP: self-tests-3
     runs-on: ubuntu-latest
@@ -292,9 +358,7 @@ jobs:
   # failed, was cancelled, or was skipped: a skipped required check counts as
   # passed in a branch protection, so it must never be skipped itself. It
   # fails unless every job it needs succeeded and every group has its job
-  # here. The only run without group jobs is the template's nightly run, the
-  # scope 'none' on a schedule, which has nothing to verify and passes; the
-  # scope 'none' on any other event fails like a skipped group job.
+  # here; a group job may be skipped only when the job 'scope' named it.
   verify:
     if: always()
     needs: [scope, mapping, group-default, group-adopted-project, group-self-tests-1, group-self-tests-2, group-self-tests-3]
@@ -303,12 +367,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check that every required job succeeded
         env:
-          EVENT: ${{ github.event_name }}
-          SCOPE: ${{ needs.scope.outputs.verify }}
           NEEDS: ${{ toJSON(needs) }}
         run: |
-          if [[ "$SCOPE" == none && "$EVENT" == schedule ]]; then
-            echo "Verification scope: none on the nightly run of the template; nothing to verify."
-            exit 0
-          fi
-          ./scripts/check-ci-groups.sh --results "$NEEDS"
+          ./scripts/check-ci-groups.sh --results "$NEEDS" --scope scope

@@ -571,6 +571,11 @@ ci_condition_true() {
   expression="${expression//always()/1}"
   expression="${expression//success()/1}"
   expression="${expression//cancelled()/0}"
+  while [[ "$expression" =~ contains\(\'([^\']*)\',[[:space:]]*\'([^\']*)\'\) ]]; do
+    equal=0
+    [[ "${BASH_REMATCH[1]}" != *"${BASH_REMATCH[2]}"* ]] || equal=1
+    expression="${expression/"${BASH_REMATCH[0]}"/$equal}"
+  done
   while [[ "$expression" =~ \'([^\']*)\'[[:space:]]*(==|!=)[[:space:]]*\'([^\']*)\' ]]; do
     equal=0
     [[ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[3]}" ]] || equal=1
@@ -666,53 +671,152 @@ ci_jobs() {
   ' "$1"
 }
 
-# The workflow self-tests: a project runs them on a pull request only when a
-# workflow file changed, and always on main and every night; the template
-# runs them on every pull request and needs no nightly run (Issue 395).
+# The workflow self-tests: a project runs them on a pull request and on a
+# push to main only when a workflow file changed since the base of the pull
+# request or the commit before the push, and everything when that commit
+# cannot be determined; the template runs them on every event; there is no
+# nightly run, and a run by hand runs everything (Issues 395 and 408).
 # A project's own CI that does not run verify.sh is not the template's.
 if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
   scope_script="$(ci_step_script "$ci_workflow" 'id: scope')"
   [[ -n "$scope_script" ]] || fail "ci.yml has no step 'scope' that decides which checks run"
-  mkdir -p "$tmp/ci-scope/template/.agents" "$tmp/ci-scope/project/.agents" "$tmp/ci-scope/bare"
-  printf 'repository: https://github.com/Owner/Template.git\n\npaths: scripts\n' >"$tmp/ci-scope/template/.agents/template.conf"
-  printf 'repository: https://github.com/owner/template\n\npaths: scripts\ncommit: 0123\n' >"$tmp/ci-scope/project/.agents/template.conf"
-  # The predicate of the scope, which its sparse checkout brings.
-  for checkout in template project bare; do
-    mkdir -p "$tmp/ci-scope/$checkout/scripts/lib"
-    cp "$source_root/scripts/lib/template-repository.sh" "$tmp/ci-scope/$checkout/scripts/lib/"
-  done
-
-  # ci_scope <checkout> <repository> <event>: the scope the step decides.
-  ci_scope() {
-    : >"$tmp/ci-scope/output"
-    (cd "$tmp/ci-scope/$1" && EVENT="$3" REPOSITORY="https://github.com/$2" GITHUB_OUTPUT="$tmp/ci-scope/output" \
-      bash -euo pipefail -c "$scope_script") >/dev/null || fail "the scope step of ci.yml failed in $1 on $3"
-    sed -n 's/^verify=//p' "$tmp/ci-scope/output"
+  # The checkouts, each a repository with the commit 'base' and three
+  # children: main changes the application, workflow-change a workflow file,
+  # and replaced, which main replaced in a forced push, the application.
+  # The groups of the self-tests: fw only framework-only, tests-a mixed,
+  # tests-b plain; 'own' has a check of the project's own in tests-b.
+  scope_workflow_conf=$'paths: scripts .github/workflows\n\nfw [fw] framework: true\none [tests-a]: true\ntwo [tests-a] framework: true\nthree [tests-b] budget: true\nplain: true'
+  # scope_checkout <name> <template.conf or -> <verify-workflow.conf> <verify.conf>
+  scope_checkout() {
+    local dir="$tmp/ci-scope/$1"
+    mkdir -p "$dir/.agents" "$dir/scripts/lib" "$dir/src" "$dir/.github/workflows"
+    [[ "$2" == - ]] || printf '%s\n' "$2" >"$dir/.agents/template.conf"
+    cp "$source_root/scripts/lib/template-repository.sh" "$dir/scripts/lib/"
+    printf '%s\n' "$3" >"$dir/scripts/verify-workflow.conf"
+    printf '%s\n' "$4" >"$dir/scripts/verify.conf"
+    printf 'one\n' >"$dir/src/app.txt"
+    printf 'name: ci\n' >"$dir/.github/workflows/ci.yml"
+    git -C "$dir" init -q -b main
+    commit_all "$dir" "Base"
+    git -C "$dir" tag base
+    git -C "$dir" checkout -q -b workflow-change
+    printf 'name: changed\n' >"$dir/.github/workflows/ci.yml"
+    commit_all "$dir" "Change a workflow file"
+    # The main that a forced push replaced: the same workflow files.
+    git -C "$dir" checkout -q -b replaced base
+    printf 'replaced\n' >"$dir/src/app.txt"
+    commit_all "$dir" "Change the application differently"
+    git -C "$dir" checkout -q main
+    printf 'two\n' >"$dir/src/app.txt"
+    commit_all "$dir" "Change the application"
   }
+  template_conf=$'repository: https://github.com/Owner/Template.git\n\npaths: scripts'
+  project_conf=$'repository: https://github.com/owner/template\n\npaths: scripts\ncommit: 0123'
+  scope_checkout template "$template_conf" "$scope_workflow_conf" 'lint: true'
+  scope_checkout project "$project_conf" "$scope_workflow_conf" 'lint: true'
+  scope_checkout own "$project_conf" "$scope_workflow_conf" $'lint: true\nslow [tests-b]: true'
+  scope_checkout bare - "$scope_workflow_conf" 'lint: true'
+  # The template's own self-tests in a project without groups of its own.
+  scope_checkout real "$project_conf" "$(cat "$source_root/scripts/verify-workflow.conf")" 'lint: true'
+
+  # ci_scope <checkout> <repository> <event> <head> <base>: the scope the
+  # step decides, as '<verify>|<skip>'. <head> is the branch checked out,
+  # <base> a commit, 'zeros', 'missing' (a commit the
+  # repository does not have), or empty.
+  ci_scope() {
+    local dir="$tmp/ci-scope/$1" base="$5"
+    git -C "$dir" checkout -q "$4"
+    case "$base" in
+      zeros) base=0000000000000000000000000000000000000000 ;;
+      missing) base="$(git -C "$dir" hash-object --stdin <<<'not a commit of the repository')" ;;
+      ?*) base="$(git -C "$dir" rev-parse "$base")" ;;
+    esac
+    : >"$tmp/ci-scope/output"
+    (cd "$dir" && EVENT="$3" REPOSITORY="https://github.com/$2" BASE="$base" GITHUB_OUTPUT="$tmp/ci-scope/output" \
+      bash -euo pipefail -c "$scope_script") >/dev/null || fail "the scope step of ci.yml failed in $1 on $3"
+    printf '%s|%s\n' "$(sed -n 's/^verify=//p' "$tmp/ci-scope/output")" "$(sed -n 's/^skip=//p' "$tmp/ci-scope/output")"
+  }
+  # expect_scope <checkout> <repository> <event> <head> <base> <verify> <skip>
   expect_scope() {
     local actual
-    actual="$(ci_scope "$1" "$2" "$3")"
-    [[ "$actual" == "$4" ]] || fail "ci.yml decides '$actual' for $1 on $3, expected '$4'"
+    actual="$(ci_scope "$1" "$2" "$3" "$4" "$5")"
+    [[ "$actual" == "$6|$7" ]] ||
+      fail "ci.yml decides '$actual' for $1 on $3 of $4 since '$5', expected '$6|$7'"
   }
-  expect_scope template owner/template pull_request all
-  expect_scope template owner/template push all
-  expect_scope template owner/template schedule none
-  expect_scope project owner/project pull_request changed
-  expect_scope project owner/project push all
-  expect_scope project owner/project schedule all
-  expect_scope bare owner/project pull_request changed
+  all_tests=' group-fw group-tests-a group-tests-b '
+  # The template: everything, on every event.
+  for event in pull_request push workflow_dispatch; do
+    expect_scope template owner/template "$event" main base all ' '
+    expect_scope template owner/template "$event" workflow-change base all ' '
+  done
+  # A project's pull request: no self-test job starts without a workflow
+  # change; with one, and when the base is unknown, the scope decides
+  # 'all', so that verify.sh does not decide again with a base of its own,
+  # and only the framework-only fw does not start.
+  expect_scope project owner/project pull_request main base changed "$all_tests"
+  expect_scope project owner/project pull_request workflow-change base all ' group-fw '
+  expect_scope project owner/project pull_request main '' all ' group-fw '
+  expect_scope project owner/project pull_request main zeros all ' group-fw '
+  expect_scope project owner/project pull_request main replaced all ' group-fw '
+  expect_scope project owner/project pull_request main missing all ' group-fw '
+  # A push to main: as a pull request, compared with the commit before it;
+  # everything when that commit is unknown: no commit, the zeros of a first
+  # push, a commit that is not in the repository, or one that is not an
+  # ancestor after a forced push.
+  expect_scope project owner/project push main base changed "$all_tests"
+  expect_scope project owner/project push workflow-change base all ' group-fw '
+  expect_scope project owner/project push main '' all ' group-fw '
+  expect_scope project owner/project push main zeros all ' group-fw '
+  expect_scope project owner/project push main workflow-change all ' group-fw '
+  expect_scope project owner/project push main replaced all ' group-fw '
+  expect_scope project owner/project push main missing all ' group-fw '
+  # By hand: everything.
+  expect_scope project owner/project workflow_dispatch main '' all ' group-fw '
+  expect_scope project owner/project workflow_dispatch main base all ' group-fw '
+  # A group with a check of the project's own always starts.
+  expect_scope own owner/project pull_request main base changed ' group-fw group-tests-a '
+  expect_scope own owner/project push main base changed ' group-fw group-tests-a '
+  # An unknown role is a project, except that the framework-only self-tests
+  # run, as verify.sh runs them there.
+  expect_scope bare owner/project pull_request main base changed "$all_tests"
+  expect_scope bare owner/project push main base changed "$all_tests"
+  expect_scope bare owner/project pull_request workflow-change base all ' '
+  expect_scope bare owner/project push workflow-change base all ' '
+  expect_scope bare owner/project workflow_dispatch main '' all ' '
+  # With the template's own self-tests: without a workflow change no group
+  # job of the self-tests starts, every one but group-default; with one, all
+  # but the framework-only group-adopted-project.
+  group_jobs="$(ci_jobs "$ci_workflow" group-)"
+  [[ -n "$group_jobs" ]] || fail "ci.yml has no group jobs"
+  real_tests=" $(grep -vx group-default <<<"$group_jobs" | sort | paste -sd ' ' -) "
+  expect_scope real owner/project pull_request main base changed "$real_tests"
+  expect_scope real owner/project push main base changed "$real_tests"
+  expect_scope real owner/project pull_request workflow-change base all ' group-adopted-project '
+  expect_scope real owner/project push workflow-change base all ' group-adopted-project '
+  expect_scope real Owner/Template push main base all ' '
+  grep -Fq 'BASE: ${{ github.event_name == '"'push'"' && github.event.before || github.event.pull_request.base.sha }}' "$ci_workflow" ||
+    fail "the scope step of ci.yml does not compare with the commit before a push or the base of a pull request"
+  scope_job="$(ci_job_block "$ci_workflow" scope)"
+  grep -Fq 'fetch-depth: 0' <<<"$scope_job" ||
+    fail "the job scope of ci.yml checks out without the history it compares with"
+  for file in scripts/verify.conf scripts/verify-workflow.conf; do
+    grep -Eq "^[[:space:]]+$file\$" <<<"$scope_job" ||
+      fail "the sparse checkout of the job scope does not bring $file"
+  done
+  # No nightly run; a run by hand.
+  ! grep -Eq '^[[:space:]]+schedule:' "$ci_workflow" || fail "ci.yml still has a schedule"
+  grep -Eq '^  workflow_dispatch:' "$ci_workflow" || fail "ci.yml cannot be run by hand (workflow_dispatch)"
 
   # The group jobs (Issue 448): each runs verify.sh for the group it
   # declares; only 'changed' leaves out --all, also when the scope job gave
-  # nothing. Each runs unless the scope is 'none', also when the scope job
-  # failed and gave nothing, and checks out the full history: in a shallow
+  # nothing. Each runs unless the scope names it in 'skip', also when the
+  # scope job failed and gave nothing (group-default always), and checks
+  # out the full history: in a shallow
   # clone verify.sh cannot tell which files changed and runs every
   # self-test. A project's own CI without group jobs is not the template's.
   mkdir -p "$tmp/ci-verify/scripts"
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "verify.sh $*" >"%s"\n' "$tmp/ci-verify/ran" >"$tmp/ci-verify/scripts/verify.sh"
   chmod +x "$tmp/ci-verify/scripts/verify.sh"
-  group_jobs="$(ci_jobs "$ci_workflow" group-)"
-  [[ -n "$group_jobs" ]] || fail "ci.yml has no group jobs"
   for job in $group_jobs; do
     ci_job_block "$ci_workflow" "$job" >"$tmp/ci-job.yml"
     group="$(sed -n 's/^      VERIFY_GROUP:[[:space:]]*//p' "$tmp/ci-job.yml")"
@@ -727,16 +831,21 @@ if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
         fail "the verify step of $job ran '$(cat "$tmp/ci-verify/ran" 2>/dev/null)' with the scope '${case%%:*}'"
     done
     verify_condition="$(ci_job_condition "$ci_workflow" "$job")"
-    for scope in all changed ''; do
-      ci_condition_true "$tmp/ci-verify" "${verify_condition//needs.scope.outputs.verify/\'$scope\'}" ||
-        fail "the job $job of ci.yml does not run with the scope '$scope': $verify_condition"
+    others="$(grep -vx -- "$job" <<<"$group_jobs" | paste -sd ' ' -)"
+    for skip in '' ' ' " $others " " x$job ${job}x "; do
+      ci_condition_true "$tmp/ci-verify" "${verify_condition//needs.scope.outputs.skip/\'$skip\'}" ||
+        fail "the job $job of ci.yml does not run when the scope skips '$skip': $verify_condition"
     done
-    ! ci_condition_true "$tmp/ci-verify" "${verify_condition//needs.scope.outputs.verify/\'none\'}" ||
-      fail "the job $job of ci.yml runs with the scope 'none': $verify_condition"
+    if [[ "$job" == group-default ]]; then
+      ci_condition_true "$tmp/ci-verify" "${verify_condition//needs.scope.outputs.skip/\' $job \'}" ||
+        fail "the job $job of ci.yml can be skipped by the scope: $verify_condition"
+    else
+      ! ci_condition_true "$tmp/ci-verify" "${verify_condition//needs.scope.outputs.skip/\' $others $job \'}" ||
+        fail "the job $job of ci.yml runs when the scope skips it: $verify_condition"
+    fi
     grep -Fq 'fetch-depth: 0' "$tmp/ci-job.yml" ||
       fail "the job $job of ci.yml checks out without the history verify.sh compares with"
   done
-  grep -Eq '^[[:space:]]+schedule:' "$ci_workflow" || fail "ci.yml has no schedule for the nightly --all"
 
   # Only the job of the group of the website check sets up Node and the
   # browser and uploads the website reports.
@@ -754,9 +863,8 @@ if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
 
   # The aggregate job 'verify' is the required check: it always runs, needs
   # the scope, the mapping, and every group job, and passes the needs to
-  # check-ci-groups.sh --results, except on the template's nightly run, the
-  # scope 'none' on a schedule. The scope 'none' on any other event goes to
-  # --results, which fails on the skipped group jobs.
+  # check-ci-groups.sh --results with the job 'scope', whose 'skip' names
+  # the group jobs that may be skipped.
   [[ "$(ci_job_condition "$ci_workflow" verify)" == "always()" ]] ||
     fail "the job verify of ci.yml does not run with if: always(): $(ci_job_condition "$ci_workflow" verify)"
   aggregate_needs="$(ci_job_block "$ci_workflow" verify | sed -n 's/^    needs:[[:space:]]*//p')"
@@ -769,23 +877,61 @@ if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
   grep -Fq 'NEEDS: ${{ toJSON(needs) }}' "$tmp/ci-job.yml" || fail "the job verify of ci.yml does not pass toJSON(needs)"
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "check-ci-groups.sh $*" >"%s"\nexit "${CHECK_STATUS:-0}"\n' "$tmp/ci-verify/ran" >"$tmp/ci-verify/scripts/check-ci-groups.sh"
   chmod +x "$tmp/ci-verify/scripts/check-ci-groups.sh"
-  # aggregate <scope> <event> <status of --results>: the exit status of the
-  # step; 'ran' holds the call of check-ci-groups.sh.
+  # aggregate <status of --results>: the exit status of the step; 'ran'
+  # holds the call of check-ci-groups.sh.
   aggregate() {
     rm -f "$tmp/ci-verify/ran"
-    (cd "$tmp/ci-verify" && SCOPE="$1" EVENT="$2" NEEDS='{"needs":1}' CHECK_STATUS="$3" \
-      bash -euo pipefail -c "$aggregate_script") >/dev/null
+    (cd "$tmp/ci-verify" && NEEDS='{"needs":1}' CHECK_STATUS="$1" bash -euo pipefail -c "$aggregate_script") >/dev/null
   }
-  aggregate none schedule 1 || fail "the aggregate of ci.yml fails on the template's nightly run"
-  [[ ! -f "$tmp/ci-verify/ran" ]] || fail "the aggregate of ci.yml checks results on the template's nightly run"
-  for case in "none pull_request" "none push" "all pull_request" "all push" "all schedule" "changed pull_request" " pull_request"; do
-    read -r scope event <<<"$case"
-    [[ -n "$event" ]] || { event="$scope"; scope=""; }
-    aggregate "$scope" "$event" 0 || fail "the aggregate of ci.yml fails with the scope '$scope' on $event when the jobs succeeded"
-    [[ "$(cat "$tmp/ci-verify/ran" 2>/dev/null)" == 'check-ci-groups.sh --results {"needs":1}' ]] ||
-      fail "the aggregate of ci.yml does not check the results with the scope '$scope' on $event: $(cat "$tmp/ci-verify/ran" 2>/dev/null)"
-    ! aggregate "$scope" "$event" 1 || fail "the aggregate of ci.yml passes with the scope '$scope' on $event when a job failed"
-  done
+  aggregate 0 || fail "the aggregate of ci.yml fails when the jobs succeeded"
+  [[ "$(cat "$tmp/ci-verify/ran" 2>/dev/null)" == 'check-ci-groups.sh --results {"needs":1} --scope scope' ]] ||
+    fail "the aggregate of ci.yml does not check the results with the job scope: $(cat "$tmp/ci-verify/ran" 2>/dev/null)"
+  ! aggregate 1 || fail "the aggregate of ci.yml passes when a job failed"
+
+  # The whole chain on a project's pull request with the template's
+  # self-tests: the scope, the conditions of the group jobs, and the
+  # aggregate step with the real check-ci-groups.sh. Without a workflow
+  # change no self-test group job starts, and 'verify' passes; a group job
+  # skipped without the scope naming it, or with a failed scope, fails it.
+  chain="$tmp/ci-chain"
+  mkdir -p "$chain/scripts"
+  cp "$source_root/scripts/verify.sh" "$source_root/scripts/check-ci-groups.sh" "$source_root/scripts/verify-workflow.conf" "$chain/scripts/"
+  printf 'lint: true\n' >"$chain/scripts/verify.conf"
+  # chain_needs <event> <head>: the needs of 'verify' as GitHub gives them.
+  chain_needs() {
+    local decision verify skip job condition result needs
+    decision="$(ci_scope real owner/project "$1" "$2" base)"
+    verify="${decision%%|*}" skip="${decision#*|}"
+    needs="$(jq -cn --arg verify "$verify" --arg skip "$skip" '{scope: {result: "success", outputs: {verify: $verify, skip: $skip}}, mapping: {result: "success", outputs: {}}}')"
+    for job in $group_jobs; do
+      condition="$(ci_job_condition "$ci_workflow" "$job")"
+      result=skipped
+      ! ci_condition_true "$tmp/ci-verify" "${condition//needs.scope.outputs.skip/\'$skip\'}" || result=success
+      needs="$(jq -c --arg job "$job" --arg result "$result" '.[$job] = {result: $result, outputs: {}}' <<<"$needs")"
+    done
+    printf '%s\n' "$needs"
+  }
+  # chain_verify <needs>: the aggregate step, with its output in chain.out.
+  chain_verify() {
+    (cd "$chain" && NEEDS="$1" bash -euo pipefail -c "$aggregate_script") >"$chain.out" 2>&1
+  }
+  needs="$(chain_needs pull_request main)"
+  [[ "$(jq -r '[to_entries[] | select(.key | startswith("group-")) | select(.value.result == "success") | .key] | join(" ")' <<<"$needs")" == group-default ]] ||
+    fail "a project's pull request without a workflow change starts group jobs of the self-tests: $needs"
+  chain_verify "$needs" || fail "the aggregate fails on a project's pull request without a workflow change: $(cat "$chain.out")"
+  grep -Fq "PASS  every required job succeeded" "$chain.out" || fail "the aggregate did not pass: $(cat "$chain.out")"
+  ! chain_verify "$(jq -c '.scope.outputs.skip = " "' <<<"$needs")" ||
+    fail "the aggregate passes with group jobs that were skipped without the scope naming them"
+  grep -Fq "the job group-self-tests-1 ended with 'skipped'" "$chain.out" || fail "the aggregate does not name the skipped group job: $(cat "$chain.out")"
+  ! chain_verify "$(jq -c '.scope.result = "failure"' <<<"$needs")" ||
+    fail "the aggregate passes with skipped group jobs after the scope failed"
+  # With a workflow change only the framework-only group job is skipped, and
+  # the others pass; the same on a push.
+  needs="$(chain_needs pull_request workflow-change)"
+  [[ "$(jq -r '[to_entries[] | select(.value.result == "skipped") | .key] | join(" ")' <<<"$needs")" == group-adopted-project ]] ||
+    fail "a project's pull request with a workflow change skips other group jobs: $needs"
+  chain_verify "$needs" || fail "the aggregate fails on a project's pull request with a workflow change: $(cat "$chain.out")"
+  chain_verify "$(chain_needs push main)" || fail "the aggregate fails on a project's push without a workflow change: $(cat "$chain.out")"
 
   # The token is read-only whatever the repository's default (Issue 435):
   # the top level grants contents and packages read and nothing else, and no
@@ -903,6 +1049,76 @@ for file in .github/workflows/ci.yml .github/workflows/guardrails.yml .github/wo
 done
 # In a shallow checkout verify.sh cannot tell, and runs them.
 expect_pr src/app.txt 1 ran "could not determine whether a workflow file changed"
+
+# A pull request whose target is not the project's base branch (review 02 of
+# Issue 408, M1): the branch is cut from main, which has a workflow change
+# that the target 'release' lacks. The job scope compares with the target
+# and sees the change; verify.sh compares with the configured base
+# (origin/main) and sees none. The scope decides: it gives 'all', and the
+# group job runs the self-tests with --all, also when the scope cannot
+# compare (no base). A framework-only self-test stays skipped in the project.
+if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
+  other_root="$tmp/ci-other-base"
+  mkdir -p "$other_root/work/scripts/lib" "$other_root/work/.github/workflows" "$other_root/work/.agents" "$other_root/work/src"
+  cp "$source_root/scripts/verify.sh" "$other_root/work/scripts/"
+  cp "$source_root/scripts/lib/base.sh" "$source_root/scripts/lib/template-repository.sh" "$other_root/work/scripts/lib/"
+  printf 'project: true\n' >"$other_root/work/scripts/verify.conf"
+  printf 'paths: %s\n\nself-test [self-tests]: echo ran >>"$SELF_TEST_LOG"\nfw [self-tests] framework: echo framework >>"$SELF_TEST_LOG"\n' "$pr_paths" >"$other_root/work/scripts/verify-workflow.conf"
+  printf 'name: ci\n' >"$other_root/work/.github/workflows/ci.yml"
+  printf 'repository: https://github.com/owner/template\n\npaths: scripts\ncommit: 0123\n' >"$other_root/work/.agents/template.conf"
+  printf 'one\n' >"$other_root/work/src/app.txt"
+  git -C "$other_root/work" init -q -b main
+  commit_all "$other_root/work" "A project"
+  git -C "$other_root/work" branch release
+  printf 'name: changed\n' >"$other_root/work/.github/workflows/ci.yml"
+  commit_all "$other_root/work" "Change a workflow file on main"
+  git -C "$other_root/work" checkout -q -b feature main
+  printf 'two\n' >"$other_root/work/src/app.txt"
+  commit_all "$other_root/work" "Change the application"
+  git -C "$other_root/work" checkout -q --detach release
+  git -C "$other_root/work" -c user.name="Sync Test" -c user.email="sync-test@example.com" \
+    merge -q --no-ff -m "Merge feature into release" feature
+  git init -q --bare "$other_root/remote.git"
+  git -C "$other_root/work" push -q "file://$other_root/remote.git" main release feature "HEAD:refs/pull/1/merge"
+  other_checkout="$other_root/checkout"
+  git init -q "$other_checkout"
+  git -C "$other_checkout" remote add origin "file://$other_root/remote.git"
+  git -C "$other_checkout" fetch -q --no-tags --prune --no-recurse-submodules origin "+refs/heads/*:refs/remotes/origin/*" "+refs/pull/1/merge:refs/remotes/pull/1/merge"
+  git -C "$other_checkout" checkout -q --force refs/remotes/pull/1/merge
+  # The repository of the run, as actions/checkout makes it the origin.
+  git -C "$other_checkout" remote set-url origin https://github.com/owner/project
+  # The premise: against the configured base verify.sh sees no workflow
+  # change and skips the self-tests.
+  rm -f "$other_root/ran"
+  (cd "$other_checkout" && SELF_TEST_LOG="$other_root/ran" ./scripts/verify.sh --only self-tests >"$other_root/out.log" 2>&1) ||
+    fail "verify.sh --only self-tests failed in the checkout of a pull request into another base: $(cat "$other_root/out.log")"
+  [[ ! -f "$other_root/ran" ]] && grep -Fq "no workflow file differs from origin/main" "$other_root/out.log" ||
+    fail "verify.sh does not compare with the configured base in the checkout of a pull request into another base: $(cat "$other_root/out.log")"
+  # The verify step is the same in every group job.
+  other_job="$(sed -n 1p <<<"$group_jobs")"
+  ci_job_block "$ci_workflow" "$other_job" >"$other_root/job.yml"
+  other_verify_script="$(ci_step_script "$other_root/job.yml" 'scripts/verify.sh')"
+  [[ -n "$other_verify_script" ]] || fail "the job $other_job of ci.yml has no step that runs verify.sh"
+  # <base of the pull request>:<what the scope saw>
+  for case in "origin/release:a workflow change against the target of the pull request" ":no base to compare with"; do
+    other_base="${case%%:*}"
+    [[ -z "$other_base" ]] || other_base="$(git -C "$other_checkout" rev-parse "$other_base")"
+    : >"$other_root/output"
+    (cd "$other_checkout" && EVENT=pull_request REPOSITORY=https://github.com/owner/project BASE="$other_base" GITHUB_OUTPUT="$other_root/output" \
+      bash -euo pipefail -c "$scope_script") >/dev/null || fail "the scope step of ci.yml failed for a pull request into another base"
+    other_scope="$(sed -n 's/^verify=//p' "$other_root/output")"
+    [[ "$other_scope" == all ]] ||
+      fail "the scope of a project's pull request is '$other_scope' with ${case#*:}, expected 'all'"
+    [[ "$(sed -n 's/^skip=//p' "$other_root/output")" == ' ' ]] ||
+      fail "the scope skips the group of the self-tests with ${case#*:}: $(cat "$other_root/output")"
+    rm -f "$other_root/ran"
+    (cd "$other_checkout" && SCOPE="$other_scope" VERIFY_GROUP=self-tests SELF_TEST_LOG="$other_root/ran" \
+      bash -euo pipefail -c "$other_verify_script" >"$other_root/out.log" 2>&1) ||
+      fail "the group job failed for a pull request into another base: $(cat "$other_root/out.log")"
+    [[ "$(cat "$other_root/ran" 2>/dev/null)" == ran ]] ||
+      fail "the group job of a pull request into another base ran '$(cat "$other_root/ran" 2>/dev/null)' of the self-tests with ${case#*:}, expected only the one that is not framework-only: $(cat "$other_root/out.log")"
+  done
+fi
 
 # The project's CI setup (Issue 412): ci.yml and the parallel CI of
 # docs/examples call the composite action .github/actions/project-setup in
