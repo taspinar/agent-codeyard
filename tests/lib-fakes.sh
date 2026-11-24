@@ -53,6 +53,87 @@ ISOLATED_PATH="$TEST_TOOLCHAIN_BIN:/usr/bin:/bin"
 # stat -c are those of GNU then, as on Linux.
 PATH="$TEST_TOOLCHAIN_BIN:$PATH"
 
+# pty_run <input> <command>
+# Runs <command> with sh at a pseudo-terminal and types <input>, as is (end
+# each answer with a newline); returns the status of the command. On Linux
+# that is util-linux 'script -qec'. The BSD 'script' of macOS turns the end
+# of its input into a ^D that can reach the terminal before the input, so
+# that the command reads nothing: its input stays open until the command
+# has ended.
+pty_run() {
+  local status=0
+  local input
+  local feeder
+
+  if grep -q util-linux <<<"$(script --version 2>/dev/null)"; then
+    printf '%s' "$1" | script -qec "$2" /dev/null || status=$?
+  else
+    # Opened by 'exec', so that $! is the feeder's PID (a redirection of an
+    # external command is made in its own process).
+    exec {input}< <(printf '%s' "$1"; exec sleep 600 2>/dev/null)
+    feeder=$!
+    script -q /dev/null sh -c "$2" <&"$input" || status=$?
+    exec {input}<&-
+    kill "$feeder" 2>/dev/null || true
+  fi
+  return "$status"
+}
+
+# make_platform_tools <bin-dir> <system> <form>
+# Creates a 'uname' that says <system> (Darwin, Linux) and a 'stat' and
+# 'date' that take only the <form> of their arguments: 'gnu' (stat -c, date
+# -d) or 'bsd' (stat -f, date -j -f; BSD stat takes no '--'). Both run the
+# toolchain's tools, translating the BSD form. Put <bin-dir> first on PATH to
+# show that a script chooses the form by the tool on PATH and not by the
+# system: GNU coreutils first on PATH on macOS, a BSD stat elsewhere.
+make_platform_tools() {
+  local bin="$1"
+  local stat_path
+  local date_path
+
+  mkdir -p "$bin"
+  stat_path="$(printf '%q' "$(readlink "$TEST_TOOLCHAIN_BIN/stat")")"
+  date_path="$(printf '%q' "$(readlink "$TEST_TOOLCHAIN_BIN/date")")"
+  printf '#!/usr/bin/env bash\necho %q\n' "$2" >"$bin/uname"
+  if [[ "$3" == gnu ]]; then
+    cat >"$bin/stat" <<FAKE
+#!/usr/bin/env bash
+[[ "\${1:-}" == -c ]] || { echo "stat: cannot read file system information for '\${2:-}'" >&2; exit 1; }
+exec $stat_path "\$@"
+FAKE
+    cat >"$bin/date" <<FAKE
+#!/usr/bin/env bash
+[[ "\${1:-}" != -j ]] || { echo "date: invalid option -- 'j'" >&2; exit 1; }
+exec $date_path "\$@"
+FAKE
+  else
+    cat >"$bin/stat" <<FAKE
+#!/usr/bin/env bash
+[[ "\${1:-}" == -f ]] || { echo "stat: illegal option -- \${1#-}" >&2; exit 1; }
+case "\${2:-}" in
+  %Lp) format=%a ;;
+  %m) format=%Y ;;
+  *) echo "stat: unsupported format in this fake: \${2:-}" >&2; exit 1 ;;
+esac
+shift 2
+for path in "\$@"; do
+  [[ "\$path" != -* ]] || { echo "stat: \$path: stat: No such file or directory" >&2; exit 1; }
+done
+exec $stat_path -c "\$format" -- "\$@"
+FAKE
+    cat >"$bin/date" <<FAKE
+#!/usr/bin/env bash
+[[ "\${1:-}" != -d ]] || { echo "date: illegal option -- d" >&2; exit 1; }
+if [[ "\${1:-}" == -j && "\${2:-}" == -f ]]; then
+  # date -j -f <format> <date> [+<output>]: the date in the given format.
+  exec $date_path -d "\$4" "\${@:5}"
+fi
+exec $date_path "\$@"
+FAKE
+  fi
+  chmod +x "$bin/uname" "$bin/stat" "$bin/date"
+}
+
 make_fake_agents() {
   local bin="$1"
   local jq_path

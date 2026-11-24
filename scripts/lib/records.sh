@@ -306,6 +306,18 @@ records_feature_worktree() {
       /^branch / { if (index($2, prefix) == 1) { print path; exit } }' || true
 }
 
+# records_mtime <path>: the time of the last change of <path>, in epoch
+# seconds, or 0 when it cannot be read. The form is that of the stat on PATH
+# (GNU 'stat -c', or BSD 'stat -f'), not of the system: on macOS GNU
+# coreutils may come first on PATH.
+records_mtime() {
+  if stat -c '%Y' -- / >/dev/null 2>&1; then
+    stat -c '%Y' -- "$1" 2>/dev/null || echo 0
+  else
+    stat -f '%m' "$1" 2>/dev/null || echo 0
+  fi
+}
+
 # records_resumption <kind> <subject> <previous-run>
 # Records what a script can see between the previous run of the subject and
 # this one, without claiming who did it: this run follows a run that stopped
@@ -331,11 +343,7 @@ records_resumption() {
     note="$(records_feature_worktree "$2")/.agents/handoffs/$2.md"
     note_changed="false"
     if [[ -f "$note" ]]; then
-      if [[ "$(uname -s)" == "Darwin" ]]; then
-        changed="$(stat -f '%m' "$note" 2>/dev/null || echo 0)"
-      else
-        changed="$(stat -c '%Y' "$note" 2>/dev/null || echo 0)"
-      fi
+      changed="$(records_mtime "$note")"
       [[ "$changed" -le "$ended" ]] || note_changed="true"
     fi
   fi

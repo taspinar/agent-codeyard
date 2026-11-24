@@ -25,7 +25,7 @@ fail() {
   exit 1
 }
 
-bootstrap_line='case $0 in */*) bootstrap_dir=${0%/*} ;; *) bootstrap_dir=. ;; esac; [ ! -f "$bootstrap_dir/lib/bootstrap.sh" ] || . "$bootstrap_dir/lib/bootstrap.sh"'
+bootstrap_line='case $0 in */*) bootstrap_dir=${0%/*} ;; *) if [ -f "$0" ]; then bootstrap_dir=.; else bootstrap_dir=$(command -v "$0" 2>/dev/null) && bootstrap_dir=${bootstrap_dir%/*} || bootstrap_dir=.; fi ;; esac; if [ -f "$bootstrap_dir/lib/bootstrap.sh" ]; then . "$bootstrap_dir/lib/bootstrap.sh"; elif [ "${BASH_VERSINFO:-0}" -lt 4 ]; then echo "ENVIRONMENT  Bash 4 or newer (this is ${BASH_VERSION:-not Bash}) — install Bash 4 or newer and put it first on PATH"; echo "Error: ${0##*/} needs Bash 4 or newer and did not find lib/bootstrap.sh; it stopped before it did anything." >&2; exit 78; fi'
 
 # The old shells of this machine: sh, and /bin/bash when it is older than 4.
 old_shells=()
@@ -81,6 +81,50 @@ done
 status=0
 (cd "$copy/scripts" && "${old_shells[0]}" verify.sh) >"$tmp/out" 2>/dev/null || status=$?
 [[ "$status" -eq 78 ]] || fail "verify.sh run from scripts/ under ${old_shells[0]} exited with $status instead of 78"
+
+# Run by name from a directory without lib/ ('bash verify.sh', which Bash
+# finds on PATH), the script finds the bootstrap next to it. Shown on every
+# host with a copy whose bootstrap acts as a Bash 3.2 would (it always stops),
+# run by the Bash of the test, and with each real old Bash of the host.
+fake="$tmp/fake-floor"
+mkdir -p "$fake/scripts/lib" "$tmp/elsewhere"
+cp "$copy"/scripts/*.sh "$fake/scripts/"
+cp "$copy"/scripts/lib/*.sh "$fake/scripts/lib/"
+printf '%s\n' 'echo "ENVIRONMENT  Bash 4 or newer (this is 3.2.57(1)-release) — brew install bash"' 'exit 78' >"$fake/scripts/lib/bootstrap.sh"
+by_name_shells=(bash)
+for shell in "${old_shells[@]}"; do
+  if "$shell" -c '[ -n "${BASH_VERSION:-}" ]' 2>/dev/null; then by_name_shells+=("$shell"); fi
+done
+for shell in "${by_name_shells[@]}"; do
+  root="$fake"
+  [[ "$shell" == bash ]] || root="$copy"
+  for name in verify.sh doctor.sh run-feature.sh; do
+    status=0
+    (cd "$tmp/elsewhere" && PATH="$root/scripts:$PATH" "$shell" "$name" --help) >"$tmp/out" 2>"$tmp/err" </dev/null || status=$?
+    [[ "$status" -eq 78 ]] || fail "$name run by name under $shell exited with $status instead of 78: $(cat "$tmp/out" "$tmp/err")"
+    grep -Eq '^ENVIRONMENT  Bash 4 or newer \(this is .*\) — .*(brew install bash|apt-get install bash)' "$tmp/out" ||
+      fail "$name run by name under $shell did not read the bootstrap: $(cat "$tmp/out")"
+    if compgen -G "$tmp/sourced-*" >/dev/null; then
+      fail "$name run by name under $shell sourced a library before the bootstrap stopped it: $(cd "$tmp" && ls sourced-*)"
+    fi
+  done
+done
+
+# Where lib/bootstrap.sh is missing (a fixture that copies one script), an old
+# shell still stops with 78 before anything runs; Bash 4 runs the script.
+lone="$tmp/lone"
+mkdir -p "$lone/scripts"
+cp "$source_root/scripts/check-risk.sh" "$lone/scripts/"
+for shell in "${old_shells[@]}"; do
+  status=0
+  (cd "$lone" && "$shell" ./scripts/check-risk.sh --help) >"$tmp/out" 2>"$tmp/err" </dev/null || status=$?
+  [[ "$status" -eq 78 ]] || fail "check-risk.sh without lib/bootstrap.sh under $shell exited with $status instead of 78: $(cat "$tmp/out" "$tmp/err")"
+  grep -Eq '^ENVIRONMENT  Bash 4 or newer \(this is .*\) — ' "$tmp/out" || fail "check-risk.sh without lib/bootstrap.sh under $shell printed no ENVIRONMENT line: $(cat "$tmp/out")"
+  [[ "$(wc -l <"$tmp/out")" -eq 1 ]] || fail "check-risk.sh without lib/bootstrap.sh under $shell printed more than the ENVIRONMENT line: $(cat "$tmp/out")"
+  grep -Fq "did not find lib/bootstrap.sh" "$tmp/err" || fail "check-risk.sh without lib/bootstrap.sh under $shell did not explain the stop: $(cat "$tmp/err")"
+done
+out="$(cd "$lone" && bash ./scripts/check-risk.sh --help 2>&1)" || true
+[[ "$out" != *ENVIRONMENT* ]] || fail "check-risk.sh without lib/bootstrap.sh stopped under Bash $BASH_VERSION: $out"
 
 # Bash 4 and newer pass without a word, and the script runs.
 status=0

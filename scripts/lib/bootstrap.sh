@@ -2,7 +2,13 @@
 # of scripts/ sources this file first, before anything else runs and before
 # any other library is sourced:
 #
-#   case $0 in */*) bootstrap_dir=${0%/*} ;; *) bootstrap_dir=. ;; esac; [ ! -f "$bootstrap_dir/lib/bootstrap.sh" ] || . "$bootstrap_dir/lib/bootstrap.sh"
+#   case $0 in */*) bootstrap_dir=${0%/*} ;; *) if [ -f "$0" ]; then bootstrap_dir=.; else bootstrap_dir=$(command -v "$0" 2>/dev/null) && bootstrap_dir=${bootstrap_dir%/*} || bootstrap_dir=.; fi ;; esac; if [ -f "$bootstrap_dir/lib/bootstrap.sh" ]; then . "$bootstrap_dir/lib/bootstrap.sh"; elif [ "${BASH_VERSINFO:-0}" -lt 4 ]; then echo "ENVIRONMENT  Bash 4 or newer (this is ${BASH_VERSION:-not Bash}) — install Bash 4 or newer and put it first on PATH"; echo "Error: ${0##*/} needs Bash 4 or newer and did not find lib/bootstrap.sh; it stopped before it did anything." >&2; exit 78; fi
+#
+# The line finds this file next to the script also when the script is run by
+# name ('bash verify.sh'), which Bash looks up in the current directory and
+# then on PATH. Where this file is missing (a test fixture that copies a single
+# script), the script runs on under Bash 4 and newer, and below Bash 4 still
+# stops with 78, with a shorter ENVIRONMENT line.
 #
 # Below Bash 4 (the /bin/bash 3.2 of macOS, which '#!/usr/bin/env bash' finds
 # when no newer Bash comes first on PATH) the script stops here with the

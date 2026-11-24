@@ -133,8 +133,11 @@ claude_settings="$tmp/claude-settings.json"
 # The codex here is a fake, so the test runs also inside a Codex session,
 # which the real check skips (CODEX_SESSION_ID, CODEX_THREAD_ID): an
 # implementer's own run of verify.sh gets here.
+# HOMEBREW_PREFIX names a directory without brew: the PATH of the test is
+# all doctor.sh may find, also on a Mac where Homebrew's GNU tools are
+# installed (scripts/lib/environment.sh looks in Homebrew's places).
 run_doctor() {
-  PATH="$1" AGENT_CONFIG_FILE="$config" ATTRIBUTION_CONFIG_FILE="$attribution" \
+  PATH="$1" HOMEBREW_PREFIX="$tmp/no-homebrew" AGENT_CONFIG_FILE="$config" ATTRIBUTION_CONFIG_FILE="$attribution" \
     ATTRIBUTION_CLAUDE_SETTINGS_FILE="$claude_settings" TMPDIR="$tmp/scratch" DOCTOR_CODEX_TIMEOUT="${DOCTOR_CODEX_TIMEOUT:-20}" \
     CODEX_SESSION_ID="${MOCK_CODEX_SESSION_ID:-}" CODEX_THREAD_ID= \
     "$bash_path" "$script" >"$tmp/out.log" 2>&1

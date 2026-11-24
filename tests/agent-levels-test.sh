@@ -269,8 +269,10 @@ FAKE
 }
 
 printf 'agent-attribution: allowed\n' >"$tmp/attribution.conf"
+# HOMEBREW_PREFIX names a directory without brew: the PATH of the test is
+# all doctor.sh may find, on every machine (scripts/lib/environment.sh).
 run_doctor() {
-  PATH="$1" AGENT_CONFIG_FILE="$config" ATTRIBUTION_CONFIG_FILE="$tmp/attribution.conf" \
+  PATH="$1" HOMEBREW_PREFIX="$tmp/no-homebrew" AGENT_CONFIG_FILE="$config" ATTRIBUTION_CONFIG_FILE="$tmp/attribution.conf" \
     ATTRIBUTION_CLAUDE_SETTINGS_FILE="$tmp/claude-settings.json" "$bash_path" "$source_root/scripts/doctor.sh" >"$tmp/doctor.log" 2>&1
 }
 

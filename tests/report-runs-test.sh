@@ -258,6 +258,16 @@ rm -f "$repo/.agents/run/records/c3.jsonl" "$repo/.agents/run/records/c4.jsonl"
 [[ "$(report "$repo" --all --since "$split_day" --json | jq -c '[.subjects[].subject]')" == '["21"]' ]] ||
   fail "--since did not select by the start of the runs"
 if report "$repo" 20 --since 2026-13-01 >/dev/null 2>&1; then fail "an invalid date was accepted"; fi
+# A date is read with the form of the date on PATH, not of the system: GNU
+# coreutils first on PATH while uname says Darwin, and a BSD date while
+# uname says Linux.
+make_platform_tools "$tmp/darwin-gnu" Darwin gnu
+make_platform_tools "$tmp/linux-bsd" Linux bsd
+plain="$(report "$repo" --all --since "$split_day" --json | jq -c '[.subjects[].subject]')"
+for platform in darwin-gnu linux-bsd; do
+  [[ "$(cd "$repo" && PATH="$tmp/$platform:$tmp/bin:$ISOLATED_PATH" ./scripts/report-runs.sh --all --since "$split_day" --json | jq -c '[.subjects[].subject]')" == "$plain" ]] ||
+    fail "--since with the date of $platform did not select the same runs"
+done
 
 # The summary for GitHub is built from numbers only: a path, a time of day, an
 # error text, and an odd model name in the records do not reach it.

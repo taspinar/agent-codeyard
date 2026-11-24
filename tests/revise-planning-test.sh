@@ -230,11 +230,7 @@ at_terminal() {
 
   shift 2
   command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:$ISOLATED_PATH") MOCK_AGENT_LOG=$(printf '%q' "$repo.log") ./scripts/revise-planning.sh $(printf '%q ' "$@")"
-  if grep -q util-linux <<<"$(script --version 2>/dev/null)"; then
-    printf '%s' "$answers" | script -qec "$command" /dev/null >"$repo.out" 2>&1 || true
-  else
-    printf '%s' "$answers" | script -q /dev/null sh -c "$command" >"$repo.out" 2>&1 || true
-  fi
+  pty_run "$answers" "$command" >"$repo.out" 2>&1 || true
 }
 
 requirements_blob() {

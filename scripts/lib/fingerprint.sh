@@ -237,9 +237,13 @@ fingerprint_artifacts() {
 # <hash>', or '<path><TAB>symlink <target>' for a link, sorted by path. The
 # contents are hashed with one Git call; a missing directory is an empty set.
 # A mode or hash that cannot be read is UNREADABLE. BSD stat gets no '--':
-# every path starts with '.agents/'.
+# every path starts with '.agents/'. The form of stat is that of the stat on
+# PATH, whatever the system: GNU coreutils first on PATH on macOS take the
+# GNU form, and a BSD stat elsewhere the BSD one.
 fingerprint_manifest() {
   (
+    gnu_stat=0
+    ! stat -c '%a' -- / >/dev/null 2>&1 || gnu_stat=1
     cd "$1" 2>/dev/null || exit 0
     files=()
     while IFS= read -r path; do
@@ -250,10 +254,10 @@ fingerprint_manifest() {
       fi
     done < <({ find "${FINGERPRINT_MANIFEST_GUARDED[@]}" "${FINGERPRINT_MANIFEST_RECORDS[@]}" \( -type f -o -type l \) 2>/dev/null || true; } | LC_ALL=C sort)
     [[ "${#files[@]}" -gt 0 ]] || exit 0
-    if [[ "$(uname -s)" == "Darwin" ]]; then
-      modes="$(stat -f '%Lp' "${files[@]}" 2>/dev/null)" || modes=""
-    else
+    if [[ "$gnu_stat" -eq 1 ]]; then
       modes="$(stat -c '%a' -- "${files[@]}" 2>/dev/null)" || modes=""
+    else
+      modes="$(stat -f '%Lp' "${files[@]}" 2>/dev/null)" || modes=""
     fi
     hashes="$(printf '%s\n' "${files[@]}" | git hash-object --stdin-paths 2>/dev/null)" || hashes=""
     # A file that cannot be read or that vanished makes the single calls
@@ -263,10 +267,10 @@ fingerprint_manifest() {
       modes=""
       hashes=""
       for path in "${files[@]}"; do
-        if [[ "$(uname -s)" == "Darwin" ]]; then
-          mode="$(stat -f '%Lp' "$path" 2>/dev/null)" || mode="UNREADABLE"
-        else
+        if [[ "$gnu_stat" -eq 1 ]]; then
           mode="$(stat -c '%a' -- "$path" 2>/dev/null)" || mode="UNREADABLE"
+        else
+          mode="$(stat -f '%Lp' "$path" 2>/dev/null)" || mode="UNREADABLE"
         fi
         hash="$(git hash-object -- "$path" 2>/dev/null)" || hash="UNREADABLE"
         modes+="$mode"$'\n'

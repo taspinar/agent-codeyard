@@ -9,6 +9,9 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 source_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 source "$source_root/tests/lib-fakes.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/verify-lock-test.XXXXXX")"
+# The real path: verify.sh names the worktree of the holder by it, and on
+# macOS the temporary directory is under a link (/var -> /private/var).
+tmp="$(cd "$tmp" && pwd -P)"
 holders=()
 
 cleanup() {

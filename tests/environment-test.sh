@@ -45,15 +45,29 @@ bin_without() {
   printf '%s\n' "$bin"
 }
 
-# A sed that works as GNU sed does but does not say so: what a BSD sed is
-# to the preflight, without breaking the scripts that run it.
+# A sed with the '-i' of BSD sed, which takes the next argument for the
+# suffix of a backup: 'sed -i <script> <file>' then fails, as on macOS.
+# Everything else works as GNU sed does, so that only the preflight can tell.
 no_gnu_sed="$(bin_without no-gnu-sed sed)"
 cat >"$no_gnu_sed/sed" <<FAKE
 #!$(readlink "$TEST_TOOLCHAIN_BIN/bash")
 [[ "\${1:-}" != --version ]] || { echo "sed (BSD) 1.0"; exit 0; }
+[[ "\${1:-}" != -i ]] || set -- "-i\${2:-}" "\${@:3}"
 exec $(printf '%q' "$(readlink "$TEST_TOOLCHAIN_BIN/sed")") "\$@"
 FAKE
 chmod +x "$no_gnu_sed/sed"
+# Tools that do what the scripts need of GNU sed, timeout and date without
+# the name GNU in their --version, as the uutils coreutils of Ubuntu 26.04:
+# the preflight checks the behaviour, so they pass.
+uutils="$(bin_without uutils sed timeout date)"
+for tool in sed timeout date; do
+  cat >"$uutils/$tool" <<FAKE
+#!$(readlink "$TEST_TOOLCHAIN_BIN/bash")
+[[ "\${1:-}" != --version ]] || { echo "$tool (uutils coreutils) 0.2.2"; exit 0; }
+exec $(printf '%q' "$(readlink "$TEST_TOOLCHAIN_BIN/$tool")") "\$@"
+FAKE
+  chmod +x "$uutils/$tool"
+done
 no_jq="$(bin_without no-jq jq)"
 # A jq older than 1.6, the minimum of docs/development.md and doctor.sh:
 # it says so, and otherwise works as the real one.
@@ -221,7 +235,7 @@ done
 for tool in claude codex gh curl; do
   [[ ! -e "$TEST_TOOLCHAIN_BIN/$tool" ]] || fail "the toolchain links $tool, which it never may"
 done
-grep -q GNU <<<"$("$TEST_TOOLCHAIN_BIN/sed" --version)" || fail "the toolchain's sed is not GNU sed"
+environment_passes "$TEST_TOOLCHAIN_BIN/sed" gnu-sed || fail "the toolchain's sed is not GNU sed"
 "$TEST_TOOLCHAIN_BIN/bash" -c '[ "${BASH_VERSINFO[0]}" -ge 4 ]' || fail "the toolchain's bash is older than 4"
 again="$(environment_toolchain_build)"
 [[ "$again" == "$TEST_TOOLCHAIN_BIN" ]] || fail "the toolchain was built again for the same tools: $again"
@@ -238,5 +252,32 @@ status=0
 (PATH="$no_gnu_sed" HOMEBREW_PREFIX="$tmp/no-homebrew" TMPDIR="$tmp" environment_toolchain_build) >/dev/null 2>"$tmp/build.err" || status=$?
 [[ "$status" -ne 0 ]] || fail "a toolchain without GNU sed was built"
 grep -q '^ENVIRONMENT  GNU sed for the workflow self-tests' "$tmp/build.err" || fail "a toolchain without GNU sed did not say so: $(cat "$tmp/build.err")"
+# Tools that behave as GNU's under another name (uutils) build it, and are
+# the ones linked.
+uutils_bin="$(PATH="$uutils" HOMEBREW_PREFIX="$tmp/no-homebrew" TMPDIR="$tmp" environment_toolchain_build 2>"$tmp/build.err")" ||
+  fail "a toolchain with uutils-like sed, timeout and date was not built: $(cat "$tmp/build.err")"
+for tool in sed timeout date; do
+  [[ "$(readlink "$uutils_bin/$tool")" == "$uutils/$tool" ]] || fail "the toolchain did not link the uutils-like $tool"
+done
+# A BSD date (no '-d <date>') and a timeout without --kill-after are not
+# taken for GNU's.
+mkdir -p "$tmp/bsd-tools"
+printf '#!/usr/bin/env bash\n[[ "$1" != -d ]] || { echo "date: illegal option -- d" >&2; exit 1; }\nexit 0\n' >"$tmp/bsd-tools/date"
+printf '#!/usr/bin/env bash\n[[ "$1" != --kill-after=* ]] || { echo "timeout: unknown option" >&2; exit 1; }\nexit 0\n' >"$tmp/bsd-tools/timeout"
+chmod +x "$tmp/bsd-tools/date" "$tmp/bsd-tools/timeout"
+if environment_passes "$tmp/bsd-tools/date" gnu-date; then fail "a date without -d passed as GNU date"; fi
+if environment_passes "$tmp/bsd-tools/timeout" gnu-timeout; then fail "a timeout without --kill-after passed as GNU timeout"; fi
+if environment_passes "$no_gnu_sed/sed" gnu-sed; then fail "a sed with the -i of BSD passed as GNU sed"; fi
+# The search for a tool reads every candidate before it tries the first: a
+# first candidate that passes leaves no writer of the rest on a closed pipe.
+# With SIGPIPE ignored, as on some CI runners, that writer printed one
+# 'write error: Broken pipe' per candidate left.
+many="$tmp/many-candidates"
+for n in $(seq 1 300); do mkdir -p "$many/$n" && ln -s "$(readlink "$TEST_TOOLCHAIN_BIN/date")" "$many/$n/date"; done
+many_path="$(seq 1 300 | sed "s#^#$many/#" | paste -sd: -)"
+status=0
+found="$(PATH="$many_path:$PATH" HOMEBREW_PREFIX="$tmp/no-homebrew" bash -c 'trap "" PIPE; source "$1"; environment_find date gnu-date' _ "$source_root/scripts/lib/environment.sh" 2>"$tmp/find.err")" || status=$?
+[[ "$status" -eq 0 && "$found" == "$many/1/date" ]] || fail "the search for date with many candidates failed ($status): $found $(cat "$tmp/find.err")"
+[[ ! -s "$tmp/find.err" ]] || fail "the search for date with many candidates wrote errors: $(head -n 3 "$tmp/find.err")"
 
 echo "environment tests passed"

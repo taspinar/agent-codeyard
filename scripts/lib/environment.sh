@@ -33,7 +33,8 @@
 # selected executables only:
 #
 # - required, and checked: Bash 4 or newer, GNU sed, GNU timeout and date
-#   (GNU coreutils), jq 1.6 or newer, and Git;
+#   (GNU coreutils, or tools that behave as they do, such as the uutils
+#   coreutils of Ubuntu 26.04), jq 1.6 or newer, and Git;
 # - linked when found: the other coreutils the scripts and tests use
 #   (ENVIRONMENT_COREUTILS), GNU ones first.
 #
@@ -49,9 +50,10 @@
 ENVIRONMENT_STATUS=78
 
 # The tools of the toolchain that are required, each '<name>:<check>':
-# 'bash4' (Bash 4 or newer), 'gnu' (its --version names GNU), 'jq16' (jq 1.6
-# or newer), or 'any'.
-ENVIRONMENT_TOOLCHAIN_REQUIRED="bash:bash4 sed:gnu timeout:gnu date:gnu jq:jq16 git:any"
+# 'bash4' (Bash 4 or newer), 'gnu-sed', 'gnu-timeout', 'gnu-date' (it does
+# what the scripts need of the GNU tool; the name it gives itself does not
+# count), 'jq16' (jq 1.6 or newer), or 'any'.
+ENVIRONMENT_TOOLCHAIN_REQUIRED="bash:bash4 sed:gnu-sed timeout:gnu-timeout date:gnu-date jq:jq16 git:any"
 
 # The coreutils that the workflow scripts and their self-tests run, linked
 # when found; one that is not stays the system's (/usr/bin, /bin).
@@ -152,18 +154,40 @@ environment_jq_supports() {
 }
 
 # environment_passes <path> <check>: whether the executable passes <check>
-# ('bash4', 'gnu', 'jq16', or 'any').
+# ('bash4', 'gnu-sed', 'gnu-timeout', 'gnu-date', 'jq16', or 'any'). The GNU
+# checks try the behaviour the scripts rely on: 'sed -i' without a suffix,
+# 'timeout --kill-after', 'date -d'. BSD sed takes the script for a suffix,
+# and BSD date has no '-d <date>'.
 environment_passes() {
   local version
+  local work
+  local result
 
   [[ -x "$1" && ! -d "$1" ]] || return 1
   case "$2" in
     bash4)
       "$1" -c '[ "${BASH_VERSINFO:-0}" -ge 4 ]' </dev/null >/dev/null 2>&1
       ;;
-    gnu)
-      version="$("$1" --version </dev/null 2>/dev/null)" || return 1
-      [[ "$version" == *GNU* ]]
+    gnu-sed)
+      # The file is made by Bash itself, without overwriting one that is
+      # there: the PATH may hold no mktemp.
+      work="${TMPDIR:-/tmp}"
+      work="${work%/}/codeyard-sed-check.$BASHPID.$RANDOM"
+      (set -C && printf 'a\n' >"$work") 2>/dev/null || return 1
+      result=1
+      if "$1" -i 's/a/b/' "$work" </dev/null >/dev/null 2>&1 && [[ "$(<"$work")" == b ]]; then
+        result=0
+      fi
+      rm -f "$work" 2>/dev/null || true
+      return "$result"
+      ;;
+    gnu-timeout)
+      # It runs itself, by its path: the PATH may hold nothing else.
+      "$1" --kill-after=5 10 "$1" --version </dev/null >/dev/null 2>&1
+      ;;
+    gnu-date)
+      [[ "$(TZ=UTC "$1" -d '2020-01-02 03:04:05' +%s </dev/null 2>/dev/null)" == 1577934245 &&
+         "$(TZ=UTC "$1" -d @86400 +%Y-%m-%d </dev/null 2>/dev/null)" == 1970-01-02 ]]
       ;;
     jq16)
       version="$("$1" --version </dev/null 2>/dev/null)" || return 1
@@ -177,14 +201,18 @@ environment_passes() {
 # <check>; fails when there is none.
 environment_find() {
   local candidate
+  local candidates
 
-  while IFS= read -r candidate; do
+  # Read every candidate before the first is tried: returning while a
+  # process substitution still writes would end it with SIGPIPE.
+  mapfile -t candidates < <(environment_candidates "$1")
+  for candidate in "${candidates[@]}"; do
     [[ -n "$candidate" ]] || continue
     if environment_passes "$candidate" "$2"; then
       printf '%s\n' "$candidate"
       return 0
     fi
-  done < <(environment_candidates "$1")
+  done
   return 1
 }
 
@@ -192,7 +220,7 @@ environment_find() {
 environment_requirement_text() {
   case "$2" in
     bash4) echo "Bash 4 or newer for the workflow self-tests" ;;
-    gnu) echo "GNU $1 for the workflow self-tests" ;;
+    gnu-*) echo "GNU $1 for the workflow self-tests" ;;
     jq16) echo "$1 1.6 or newer for the workflow self-tests" ;;
     *) echo "$1 for the workflow self-tests" ;;
   esac

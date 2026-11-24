@@ -29,9 +29,11 @@
   `$(brew --prefix)/opt/coreutils/libexec/gnubin`,
   `$(brew --prefix)/opt/gnu-sed/libexec/gnubin`, and `$(brew --prefix)/bin`.
   The self-tests find the GNU tools in those directories also when they do
-  not come first, but the workflow scripts themselves use GNU `stat` and
-  `date`. The template's own CI runs `./scripts/verify.sh --all` on macOS
-  too, on every pull request and every night.
+  not come first. The workflow scripts use the `stat` and `date` that come
+  first on `PATH` in the form that tool takes (GNU `stat -c` and `date -d`,
+  or BSD `stat -f` and `date -j -f`), whatever the system is. The
+  template's own CI runs `./scripts/verify.sh --all` on macOS too, on every
+  pull request and every night.
 - Project-specific tools documented in this file after the template is adopted
 
 Run `./scripts/doctor.sh` to check these prerequisites, including that you can
@@ -869,7 +871,10 @@ Before a check starts, `./scripts/verify.sh` runs a preflight
   file changed, `--all`, or `--changed` with a self-test selected), or when
   `--reuse` finds a recorded pass for this content that ran them: their
   isolated toolchain, Bash 4 or newer, GNU `sed`, GNU `timeout` and `date`,
-  `jq` 1.6 or newer, and Git (see "Workflow self-tests").
+  `jq` 1.6 or newer, and Git (see "Workflow self-tests"). The GNU tools are
+  checked by what the scripts need of them, not by their name: `sed -i`
+  without a suffix, `timeout --kill-after`, and `date -d`. A tool that
+  behaves so passes, such as the uutils coreutils of Ubuntu 26.04.
 
 The preflight runs before `--reuse` accepts a recorded pass: a pass that
 covered the self-tests stands in for them only on a machine that can run

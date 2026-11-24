@@ -47,6 +47,22 @@ files() {
 base="$(whole)"
 [[ "$(whole)" == "$base" ]] || fail "the fingerprint of unchanged content is not stable"
 
+# The manifest of the artifacts takes the form of the stat on PATH, not of
+# the system: GNU coreutils first on PATH while uname says Darwin, and a BSD
+# stat while uname says Linux, give the same manifest as the plain tools,
+# with every mode read.
+printf '{}\n' >"$repo/.agents/reviews/x-mode.json"
+chmod 640 "$repo/.agents/reviews/x-mode.json"
+make_platform_tools "$tmp/darwin-gnu" Darwin gnu
+make_platform_tools "$tmp/linux-bsd" Linux bsd
+plain="$(fingerprint_manifest "$repo")"
+grep -q $'^.agents/reviews/x-mode.json\t640 ' <<<"$plain" || fail "the manifest does not hold the mode of an artifact: $plain"
+for platform in darwin-gnu linux-bsd; do
+  manifest="$(PATH="$tmp/$platform:$PATH" fingerprint_manifest "$repo")"
+  [[ "$manifest" == "$plain" ]] || fail "the manifest with the stat of $platform differs: $manifest"
+done
+rm "$repo/.agents/reviews/x-mode.json"
+
 # Review and triage artifacts and ignored files do not count.
 printf '{}\n' >"$repo/.agents/reviews/x-review-01.json"
 printf '{}\n' >"$repo/.agents/triage/x-review-01-triage.json"

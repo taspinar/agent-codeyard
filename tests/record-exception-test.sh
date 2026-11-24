@@ -166,11 +166,7 @@ at_terminal() {
 
   shift 2
   command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:$ISOLATED_PATH") MOCK_GH_LOG=$(printf '%q' "$repo.gh") $(printf '%q ' "$@")"
-  if grep -q util-linux <<<"$(script --version 2>/dev/null)"; then
-    printf '%s\n' "$answer" | script -qec "$command" /dev/null
-  else
-    printf '%s\n' "$answer" | script -q /dev/null sh -c "$command"
-  fi
+  pty_run "$answer"$'\n' "$command"
 }
 
 # record <repo> <answer> <argument>...: record-exception.sh at a terminal.
