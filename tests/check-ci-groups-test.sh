@@ -220,9 +220,13 @@ expect "$repo" 2 "--scope requires --results" "--scope without --results"
 # The CI of the template (.github/workflows/ci.yml, Issue 448) runs every
 # group in a job of its own, with the aggregate job 'verify' as the required
 # check. A project that syncs the template gets this file with the
-# template's self-tests and its own scripts/verify.conf.
+# template's self-tests and its own scripts/verify.conf. Checked in the
+# template only (template_repository in tests/lib-fakes.sh): a project owns
+# its ci.yml and its checks, and its own CI is checked by the line ci-groups
+# of scripts/verify.conf, './scripts/check-ci-groups.sh --workflow'.
 ci_workflow="$source_root/.github/workflows/ci.yml"
-if [[ -f "$ci_workflow" ]] && grep -Fq 'check-ci-groups.sh --results' "$ci_workflow"; then
+if template_repository "$source_root"; then
+  grep -Fq 'check-ci-groups.sh --results' "$ci_workflow" || fail "the template's ci.yml does not run check-ci-groups.sh --results"
   # setup_synced <name> <verify.conf>: a repository with the template's CI,
   # its self-tests, and the given checks of its own.
   setup_synced() {

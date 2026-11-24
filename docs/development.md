@@ -307,7 +307,20 @@ the website steps), and add it to the `needs` of `verify`; a later change
 of the template's `ci.yml` is then taken over by hand.
 `tests/check-ci-groups-test.sh` holds all three cases against the
 template's `ci.yml`: no groups, a group the CI has, and a group of its own
-before and after the fix.
+before and after the fix, in the template only (see "Workflow
+self-tests"): in a project its `ci.yml` is its own. There the question
+"do my groups match my CI jobs?" is a check of the project, the line
+`ci-groups` of `scripts/verify.conf`, which the template ships and the
+adoption writes:
+
+```text
+ci-groups: test ! -f .github/workflows/ci.yml || ! grep -q 'VERIFY_GROUP:' .github/workflows/ci.yml || ./scripts/check-ci-groups.sh --workflow .github/workflows/ci.yml
+```
+
+It takes a fraction of a second and runs on every verification, also
+locally and when no workflow file changed. A CI that declares no
+`VERIFY_GROUP`, such as one job that runs `./scripts/verify.sh`, needs no
+mapping, and the check passes.
 
 **When one job is the better default.** A project whose verification takes
 a few minutes gains little from the parallel jobs, which each check out the
@@ -1023,10 +1036,19 @@ group job checks out the full history (`fetch-depth: 0`), since in a
 shallow clone it cannot see which files changed and runs every self-test.
 When the job `scope` fails, the group jobs still
 run, with `--all`, and the aggregate `verify` fails on the failed `scope`.
-`paths:` lists `.github/workflows` as a whole (the template's CI
-workflows and a project's own), `.agents/policies`, `.agents/template.conf`,
-and `docs/examples/parallel-ci.yml`, which a self-test reads, too: a pull request that changes or adds only one of them, as a sync of the template does,
-runs the self-tests. `tests/sync-template-test.sh` runs the decision of
+`paths:` names the workflow code only: `scripts`,
+`.agents/prompts`, `.agents/schemas`, `.agents/policies`, the two CI files the
+template ships (`.github/workflows/ci.yml` and `guardrails.yml`),
+`docs/examples/parallel-ci.yml`, which a self-test reads, and the self-tests
+with their libraries. A pull request that changes or adds only one of them,
+as a sync of the template does, runs the self-tests. The files a project is
+told to make its own are not listed (#462): `.agents/agents.conf`,
+`.agents/template.conf`, `.gitignore`, and a workflow of its own under
+`.github/workflows`, such as its deployment. No self-test reads them, so a
+pull request that changes only those skips the self-tests. The list decides
+only which tests run: the risk policy and the merge gate classify these files
+as before (`.agents/agents.conf` and `.github/workflows` stay `high` and
+protected by the merge gate). `tests/sync-template-test.sh` runs the decision of
 `ci.yml` for both kinds of repository and every event, with and without a
 workflow change and with each kind of unknown commit before a push, the
 conditions of the group jobs, the aggregate on the outcome, and a pull
@@ -1034,12 +1056,14 @@ request into a branch that is not the project's base, where the group job
 runs the self-tests although `verify.sh` alone would skip them; and
 `verify.sh` in a checkout made as
 `actions/checkout` makes it for a pull request: with the full history it
-skips the self-tests for a pull request that changes no workflow file and
-runs them for one that does; in a shallow checkout it runs them.
+skips the self-tests for a pull request that changes no workflow file, or
+only a file a project makes its own, and runs them for one that changes
+workflow code; in a shallow checkout it runs them.
 
 `scripts` is listed as a whole, so a new script is guarded until it is
 excluded with an entry `:(exclude)<path>`. `scripts/verify.conf` is excluded:
-a project adds its checks there, and no self-test reads it. Exclude a
+a project adds its checks there, and only the template's contract checks read
+it, in the template. Exclude a
 project's own scripts the same way, after checking that no self-test reads or
 copies them; a broader list only makes the self-tests run more often. Delete
 `scripts/verify-workflow.conf` when the project removes the workflow scripts.
@@ -1058,17 +1082,41 @@ of the shipped `.agents/agents.conf` itself and, only in the template, checks
 that the file still has them), the plans its documents name (the
 `tests/inherited-test.sh` check of the references compares a fixture project
 with the same project without its inherited files, not with the repository
-it runs in), its own test files, or the rules of its `.gitignore` other than
-the workflow's lines for `.agents/`. `tests/adopted-project-test.sh` holds them
-to it: it builds a fixture adopted project from the template's files, with its
-own CI excluded from the template's files, `base: develop`, a risk policy of
+it runs in), its own test files (a check over the self-tests reads the
+`tests/*-test.sh` that `scripts/verify-workflow.conf` names), its CI, its
+documents, its website, its `scripts/verify.conf`, or the rules of its
+`.gitignore` other than the workflow's lines for `.agents/`.
+
+The checks that test the template's own copy of such a file, its *contract*,
+run in the template only, under `template_repository` of
+`tests/lib-fakes.sh`: that its `ci.yml` decides the scope, runs every group,
+sets up the project and the website as documented, and grants a read-only
+token; that its `paths:` are those `tests/sync-template-test.sh` checks; that
+its site has its marker and check; that its `docs/development.md` and site
+show the cron line `tests/status-test.sh` runs; that its `agents.conf` and
+`risk.conf` match what the tests ship. The template is the repository whose
+origin is the `repository:` of its `.agents/template.conf`; a project, and
+any doubt, such as an origin that is a local path, is not. CI runs every
+self-test of the template on every pull request and push, so a change of one
+of those files there runs its contract checks; in a project they never run.
+Whether a project's own CI matches its groups is the project's question, and
+a check of its own: the line `ci-groups` of `scripts/verify.conf` runs
+`./scripts/check-ci-groups.sh --workflow .github/workflows/ci.yml` when its
+`ci.yml` declares groups, as the template's does (see "A parallel CI").
+
+`tests/adopted-project-test.sh` holds the self-tests to it: it builds a fixture
+adopted project from the template's files, without the template's website, with its
+own CI excluded from the template's files, a CI of one job that runs
+`./scripts/verify.sh`, `base: develop`, a risk policy of
 its own (`profile: light` and classes of its own in its policy override, "The
 project's policy override", and a class still written into the shipped
 `risk.conf`), a CI setup action ("The project's CI setup"), a recorded
-baseline, its own ADRs, its own `.agents/agents.conf`, a document that
-names a plan of its own, a test file of its own under `tests/` that does not
-follow the rules of the self-tests, an ignore rule `*.json` that the
-adoption's section un-ignores again, and no `README.md` or `LICENSE`, and runs every
+baseline, its own ADRs, its own `.agents/agents.conf` (the analyst on
+Codex), a document that names a plan of its own, a test file of its own
+named `tests/<x>-test.sh` that does not follow the rules of the self-tests,
+ignore rules of its own for `docs/` and `tests/` paths and a rule `*.json`
+that the adoption's section un-ignores again, and no `README.md` or
+`LICENSE`, and runs every
 other self-test there, four at a time, or `ADOPTED_PROJECT_JOBS` at a time
 when it is set (a lower value for a host with few cores); each has to pass.
 It starts them in the order of `scripts/verify-workflow.conf`, so the
@@ -1235,7 +1283,8 @@ When each runs, in a project unless the row says otherwise:
 | An application feature (no workflow file changed) | no | no: `SKIP workflow self-tests` | yes |
 | A sync of the template | no (`SKIP`) | yes: the sync changes workflow files | yes |
 | The adoption | no (`SKIP`): `template.conf` names the template, the origin is the project | yes: the workflow files are new | yes |
-| A change of configuration under `paths:` (`.agents/policies`, `template.conf`, `.github/workflows`) | no (`SKIP`) | yes | yes |
+| A change of a policy under `.agents/policies`, or of `ci.yml` or `guardrails.yml` | no (`SKIP`) | yes | yes |
+| A change of only `.agents/agents.conf`, `.agents/template.conf`, `.gitignore`, or a workflow of its own | no | no: not workflow code | yes |
 | A change of `scripts/verify.conf` only | no | no: it is not a workflow file | yes |
 | Custom edits of workflow code | no (`SKIP`); `--framework-checks` before proposing them upstream, which runs them with or without a changed workflow file | yes | yes |
 | Push to `main` | no (job not started) | as a pull request: only when the push changes a workflow file, or when the commit before it cannot be determined (`--all`) | yes |

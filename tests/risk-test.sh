@@ -40,7 +40,8 @@ setup_repo() {
   mkdir -p "$repo/docs" "$repo/src" "$repo/tests" "$repo/spec" "$repo/.agents/policies"
   copy_workflow "$repo"
   workflow_gitignore "$repo/.gitignore"
-  cp "$source_root/.agents/policies/autonomy.md" "$repo/.agents/policies/autonomy.md"
+  # A stand-in for the policy: only that it changes counts, not its text.
+  printf '# Autonomy policy\n' >"$repo/.agents/policies/autonomy.md"
   case "$2" in
     template) shipped_policy >"$repo/.agents/policies/risk.conf" ;;
     none) ;;

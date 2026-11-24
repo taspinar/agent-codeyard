@@ -100,6 +100,19 @@ expect_role unknown "$dir" ""
 output="$(template_repository_role "$(repo token https://github.com/owner/template https://secret-token@github.com/owner/project.git)")"
 [[ "$output" != *secret-token* ]] || fail "the reason shows the credential of the origin: $output"
 
+# ------------------------------------------- the template-only checks
+# The checks of a self-test that read the template's own copy of a file that
+# a project makes its own (its ci.yml, agents, risk policy, documents, site)
+# run under template_repository of tests/lib-fakes.sh (Issue 462): in the
+# template, where CI runs every self-test on every pull request and push, so
+# a change of any of those files runs them; never in a project, also not
+# with a doubt, since there the file is the project's. The fixture of
+# adopted-project, whose origin is a local path, is such a doubt.
+template_repository "$tmp/roles/template" || fail "template_repository does not run the template-only checks in the template"
+for name in project project-ssh no-conf no-repository local-template no-origin local-origin; do
+  ! template_repository "$tmp/roles/$name" || fail "template_repository runs the template-only checks in $name"
+done
+
 # ---------------------------------------------------------- verify.sh
 # project <name> <origin> [<template-repository>]: a repository with
 # verify.sh, its libraries, a project check, and two self-tests: 'framework'
@@ -259,14 +272,16 @@ if (cd "$dir" && PATH="$ISOLATED_PATH" ./scripts/verify.sh --groups --framework-
 fi
 
 # ---------------------------------------------------------------- CI
-# The template's ci.yml only: a project's own CI, which runs no verify.sh
-# or has no job group-adopted-project, is not the template's, and the
-# fixture of adopted-project has one (sync-template-test.sh does the same).
+# The template's ci.yml, in the template only (template_repository in
+# tests/lib-fakes.sh): a project owns its CI, which may run verify.sh in a
+# layout of its own, and the fixture of adopted-project has one
+# (sync-template-test.sh does the same).
 ci_workflow="$source_root/.github/workflows/ci.yml"
-if [[ ! -f "$ci_workflow" ]] || ! grep -Fq 'scripts/verify.sh' "$ci_workflow" || ! grep -Eq '^  group-adopted-project:' "$ci_workflow"; then
-  echo "template repository tests passed (without the CI of the template, which this repository does not have)"
+if ! template_repository "$source_root"; then
+  echo "template repository tests passed (without the CI of the template, which is checked in the template only)"
   exit 0
 fi
+grep -Eq '^  group-adopted-project:' "$ci_workflow" || fail "the template's ci.yml has no job group-adopted-project"
 # ci_run_script <job> <marker>: the 'run: |' block of the step of the job
 # <job> of ci.yml that has a line with <marker>, without its indentation.
 ci_run_script() {

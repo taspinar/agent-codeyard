@@ -28,21 +28,27 @@ commit_all() {
   git -C "$1" -c user.name=Test -c user.email=test@example.com commit -qm "$2"
 }
 
-# The template checkout the assessment and the adoption run from, from the
-# files the template carries into an adopted project too; its product files
-# and CI, which an adoption leaves behind, are written here.
+# The template checkout the assessment and the adoption run from: the
+# workflow code of this checkout (copy_workflow), and every other file of
+# the template written here. This repository's own AGENTS.md, agents,
+# attribution, documents, and pull request template are never read: in a
+# project they are the project's.
 template="$tmp/template"
 mkdir -p "$template/docs" "$template/.github/workflows" "$template/src"
 copy_workflow "$template"
 workflow_gitignore "$template/.gitignore"
-cp "$source_root/AGENTS.md" "$template/"
+printf '# Agent Instructions\n\nThe instructions of the template.\n\n## Definition of Done\n- `./scripts/verify.sh` passes.\n' >"$template/AGENTS.md"
 printf '# The template\n' >"$template/README.md"
-cp "$source_root/.agents/agents.conf" "$source_root/.agents/attribution.conf" "$template/.agents/"
+printf 'implementer: claude model-i\nreviewer: codex model-r\ntriage: claude model-t\ntriage-implementer: claude model-f\nassessor: claude model-a\n' \
+  >"$template/.agents/agents.conf"
+printf 'agent-attribution: disabled\n' >"$template/.agents/attribution.conf"
 template_conf "$template/.agents/template.conf"
-cp "$source_root/docs/architecture.md" "$source_root/docs/workflow.md" "$source_root/docs/evaluation.md" "$source_root/docs/example.md" "$template/docs/"
+for document in architecture workflow evaluation example; do
+  printf '# The %s of the template\n\nA document of the template.\n' "$document" >"$template/docs/$document.md"
+done
 printf 'name: ci of the template\non: [push]\njobs: {}\n' >"$template/.github/workflows/ci.yml"
 printf 'name: guardrails\non: [pull_request]\njobs: {}\n' >"$template/.github/workflows/guardrails.yml"
-cp "$source_root/.github/PULL_REQUEST_TEMPLATE.md" "$template/.github/"
+printf '## Summary\n\n## Verification\n' >"$template/.github/PULL_REQUEST_TEMPLATE.md"
 : >"$template/src/.gitkeep"
 # The starter files of a new project, a decision record of the template's
 # own, and a directory its template.conf excludes: an adoption carries none
@@ -183,6 +189,22 @@ isolation="unset \$(compgen -e | grep -E 'TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|A
 guard='for f in .env .env.* .dev.vars; do [[ ! -e $f && ! -L $f || " .env.example .env.sample .env.template .env.dist .env.defaults " == *" $f "* ]] || { echo "$f: a credential file in the directory of this check, which a tool may load, whether Git tracks it or not. The check stops until the owner has set up the shielding: move the file out for the run, or run the verification in a working copy without it." >&2; exit 1; }; done && '
 grep -Fxq "tests: ${isolation}${guard}npm run test" "$repo/scripts/verify.conf" || fail "the project's command is not an isolated check: $(cat "$repo/scripts/verify.conf")"
 [[ " $paths " == *" :(exclude)scripts/verify.conf "* ]] || fail "the checks of the project are owned by the template: $paths"
+# Whether a parallel CI matches the groups is a check of the project's own
+# (Issue 462), not a self-test that reads its CI: it passes with the
+# project's own CI, which declares no group, and fails with a CI whose group
+# jobs do not match the groups of the checks.
+ci_groups="$(sed -n 's/^ci-groups: //p' "$repo/scripts/verify.conf")"
+[[ -n "$ci_groups" ]] || fail "the adoption writes no ci-groups check: $(cat "$repo/scripts/verify.conf")"
+(cd "$repo" && PATH="$ISOLATED_PATH" bash -eo pipefail -c "$ci_groups") >"$tmp/ci-groups.out" 2>&1 ||
+  fail "the ci-groups check fails with the project's own CI: $(cat "$tmp/ci-groups.out")"
+cp -R "$repo" "$tmp/ci-groups-repo"
+mkdir -p "$tmp/ci-groups-repo/.github/workflows"
+printf 'jobs:\n  group-other:\n    env:\n      VERIFY_GROUP: other\n' >"$tmp/ci-groups-repo/.github/workflows/ci.yml"
+if (cd "$tmp/ci-groups-repo" && PATH="$ISOLATED_PATH" bash -eo pipefail -c "$ci_groups") >"$tmp/ci-groups.out" 2>&1; then
+  fail "the ci-groups check passes with a CI whose groups do not match the checks"
+fi
+grep -Fq "declares the group default" "$tmp/ci-groups.out" || grep -Fq "group default" "$tmp/ci-groups.out" ||
+  fail "the ci-groups check does not name the group without a job: $(cat "$tmp/ci-groups.out")"
 grep -Fq "./scripts/verify.sh --baseline" "$repo.out" || fail "the adoption does not say how to record the baseline: $(cat "$repo.out")"
 # The planning documents the project lacks are a minimal baseline, marked as
 # observed and not approved; the project's own architecture is reused as it
@@ -257,6 +279,14 @@ adopt "$repo" || { cat "$repo.out" >&2; fail "the adoption of a project with a c
 grep -Fqx "# Not taken over: parallel is a reserved word of this file. Add the check under another name." "$repo/scripts/verify.conf" ||
   fail "a command named 'parallel' was not refused as a reserved word: $(cat "$repo/scripts/verify.conf")"
 if grep -q '^parallel' "$repo/scripts/verify.conf"; then fail "a command named 'parallel' became a line of scripts/verify.conf"; fi
+# Nor one named like the workflow's check ci-groups, which would be a second
+# check of that name.
+repo="$(make_target own-ci-groups)"
+assess "$repo" '.verification[0].name = "ci-groups"'
+adopt "$repo" || { cat "$repo.out" >&2; fail "the adoption of a project with a command named 'ci-groups' failed"; }
+grep -Fqx "# Not taken over: ci-groups is the check of the workflow above. Add the check under another name." "$repo/scripts/verify.conf" ||
+  fail "a command named 'ci-groups' was not refused: $(cat "$repo/scripts/verify.conf")"
+[[ "$(grep -c '^ci-groups:' "$repo/scripts/verify.conf")" -eq 1 ]] || fail "scripts/verify.conf has more than one check ci-groups"
 
 # A project whose architecture and requirements the assessment judged not
 # sufficient: the marked baseline is written at their paths, above the

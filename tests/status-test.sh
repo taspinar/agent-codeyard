@@ -130,9 +130,12 @@ main_oid="$(git -C "$repo" rev-parse main)"
 # 1. Nothing to show.
 [[ "$(status)" == "No feature has a worktree or an open pull request." ]] || fail "an empty overview is not said plainly"
 
-# The cron line of docs/development.md works in a fresh checkout, before
-# .agents/status/ exists: its log is in that directory.
-cron_line="$(grep -E '^\*/10 \* \* \* \* ' "$source_root/docs/development.md")" || fail "the cron example is not found"
+# The cron line that docs/development.md documents works in a fresh
+# checkout, before .agents/status/ exists: its log is in that directory. The
+# line is the test's own; that the template's documents show the same one is
+# checked in the template only (template_repository in tests/lib-fakes.sh): a
+# project may have written its own docs/development.md.
+cron_line='*/10 * * * * cd /path/to/project && mkdir -p .agents/status && ./scripts/status.sh --changes >/dev/null 2>>.agents/status/cron.log'
 cron_command="$(sed -E 's/^([^ ]+ ){5}//; s#/path/to/project#'"$repo"'#' <<<"$cron_line")"
 [[ ! -e "$repo/.agents/status" ]] || fail "the fresh checkout has .agents/status already"
 (cd / && PATH="$tmp/bin:$ISOLATED_PATH" FAKE_GH_DIR="$tmp/gh" sh -c "$cron_command") ||
@@ -140,10 +143,12 @@ cron_command="$(sed -E 's/^([^ ]+ ){5}//; s#/path/to/project#'"$repo"'#' <<<"$cr
 [[ -f "$repo/.agents/status/cron.log" ]] || fail "the cron example does not log: $cron_command"
 [[ ! -e "$repo/.agents/status/lock" ]] || fail "--changes leaves its lock behind"
 
-# The site's "How the workflow works" page shows the same cron and launchd
-# examples as docs/development.md (a project without the site skips this).
-site_page="$source_root/website/src/content/docs/detailed-workflow.md"
-if [[ -f "$site_page" ]]; then
+# The template's docs/development.md shows that line, and the site's "How
+# the workflow works" page the same cron and launchd examples.
+if template_repository "$source_root"; then
+  [[ "$(grep -E '^\*/10 \* \* \* \* ' "$source_root/docs/development.md")" == "$cron_line" ]] ||
+    fail "the cron example of docs/development.md is not the line this test runs"
+  site_page="$source_root/website/src/content/docs/detailed-workflow.md"
   site_cron="$(grep -E '^\*/10 \* \* \* \* ' "$site_page")" || fail "the site page has no cron example"
   [[ "$site_cron" == "$cron_line" ]] || fail "the site's cron example differs from docs/development.md: $site_cron"
   plist() { awk '/^<\?xml /{ on = 1 } on { print } /^<\/plist>/{ exit }' "$1"; }

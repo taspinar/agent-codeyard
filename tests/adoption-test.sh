@@ -5,7 +5,8 @@ set -euo pipefail
 # The adoption of an existing repository from end to end, on a synthetic
 # fixture: the assessment, the adoption, the baseline of the verification
 # with a pre-existing failure, one ordinary feature with run-feature.sh, and
-# a later sync of the template. The template is a copy of this checkout.
+# a later sync of the template. The template is the workflow code of this
+# checkout with fixture content for every other file.
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
@@ -27,19 +28,30 @@ commit_all() {
   git -C "$1" -c user.name=Test -c user.email=test@example.com commit -qm "$2"
 }
 
-# The template: the files it carries into a project, from this checkout as
-# they are, and nothing of what an adopted project has of its own there: its
-# decisions, its baseline, its ignore rules, and its exclusions from the
-# template's files.
+# The template: the workflow code of this checkout (copy_workflow, and the
+# filter of the run report beside the libraries), and every other file it
+# carries into a project written here. This repository's own AGENTS.md,
+# agents, attribution, policies, checks, documents, tests, and CI are never
+# read: in a project they are the project's.
 template="$tmp/template"
-mkdir -p "$template/.agents"
+mkdir -p "$template/.agents/policies" "$template/.github/workflows" "$template/docs"
+copy_workflow "$template"
+cp "$source_root/scripts/lib/report.jq" "$template/scripts/lib/"
 template_conf "$template/.agents/template.conf"
-read -r -a template_paths <<<"$(sed -n 's/^paths: *//p' "$template/.agents/template.conf")"
-(cd "$source_root" && git ls-files -co --exclude-standard -z -- "${template_paths[@]}" ':(exclude).gitignore' ':(exclude).agents/template.conf' |
-  while IFS= read -r -d '' path; do
-    [[ -f "$path" ]] && printf '%s\0' "$path"
-  done |
-  tar --null -T - -cf -) | tar -C "$template" -xf -
+printf '# Agent Instructions\n\nThe instructions of the template.\n\n## Definition of Done\n- `./scripts/verify.sh` passes.\n' >"$template/AGENTS.md"
+printf 'implementer: claude model-i\nreviewer: codex model-r\ntriage: claude model-t\ntriage-implementer: claude model-f\nassessor: claude model-a\n' \
+  >"$template/.agents/agents.conf"
+printf 'agent-attribution: disabled\n' >"$template/.agents/attribution.conf"
+# The risk policy the template ships: the preset of standard, not the policy
+# of this repository.
+(source "$source_root/scripts/lib/risk.sh" && risk_profile_preset standard) | grep -Ev '^[a-z]+: (verification|review|triage):' \
+  >"$template/.agents/policies/risk.conf"
+printf '## Summary\n\n## Verification\n' >"$template/.github/PULL_REQUEST_TEMPLATE.md"
+printf 'name: ci of the template\non: [push]\njobs: {}\n' >"$template/.github/workflows/ci.yml"
+printf '# The checks of the template.\ntemplate: true\n' >"$template/scripts/verify.conf"
+for document in development evaluation workflow; do
+  printf '# The %s of the template\n\nA document of the template.\n' "$document" >"$template/docs/$document.md"
+done
 workflow_gitignore "$template/.gitignore"
 git -C "$template" init -q -b main
 commit_all "$template" "Template"

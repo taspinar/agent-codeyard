@@ -497,31 +497,42 @@ for case_name in lacks has; do
   fi
 done
 
+# The template-contract checks below read the template's own files that a
+# project makes its own: its site, its scripts/verify.conf, its ci.yml, its
+# example CI, and its list of workflow files. They run in the template only
+# (template_repository in tests/lib-fakes.sh), where CI runs every self-test
+# on every pull request; in a project those files are the project's.
+in_template=0
+if template_repository "$source_root"; then in_template=1; fi
+
 # The paths this repository hands out, by the template's list without the
 # exclusions an adopted project adds: the website of the template
 # and the workflow that publishes it never reach a project, while the
 # workflows of the template do.
 template_conf "$tmp/template.conf"
-handed_out="$(
-  cd "$source_root"
-  read -r -a pathspecs <<<"$(sed -n 's/^paths: *//p' "$tmp/template.conf")"
-  git ls-files --cached --others --exclude-standard -- "${pathspecs[@]}"
-)"
-if grep -Eq '^website/|^\.github/workflows/pages\.yml$' <<<"$handed_out"; then
-  fail "the template paths hand out the website or its workflow"
-fi
-for workflow in ci.yml guardrails.yml; do
-  if [[ -f "$source_root/.github/workflows/$workflow" ]]; then
-    grep -Fxq ".github/workflows/$workflow" <<<"$handed_out" || fail "the template paths do not hand out $workflow"
+if [[ "$in_template" -eq 1 ]]; then
+  handed_out="$(
+    cd "$source_root"
+    read -r -a pathspecs <<<"$(sed -n 's/^paths: *//p' "$tmp/template.conf")"
+    git ls-files --cached --others --exclude-standard -- "${pathspecs[@]}"
+  )"
+  if grep -Eq '^website/|^\.github/workflows/pages\.yml$' <<<"$handed_out"; then
+    fail "the template paths hand out the website or its workflow"
   fi
-done
+  for workflow in ci.yml guardrails.yml; do
+    grep -Fxq ".github/workflows/$workflow" <<<"$handed_out" || fail "the template paths do not hand out $workflow"
+  done
+fi
 
 # A project has no website: it is not handed out, and a new project
 # deletes it. The check of the site in the template's verification passes
 # there.
-site_check="$(sed -n 's/^website: *//p' "$source_root/scripts/verify.conf")"
-if [[ -d "$source_root/website" && -z "$site_check" ]]; then
-  fail "the template has a website but no website check in scripts/verify.conf"
+site_marker="website/.codeyard-site"
+site_check=""
+if [[ "$in_template" -eq 1 ]]; then
+  site_check="$(sed -n 's/^website: *//p' "$source_root/scripts/verify.conf")"
+  [[ -n "$site_check" ]] || fail "the template has no website check in scripts/verify.conf"
+  [[ -f "$source_root/$site_marker" ]] || fail "the template's website has no marker $site_marker"
 fi
 if [[ -n "$site_check" ]]; then
   mkdir -p "$tmp/no-site"
@@ -535,10 +546,6 @@ fi
 # recognised by its marker, which the project's directory does not have: the
 # check passes there without running the template's site checks, and the
 # website steps of the CI are conditioned on the same marker.
-site_marker="website/.codeyard-site"
-if [[ -d "$source_root/website" && ! -f "$source_root/$site_marker" ]]; then
-  fail "the template's website has no marker $site_marker"
-fi
 if [[ -n "$site_check" ]]; then
   mkdir -p "$tmp/own-site/website" "$tmp/own-site-bin"
   echo 22 >"$tmp/own-site/website/.nvmrc"
@@ -604,7 +611,7 @@ ci_website_conditions() {
 }
 
 ci_workflow="$source_root/.github/workflows/ci.yml"
-if [[ -f "$ci_workflow" ]]; then
+if [[ "$in_template" -eq 1 ]]; then
   # The project's own website/ with reports of its own: only the marker may
   # keep the steps from running. With the marker added, they do run.
   mkdir -p "$tmp/ci-own-site/website/reports"
@@ -676,8 +683,9 @@ ci_jobs() {
 # request or the commit before the push, and everything when that commit
 # cannot be determined; the template runs them on every event; there is no
 # nightly run, and a run by hand runs everything (Issues 395 and 408).
-# A project's own CI that does not run verify.sh is not the template's.
-if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
+# The template's ci.yml only: a project's own CI may run verify.sh in a
+# layout of its own.
+if [[ "$in_template" -eq 1 ]]; then
   scope_script="$(ci_step_script "$ci_workflow" 'id: scope')"
   [[ -n "$scope_script" ]] || fail "ci.yml has no step 'scope' that decides which checks run"
   # The checkouts, each a repository with the commit 'base' and three
@@ -950,15 +958,25 @@ fi
 # repository fetches the merge commit refs/pull/<n>/merge from the remote and
 # checks it out detached; with fetch-depth: 0 it fetches every branch too,
 # with the default depth only that one commit. verify.sh then runs as the
-# scope 'changed' runs it, with the paths: of scripts/verify-workflow.conf
-# and a stub for the self-tests. The template's CI files and a project's
-# own workflows (deploy.yml, changed, and release.yml, added), its policies,
-# .agents/template.conf, and the example CI that a self-test reads are
-# workflow files (Issue 395, criteria 7 and 9 to 12). main moves on with a
-# workflow change of its own, which must not count for the pull request.
+# scope 'changed' runs it, with the template's paths: of
+# scripts/verify-workflow.conf and a stub for the self-tests. The workflow
+# code is a workflow file: the template's two CI files, a script, a prompt,
+# a schema, a policy, the example CI that a self-test reads, a self-test,
+# and its library (Issue 395, criteria 7 and 9 to 12). The files a project
+# makes its own are not (Issue 462): its agents, its template.conf, its
+# .gitignore, and a workflow of its own, changed (deploy.yml) or added
+# (release.yml). main moves on with a workflow change of its own, which must
+# not count for the pull request.
+pr_paths='scripts .agents/prompts .agents/schemas .agents/policies .github/workflows/ci.yml .github/workflows/guardrails.yml docs/examples/parallel-ci.yml :(glob)tests/*-test.sh tests/lib-fakes.sh tests/lib-run-feature.sh :(exclude)scripts/verify.conf'
+# The line is the template's own, which a project may narrow: the template
+# lists exactly these (template_repository in tests/lib-fakes.sh).
+if [[ "$in_template" -eq 1 ]]; then
+  [[ "$(sed -n 's/^paths:[[:space:]]*//p' "$source_root/scripts/verify-workflow.conf")" == "$pr_paths" ]] ||
+    fail "the paths: of the template's scripts/verify-workflow.conf are not those this test checks: $(sed -n 's/^paths:[[:space:]]*//p' "$source_root/scripts/verify-workflow.conf")"
+fi
 pr_root="$tmp/ci-pr"
-pr_paths="$(sed -n 's/^paths:[[:space:]]*//p' "$source_root/scripts/verify-workflow.conf")"
-mkdir -p "$pr_root/work/scripts/lib" "$pr_root/work/.github/workflows" "$pr_root/work/.agents/policies" "$pr_root/work/docs/examples" "$pr_root/work/src"
+mkdir -p "$pr_root/work/scripts/lib" "$pr_root/work/.github/workflows" "$pr_root/work/.agents/policies" "$pr_root/work/.agents/prompts" \
+  "$pr_root/work/.agents/schemas" "$pr_root/work/docs/examples" "$pr_root/work/src" "$pr_root/work/tests"
 cp "$source_root/scripts/verify.sh" "$pr_root/work/scripts/"
 cp "$source_root/scripts/lib/base.sh" "$pr_root/work/scripts/lib/"
 printf 'project: true\n' >"$pr_root/work/scripts/verify.conf"
@@ -971,6 +989,12 @@ printf 'default: medium\n' >"$pr_root/work/.agents/policies/risk.conf"
 printf 'repository: https://github.com/owner/template\n\npaths: scripts\ncommit: 0123\n' >"$pr_root/work/.agents/template.conf"
 printf 'one\n' >"$pr_root/work/src/app.txt"
 printf 'one\n' >"$pr_root/work/scripts/tool.sh"
+printf 'implementer: claude opus\n' >"$pr_root/work/.agents/agents.conf"
+printf '.env\n' >"$pr_root/work/.gitignore"
+printf '# Implementer\n' >"$pr_root/work/.agents/prompts/implementer.md"
+printf '{}\n' >"$pr_root/work/.agents/schemas/review.schema.json"
+printf '#!/usr/bin/env bash\n' >"$pr_root/work/tests/tool-test.sh"
+printf '# fakes\n' >"$pr_root/work/tests/lib-fakes.sh"
 git -C "$pr_root/work" init -q -b main
 commit_all "$pr_root/work" "A project"
 git init -q --bare "$pr_root/remote.git"
@@ -1043,8 +1067,11 @@ expect_pr() {
   esac
 }
 
-expect_pr src/app.txt 0 skipped "no workflow file differs from origin/main"
-for file in .github/workflows/ci.yml .github/workflows/guardrails.yml .github/workflows/deploy.yml .github/workflows/release.yml .agents/policies/risk.conf .agents/template.conf docs/examples/parallel-ci.yml scripts/tool.sh; do
+for file in src/app.txt .agents/agents.conf .agents/template.conf .gitignore .github/workflows/deploy.yml .github/workflows/release.yml; do
+  expect_pr "$file" 0 skipped "no workflow file differs from origin/main"
+done
+for file in .github/workflows/ci.yml .github/workflows/guardrails.yml .agents/policies/risk.conf docs/examples/parallel-ci.yml \
+  scripts/tool.sh .agents/prompts/implementer.md .agents/schemas/review.schema.json tests/tool-test.sh tests/lib-fakes.sh; do
   expect_pr "$file" 0 ran "a workflow file differs from origin/main"
 done
 # In a shallow checkout verify.sh cannot tell, and runs them.
@@ -1057,7 +1084,8 @@ expect_pr src/app.txt 1 ran "could not determine whether a workflow file changed
 # (origin/main) and sees none. The scope decides: it gives 'all', and the
 # group job runs the self-tests with --all, also when the scope cannot
 # compare (no base). A framework-only self-test stays skipped in the project.
-if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
+# It reads the group jobs of the template's ci.yml, so it runs in the template only.
+if [[ "$in_template" -eq 1 ]]; then
   other_root="$tmp/ci-other-base"
   mkdir -p "$other_root/work/scripts/lib" "$other_root/work/.github/workflows" "$other_root/work/.agents" "$other_root/work/src"
   cp "$source_root/scripts/verify.sh" "$other_root/work/scripts/"
@@ -1162,10 +1190,9 @@ ci_setup_steps() {
 mkdir -p "$tmp/ci-setup/with/.github/actions/project-setup" "$tmp/ci-setup/without/.github/actions/other"
 printf 'name: setup\nruns:\n  using: composite\n  steps: []\n' >"$tmp/ci-setup/with/.github/actions/project-setup/action.yml"
 printf 'name: other\n' >"$tmp/ci-setup/without/.github/actions/other/action.yml"
+# The template's files only: a project's own CI is its own.
 for workflow in .github/workflows/ci.yml docs/examples/parallel-ci.yml; do
-  [[ -f "$source_root/$workflow" ]] || continue
-  # A project's own CI that does not run verify.sh is not the template's.
-  grep -Fq 'scripts/verify.sh' "$source_root/$workflow" || continue
+  [[ "$in_template" -eq 1 ]] || continue
   setup_jobs=0
   while IFS=$'\t' read -r job checkout setup verify condition; do
     setup_jobs=$((setup_jobs + 1))

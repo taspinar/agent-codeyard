@@ -567,6 +567,12 @@ verify_file() {
       echo "# Change a check where it needs more, in a reviewed change."
     fi
     echo
+    echo "# The groups of these checks and of the workflow's self-tests match the jobs"
+    echo "# of a parallel CI (docs/development.md, \"A parallel CI\"). A CI that"
+    echo "# declares no VERIFY_GROUP, as the project's own usually does, needs no"
+    echo "# mapping, and the check passes."
+    echo "ci-groups: test ! -f .github/workflows/ci.yml || ! grep -q 'VERIFY_GROUP:' .github/workflows/ci.yml || ./scripts/check-ci-groups.sh --workflow .github/workflows/ci.yml"
+    echo
   } >"$1"
   if [[ "$(jq '.verification // [] | length' "$proposal")" -eq 0 ]]; then
     {
@@ -583,6 +589,10 @@ verify_file() {
     case "$name" in
       paths | budget-seconds | heavy | parallel | accepted-failure)
         printf '# Not taken over: %s is a reserved word of this file. Add the check under another name.\n' "$name" >>"$1"
+        continue
+        ;;
+      ci-groups)
+        printf '# Not taken over: ci-groups is the check of the workflow above. Add the check under another name.\n' >>"$1"
         continue
         ;;
     esac
