@@ -110,16 +110,20 @@ verification_recordable() {
 }
 
 # verification_field <root> <field>
-# Prints the value of 'tree', 'workflow-tests', 'verified-at', or 'origin'
-# in the record, or nothing when there is no record (and no 'origin' in a
-# record written before it was kept).
+# Prints the value of 'tree', 'workflow-tests', 'framework-checks',
+# 'verified-at', or 'origin' in the record, or nothing when there is no
+# record (and no 'origin' or 'framework-checks' in a record written before
+# it was kept).
 verification_field() {
   [[ -f "$1/$VERIFICATION_RECORD" ]] || return 0
   sed -n "s/^$2: //p" "$1/$VERIFICATION_RECORD" | head -n 1
 }
 
-# verification_write <root> <tree> <workflow-tests> [<budgets-file>] [<durations-file>]
-# <workflow-tests> is 'ran', 'skipped', or 'none'. <budgets-file> holds the
+# verification_write <root> <tree> <workflow-tests> [<budgets-file>] [<durations-file>] [<framework-checks>]
+# <workflow-tests> is 'ran', 'skipped', or 'none'. <framework-checks>, the
+# framework-only self-tests (scripts/verify-workflow.conf), is 'ran',
+# 'skipped' (outside the template, scripts/lib/template-repository.sh), or
+# 'none'; without it the record has no such line. <budgets-file> holds the
 # budget results of the run in the format of verification_budget_add; it is
 # kept with the record, and without one, or with an empty one, no budget
 # record is kept. <durations-file> holds the durations of the checks in the
@@ -129,6 +133,9 @@ verification_write() {
   mkdir -p "$(dirname "$1/$VERIFICATION_RECORD")" &&
     printf 'tree: %s\nworkflow-tests: %s\nverified-at: %s\norigin: %s\n' \
       "$2" "$3" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$(verification_origin)" >"$1/$VERIFICATION_RECORD" || return 1
+  if [[ -n "${6:-}" ]]; then
+    printf 'framework-checks: %s\n' "$6" >>"$1/$VERIFICATION_RECORD" || return 1
+  fi
   if [[ -n "${4:-}" && -s "$4" ]]; then
     cp "$4" "$1/$VERIFICATION_BUDGETS"
   else

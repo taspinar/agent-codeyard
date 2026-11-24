@@ -676,6 +676,11 @@ if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
   mkdir -p "$tmp/ci-scope/template/.agents" "$tmp/ci-scope/project/.agents" "$tmp/ci-scope/bare"
   printf 'repository: https://github.com/Owner/Template.git\n\npaths: scripts\n' >"$tmp/ci-scope/template/.agents/template.conf"
   printf 'repository: https://github.com/owner/template\n\npaths: scripts\ncommit: 0123\n' >"$tmp/ci-scope/project/.agents/template.conf"
+  # The predicate of the scope, which its sparse checkout brings.
+  for checkout in template project bare; do
+    mkdir -p "$tmp/ci-scope/$checkout/scripts/lib"
+    cp "$source_root/scripts/lib/template-repository.sh" "$tmp/ci-scope/$checkout/scripts/lib/"
+  done
 
   # ci_scope <checkout> <repository> <event>: the scope the step decides.
   ci_scope() {

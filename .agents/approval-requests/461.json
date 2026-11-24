@@ -1,0 +1,21 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "e263b89d71f60b12a2d569eb96075542c65633da",
+  "commit": {
+    "branch": "feature/461-run-adopted-project-only",
+    "parent": "da36ce739e852fcb9415b1874467967b06f1877b",
+    "base": "302802a8977ec6d1aeaa8d5d9a639b4c00909ec6"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".github/workflows/ci.yml: the file defines or carries out the workflow and its gate",
+    "scripts/verify-workflow.conf: an existing check or line is changed or removed",
+    "the independent review classified the impact on the architecture as major: The feature adds a shared repository-role predicate and changes verification configuration syntax, pass records, and CI scope selection, all of which affect shared verification and CI behavior. ",
+    "the review could not confirm: ./scripts/verify.sh --all passes."
+  ],
+  "explanation": "Issue #461: Run adopted-project only in the template repository: a framework-only self-test, skipped with a reason in projects. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

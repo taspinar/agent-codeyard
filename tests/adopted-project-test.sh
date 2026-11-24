@@ -167,7 +167,9 @@ done
 jobs="${ADOPTED_PROJECT_JOBS:-4}"
 [[ "$jobs" =~ ^[1-9][0-9]*$ ]] || fail "ADOPTED_PROJECT_JOBS is not a positive number: $jobs"
 mkdir -p "$tmp/out"
-sed -nE 's/^([a-z0-9-]+)( \[[^]]*\])?( partition [^:]+)?: (.*)$/\1\t\4/p' "$project/scripts/verify-workflow.conf" |
+# A framework-only self-test ('framework' before the colon) runs here too:
+# the fixture runs every self-test, as the template does.
+sed -nE 's/^([a-z0-9-]+)( \[[^]]*\])?( partition [^: ]+)?( budget)?( framework)?: (.*)$/\1\t\6/p' "$project/scripts/verify-workflow.conf" |
   grep -Ev '^(paths|budget-seconds)\b' | grep -Fv "$self" >"$tmp/checks" || true
 [[ "$(wc -l <"$tmp/checks")" -gt 1 ]] || fail "no self-tests found in scripts/verify-workflow.conf"
 export project tmp
