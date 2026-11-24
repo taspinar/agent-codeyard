@@ -945,15 +945,22 @@ template ships writes it from the preset of `standard` in
 `scripts/lib/risk.sh`; only in the template itself, the repository whose
 origin is the `repository:` of `.agents/template.conf`, does
 `tests/risk-test.sh` check that its own `risk.conf` still matches that
-preset), its ADRs, or the rules of its `.gitignore` other than
+preset), its ADRs, its agents (`tests/agent-levels-test.sh` holds the lines
+of the shipped `.agents/agents.conf` itself and, only in the template, checks
+that the file still has them), the plans its documents name (the
+`tests/inherited-test.sh` check of the references compares a fixture project
+with the same project without its inherited files, not with the repository
+it runs in), its own test files, or the rules of its `.gitignore` other than
 the workflow's lines for `.agents/`. `tests/adopted-project-test.sh` holds them
 to it: it builds a fixture adopted project from the template's files, with its
 own CI excluded from the template's files, `base: develop`, a risk policy of
 its own (`profile: light` and classes of its own in its policy override, "The
 project's policy override", and a class still written into the shipped
 `risk.conf`), a CI setup action ("The project's CI setup"), a recorded
-baseline, its own ADRs, an ignore rule `*.json` that the adoption's
-section un-ignores again, and no `README.md` or `LICENSE`, and runs every
+baseline, its own ADRs, its own `.agents/agents.conf`, a document that
+names a plan of its own, a test file of its own under `tests/` that does not
+follow the rules of the self-tests, an ignore rule `*.json` that the
+adoption's section un-ignores again, and no `README.md` or `LICENSE`, and runs every
 other self-test there, four at a time, or `ADOPTED_PROJECT_JOBS` at a time
 when it is set (a lower value for a host with few cores); each has to pass.
 It starts them in the order of `scripts/verify-workflow.conf`, so the
@@ -979,7 +986,10 @@ at its first match while the producer is still writing, which depends on the
 load of the host (Issue #456). Write `grep -q pattern <<<"$(producer)"`
 instead; `>/dev/null` in place of `-q` is no remedy, since GNU grep then stops
 at the first match as well. `tests/pipe-grep-test.sh` fails on such a pipe in
-`tests/*.sh`, also one that continues on the next line.
+the workflow's test files, the `tests/*.sh` that `scripts/verify-workflow.conf`
+names, also one that continues on the next line. A project's own test files
+are its own and follow its rules; in the template every `tests/*.sh` must be
+named there, so none escapes the check.
 
 The self-tests start `jq`, `git`, and `bash` thousands of times. On an Apple
 Silicon Mac an x86_64 `jq`, such as the one Anaconda installs, runs under
@@ -1090,9 +1100,11 @@ one needed many, while the other features did not need it. The models are
 the template's choices; a project sets the models, the levels, and the
 providers it wants, and Codex remains supported as implementer and
 triage-implementer for a project that configures it ("Codex and `.agents/`"
-below). `tests/agent-levels-test.sh` checks a copy of the shipped file: what
-each level resolves to, and that `doctor.sh` accepts it without a
-same-provider warning. With no writing role on Codex, `doctor.sh` and
+below). `tests/agent-levels-test.sh` checks the lines of the shipped file,
+which it holds itself: what each level resolves to, and that `doctor.sh`
+accepts them without a same-provider warning. Only in the template does it
+check that `.agents/agents.conf` still holds exactly those lines; a project's
+agents are its own. With no writing role on Codex, `doctor.sh` and
 `tests/agent-sandbox-test.sh` have no Codex sandbox to check and skip that
 check; they run it again as soon as a line gives Codex write access.
 

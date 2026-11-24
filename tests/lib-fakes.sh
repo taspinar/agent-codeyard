@@ -170,6 +170,22 @@ template_conf() {
   sed -E -e '/^paths:/ s/ :\(exclude\)[^ ]+//g' -e '/^(commit|base):/d' "$source_root/.agents/template.conf" >"$1"
 }
 
+# template_repository <root>
+# Exits 0 only when <root> is the template itself: its origin is the
+# 'repository:' of its .agents/template.conf, as CI tells it
+# (.github/workflows/ci.yml). A project, a repository without an origin, and
+# one without that line are not. A self-test checks the template's own copy
+# of a file that a project makes its own (its risk policy, its agents, its
+# test files) only here; its fixtures never read that file.
+template_repository() {
+  (
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/scripts/lib/inherited.sh"
+    origin="$(git -C "$1" remote get-url origin 2>/dev/null)" &&
+      template="$(sed -n 's/^repository:[[:space:]]*//p' "$1/.agents/template.conf" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')" &&
+      [[ -n "$template" && "$(inherited_normalize_url "$origin")" == "$(inherited_normalize_url "$template")" ]]
+  )
+}
+
 # record_reviewed_tree <repo> <review-json> [triage-json]
 # Stores the current fingerprint of what a fixture review covers (its
 # reviewed_paths, or the whole repository) as its reviewed tree, and copies it
