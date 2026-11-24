@@ -1989,6 +1989,28 @@ body file:
 ./scripts/create-feature-issue.sh "Issue title" path/to/body.md [label]
 ```
 
+### Recurring work in an Issue
+
+This rule holds for an Issue written by hand as for a roadmap feature that the
+planner writes and the planning reviewer checks. A check that runs on every
+change is paid for on every change, long after the incident that motivated it,
+so the Issue that adds it says what it costs:
+
+- **Where new recurring work runs.** A proposal that adds a trigger, a
+  schedule, a CI job, a self-test, or a check that always runs states where it
+  runs (locally, on the pull request, on a push, in projects through the
+  sync), how often, and why a narrower trigger or a form you start on demand
+  does not give the guarantee.
+- **No standing ratchet.** "No test case is removed or weakened" is not a
+  default acceptance criterion. An Issue that removes or replaces code removes
+  its tests with it. An Issue that must keep a specific guarantee names that
+  guarantee, not the number of tests or assertions that happen to check it.
+
+The reviewer may ask for less as well as for more: a finding may recommend
+removing a test, narrowing a trigger, or moving a check to where its inputs
+change, and recurring work that a feature adds beyond what its Issue asked for
+is a finding that the triage decides like any other.
+
 ## Canonical feature workflow
 
 Start with an actionable GitHub Issue. Create a detailed implementation plan
