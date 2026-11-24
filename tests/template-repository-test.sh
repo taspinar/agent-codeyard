@@ -302,7 +302,7 @@ template_dir="$(project ci-template https://github.com/example/template "$templa
 unknown_dir="$(project ci-unknown https://github.com/example/project -)"
 # In the project the job of the framework-only group does not start; in the
 # template, and with a doubt, it does.
-[[ "$(ci_scope "$project_dir" https://github.com/example/project pull_request)" == "changed| group-fw " ]] ||
+[[ "$(ci_scope "$project_dir" https://github.com/example/project pull_request)" == "all| group-fw " ]] ||
   fail "the scope step takes the project for the template: $(ci_scope "$project_dir" https://github.com/example/project pull_request)"
 [[ "$(ci_scope "$project_dir" https://github.com/example/project workflow_dispatch)" == "all| group-fw " ]] ||
   fail "the scope step does not run everything by hand in the project"

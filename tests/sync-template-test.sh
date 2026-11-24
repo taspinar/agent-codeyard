@@ -749,12 +749,16 @@ if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
     expect_scope template owner/template "$event" main base all ' '
     expect_scope template owner/template "$event" workflow-change base all ' '
   done
-  # A project's pull request: verify.sh decides; no self-test job starts
-  # without a workflow change, and with one only the framework-only fw does
-  # not.
+  # A project's pull request: no self-test job starts without a workflow
+  # change; with one, and when the base is unknown, the scope decides
+  # 'all', so that verify.sh does not decide again with a base of its own,
+  # and only the framework-only fw does not start.
   expect_scope project owner/project pull_request main base changed "$all_tests"
-  expect_scope project owner/project pull_request workflow-change base changed ' group-fw '
-  expect_scope project owner/project pull_request main '' changed ' group-fw '
+  expect_scope project owner/project pull_request workflow-change base all ' group-fw '
+  expect_scope project owner/project pull_request main '' all ' group-fw '
+  expect_scope project owner/project pull_request main zeros all ' group-fw '
+  expect_scope project owner/project pull_request main replaced all ' group-fw '
+  expect_scope project owner/project pull_request main missing all ' group-fw '
   # A push to main: as a pull request, compared with the commit before it;
   # everything when that commit is unknown: no commit, the zeros of a first
   # push, a commit that is not in the repository, or one that is not an
@@ -776,6 +780,7 @@ if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
   # run, as verify.sh runs them there.
   expect_scope bare owner/project pull_request main base changed "$all_tests"
   expect_scope bare owner/project push main base changed "$all_tests"
+  expect_scope bare owner/project pull_request workflow-change base all ' '
   expect_scope bare owner/project push workflow-change base all ' '
   expect_scope bare owner/project workflow_dispatch main '' all ' '
   # With the template's own self-tests: without a workflow change no group
@@ -786,7 +791,7 @@ if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
   real_tests=" $(grep -vx group-default <<<"$group_jobs" | sort | paste -sd ' ' -) "
   expect_scope real owner/project pull_request main base changed "$real_tests"
   expect_scope real owner/project push main base changed "$real_tests"
-  expect_scope real owner/project pull_request workflow-change base changed ' group-adopted-project '
+  expect_scope real owner/project pull_request workflow-change base all ' group-adopted-project '
   expect_scope real owner/project push workflow-change base all ' group-adopted-project '
   expect_scope real Owner/Template push main base all ' '
   grep -Fq 'BASE: ${{ github.event_name == '"'push'"' && github.event.before || github.event.pull_request.base.sha }}' "$ci_workflow" ||
@@ -1044,6 +1049,76 @@ for file in .github/workflows/ci.yml .github/workflows/guardrails.yml .github/wo
 done
 # In a shallow checkout verify.sh cannot tell, and runs them.
 expect_pr src/app.txt 1 ran "could not determine whether a workflow file changed"
+
+# A pull request whose target is not the project's base branch (review 02 of
+# Issue 408, M1): the branch is cut from main, which has a workflow change
+# that the target 'release' lacks. The job scope compares with the target
+# and sees the change; verify.sh compares with the configured base
+# (origin/main) and sees none. The scope decides: it gives 'all', and the
+# group job runs the self-tests with --all, also when the scope cannot
+# compare (no base). A framework-only self-test stays skipped in the project.
+if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
+  other_root="$tmp/ci-other-base"
+  mkdir -p "$other_root/work/scripts/lib" "$other_root/work/.github/workflows" "$other_root/work/.agents" "$other_root/work/src"
+  cp "$source_root/scripts/verify.sh" "$other_root/work/scripts/"
+  cp "$source_root/scripts/lib/base.sh" "$source_root/scripts/lib/template-repository.sh" "$other_root/work/scripts/lib/"
+  printf 'project: true\n' >"$other_root/work/scripts/verify.conf"
+  printf 'paths: %s\n\nself-test [self-tests]: echo ran >>"$SELF_TEST_LOG"\nfw [self-tests] framework: echo framework >>"$SELF_TEST_LOG"\n' "$pr_paths" >"$other_root/work/scripts/verify-workflow.conf"
+  printf 'name: ci\n' >"$other_root/work/.github/workflows/ci.yml"
+  printf 'repository: https://github.com/owner/template\n\npaths: scripts\ncommit: 0123\n' >"$other_root/work/.agents/template.conf"
+  printf 'one\n' >"$other_root/work/src/app.txt"
+  git -C "$other_root/work" init -q -b main
+  commit_all "$other_root/work" "A project"
+  git -C "$other_root/work" branch release
+  printf 'name: changed\n' >"$other_root/work/.github/workflows/ci.yml"
+  commit_all "$other_root/work" "Change a workflow file on main"
+  git -C "$other_root/work" checkout -q -b feature main
+  printf 'two\n' >"$other_root/work/src/app.txt"
+  commit_all "$other_root/work" "Change the application"
+  git -C "$other_root/work" checkout -q --detach release
+  git -C "$other_root/work" -c user.name="Sync Test" -c user.email="sync-test@example.com" \
+    merge -q --no-ff -m "Merge feature into release" feature
+  git init -q --bare "$other_root/remote.git"
+  git -C "$other_root/work" push -q "file://$other_root/remote.git" main release feature "HEAD:refs/pull/1/merge"
+  other_checkout="$other_root/checkout"
+  git init -q "$other_checkout"
+  git -C "$other_checkout" remote add origin "file://$other_root/remote.git"
+  git -C "$other_checkout" fetch -q --no-tags --prune --no-recurse-submodules origin "+refs/heads/*:refs/remotes/origin/*" "+refs/pull/1/merge:refs/remotes/pull/1/merge"
+  git -C "$other_checkout" checkout -q --force refs/remotes/pull/1/merge
+  # The repository of the run, as actions/checkout makes it the origin.
+  git -C "$other_checkout" remote set-url origin https://github.com/owner/project
+  # The premise: against the configured base verify.sh sees no workflow
+  # change and skips the self-tests.
+  rm -f "$other_root/ran"
+  (cd "$other_checkout" && SELF_TEST_LOG="$other_root/ran" ./scripts/verify.sh --only self-tests >"$other_root/out.log" 2>&1) ||
+    fail "verify.sh --only self-tests failed in the checkout of a pull request into another base: $(cat "$other_root/out.log")"
+  [[ ! -f "$other_root/ran" ]] && grep -Fq "no workflow file differs from origin/main" "$other_root/out.log" ||
+    fail "verify.sh does not compare with the configured base in the checkout of a pull request into another base: $(cat "$other_root/out.log")"
+  # The verify step is the same in every group job.
+  other_job="$(sed -n 1p <<<"$group_jobs")"
+  ci_job_block "$ci_workflow" "$other_job" >"$other_root/job.yml"
+  other_verify_script="$(ci_step_script "$other_root/job.yml" 'scripts/verify.sh')"
+  [[ -n "$other_verify_script" ]] || fail "the job $other_job of ci.yml has no step that runs verify.sh"
+  # <base of the pull request>:<what the scope saw>
+  for case in "origin/release:a workflow change against the target of the pull request" ":no base to compare with"; do
+    other_base="${case%%:*}"
+    [[ -z "$other_base" ]] || other_base="$(git -C "$other_checkout" rev-parse "$other_base")"
+    : >"$other_root/output"
+    (cd "$other_checkout" && EVENT=pull_request REPOSITORY=https://github.com/owner/project BASE="$other_base" GITHUB_OUTPUT="$other_root/output" \
+      bash -euo pipefail -c "$scope_script") >/dev/null || fail "the scope step of ci.yml failed for a pull request into another base"
+    other_scope="$(sed -n 's/^verify=//p' "$other_root/output")"
+    [[ "$other_scope" == all ]] ||
+      fail "the scope of a project's pull request is '$other_scope' with ${case#*:}, expected 'all'"
+    [[ "$(sed -n 's/^skip=//p' "$other_root/output")" == ' ' ]] ||
+      fail "the scope skips the group of the self-tests with ${case#*:}: $(cat "$other_root/output")"
+    rm -f "$other_root/ran"
+    (cd "$other_checkout" && SCOPE="$other_scope" VERIFY_GROUP=self-tests SELF_TEST_LOG="$other_root/ran" \
+      bash -euo pipefail -c "$other_verify_script" >"$other_root/out.log" 2>&1) ||
+      fail "the group job failed for a pull request into another base: $(cat "$other_root/out.log")"
+    [[ "$(cat "$other_root/ran" 2>/dev/null)" == ran ]] ||
+      fail "the group job of a pull request into another base ran '$(cat "$other_root/ran" 2>/dev/null)' of the self-tests with ${case#*:}, expected only the one that is not framework-only: $(cat "$other_root/out.log")"
+  done
+fi
 
 # The project's CI setup (Issue 412): ci.yml and the parallel CI of
 # docs/examples call the composite action .github/actions/project-setup in

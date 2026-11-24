@@ -72,10 +72,12 @@ jobs:
           # pull request; empty on any other event.
           BASE: ${{ github.event_name == 'push' && github.event.before || github.event.pull_request.base.sha }}
         run: |
-          # verify: 'all' (--all) or 'changed' (verify.sh runs the
-          # self-tests only when a workflow file differs from the base
-          # branch). skip: the group jobs that do not start, as
-          # ' group-<group> ... ', for the aggregate 'verify'.
+          # verify: 'all' (--all) or 'changed' (without --all, only when
+          # no workflow file changed). This step decides, not verify.sh,
+          # which compares with the project's base branch and not with
+          # BASE: with a workflow change, or when it cannot tell, the
+          # group jobs run with --all. skip: the group jobs that do not
+          # start, as ' group-<group> ... ', for the aggregate 'verify'.
           # The template: the predicate that verify.sh uses for the
           # framework-only self-tests, with the repository of the run.
           role=unknown
@@ -104,10 +106,7 @@ jobs:
           # self_tests: whether the self-tests can run at all.
           if [[ "$role" == template ]]; then
             verify=all self_tests=run
-          elif [[ "$EVENT" == pull_request ]]; then
-            verify=changed self_tests=run
-            [[ "$workflow" != no ]] || self_tests=skip
-          elif [[ "$EVENT" == push && "$workflow" == no ]]; then
+          elif [[ ( "$EVENT" == pull_request || "$EVENT" == push ) && "$workflow" == no ]]; then
             verify=changed self_tests=skip
           else
             verify=all self_tests=run

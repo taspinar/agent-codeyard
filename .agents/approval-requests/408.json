@@ -1,21 +1,20 @@
 {
   "schema": "approval-request/v1",
-  "content_tree": "042ed7becae169c0a566f3736a57650a1522cf47",
+  "content_tree": "eb1a087964f2637b0cbdb5ba8a5a83044288bf82",
   "commit": {
     "branch": "feature/408-a-project-runs-the",
-    "parent": "795333c35987e978923fde78a22f0413b51e5654",
-    "base": "795333c35987e978923fde78a22f0413b51e5654"
+    "parent": "087723d6f760058125e381ee9bda2ec033debd9e",
+    "base": "728b1f6efbc146507f1e9a5eb266c02178b5354f"
   },
   "review": {
-    "round": 1,
+    "round": 3,
     "verdict": "PASS",
     "reviewer": "codex (gpt-6-luna)"
   },
   "reasons": [
     ".github/workflows/ci.yml: the file defines or carries out the workflow and its gate",
     "scripts/verify-workflow.conf: an existing check or line is changed or removed",
-    "the independent review classified the impact on the architecture as major: The change alters shared CI behavior and the contract for the required aggregate check: group jobs can now be skipped only when scope records that decision. This is shared verification infrastructure used by projects that sync the template. ",
-    "the review could not confirm: ./scripts/verify.sh --all passes."
+    "the independent review classified the impact on the architecture as major: The change alters shared CI scope decisions and the required aggregate-check contract in .github/workflows/ci.yml and scripts/check-ci-groups.sh, affecting projects that sync the template. "
   ],
   "explanation": "Issue #408: A project runs the framework's self-tests only when its workflow files changed: push like a pull request, no nightly. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
 }

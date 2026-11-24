@@ -977,7 +977,7 @@ framework-only self-tests run, as `verify.sh` runs them there.
 
 | Event | The template | A project |
 |---|---|---|
-| Pull request | `--all` | without `--all`; the jobs of the self-tests start only when the pull request changes a workflow file, as a sync of the template does |
+| Pull request | `--all` | compared with the base of the pull request: no job of the self-tests without a workflow change; `--all` with one, as in a sync of the template, and when the base cannot be determined |
 | Push to `main` | `--all` | as a pull request, compared with the commit before the push: no job of the self-tests without a workflow change, `--all` with one; `--all` when that commit cannot be determined |
 | Run by hand (`workflow_dispatch`) | `--all` | `--all` |
 
@@ -1009,13 +1009,19 @@ skipped job starts no runner, clones nothing, and runs no setup action,
 where it ran before only to print a `SKIP` line.
 
 In CI the self-tests run in four parallel jobs, one per group of
-`scripts/verify-workflow.conf` (see "A parallel CI"), each deciding the
-same with `--only` of its group when it starts. Every group job checks out
-the full history (`fetch-depth: 0`): in a shallow clone `verify.sh` cannot
-see which files changed and runs every self-test. It compares with the
-project's base branch (`base:` in `.agents/template.conf`, else `main`), so
-on a push, where that is the commit itself, `scope` passes `--all` whenever
-a workflow file changed. When the job `scope` fails, the group jobs still
+`scripts/verify-workflow.conf` (see "A parallel CI"), each with `--only`
+of its group. The decision is the one of `scope`, not a second one of
+`verify.sh`: `verify.sh` compares with the project's base branch (`base:`
+in `.agents/template.conf`, else `main`), which on a push is the commit
+itself and on a pull request into another branch is not its target, so
+`scope` passes `--all` whenever a workflow file changed and whenever it
+cannot tell, on a pull request as on a push. `--all` keeps the
+framework-only self-tests out of a project. Without `--all` (no workflow
+file changed) only `group-default` and the groups with a check of the
+project start, and `verify.sh` decides there as it does anywhere; every
+group job checks out the full history (`fetch-depth: 0`), since in a
+shallow clone it cannot see which files changed and runs every self-test.
+When the job `scope` fails, the group jobs still
 run, with `--all`, and the aggregate `verify` fails on the failed `scope`.
 `paths:` lists `.github/workflows` as a whole (the template's CI
 workflows and a project's own), `.agents/policies`, `.agents/template.conf`,
@@ -1023,7 +1029,9 @@ and `docs/examples/parallel-ci.yml`, which a self-test reads, too: a pull reques
 runs the self-tests. `tests/sync-template-test.sh` runs the decision of
 `ci.yml` for both kinds of repository and every event, with and without a
 workflow change and with each kind of unknown commit before a push, the
-conditions of the group jobs, and the aggregate on the outcome; and
+conditions of the group jobs, the aggregate on the outcome, and a pull
+request into a branch that is not the project's base, where the group job
+runs the self-tests although `verify.sh` alone would skip them; and
 `verify.sh` in a checkout made as
 `actions/checkout` makes it for a pull request: with the full history it
 skips the self-tests for a pull request that changes no workflow file and
