@@ -7,8 +7,9 @@ set -euo pipefail
 # a fixture adopted project that has the state of a real one. The project
 # keeps its own CI and excludes it from the template's files, starts its
 # features from 'develop', has approved its requirements, has a risk policy
-# of its own, has recorded its baseline, has its own ADRs and an ignore rule
-# that hides the workflow's JSON files (un-ignored again, as the adoption
+# of its own, has recorded its baseline, has its own ADRs and its own
+# agents, has a document that names a plan of its own and a test file of its
+# own under tests/, and has an ignore rule that hides the workflow's JSON files (un-ignored again, as the adoption
 # does), and has no README.md or LICENSE. It uses both extension points of a
 # project (docs/development.md): a policy override in
 # .agents/policy-overrides/risk.conf and a CI setup in
@@ -78,6 +79,41 @@ printf 'name: Project setup\ndescription: Installs the dependencies of the proje
 grep -Fqx '  using: composite' "$project/.github/actions/project-setup/action.yml" || fail "the fixture has no CI setup action"
 printf '# 0001. Store orders in PostgreSQL\n\nStatus: Accepted\n\nThe project keeps its orders in PostgreSQL.\n' \
   >"$project/docs/decisions/0001-store-orders-in-postgresql.md"
+# Its agents are its own: other models and level lines for the roles than
+# the template's. No self-test may need the agents the template ships. The
+# writing roles stay on Claude: with Codex there, tests/agent-sandbox-test.sh
+# starts the real Codex CLI with the project's model wherever it is logged
+# in, which is a check of the project's own account, not of the workflow.
+cat >"$project/.agents/agents.conf" <<'EOF'
+# The project's agents.
+project-grill: claude sonnet
+project-planner: claude sonnet
+planning-reviewer: codex gpt-6-luna
+implementer: claude sonnet
+implementer@medium: claude opus
+reviewer: codex gpt-6-astra
+reviewer@high: codex gpt-6-luna
+triage: claude opus
+triage-implementer: claude sonnet
+analyst: claude sonnet
+assessor: claude sonnet
+EOF
+grep -Fqx 'implementer: claude sonnet' "$project/.agents/agents.conf" || fail "the fixture has no agents of its own"
+# Its documents name a plan of its own, which the template does not have.
+mkdir -p "$project/.agents/plans"
+printf '# Plan of the project Issue 12\n' >"$project/.agents/plans/12-orders-api.md"
+printf '\n## Orders\n\nThe orders API follows `.agents/plans/12-orders-api.md`.\n' >>"$project/docs/architecture.md"
+grep -Fq '`.agents/plans/12-orders-api.md`' "$project/docs/architecture.md" ||
+  fail "the fixture has no document that names a plan of its own"
+# It has a test file of its own, which pipes into a quiet grep, a form the
+# workflow's self-tests do not use (tests/pipe-grep-test.sh): the project's
+# tests follow its own rules. The pipe is written as $bar so that this file
+# does not hold the form.
+bar='|'
+own_test="./scripts/orders.sh list $bar grep -q order"
+printf '#!/usr/bin/env bash\nset -euo pipefail\n%s\n' "$own_test" >"$project/tests/orders.sh"
+chmod +x "$project/tests/orders.sh"
+grep -Fqx "$own_test" "$project/tests/orders.sh" || fail "the fixture has no test file of its own"
 template_conf "$tmp/template.conf"
 sed -E -e '/^repository:/ s#:.*#: https://example.com/owner/template#' \
   -e '/^paths:/ s#$# :(exclude).github/workflows/ci.yml#' "$tmp/template.conf" >"$project/.agents/template.conf"
