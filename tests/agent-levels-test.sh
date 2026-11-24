@@ -332,12 +332,39 @@ grep -Fq "role 'analyst' has a line per risk level (high) that never applies" "$
 
 # --- The shipped configuration ----------------------------------------------
 
-# The template's own .agents/agents.conf, against a copy: the writing roles
-# of a feature are Claude at every level (opus at low and medium, fable at
-# high), the reviewer is Codex at every level, so the pair differs at every
-# level without a line of its own, and doctor.sh accepts the file without a
-# same-provider warning.
-cp "$source_root/.agents/agents.conf" "$config"
+# shipped_agents: the lines of .agents/agents.conf as the template ships it,
+# without its comments. Not the file of the repository these tests run in: a
+# project's agents are its own (Issue 460).
+shipped_agents() {
+  printf '%s\n' \
+    'project-grill: claude fable' \
+    'project-planner: claude fable' \
+    'planning-reviewer: codex gpt-6-astra' \
+    'implementer: claude opus' \
+    'implementer@high: claude fable' \
+    'reviewer: codex gpt-6-luna' \
+    'triage: claude sonnet' \
+    'triage-implementer: claude opus' \
+    'triage-implementer@high: claude fable' \
+    'analyst: claude fable' \
+    'assessor: claude fable'
+}
+
+# The template's own .agents/agents.conf holds exactly these lines, so a line
+# changed in one and not the other fails here. Only in the template
+# (template_repository in tests/lib-fakes.sh): a project's agents are its
+# own, and the checks below never read them.
+if template_repository "$source_root"; then
+  shipped_lines="$(grep -Ev '^[[:space:]]*(#|$)' "$source_root/.agents/agents.conf" || true)"
+  [[ "$shipped_lines" == "$(shipped_agents)" ]] ||
+    fail "the template's .agents/agents.conf does not hold the lines of shipped_agents: $(diff <(printf '%s\n' "$shipped_lines") <(shipped_agents) || true)"
+fi
+
+# The shipped configuration: the writing roles of a feature are Claude at
+# every level (opus at low and medium, fable at high), the reviewer is Codex
+# at every level, so the pair differs at every level without a line of its
+# own, and doctor.sh accepts the file without a same-provider warning.
+shipped_agents >"$config"
 for level in low medium high; do
   if [[ "$level" == high ]]; then
     expected="claude fable high level-line"

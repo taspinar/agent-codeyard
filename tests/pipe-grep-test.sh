@@ -73,9 +73,22 @@ pipe_grep_quiet_lines() {
   done
 }
 
-# The tests of the template have none.
-tests=("$source_root"/tests/*.sh)
-[[ -e "${tests[0]}" ]] || fail "no test file tests/*.sh exists"
+# The tests of the workflow have none: the files tests/*.sh that
+# scripts/verify-workflow.conf names, its self-tests and the helpers they
+# source. A project's own test files are not the workflow's: they are its
+# own checks, run as it chooses, and the rule is not one of the project
+# (Issue 460). In the template, every tests/*.sh is a test of the workflow,
+# so none is left out there.
+tests=()
+while IFS= read -r path; do
+  [[ -f "$source_root/$path" ]] && tests+=("$source_root/$path")
+done < <(grep -Ev '^[[:space:]]*#' "$source_root/scripts/verify-workflow.conf" | grep -oE '(^|[ ./])tests/[A-Za-z0-9_.-]+\.sh' |
+  sed -E 's#^[ ./]*##' | LC_ALL=C sort -u)
+[[ "${#tests[@]}" -gt 1 ]] || fail "scripts/verify-workflow.conf names no test file tests/*.sh"
+if template_repository "$source_root"; then
+  unlisted="$(comm -23 <(printf '%s\n' "$source_root"/tests/*.sh | LC_ALL=C sort) <(printf '%s\n' "${tests[@]}" | LC_ALL=C sort))"
+  [[ -z "$unlisted" ]] || fail "a test file of the template is not named in scripts/verify-workflow.conf: $unlisted"
+fi
 found="$(pipe_grep_quiet_lines "${tests[@]}")"
 [[ -z "$found" ]] || fail "a test pipes into a quiet grep, use grep -q ... <<<\"\$(producer)\" instead:
 $found"

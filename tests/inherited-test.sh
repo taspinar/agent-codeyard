@@ -198,10 +198,12 @@ status=0
 # No document names an inherited file: removing them adds no problem to the
 # check of the references. The project's documents are the ones of the
 # repository these tests run in, which in an adopted project may name a
-# template file it excluded: the check ends in the project, before and after
-# the removal, as it ends in that repository, which in the template is a
-# pass, and its problems stay the same. The command is the template's line
-# of scripts/verify.conf, which a project may change.
+# template file it excluded, or one of its own plans, which the snapshot
+# leaves out (Issue 460). The check therefore ends in the project, before and
+# after the removal, as it ends in the same files without the inherited ones
+# ($removed); in the template it passes there and in the repository itself,
+# and its problems stay the same. The command is the template's line of
+# scripts/verify.conf, which a project may change.
 docs_references() {
   local status=0
 
@@ -211,18 +213,30 @@ docs_references() {
   printf '%s\n' "$status"
 }
 source_status="$(docs_references "$source_root" "$tmp/source.docs")"
+removed_status="$(docs_references "$removed" "$removed.docs")"
 for repo in "$project" "$guarded"; do
   status="$(docs_references "$repo" "$repo.docs")"
-  [[ "$status" == "$source_status" ]] || {
+  [[ "$status" == "$removed_status" ]] || {
     cat "$repo.docs" >&2
-    fail "the check of the references ends with $status in $repo, with $source_status in the repository of the tests"
+    fail "the check of the references ends with $status in $repo, with $removed_status in the project without the inherited files"
   }
 done
-inherited_in_project "$source_root" || [[ "$source_status" -eq 0 ]] || {
-  cat "$tmp/source.docs" >&2
-  fail "the check of the references fails in the template"
-}
+if ! inherited_in_project "$source_root"; then
+  [[ "$source_status" -eq 0 ]] || {
+    cat "$tmp/source.docs" >&2
+    fail "the check of the references fails in the template"
+  }
+  [[ "$removed_status" -eq 0 ]] || {
+    cat "$removed.docs" >&2
+    fail "the check of the references fails in a project of the template without the inherited files"
+  }
+fi
 diff "$project.docs.problems" "$guarded.docs.problems" >&2 || fail "removing the inherited files breaks a reference of the documents"
-grep -q 'names .agents/\(approval-requests\|plans\)/' "$project.docs.problems" && fail "a document names an inherited file"
+# A problem that the project without the inherited files has too is the
+# project's own, such as a document of an adopted project that names its own
+# plan; in the template there is none.
+LC_ALL=C sort "$removed.docs.problems" >"$tmp/removed.problems"
+LC_ALL=C sort "$project.docs.problems" | comm -23 - "$tmp/removed.problems" >"$tmp/project.problems"
+grep -q 'names .agents/\(approval-requests\|plans\)/' "$tmp/project.problems" && fail "a document names an inherited file"
 
 echo "inherited tests passed"
