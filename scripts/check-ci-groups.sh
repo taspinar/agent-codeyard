@@ -27,12 +27,15 @@ case $0 in */*) bootstrap_dir=${0%/*} ;; *) if [ -f "$0" ]; then bootstrap_dir=.
 #   declares, two checks declare, or that does not exist fails, and so does
 #   a declared partition that is not given with --partition. A new test file
 #   that no partition lists fails, so it cannot drop out of CI.
-# - --results <json> [--may-skip <job>...]: the aggregate job. <json> is
-#   '${{ toJSON(needs) }}' of the job. Every group has its job 'group-<group>'
-#   in it, and every job in it succeeded. A failed, cancelled, or skipped job
-#   fails, and so does a missing one. --may-skip names a job that is not a
-#   group job and may be skipped by a condition of the workflow; a group job
-#   may never be skipped.
+# - --results <json> [--may-skip <job>...] [--scope <job>]: the aggregate
+#   job. <json> is '${{ toJSON(needs) }}' of the job. Every group has its job
+#   'group-<group>' in it, and every job in it succeeded. A failed,
+#   cancelled, or skipped job fails, and so does a missing one. --may-skip
+#   names a job that is not a group job and may be skipped by a condition of
+#   the workflow. A group job may be skipped only when --scope names the job
+#   that decided it, that job succeeded, and its output 'skip' names the
+#   group job, as the job 'scope' of the template's ci.yml does for a group
+#   that has nothing to run; otherwise a skipped group job fails.
 #
 # Exit status: 0 when every requested check holds, 1 when one does not, 2 on
 # a usage error.
@@ -43,14 +46,15 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
   echo "Usage: $0 [--workflow <file>] [--tests <pathspec> --partition <file>...]"
-  echo "          [--results <json> [--may-skip <job>...]]"
+  echo "          [--results <json> [--may-skip <job>...] [--scope <job>]]"
   echo
   echo "Checks an optional parallel CI against the groups of ./scripts/verify.sh:"
   echo "--workflow that every group is declared by exactly one job 'group-<group>'"
   echo "  (env: VERIFY_GROUP: <group>),"
   echo "--tests with --partition that every test file is in exactly one partition"
   echo "  and every partition is declared by exactly one check (partition <file>),"
-  echo "--results that every group job of the aggregate job succeeded."
+  echo "--results that every group job of the aggregate job succeeded, or was skipped"
+  echo "  because the output 'skip' of the succeeded job --scope names it."
   exit 2
 }
 
@@ -65,9 +69,10 @@ partitions=()
 results=""
 results_given=0
 may_skip=()
+scope_job=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --workflow | --tests | --partition | --results | --may-skip)
+    --workflow | --tests | --partition | --results | --may-skip | --scope)
       [[ $# -ge 2 ]] || fail "$1 requires a value."
       case "$1" in
         --workflow) workflow="$2" ;;
@@ -78,6 +83,7 @@ while [[ $# -gt 0 ]]; do
           results_given=1
           ;;
         --may-skip) may_skip+=("$2") ;;
+        --scope) scope_job="$2" ;;
       esac
       shift 2
       ;;
@@ -88,6 +94,7 @@ done
 [[ -z "$tests" || "${#partitions[@]}" -gt 0 ]] || fail "--tests requires at least one --partition."
 [[ -n "$tests" || "${#partitions[@]}" -eq 0 ]] || fail "--partition requires --tests."
 [[ "$results_given" -eq 1 || "${#may_skip[@]}" -eq 0 ]] || fail "--may-skip requires --results."
+[[ "$results_given" -eq 1 || -z "$scope_job" ]] || fail "--scope requires --results."
 
 problems=0
 problem() {
@@ -252,6 +259,16 @@ if [[ "$results_given" -eq 1 ]]; then
   jq -e 'type == "object" and all(.[]; type == "object" and (.result | type) == "string")' \
     <<<"$results" >/dev/null 2>&1 ||
     fail "--results is not the needs of a job ('\${{ toJSON(needs) }}'): $results"
+  # The group jobs that the scope job decided not to start: only when it
+  # succeeded, so a failed scope skips nothing.
+  scope_skip=""
+  if [[ -n "$scope_job" ]]; then
+    jq -e --arg job "$scope_job" 'has($job)' <<<"$results" >/dev/null ||
+      problem "the scope job $scope_job is not among the needs of the aggregate job."
+    scope_skip="$(jq -r --arg job "$scope_job" '
+      if .[$job].result == "success" then (.[$job].outputs.skip // "" | if type == "string" then . else "" end) else "" end
+    ' <<<"$results")"
+  fi
   while IFS= read -r group; do
     jq -e --arg job "group-$group" 'has($job)' <<<"$results" >/dev/null ||
       problem "the aggregate job does not need group-$group, so the group $group is not checked."
@@ -263,7 +280,9 @@ if [[ "$results_given" -eq 1 ]]; then
     for skip in ${may_skip[@]+"${may_skip[@]}"}; do
       [[ "$result" != "skipped" || "$skip" != "$job" ]] || allowed=1
     done
-    if [[ "$allowed" -eq 1 ]]; then
+    if [[ "$result" == "skipped" && " $scope_skip " == *" $job "* ]]; then
+      echo "SKIP  $job (not started: the job $scope_job found nothing for it to run)"
+    elif [[ "$allowed" -eq 1 ]]; then
       echo "SKIP  $job (may be skipped)"
     else
       problem "the job $job ended with '$result', not 'success'."

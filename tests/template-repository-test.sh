@@ -8,8 +8,9 @@ set -euo pipefail
 # a SKIP line and the record 'framework-checks: skipped', and runs it with a
 # doubt or with --framework-checks; the job 'scope' of
 # .github/workflows/ci.yml decides with the same predicate, and in a project
-# the group job of a framework-only group passes with the SKIP line, so the
-# aggregate check-ci-groups.sh --results passes.
+# does not start the group job of a framework-only group (Issue 408), which
+# the aggregate check-ci-groups.sh --results --scope accepts; the group job
+# itself still passes with the SKIP line there.
 
 # Run as on CI: without the user's global or system Git configuration, so a
 # test cannot depend on a local Git identity or setting.
@@ -288,25 +289,33 @@ scope_script="$(ci_run_script scope 'id: scope')"
 [[ "$scope_script" == *template_repository_role* ]] || fail "the job scope of ci.yml does not decide with scripts/lib/template-repository.sh: $scope_script"
 grep -Fq 'scripts/lib/template-repository.sh' <<<"$(sed -n '/^  scope:/,/^  [a-z]/p' "$ci_workflow")" ||
   fail "the sparse checkout of the job scope does not bring scripts/lib/template-repository.sh"
-# ci_scope <dir> <repository> <event>: the scope that the step decides.
+# ci_scope <dir> <repository> <event>: the scope that the step decides, as
+# '<verify>|<skip>', without a commit to compare with.
 ci_scope() {
   : >"$tmp/github-output"
-  (cd "$1" && EVENT="$3" REPOSITORY="$2" GITHUB_OUTPUT="$tmp/github-output" bash -eo pipefail -c "$scope_script") >/dev/null ||
+  (cd "$1" && EVENT="$3" REPOSITORY="$2" BASE='' GITHUB_OUTPUT="$tmp/github-output" bash -eo pipefail -c "$scope_script") >/dev/null ||
     fail "the scope step of ci.yml failed in ${1#"$tmp"/}"
-  sed -n 's/^verify=//p' "$tmp/github-output"
+  printf '%s|%s\n' "$(sed -n 's/^verify=//p' "$tmp/github-output")" "$(sed -n 's/^skip=//p' "$tmp/github-output")"
 }
 project_dir="$(project ci-project https://github.com/example/project "$template_url")"
 template_dir="$(project ci-template https://github.com/example/template "$template_url")"
-[[ "$(ci_scope "$project_dir" https://github.com/example/project pull_request)" == changed ]] ||
-  fail "the scope step takes the project for the template"
-[[ "$(ci_scope "$template_dir" https://github.com/Example/Template pull_request)" == all ]] ||
+unknown_dir="$(project ci-unknown https://github.com/example/project -)"
+# In the project the job of the framework-only group does not start; in the
+# template, and with a doubt, it does.
+[[ "$(ci_scope "$project_dir" https://github.com/example/project pull_request)" == "changed| group-fw " ]] ||
+  fail "the scope step takes the project for the template: $(ci_scope "$project_dir" https://github.com/example/project pull_request)"
+[[ "$(ci_scope "$project_dir" https://github.com/example/project workflow_dispatch)" == "all| group-fw " ]] ||
+  fail "the scope step does not run everything by hand in the project"
+[[ "$(ci_scope "$template_dir" https://github.com/Example/Template pull_request)" == "all| " ]] ||
   fail "the scope step does not take the template for the template"
-[[ "$(ci_scope "$template_dir" https://github.com/example/template schedule)" == none ]] ||
-  fail "the scope step runs the nightly verification of the template"
+[[ "$(ci_scope "$template_dir" https://github.com/example/template workflow_dispatch)" == "all| " ]] ||
+  fail "the scope step does not run everything by hand in the template"
+[[ "$(ci_scope "$unknown_dir" https://github.com/example/project push)" == "all| " ]] ||
+  fail "the scope step skips the framework-only group with a doubt"
 
-# The group job of the framework-only group, as ci.yml runs it in the
-# project: it passes with the SKIP line, so the job succeeds and the
-# aggregate check passes; in the template it runs the check.
+# The group job of the framework-only group, as ci.yml runs it where it
+# starts: in a project, started by hand from a workflow of its own, it
+# passes with the SKIP line; in the template it runs the check.
 verify_script="$(ci_run_script group-adopted-project 'scripts/verify.sh')"
 [[ -n "$verify_script" ]] || fail "the job group-adopted-project of ci.yml has no step that runs verify.sh"
 ci_group() {
@@ -318,16 +327,24 @@ ci_group "$project_dir" || { cat "$project_dir/out.log" >&2; fail "the group job
 [[ -n "$(skip_line "$project_dir")" ]] || fail "the group job did not explain the skip: $(cat "$project_dir/out.log")"
 ci_group "$template_dir" || { cat "$template_dir/out.log" >&2; fail "the group job failed in the template"; }
 ran "$template_dir" framework || fail "the group job did not run the framework-only check in the template"
-# needs <result of group-fw>: the needs of the aggregate job.
+# needs <result of group-fw> [<skip of the scope>]: the needs of the
+# aggregate job.
 needs() {
-  printf '{"scope":{"result":"success"},"group-default":{"result":"success"},"group-fw":{"result":"%s"},"group-plain":{"result":"success"}}' "$1"
+  printf '{"scope":{"result":"success","outputs":{"skip":"%s"}},"group-default":{"result":"success"},"group-fw":{"result":"%s"},"group-plain":{"result":"success"}}' "${2:- }" "$1"
 }
 (cd "$project_dir" && PATH="$ISOLATED_PATH" ./scripts/check-ci-groups.sh --results "$(needs success)") >"$tmp/results.out" 2>&1 ||
   fail "the aggregate check failed with the group job that skipped its check: $(cat "$tmp/results.out")"
 grep -Fq "PASS  every required job succeeded" "$tmp/results.out" || fail "the aggregate check did not pass: $(cat "$tmp/results.out")"
-# A group job that GitHub skipped is still no pass: the skip is the check's.
-if (cd "$project_dir" && PATH="$ISOLATED_PATH" ./scripts/check-ci-groups.sh --results "$(needs skipped)") >"$tmp/results.out" 2>&1; then
-  fail "the aggregate check passed with a skipped group job"
-fi
+# The job that the scope did not start passes the aggregate check of
+# ci.yml; a group job that GitHub skipped without the scope naming it is no
+# pass.
+(cd "$project_dir" && PATH="$ISOLATED_PATH" ./scripts/check-ci-groups.sh --results "$(needs skipped ' group-fw ')" --scope scope) >"$tmp/results.out" 2>&1 ||
+  fail "the aggregate check failed with the framework-only group job that the scope did not start: $(cat "$tmp/results.out")"
+for arguments in "--scope scope" ""; do
+  # shellcheck disable=SC2086 # the options, split on purpose
+  if (cd "$project_dir" && PATH="$ISOLATED_PATH" ./scripts/check-ci-groups.sh --results "$(needs skipped)" $arguments) >"$tmp/results.out" 2>&1; then
+    fail "the aggregate check passed with a skipped group job that the scope did not name (${arguments:-without --scope})"
+  fi
+done
 
 echo "template repository tests passed"

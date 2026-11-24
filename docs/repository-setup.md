@@ -149,10 +149,12 @@ commit message and the pull request. In a team, turn it on.
 ## 4. Required status checks
 
 The template's CI runs `./scripts/verify.sh` in parallel jobs, one per group
-of checks (with `--all` on `main`, every night, and in the template on every
-pull request; see "Workflow self-tests" and "A parallel CI" in
+of checks (in the template with `--all` on every pull request and push; in
+a project the self-tests run only when a workflow file changed, and by hand
+with `workflow_dispatch`; see "Workflow self-tests" and "A parallel CI" in
 [`docs/development.md`](development.md)). The required check is the
-aggregate job `verify`, which passes only when every group job succeeded;
+aggregate job `verify`, which passes only when every group job succeeded or
+was not started because the job `scope` found nothing for it to run;
 the jobs `scope`, `mapping`, and `group-<group>` are not required checks.
 Add `verify` to the `main` ruleset as a required status
 check: enable "Require status checks to pass" and add `verify`. GitHub lists a
@@ -213,9 +215,10 @@ workflow: its required checks stay what they were. The project's commands
 that CI runs are also the checks of `scripts/verify.conf`, so a feature runs
 them before its commit. To make `verify.sh` the gate on GitHub as well, add
 a step `./scripts/verify.sh` to the project's CI, in a reviewed change,
-and require that job; run `./scripts/verify.sh --all` on `main` or on a
-schedule, as the template's `ci.yml` does, so that the workflow self-tests
-still run regularly. A known failure of the baseline fails that step too,
+and require that job; `./scripts/verify.sh` runs the workflow self-tests
+whenever a change touches a workflow file, and `./scripts/verify.sh --all`
+in a run started by hand runs them regardless, as the template's `ci.yml`
+does with `workflow_dispatch`. A known failure of the baseline fails that step too,
 until it is fixed or accepted ("The baseline of an adopted project" in
 [`docs/development.md`](development.md)).
 
