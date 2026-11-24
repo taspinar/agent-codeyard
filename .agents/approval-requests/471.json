@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "e0c5a46d43016f9aa1db8fafadebd876305d1c4e",
+  "commit": {
+    "branch": "feature/471-issues-and-reviews-state",
+    "parent": "795333c35987e978923fde78a22f0413b51e5654",
+    "base": "795333c35987e978923fde78a22f0413b51e5654"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".agents/prompts/reviewer.md: the file defines or carries out the workflow and its gate",
+    "the review could not confirm: The three prompts are changed as described, and `docs/development.md` states the rule once."
+  ],
+  "explanation": "Issue #471: Issues and reviews state recurring work: no standing \"no test removed\" criterion, and a finding may ask to narrow. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

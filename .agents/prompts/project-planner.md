@@ -60,6 +60,16 @@ reference would stay behind after the file is gone. Where a planning document
 already names a file that no longer exists, correct the reference in the
 architecture and the roadmap.
 
+A feature that adds recurring work (a trigger, a schedule, a CI job, a
+self-test, or a check that always runs) states in its block where that work
+runs (locally, on the pull request, on a push, in projects through the sync),
+how often, and why a narrower trigger or a form started on demand does not
+give the guarantee. Do not write "no test case is removed or weakened", or a
+count of tests or assertions, as a criterion: a feature that removes or
+replaces code removes its tests with it, and a feature that must keep a
+specific guarantee names that guarantee (`docs/development.md`, "Recurring
+work in an Issue").
+
 Prefer independently deliverable vertical slices when they fit the product.
 Do not create detailed implementation plans for every future feature.
 
