@@ -15,11 +15,13 @@ name: Guardrails
 # - action_required, "Owner approval required": the pull request carries an
 #   approval request the gate accepts, for a protected path or for another
 #   reason of finish-feature.sh (a major impact on the architecture, a
-#   skipped review). It is not a failure, and GitHub does not count it as passing a required check,
+#   skipped review). Also a protected change without a request, from a pull
+#   request made by hand such as a project's setup; the summary says so. It
+#   is not a failure, and GitHub does not count it as passing a required check,
 #   so a project that requires 'guardrails' cannot merge such a change
 #   through it by accident.
-# - failure: the approval request is missing or refused, or the gate could
-#   not run. The job fails too.
+# - failure: an approval request is refused, or the gate could not run. The
+#   job fails too.
 #
 # Without the check run (the job broke before it), a required 'guardrails'
 # stays pending and blocks the merge.

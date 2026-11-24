@@ -58,8 +58,13 @@ Before the first run, set the agent and model of each role in
 pull requests may name an agent (the template ships `disabled`; change the
 line to `allowed` to name them), configure GitHub with
 [docs/repository-setup.md](docs/repository-setup.md), and delete
-`website/` and `.github/workflows/pages.yml`: they are the website of
-the template itself.
+`website/` and the workflows `pages.yml` and `macos.yml` in
+`.github/workflows/`: they are the website and the macOS run of the
+template itself. Replace the template's checks in `scripts/verify.conf` with
+your project's own, its lint, tests, and build, as the comment in that file
+says, so that CI runs them; the tools they need are installed by a composite
+action of your own in `.github/actions/project-setup/` (see
+"The project's CI setup" in [docs/development.md](docs/development.md)).
 
 ## Where to read more
 
