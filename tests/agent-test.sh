@@ -117,7 +117,7 @@ expect_rejected "known incompatible combination" implementer codex fable
 
 # A provider whose CLI is not installed fails.
 rm "$tmp/bin/claude"
-if (PATH="$tmp/bin:/usr/bin:/bin" agent_resolve "$tmp" reviewer) 2>"$tmp/err.log"; then
+if (PATH="$tmp/bin:$ISOLATED_PATH" agent_resolve "$tmp" reviewer) 2>"$tmp/err.log"; then
   fail "missing agent CLI was accepted"
 fi
 grep -Fq "claude" "$tmp/err.log" || fail "missing agent CLI was not named"

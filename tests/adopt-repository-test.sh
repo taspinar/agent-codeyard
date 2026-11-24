@@ -104,17 +104,17 @@ result() {
 assess() {
   local repo="$1"
 
-  (cd "$template" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/assess-repository.sh "$repo" --facts-only) >"$repo.assess" 2>&1 ||
+  (cd "$template" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/assess-repository.sh "$repo" --facts-only) >"$repo.assess" 2>&1 ||
     { cat "$repo.assess" >&2; fail "the facts of $repo failed"; }
   facts="$template/$(sed -n 's#^Assessment facts: \(.*\)$#\1#p' "$repo.assess" | tail -n 1)"
-  (cd "$template" && PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo.agent" MOCK_OUTPUT="$(result "$facts" "${2:-.}")" \
+  (cd "$template" && PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$repo.agent" MOCK_OUTPUT="$(result "$facts" "${2:-.}")" \
     ./scripts/assess-repository.sh "$repo") >"$repo.assess" 2>&1 || { cat "$repo.assess" >&2; fail "the assessment of $repo failed"; }
 }
 
 adopt() {
   local repo="$1"
   shift
-  (cd "$template" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/adopt-repository.sh "$repo" "$@") >"$repo.out" 2>&1
+  (cd "$template" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/adopt-repository.sh "$repo" "$@") >"$repo.out" 2>&1
 }
 
 # state <repo>: the refs, the checked-out branch, and the status.
@@ -245,7 +245,7 @@ grep -q '^> \*\*Observed, not approved\.\*\*' "$architecture" && grep -Fq -- "- 
   grep -Fq -- "- The service runs as one Node process." "$architecture" && grep -Fq "the adoption reconstructs no ADR" "$architecture" ||
   fail "the reconstructed architecture is incomplete: $(cat "$architecture")"
 grep -q '^no-project-check: ' "$repo/scripts/verify.conf" || fail "a project without a command got no failing check: $(cat "$repo/scripts/verify.conf")"
-if (cd "$repo" && PATH="/usr/bin:/bin" ./scripts/verify.sh) >"$repo.verify" 2>&1; then fail "a project without a check passed the verification"; fi
+if (cd "$repo" && PATH="$ISOLATED_PATH" ./scripts/verify.sh) >"$repo.verify" 2>&1; then fail "a project without a check passed the verification"; fi
 grep -Fq "nothing of the project is verified" "$repo.verify" || fail "the verification does not say that nothing is verified: $(cat "$repo.verify")"
 
 # A command of the project named like a reserved word of scripts/verify.conf,
@@ -473,7 +473,7 @@ rm -f "$template/.agents/template.conf.bak"
 commit_all "$template" "Template update"
 agents_before="$(cat "$repo/AGENTS.md")"
 workflows_before="$(cd "$repo" && find .github/workflows -type f | LC_ALL=C sort | xargs cksum)"
-if (cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/sync-template.sh --template "$template") >"$repo.sync" 2>&1; then
+if (cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/sync-template.sh --template "$template") >"$repo.sync" 2>&1; then
   fail "the sync reported no conflict: $(cat "$repo.sync")"
 fi
 grep -Fq 'docs/evaluation.md' <<<"$(grep -A3 '^Replaced' "$repo.sync")" && cmp -s "$repo/docs/evaluation.md" "$template/docs/evaluation.md" ||

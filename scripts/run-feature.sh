@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+case $0 in */*) bootstrap_dir=${0%/*} ;; *) if [ -f "$0" ]; then bootstrap_dir=.; else bootstrap_dir=$(command -v "$0" 2>/dev/null) && bootstrap_dir=${bootstrap_dir%/*} || bootstrap_dir=.; fi ;; esac; if [ -f "$bootstrap_dir/lib/bootstrap.sh" ]; then . "$bootstrap_dir/lib/bootstrap.sh"; elif [ "${BASH_VERSINFO:-0}" -lt 4 ]; then echo "ENVIRONMENT  Bash 4 or newer (this is ${BASH_VERSION:-not Bash}) — install Bash 4 or newer and put it first on PATH"; echo "Error: ${0##*/} needs Bash 4 or newer and did not find lib/bootstrap.sh; it stopped before it did anything." >&2; exit 78; fi
 
 set -euo pipefail
 
@@ -70,7 +71,9 @@ usage() {
   echo "says which command continues. Status 3 means that an agent needs a decision"
   echo "of yours. Status 75 means that another run holds the slot for heavy"
   echo "verification of this machine ('heavy:' in scripts/verify.conf): nothing is"
-  echo "wrong with the feature, and nothing is repaired. Running the same command"
+  echo "wrong with the feature, and nothing is repaired. Status 78 means that a"
+  echo "prerequisite of this machine is missing (an ENVIRONMENT line of verify.sh):"
+  echo "nothing is tried again or repaired; install it. Running the same command"
   echo "again continues where the feature stands: every step that is already done"
   echo "is skipped."
   echo
@@ -352,6 +355,7 @@ retrying() {
     run_step="$title"
     (cd "$worktree" && "$@" </dev/null) 2>&1 | tee "$log" || step_status=$?
     records_step "$title" "$step_status" "$(($(date +%s) - step_started))" "$step_id"
+    environment_stop "$title" "$step_status" "$log"
     case "$step_status" in
       0 | 3 | 4) return 0 ;;
       5)
@@ -385,6 +389,27 @@ retrying() {
     records_wait "$title" "$(($(date +%s) - wait_started))" "$wait_id"
     wait=$((wait * 2))
   done
+}
+
+# environment_stop <title> <status> <log>
+# Stops the run with status 78 when a step ended because a prerequisite of
+# this machine is missing: the status 78 of verify.sh, which review-feature.sh,
+# finish-feature.sh, and apply-triage.sh pass on unchanged, or an ENVIRONMENT
+# line of its preflight in the output of a step that failed. No code change
+# can fix that: nothing is tried again and nothing is repaired, and the
+# unstable checks never count it. Returns otherwise.
+environment_stop() {
+  local title="$1"
+  local status="$2"
+  local log="$3"
+  local missing
+
+  [[ "$status" -ne 0 ]] || return 0
+  [[ "$status" -eq 78 ]] || grep -q '^ENVIRONMENT  ' "$log" 2>/dev/null || return 0
+  missing="$(sed -n 's/^ENVIRONMENT  //p' "$log" 2>/dev/null | tr '\n' ';' | sed 's/;$//; s/;/; /g')"
+  note "$title" "environment" "${missing:-a prerequisite of this machine is missing (status 78)}" "Stopping; nothing is tried again or repaired"
+  stop 78 "a prerequisite of this machine is missing, which says nothing about this feature: ${missing:-see the ENVIRONMENT lines in .agents/run/$issue-step.log}." \
+    "# install what the ENVIRONMENT lines name; ./scripts/doctor.sh lists every prerequisite"
 }
 
 # blocked_or_ignored <title>
@@ -537,6 +562,7 @@ repair_verification() {
   (cd "$worktree" && VERIFY_ORIGIN=orchestrator ./scripts/verify.sh) >"$log" 2>&1 || repeat_status=$?
   # A pass of this run's own: the step done again reuses it.
   [[ "$repeat_status" -ne 0 ]] || verification_trust "$(verification_field "$worktree" tree)"
+  environment_stop "$title" "$repeat_status" "$log"
   if [[ "$repeat_status" -eq 75 ]] || grep -q '^BUSY  ' "$log" 2>/dev/null; then
     note "$title" "busy" "$(sed -n 's/^BUSY  //p' "$log" | sed -n 1p)" "Stopping; nothing is repaired"
     stop 75 "the slot for heavy verification of this machine is held by another run, which says nothing about this feature; the holder is in .agents/run/$issue-verify.log." \
@@ -644,6 +670,7 @@ step_once() {
   run_step="$title"
   (cd "$worktree" && "$@" </dev/null) || step_status=$?
   records_step "$title" "$step_status" "$(($(date +%s) - step_started))" "$step_id"
+  [[ "$step_status" -ne 78 ]] || environment_stop "$title" "$step_status" /dev/null
   [[ "$step_status" -eq 0 ]] || note "$title" "failed" "the step exited with status $step_status" "Stopping"
 }
 
@@ -734,7 +761,13 @@ level_rank() {
 # pass of this run (VERIFY_TRUSTED_TREES); the step runs in a subshell, so
 # the caller adds its pass to the list.
 verify_step() {
-  verification_run . orchestrator 1 || return 4
+  local status=0
+
+  verification_run . orchestrator 1 || status=$?
+  # A missing prerequisite of this machine (78) is no failed verification:
+  # run-feature.sh stops on it (environment_stop) instead of repairing.
+  [[ "$status" -eq 0 || "$status" -eq 78 ]] || status=4
+  return "$status"
 }
 
 # ---------------------------------------------------------------- implement

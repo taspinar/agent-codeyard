@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+case $0 in */*) bootstrap_dir=${0%/*} ;; *) if [ -f "$0" ]; then bootstrap_dir=.; else bootstrap_dir=$(command -v "$0" 2>/dev/null) && bootstrap_dir=${bootstrap_dir%/*} || bootstrap_dir=.; fi ;; esac; if [ -f "$bootstrap_dir/lib/bootstrap.sh" ]; then . "$bootstrap_dir/lib/bootstrap.sh"; elif [ "${BASH_VERSINFO:-0}" -lt 4 ]; then echo "ENVIRONMENT  Bash 4 or newer (this is ${BASH_VERSION:-not Bash}) — install Bash 4 or newer and put it first on PATH"; echo "Error: ${0##*/} needs Bash 4 or newer and did not find lib/bootstrap.sh; it stopped before it did anything." >&2; exit 78; fi
 
 set -euo pipefail
 
@@ -44,11 +45,12 @@ command -v jq >/dev/null 2>&1 || fail "jq is required."
 date_epoch() {
   [[ "$2" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || fail "$1 needs a date as YYYY-MM-DD: $2"
   # Not jq's fromdateiso8601, which some versions shift by the local time
-  # zone.
-  if [[ "$(uname -s)" == "Darwin" ]]; then
-    TZ=UTC date -j -f '%Y-%m-%d %H:%M:%S' "$2 00:00:00" +%s 2>/dev/null || fail "$1 needs a valid date: $2"
-  else
+  # zone. The form is that of the date on PATH (GNU 'date -d', or BSD
+  # 'date -j -f'), not of the system: on macOS GNU coreutils may come first.
+  if TZ=UTC date -d @0 +%s >/dev/null 2>&1; then
     TZ=UTC date -d "$2 00:00:00" +%s 2>/dev/null || fail "$1 needs a valid date: $2"
+  else
+    TZ=UTC date -j -f '%Y-%m-%d %H:%M:%S' "$2 00:00:00" +%s 2>/dev/null || fail "$1 needs a valid date: $2"
   fi
 }
 

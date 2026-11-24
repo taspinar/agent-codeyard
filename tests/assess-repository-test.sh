@@ -156,7 +156,7 @@ assess() {
   shift
   (
     cd "$template"
-    PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo.agent" ./scripts/assess-repository.sh "$repo" "$@"
+    PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$repo.agent" ./scripts/assess-repository.sh "$repo" "$@"
   ) >"$repo.out" 2>&1
 }
 

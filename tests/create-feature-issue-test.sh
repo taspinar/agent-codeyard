@@ -85,7 +85,7 @@ run_create() {
   (
     cd "$repo"
     printf '%s\n' "$answer" |
-      PATH="$tmp/bin:/usr/bin:/bin" MOCK_GH_LOG="$tmp/gh.log" ./scripts/create-feature-issue.sh "$@"
+      PATH="$tmp/bin:$ISOLATED_PATH" MOCK_GH_LOG="$tmp/gh.log" ./scripts/create-feature-issue.sh "$@"
   ) >"$tmp/out.log" 2>&1
 }
 

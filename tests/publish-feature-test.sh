@@ -160,7 +160,7 @@ run_publish() {
   shift
   (
     cd "$repo"
-    PATH="$tmp/bin:/usr/bin:/bin" MOCK_GH_LOG="$repo.gh" \
+    PATH="$tmp/bin:$ISOLATED_PATH" MOCK_GH_LOG="$repo.gh" \
       PUBLISH_POLL_SECONDS=0 PUBLISH_START_ATTEMPTS=2 ./scripts/publish-feature.sh "$@"
   ) >"$repo.out" 2>&1
 }

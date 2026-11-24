@@ -87,6 +87,19 @@ in_repo "$repo" 'records_begin feature 12 start-feature.sh; records_end 1'
 [[ "$(ls "$repo/.agents/run/records" | grep -c .)" -eq 2 ]] || fail "a second run did not get its own file"
 [[ "$(lines "$repo" | jq -r -s '[.[] | select(.type == "run-start" and .command == "start-feature.sh")][0].previous')" == "$first_run" ]] ||
   fail "a resumed run does not name the run before it"
+# The time of a change is read with the form of the stat on PATH, not of the
+# system (the handoff note of a resumed run): GNU coreutils first on PATH
+# while uname says Darwin, and a BSD stat while uname says Linux.
+make_platform_tools "$tmp/darwin-gnu" Darwin gnu
+make_platform_tools "$tmp/linux-bsd" Linux bsd
+touch -t 202001020304.05 "$tmp/dated"
+expected="$(cd "$repo" && source scripts/lib/records.sh && records_mtime "$tmp/dated")"
+[[ "$expected" =~ ^[0-9]+$ && "$expected" -gt 0 ]] || fail "records_mtime did not read the time of a file: $expected"
+for platform in darwin-gnu linux-bsd; do
+  [[ "$(cd "$repo" && PATH="$tmp/$platform:$PATH" && source scripts/lib/records.sh && records_mtime "$tmp/dated")" == "$expected" ]] ||
+    fail "records_mtime with the stat of $platform did not read the time of a file"
+done
+[[ "$(cd "$repo" && source scripts/lib/records.sh && records_mtime "$tmp/no-such-file")" == 0 ]] || fail "records_mtime of a missing file is not 0"
 # A command inside a run belongs to it: no run of its own, nothing counted twice.
 in_repo "$repo" 'records_begin feature 12 run-feature.sh; records_begin feature 12 review-feature.sh
   records_step inner 0 1; records_end 0'

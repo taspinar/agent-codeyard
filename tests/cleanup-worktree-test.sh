@@ -139,7 +139,7 @@ run_cleanup() {
   shift
   (
     cd "$repo"
-    PATH="$tmp/bin:/usr/bin:/bin" MOCK_MERGED_FILE="$repo.merged" MOCK_GH_LOG="$repo.gh" ./scripts/cleanup-worktree.sh "$@"
+    PATH="$tmp/bin:$ISOLATED_PATH" MOCK_MERGED_FILE="$repo.merged" MOCK_GH_LOG="$repo.gh" ./scripts/cleanup-worktree.sh "$@"
   ) >"$repo.out" 2>&1
 }
 
@@ -246,9 +246,9 @@ grep -Fq "Kept feature/31-open" "$repo.out" || fail "--merged did not report the
 # --discard removes an unmerged worktree only after confirmation.
 repo="$(setup_repo discard)"
 add_worktree "$repo" feature/40-abandoned discard-40
-( cd "$repo" && printf 'n\n' | PATH="$tmp/bin:/usr/bin:/bin" MOCK_MERGED_FILE="$repo.merged" ./scripts/cleanup-worktree.sh 40 --discard ) >/dev/null 2>&1 || true
+( cd "$repo" && printf 'n\n' | PATH="$tmp/bin:$ISOLATED_PATH" MOCK_MERGED_FILE="$repo.merged" ./scripts/cleanup-worktree.sh 40 --discard ) >/dev/null 2>&1 || true
 [[ -d "$tmp/discard-40" ]] || fail "--discard removed a worktree without confirmation"
-( cd "$repo" && printf 'y\n' | PATH="$tmp/bin:/usr/bin:/bin" MOCK_MERGED_FILE="$repo.merged" ./scripts/cleanup-worktree.sh 40 --discard ) >"$repo.out" 2>&1 || {
+( cd "$repo" && printf 'y\n' | PATH="$tmp/bin:$ISOLATED_PATH" MOCK_MERGED_FILE="$repo.merged" ./scripts/cleanup-worktree.sh 40 --discard ) >"$repo.out" 2>&1 || {
   cat "$repo.out" >&2
   fail "--discard with confirmation failed"
 }
@@ -264,7 +264,7 @@ git -C "$repo" commit -qm "Earlier planning"
 git -C "$repo" push -q origin main
 add_worktree "$repo" planning/change-request discard-planning-wt
 printf 'The project idea.\n' >"$repo/idea.md"
-( cd "$repo" && printf 'y\n' | PATH="$tmp/bin:/usr/bin:/bin" MOCK_MERGED_FILE="$repo.merged" ./scripts/cleanup-worktree.sh planning/change-request --discard ) >"$repo.out" 2>&1 || {
+( cd "$repo" && printf 'y\n' | PATH="$tmp/bin:$ISOLATED_PATH" MOCK_MERGED_FILE="$repo.merged" ./scripts/cleanup-worktree.sh planning/change-request --discard ) >"$repo.out" 2>&1 || {
   cat "$repo.out" >&2
   fail "discarding an unmerged planning failed"
 }
@@ -278,7 +278,7 @@ add_worktree "$repo" feature/51-other self-51
 merge "$repo" feature/50-self self-50
 merge "$repo" feature/51-other self-51
 for target in 50 51; do
-  if ( cd "$tmp/self-50" && PATH="$tmp/bin:/usr/bin:/bin" MOCK_MERGED_FILE="$repo.merged" ./scripts/cleanup-worktree.sh "$target" ) >"$repo.out" 2>&1; then
+  if ( cd "$tmp/self-50" && PATH="$tmp/bin:$ISOLATED_PATH" MOCK_MERGED_FILE="$repo.merged" ./scripts/cleanup-worktree.sh "$target" ) >"$repo.out" 2>&1; then
     fail "cleanup ran from a linked worktree (target $target)"
   fi
 done

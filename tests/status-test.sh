@@ -111,7 +111,7 @@ completion() {
 }
 
 status() {
-  (cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" FAKE_GH_DIR="$tmp/gh" ./scripts/status.sh "$@")
+  (cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" FAKE_GH_DIR="$tmp/gh" ./scripts/status.sh "$@")
 }
 
 # open_pr <number> <jq-update>: changes an open pull request of the fake.
@@ -135,7 +135,7 @@ main_oid="$(git -C "$repo" rev-parse main)"
 cron_line="$(grep -E '^\*/10 \* \* \* \* ' "$source_root/docs/development.md")" || fail "the cron example is not found"
 cron_command="$(sed -E 's/^([^ ]+ ){5}//; s#/path/to/project#'"$repo"'#' <<<"$cron_line")"
 [[ ! -e "$repo/.agents/status" ]] || fail "the fresh checkout has .agents/status already"
-(cd / && PATH="$tmp/bin:/usr/bin:/bin" FAKE_GH_DIR="$tmp/gh" sh -c "$cron_command") ||
+(cd / && PATH="$tmp/bin:$ISOLATED_PATH" FAKE_GH_DIR="$tmp/gh" sh -c "$cron_command") ||
   fail "the cron example fails in a fresh checkout: $cron_command"
 [[ -f "$repo/.agents/status/cron.log" ]] || fail "the cron example does not log: $cron_command"
 [[ ! -e "$repo/.agents/status/lock" ]] || fail "--changes leaves its lock behind"
@@ -350,6 +350,19 @@ r="$(row "$(status)" 11)"
 grep -Fq "the implementer is blocked on a question: answer it in .agents/handoffs/11.md" <<<"$r" ||
   fail "a note without a question is not handled: $r"
 rm -f "$tmp/wt-11/.agents/completion/11.json" "$tmp/wt-11/.agents/handoffs/11.md"
+
+# A run that stopped with status 78 (Issue 407): the machine lacks a
+# prerequisite. The decision is to install it, not a defect of the feature.
+run_start 11 20261101T120000Z-999999999-78 2000
+event 11 20261101T120000Z-999999999-78 2010 run-end '{"status":78,"step":"implementation","reason":"a prerequisite of this machine is missing, which says nothing about this feature: GNU sed for the workflow self-tests — brew install gnu-sed."}'
+r="$(row "$(status)" 11)"
+grep -Fq "exit status 78" <<<"$r" || fail "the environment stop does not show its status: $r"
+grep -Fq "install what this machine lacks: a prerequisite of this machine is missing, which says nothing about this feature: GNU sed" <<<"$r" ||
+  fail "the environment stop is not the decision to install the prerequisite: $r"
+grep -Fq "./scripts/doctor.sh lists every prerequisite; then run ./scripts/run-feature.sh 11" <<<"$r" ||
+  fail "the environment stop does not name doctor.sh and the command that continues: $r"
+if grep -Fq "see .agents/run/11-log" <<<"$r"; then fail "the environment stop is reported as a failed run: $r"; fi
+rm -f "$records/20261101T120000Z-999999999-78.jsonl"
 
 # Without a worktree, the approval request is read from the head commit of
 # the pull request, which a fetch brought here.

@@ -141,7 +141,7 @@ run_update() {
   status=0
   (
     cd "$repo"
-    PATH="$tmp/bin:/usr/bin:/bin" MOCK_GH_LOG="$repo.gh" PUBLISH_POLL_SECONDS=0 PUBLISH_START_ATTEMPTS=1 \
+    PATH="$tmp/bin:$ISOLATED_PATH" MOCK_GH_LOG="$repo.gh" PUBLISH_POLL_SECONDS=0 PUBLISH_START_ATTEMPTS=1 \
       ./scripts/update-feature.sh "$@"
   ) >"$repo.out" 2>&1 || status=$?
 }
@@ -287,13 +287,13 @@ if grep -Fq "Verifying the merged content" "$repo.out"; then fail "the leftover 
 expect_not_pushed "$repo" "a leftover is in the worktree"
 # publish-feature.sh does not take it for uncommitted work either: it
 # reports it and publishes.
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" MOCK_GH_LOG="$repo.gh" ./scripts/publish-feature.sh 12) >"$repo.publish" 2>&1 ||
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" MOCK_GH_LOG="$repo.gh" ./scripts/publish-feature.sh 12) >"$repo.publish" 2>&1 ||
   { cat "$repo.publish" >&2; fail "publish-feature.sh refused a leftover of the base"; }
 grep -Fq "old-site/    remove with: rm -rf -- old-site/" "$repo.publish" || fail "publish-feature.sh did not report the leftover"
 [[ -f "$repo/old-site/build/assets/app.js" ]] || fail "publish-feature.sh deleted the leftover"
 # Untracked work next to it is uncommitted work, for both scripts.
 printf 'mine\n' >"$repo/notes.txt"
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" MOCK_GH_LOG="$repo.gh" ./scripts/publish-feature.sh 12) >"$repo.publish" 2>&1 &&
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" MOCK_GH_LOG="$repo.gh" ./scripts/publish-feature.sh 12) >"$repo.publish" 2>&1 &&
   fail "publish-feature.sh published with an untracked file"
 grep -Fq "there are uncommitted changes" "$repo.publish" || fail "publish-feature.sh did not report the untracked file"
 run_update "$repo" 12
@@ -330,7 +330,7 @@ expect_not_pushed "$repo" "there are uncommitted changes"
 run_update "$repo" twelve
 [[ "$status" -eq 1 ]] && grep -Fq "issue number must be numeric" "$repo.out" || fail "a non-numeric issue was accepted"
 repo="$tmp/unfinished"
-(cd "$repo" && git checkout -q main && PATH="$tmp/bin:/usr/bin:/bin" MOCK_GH_LOG="$repo.gh" ./scripts/update-feature.sh 12) >"$repo.out" 2>&1 &&
+(cd "$repo" && git checkout -q main && PATH="$tmp/bin:$ISOLATED_PATH" MOCK_GH_LOG="$repo.gh" ./scripts/update-feature.sh 12) >"$repo.out" 2>&1 &&
   fail "update-feature.sh ran on main"
 grep -Fq "must run on feature/12-*" "$repo.out" || fail "the wrong branch was not explained"
 

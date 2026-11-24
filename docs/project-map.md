@@ -107,6 +107,8 @@ the website describes the current template.
 
 | Path | Purpose |
 |---|---|
+| `scripts/lib/bootstrap.sh` | The Bash floor, in POSIX sh: the first line of every script of `scripts/` reads it, and below Bash 4 the script stops before it sources a library, with status 78 and an `ENVIRONMENT` line with the install command |
+| `scripts/lib/environment.sh` | The prerequisites of the machine: the preflight of `verify.sh` (general, and the workflow self-tests only when one is going to run), its status 78 and `ENVIRONMENT` lines, which `doctor.sh` reports read-only, and the isolated test toolchain that `tests/lib-fakes.sh` builds for the self-tests |
 | `scripts/lib/agent.sh` | Role configuration, `--agent`/`--model` overrides, and starting agents with the `write`, `unattended`, or `read-only` profile; for Codex, the runtime directories under `.agents/` that a write session may write (`AGENT_CODEX_WRITABLE_DIRS`), opened as writable roots of its sandbox and created before the session; `tests/agent-sandbox-test.sh` checks that with the real Codex CLI |
 | `scripts/lib/attribution.sh` | The attribution preference of `.agents/attribution.conf`, and the check of commits and texts for agent `Co-authored-by` trailers and generated attribution text |
 | `scripts/lib/review-data.sh` | Validation and rendering of review, triage, and revision JSON; the decisions of the earlier rounds of a feature, against which the predecessor of a finding (`previous`) is checked |

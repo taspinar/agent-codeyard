@@ -15,8 +15,8 @@
 
 # The jq definitions of a record: the validation of the agent's notes and of a
 # record, and the removal of what looks like a secret.
-# Read without a subshell and without cat: Bash 3.2 misreads a here-document
-# inside $(...), and a caller may run with a minimal PATH.
+# Read without a subshell and without cat: a caller may run with a minimal
+# PATH.
 EXPERIENCE_JQ=""
 IFS= read -r -d '' EXPERIENCE_JQ <<'JQ' || true
 

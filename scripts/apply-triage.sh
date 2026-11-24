@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+case $0 in */*) bootstrap_dir=${0%/*} ;; *) if [ -f "$0" ]; then bootstrap_dir=.; else bootstrap_dir=$(command -v "$0" 2>/dev/null) && bootstrap_dir=${bootstrap_dir%/*} || bootstrap_dir=.; fi ;; esac; if [ -f "$bootstrap_dir/lib/bootstrap.sh" ]; then . "$bootstrap_dir/lib/bootstrap.sh"; elif [ "${BASH_VERSINFO:-0}" -lt 4 ]; then echo "ENVIRONMENT  Bash 4 or newer (this is ${BASH_VERSION:-not Bash}) — install Bash 4 or newer and put it first on PATH"; echo "Error: ${0##*/} needs Bash 4 or newer and did not find lib/bootstrap.sh; it stopped before it did anything." >&2; exit 78; fi
 
 set -euo pipefail
 
@@ -474,6 +475,14 @@ if [[ "$agent_status" -ne 0 ]]; then
   exit "$agent_status"
 fi
 
+if [[ "$verification_status" -eq 78 ]]; then
+  # A prerequisite of this machine is missing (verify.sh, the ENVIRONMENT
+  # lines above): not a failure of the fixes. The status is passed on
+  # unchanged, so that a caller does not repair the code for it.
+  echo "Error: the verification could not run: a prerequisite of this machine is missing (the ENVIRONMENT lines above). The fixes were made; install what is missing, then verify again."
+  records_stop "${0##*/}" "the verification could not run: a prerequisite of this machine is missing."
+  exit 78
+fi
 if [[ "$verification_status" -ne 0 ]]; then
   echo "Error: repository verification failed with status $verification_status."
   # Status 4 tells a caller that the fixes were made and the verification

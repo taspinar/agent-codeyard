@@ -176,6 +176,34 @@ if grep -Fq "Repair attempt" <<<"$(log_of "$repo")"; then fail "a busy slot was 
 if grep -Fq "## Verification failed" "$repo-2-thing/.agents/handoffs/2.md" 2>/dev/null; then fail "a busy slot was recorded as a failed verification"; fi
 rm -rf "$slot"
 
+# A verification that finds a prerequisite of the machine missing (status 78
+# of verify.sh, its ENVIRONMENT line) is no defect: the run stops with status
+# 78 at once, without a repeat, a retry, or a repair session.
+scenario environment
+: >"$tmp/environment.missing"
+repo="$(ENVIRONMENT_CONTROL="$tmp/environment.missing" setup_repo environment)"
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 78 "a prerequisite of this machine is missing, which says nothing about this feature: faked-tool for this test — install faked-tool"
+expect_sessions "$repo" 1 0 0 0
+grep -Fq "| environment | faked-tool for this test — install faked-tool |" <<<"$(log_of "$repo")" ||
+  fail "the missing prerequisite is not in the log of the feature: $(log_of "$repo")"
+[[ "$(grep -c '^ENVIRONMENT  ' "$repo.out")" -eq 1 ]] || fail "the verification was repeated or retried after the environment status: $(cat "$repo.out")"
+if grep -Eq "Repair attempt|unstable|Retry [0-9]" <<<"$(log_of "$repo")"; then fail "a missing prerequisite was retried, repaired, or counted as unstable"; fi
+if grep -Fq "## Verification failed" "$repo-2-thing/.agents/handoffs/2.md" 2>/dev/null; then fail "a missing prerequisite was recorded as a failed verification"; fi
+
+# The same when the prerequisite goes missing between the verification that
+# failed on the code and its repeat: the repeat's status 78 stops the run,
+# and nothing is repaired.
+scenario environment-repeat
+repo="$(ENVIRONMENT_CONTROL="$tmp/environment-repeat.missing" \
+  VERIFY_CONF="sound: sh -c 'touch \"$tmp/environment-repeat.missing\"; false'" setup_repo environment-repeat)"
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 78 "a prerequisite of this machine is missing"
+expect_sessions "$repo" 1 0 0 0
+grep -Fq "| environment | faked-tool for this test — install faked-tool |" <<<"$(log_of "$repo")" ||
+  fail "the missing prerequisite of the repeat is not in the log of the feature: $(log_of "$repo")"
+if grep -Eq "Repair attempt|unstable" <<<"$(log_of "$repo")"; then fail "a missing prerequisite in the repeat was repaired or counted as unstable"; fi
+
 # A verification that fails twice is repaired by the implementer, which is
 # given the failing checks in the handoff note.
 scenario repaired
