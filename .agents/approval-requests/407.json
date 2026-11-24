@@ -1,13 +1,13 @@
 {
   "schema": "approval-request/v1",
-  "content_tree": "51ba39754a0c622421cfc9487835c115da863d2e",
+  "content_tree": "92e3d3523522477d261b490c56a732f7b4f84f3a",
   "commit": {
     "branch": "feature/407-macos-reliability-isolated-test",
-    "parent": "ceae79c947c15db7a1274bafb801d52e76408a15",
+    "parent": "60c229bcde0574f62762fea6cf7c0572ca7c66c4",
     "base": "dcd384e485fc3c3f66e82d9e4804f94445e40c9d"
   },
   "review": {
-    "round": 4,
+    "round": 6,
     "verdict": "PASS",
     "reviewer": "codex (gpt-6-luna)"
   },
@@ -22,9 +22,11 @@
     "scripts/publish-feature.sh: the file defines or carries out the workflow and its gate",
     "scripts/review-feature.sh: the file defines or carries out the workflow and its gate",
     "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
-    "the independent review classified the impact on the architecture as major: The feature adds shared Bash bootstrap and prerequisite/toolchain infrastructure across workflow entry points, verification, doctor, and self-tests, and introduces a template-only macOS verification workflow. These extend runtime and verification contracts used throughout the project. No conflict with the placeholder architecture or accepted ADRs was found. ",
-    "the review could not confirm: On macOS with the documented prerequisites, ./scripts/verify.sh --all passes on the template.",
-    "the review could not confirm: The macOS workflow has only workflow_dispatch before merge, and one full macOS verification of the final integrated implementation passes."
+    "the independent review classified the impact on the architecture as major: The feature adds shared Bash bootstrap and prerequisite/toolchain infrastructure across workflow entry points, verification, doctor, and self-tests, and adds a template-only on-demand macOS verification workflow. These extend runtime and verification contracts used throughout the project. ",
+    "the review could not confirm: 1. macOS `./scripts/verify.sh --all` passes on the template.",
+    "the review could not confirm: 6. `tests/verify-lock-test.sh` passes on a loaded macOS machine, or the remaining cause is recorded.",
+    "the review could not confirm: 7. One full macOS verification of the final integrated implementation passed before merge.",
+    "the review could not confirm: 8. Comparable before-and-after workflow self-test duration measurements and attribution are reported."
   ],
   "explanation": "Issue #407: macOS reliability: isolated test toolchain, bash 4 bootstrap, and an environment status through the whole chain. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
 }

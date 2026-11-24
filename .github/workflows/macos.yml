@@ -1,11 +1,5 @@
 name: macOS
 on:
-  # Temporary, for Issue 407 only: the one full macOS verification of the
-  # final integrated implementation runs on its pull request, because a
-  # workflow that only workflow_dispatch starts cannot be started before it
-  # is on main. A separate step of Issue 407 removes this trigger before the
-  # merge, leaving workflow_dispatch alone.
-  pull_request:
   workflow_dispatch:
 
 # The template's own: an on-demand verification of the workflow on macOS, a
