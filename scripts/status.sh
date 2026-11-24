@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+case $0 in */*) bootstrap_dir=${0%/*} ;; *) if [ -f "$0" ]; then bootstrap_dir=.; else bootstrap_dir=$(command -v "$0" 2>/dev/null) && bootstrap_dir=${bootstrap_dir%/*} || bootstrap_dir=.; fi ;; esac; if [ -f "$bootstrap_dir/lib/bootstrap.sh" ]; then . "$bootstrap_dir/lib/bootstrap.sh"; elif [ "${BASH_VERSINFO:-0}" -lt 4 ]; then echo "ENVIRONMENT  Bash 4 or newer (this is ${BASH_VERSION:-not Bash}) — install Bash 4 or newer and put it first on PATH"; echo "Error: ${0##*/} needs Bash 4 or newer and did not find lib/bootstrap.sh; it stopped before it did anything." >&2; exit 78; fi
 
 set -euo pipefail
 
@@ -411,6 +412,9 @@ while IFS= read -r issue; do
       case "$exit_status" in
         3) decisions+=("your decision: ${question:-${reason:-an agent needs it}}; answer in .agents/handoffs/$issue.md, then run $continue_command") ;;
         75) decisions+=("run again when the slot for heavy verification is free: $continue_command") ;;
+        # A prerequisite of the machine that ran it is missing: nothing for
+        # the feature to fix, and nothing to answer, only to install.
+        78) decisions+=("install what this machine lacks: ${reason:-a prerequisite is missing}; ./scripts/doctor.sh lists every prerequisite; then run $continue_command") ;;
         130) decisions+=("the run was interrupted; continue with $continue_command") ;;
         *)
           if grep -Eq 'review rounds are used' <<<"$reason"; then

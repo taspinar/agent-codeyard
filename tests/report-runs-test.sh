@@ -59,7 +59,7 @@ run_file() {
 report() {
   local repo="$1"
   shift
-  (cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/report-runs.sh "$@")
+  (cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/report-runs.sh "$@")
 }
 
 # Two runs side by side and one after them: the elapsed time is their union,
@@ -212,7 +212,7 @@ git -C "$repo" worktree add -q -b feature/40-linked "$tmp/linked-40" >/dev/null 
   records_begin feature 40 run-feature.sh
   records_end 0
 )
-[[ "$(cd "$tmp/linked-40" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/report-runs.sh --json | jq -c '[.subjects[].subject, (.without_record | length)]')" == '["40",0]' ]] ||
+[[ "$(cd "$tmp/linked-40" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/report-runs.sh --json | jq -c '[.subjects[].subject, (.without_record | length)]')" == '["40",0]' ]] ||
   fail "a feature in progress in a worktree was not reported from the worktree"
 [[ "$(report "$repo" 40 --json | jq '.subjects[0].runs.total')" -eq 1 ]] ||
   fail "a feature in progress in a worktree was not reported from the primary checkout"
@@ -258,6 +258,16 @@ rm -f "$repo/.agents/run/records/c3.jsonl" "$repo/.agents/run/records/c4.jsonl"
 [[ "$(report "$repo" --all --since "$split_day" --json | jq -c '[.subjects[].subject]')" == '["21"]' ]] ||
   fail "--since did not select by the start of the runs"
 if report "$repo" 20 --since 2026-13-01 >/dev/null 2>&1; then fail "an invalid date was accepted"; fi
+# A date is read with the form of the date on PATH, not of the system: GNU
+# coreutils first on PATH while uname says Darwin, and a BSD date while
+# uname says Linux.
+make_platform_tools "$tmp/darwin-gnu" Darwin gnu
+make_platform_tools "$tmp/linux-bsd" Linux bsd
+plain="$(report "$repo" --all --since "$split_day" --json | jq -c '[.subjects[].subject]')"
+for platform in darwin-gnu linux-bsd; do
+  [[ "$(cd "$repo" && PATH="$tmp/$platform:$tmp/bin:$ISOLATED_PATH" ./scripts/report-runs.sh --all --since "$split_day" --json | jq -c '[.subjects[].subject]')" == "$plain" ]] ||
+    fail "--since with the date of $platform did not select the same runs"
+done
 
 # The summary for GitHub is built from numbers only: a path, a time of day, an
 # error text, and an odd model name in the records do not reach it.
@@ -399,7 +409,7 @@ git -C "$repo" -c user.name=Test -c user.email=test@example.com commit -qm "Init
 file="$repo/.agents/run/records/d1.jsonl"
 event "$file" d1 1000 run-start '{"kind":"feature","subject":"40","command":"run-feature.sh","seq":1,"versions":{}}'
 for option in "" --reuse; do
-  (cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" RECORDS_RUN_ID=d1 RECORDS_FILE="$file" RECORDS_COMMAND=run-feature.sh \
+  (cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" RECORDS_RUN_ID=d1 RECORDS_FILE="$file" RECORDS_COMMAND=run-feature.sh \
     RECORDS_KIND=feature RECORDS_SUBJECT=40 ./scripts/verify.sh $option >/dev/null 2>&1) || fail "verify.sh failed inside a recorded run"
 done
 event "$file" d1 2000 run-end '{"status":0}'
@@ -428,10 +438,10 @@ git -C "$repo" add -A
 git -C "$repo" -c user.name=Test -c user.email=test@example.com commit -qm "Initial commit"
 file="$repo/.agents/run/records/t1.jsonl"
 event "$file" t1 1000 run-start '{"kind":"feature","subject":"41","command":"run-feature.sh","seq":1,"versions":{}}'
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" RECORDS_RUN_ID=t1 RECORDS_FILE="$file" RECORDS_COMMAND=run-feature.sh \
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" RECORDS_RUN_ID=t1 RECORDS_FILE="$file" RECORDS_COMMAND=run-feature.sh \
   RECORDS_KIND=feature RECORDS_SUBJECT=41 VERIFY_ORIGIN=orchestrator VERIFY_TRUSTED_TREES="" ./scripts/verify.sh --reuse >/dev/null 2>&1) ||
   fail "verify.sh of the orchestrator failed inside a recorded run"
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" RECORDS_RUN_ID=t1 RECORDS_FILE="$file" RECORDS_COMMAND=run-feature.sh \
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" RECORDS_RUN_ID=t1 RECORDS_FILE="$file" RECORDS_COMMAND=run-feature.sh \
   RECORDS_KIND=feature RECORDS_SUBJECT=41 ./scripts/verify.sh --reuse >/dev/null 2>&1) || fail "a reuse at a terminal failed inside a recorded run"
 event "$file" t1 1500 verification '{"status":0,"seconds":1,"reused":false,"groups":"all"}'
 event "$file" t1 2000 run-end '{"status":0}'

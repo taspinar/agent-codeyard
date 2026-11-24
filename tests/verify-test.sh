@@ -41,7 +41,7 @@ setup_project() {
 run_verify() {
   local project="$1"
 
-  PATH="$tmp/bin:/usr/bin:/bin" MOCK_TOOL_LOG="$project/tools.log" \
+  PATH="$tmp/bin:$ISOLATED_PATH" MOCK_TOOL_LOG="$project/tools.log" \
     "$project/scripts/verify.sh" ${2+"$2"} >"$project/out.log" 2>&1
 }
 
@@ -257,7 +257,7 @@ expect_checks_ran() {
 
   shift 2
   rm -f "$project/tools.log"
-  PATH="$tmp/bin:/usr/bin:/bin" MOCK_TOOL_LOG="$project/tools.log" \
+  PATH="$tmp/bin:$ISOLATED_PATH" MOCK_TOOL_LOG="$project/tools.log" \
     "$project/scripts/verify.sh" "$@" >"$project/out.log" 2>&1 || {
     cat "$project/out.log" >&2
     fail "verification failed: $description"
@@ -271,7 +271,7 @@ expect_reused() {
 
   shift 2
   rm -f "$project/tools.log"
-  PATH="$tmp/bin:/usr/bin:/bin" MOCK_TOOL_LOG="$project/tools.log" \
+  PATH="$tmp/bin:$ISOLATED_PATH" MOCK_TOOL_LOG="$project/tools.log" \
     "$project/scripts/verify.sh" "$@" >"$project/out.log" 2>&1 || {
     cat "$project/out.log" >&2
     fail "a reused verification failed: $description"
@@ -363,7 +363,7 @@ git -C "$project" commit -qm "Record runs"
 : >"$tmp/trust-run.jsonl"
 trust_run() {
   RECORDS_RUN_ID=parent-run RECORDS_FILE="$tmp/trust-run.jsonl" RECORDS_COMMAND=scripts/run-feature.sh \
-    RECORDS_KIND=feature RECORDS_SUBJECT=1 PATH="$tmp/bin:/usr/bin:/bin" MOCK_TOOL_LOG="$1/tools.log" \
+    RECORDS_KIND=feature RECORDS_SUBJECT=1 PATH="$tmp/bin:$ISOLATED_PATH" MOCK_TOOL_LOG="$1/tools.log" \
     "$1/scripts/verify.sh" "${@:2}" >"$1/out.log" 2>&1
 }
 last_event() {
@@ -385,7 +385,7 @@ VERIFY_ORIGIN=script MOCK_RUFF_EXIT=1 trust_run "$project" && fail "a failing ru
 expect_event '{"status":1,"reused":false,"trusted":false,"origin":"script"}' "a failed verification counts as evidence"
 
 project="$(setup_project unknown-option "lint: ruff check .")"
-if PATH="$tmp/bin:/usr/bin:/bin" "$project/scripts/verify.sh" --everything >"$project/out.log" 2>&1; then
+if PATH="$tmp/bin:$ISOLATED_PATH" "$project/scripts/verify.sh" --everything >"$project/out.log" 2>&1; then
   fail "an unknown option was accepted"
 fi
 [[ ! -e "$project/tools.log" ]] || fail "checks ran despite an unknown option"
@@ -397,7 +397,7 @@ run_with() {
 
   shift
   rm -f "$project/tools.log"
-  PATH="$tmp/bin:/usr/bin:/bin" MOCK_TOOL_LOG="$project/tools.log" \
+  PATH="$tmp/bin:$ISOLATED_PATH" MOCK_TOOL_LOG="$project/tools.log" \
     "$project/scripts/verify.sh" "$@" >"$project/out.log" 2>&1
 }
 
@@ -901,7 +901,7 @@ grep -Fxq "fail: lint exit 1" "$baseline" && grep -Fxq "pass: tests" "$baseline"
 [[ ! -e "$project$record" ]] || fail "a baseline recorded a pass"
 for option in --reuse --all "--only default"; do
   # shellcheck disable=SC2086
-  if PATH="$tmp/bin:/usr/bin:/bin" "$project/scripts/verify.sh" --baseline $option >"$project/out.log" 2>&1; then
+  if PATH="$tmp/bin:$ISOLATED_PATH" "$project/scripts/verify.sh" --baseline $option >"$project/out.log" 2>&1; then
     fail "--baseline was combined with $option"
   fi
 done
@@ -1187,7 +1187,7 @@ git -C "$project" commit -qm "Self-tests of scripts"
 git -C "$project" checkout -q -b feature/1-change
 run_changed() {
   rm -f "$project/tools.log"
-  PATH="$tmp/bin:/usr/bin:/bin" MOCK_TOOL_LOG="$project/tools.log" \
+  PATH="$tmp/bin:$ISOLATED_PATH" MOCK_TOOL_LOG="$project/tools.log" \
     "$project/scripts/verify.sh" --changed "$@" >"$project/out.log" 2>&1
 }
 run_changed || fail "--changed without a change failed: $(cat "$project/out.log")"
@@ -1413,7 +1413,7 @@ run_with "$project" --reuse && grep -Fq "already passed" "$project/out.log" || f
 printf '#!/usr/bin/env bash\necho $$ >>"$1"\nsleep 30\n' >"$tmp/bin/long-check"
 chmod +x "$tmp/bin/long-check"
 project="$(setup_project parallel-term "parallel: 2" "first: long-check pids" "second: long-check pids")"
-PATH="$tmp/bin:/usr/bin:/bin" "$project/scripts/verify.sh" >"$project/out.log" 2>&1 &
+PATH="$tmp/bin:$ISOLATED_PATH" "$project/scripts/verify.sh" >"$project/out.log" 2>&1 &
 runner=$!
 for ((waited = 0; waited < 100; waited++)); do
   [[ "$(grep -c . "$project/pids" 2>/dev/null)" -lt 2 ]] || break

@@ -98,7 +98,7 @@ run_start() {
   shift
   (
     cd "$repo"
-    PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo.log" START_FEATURE_GH_WAIT=0 ./scripts/start-feature.sh "$@" </dev/null
+    PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$repo.log" START_FEATURE_GH_WAIT=0 ./scripts/start-feature.sh "$@" </dev/null
   ) >"$repo.out" 2>&1
 }
 

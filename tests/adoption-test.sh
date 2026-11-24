@@ -66,7 +66,7 @@ history_before="$(git -C "$repo" rev-list main)"
 ci_before="$(cksum <"$repo/.github/workflows/ci.yml")"
 
 # ------------------------------------------------------------ 1. assessment
-(cd "$template" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/assess-repository.sh "$repo" --facts-only) >"$tmp/assess.out" 2>&1 ||
+(cd "$template" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/assess-repository.sh "$repo" --facts-only) >"$tmp/assess.out" 2>&1 ||
   { cat "$tmp/assess.out" >&2; fail "the facts failed"; }
 facts="$template/$(sed -n 's#^Assessment facts: \(.*\)$#\1#p' "$tmp/assess.out")"
 result="$(jq -c '{summary: "A shell service with a test and a linter in its CI.",
@@ -79,11 +79,11 @@ result="$(jq -c '{summary: "A shell service with a test and a linter in its CI."
   verification: [.commands[] | select(.origin == "ci") | {name: (if .command == "./tests.sh" then "tests" else "lint" end), source: .id,
     rationale: "The CI runs it."}],
   execution_needed: [{what: "./tests.sh and ./lint.sh", why: "The baseline.", side_effects: "None known."}]}' "$facts")"
-(cd "$template" && PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$tmp/assessor.log" MOCK_OUTPUT="$result" \
+(cd "$template" && PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$tmp/assessor.log" MOCK_OUTPUT="$result" \
   ./scripts/assess-repository.sh "$repo") >"$tmp/assess.out" 2>&1 || { cat "$tmp/assess.out" >&2; fail "the assessment failed"; }
 
 # -------------------------------------------------------------- 2. adoption
-(cd "$template" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/adopt-repository.sh "$repo") >"$tmp/adopt.out" 2>&1 ||
+(cd "$template" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/adopt-repository.sh "$repo") >"$tmp/adopt.out" 2>&1 ||
   { cat "$tmp/adopt.out" >&2; fail "the adoption failed"; }
 [[ "$(git -C "$repo" branch --show-current)" == "adopt/agent-codeyard" ]] || fail "the adoption is not on its branch"
 isolation="unset \$(compgen -e | grep -E 'TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY|ACCESS_KEY|PRIVATE_KEY|CREDENTIAL' || true); export DATABASE_URL=postgresql://isolated:isolated@127.0.0.1:1/isolated DO_NOT_TRACK=1; "
@@ -100,7 +100,7 @@ done
 # -------------------------------------------------------------- 3. baseline
 # The owner starts the baseline on the adoption's branch. The linter fails
 # before any change: the baseline records it, and it is no passing run.
-if (cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh --baseline) >"$tmp/baseline.out" 2>&1; then
+if (cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh --baseline) >"$tmp/baseline.out" 2>&1; then
   fail "a baseline with a failing check passed"
 fi
 baseline="$repo/.agents/verification-baseline"
@@ -114,7 +114,7 @@ git -C "$repo" push -q origin main
 [[ "$(git -C "$repo" rev-list main | tail -n +3)" == "$history_before" ]] || fail "the history of the project was rewritten"
 
 # The pre-existing failure stays visible and fails the verification.
-if (cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh) >"$tmp/verify.out" 2>&1; then
+if (cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh) >"$tmp/verify.out" 2>&1; then
   fail "the verification passed with a pre-existing failure"
 fi
 grep -Eq '^KNOWN +lint \(exit 1\): failed before any change' "$tmp/verify.out" && grep -Eq '^PASS +tests$' "$tmp/verify.out" ||
@@ -125,7 +125,7 @@ grep -Eq '^KNOWN +lint \(exit 1\): failed before any change' "$tmp/verify.out" &
 printf 'accepted-failure: lint The style errors predate the adoption; a later feature fixes them.\n' >>"$repo/scripts/verify.conf"
 commit_all "$repo" "Accept the known failure of the linter"
 git -C "$repo" push -q origin main
-(cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/verify.sh) >"$tmp/verify.out" 2>&1 ||
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh) >"$tmp/verify.out" 2>&1 ||
   { cat "$tmp/verify.out" >&2; fail "the verification with an accepted exception failed"; }
 grep -Eq '^ACCEPTED +lint \(exit 1\)' "$tmp/verify.out" || fail "the accepted exception is not shown: $(cat "$tmp/verify.out")"
 
@@ -202,7 +202,7 @@ mkdir -p "$tmp/control"
 status=0
 (
   cd "$repo"
-  PATH="$feature_bin:/usr/bin:/bin" AGENT_CONFIG_FILE="$tmp/agents.conf" RUN_CONTROL="$tmp/control" RUN_ISSUE=2 GIT_EDITOR=false \
+  PATH="$feature_bin:$ISOLATED_PATH" AGENT_CONFIG_FILE="$tmp/agents.conf" RUN_CONTROL="$tmp/control" RUN_ISSUE=2 GIT_EDITOR=false \
     RUN_FEATURE_RETRY_WAIT=0 START_FEATURE_GH_WAIT=0 ./scripts/run-feature.sh 2 thing </dev/null
 ) >"$tmp/feature.out" 2>&1 || status=$?
 [[ "$status" -eq 0 ]] || { cat "$tmp/feature.out" >&2; fail "the ordinary feature failed with status $status"; }
@@ -216,7 +216,7 @@ grep -Fq "ACCEPTED  lint" "$tmp/feature.out" || fail "the feature's verification
 # The feature changed no planning document: they stay observed, not
 # approved, until the planning approval.
 grep -q '^> \*\*Observed, not approved\.\*\*' "$repo-2-thing/docs/architecture.md" || fail "the feature removed the mark"
-if (cd "$repo" && PATH="$feature_bin:/usr/bin:/bin" ./scripts/finish-planning.sh --check) >/dev/null 2>&1; then
+if (cd "$repo" && PATH="$feature_bin:$ISOLATED_PATH" ./scripts/finish-planning.sh --check) >/dev/null 2>&1; then
   fail "the reconstructed planning counts as approved"
 fi
 
@@ -228,7 +228,7 @@ printf '# A new check of the template.\nsomething: true\n' >>"$template/scripts/
 commit_all "$template" "Template update"
 checks_before="$(cat "$repo/scripts/verify.conf")"
 baseline_before="$(cat "$baseline")"
-(cd "$repo" && PATH="$feature_bin:/usr/bin:/bin" ./scripts/sync-template.sh --template "$template") >"$tmp/sync.out" 2>&1 ||
+(cd "$repo" && PATH="$feature_bin:$ISOLATED_PATH" ./scripts/sync-template.sh --template "$template") >"$tmp/sync.out" 2>&1 ||
   { cat "$tmp/sync.out" >&2; fail "the sync of the adopted project failed"; }
 cmp -s "$repo/docs/evaluation.md" "$template/docs/evaluation.md" || fail "the sync did not take over the workflow file: $(cat "$tmp/sync.out")"
 [[ "$(cat "$repo/scripts/verify.conf")" == "$checks_before" && "$(cat "$baseline")" == "$baseline_before" ]] ||

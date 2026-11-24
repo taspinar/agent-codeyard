@@ -116,7 +116,7 @@ run_sync() {
   local project="$1"
 
   shift
-  (cd "$project" && PATH="/usr/bin:/bin" ./scripts/sync-template.sh "$@") >"$project.out" 2>&1
+  (cd "$project" && PATH="$ISOLATED_PATH" ./scripts/sync-template.sh "$@") >"$project.out" 2>&1
 }
 
 # Without a recorded version the base is found from the files: the newest of

@@ -70,7 +70,7 @@ check() {
 
   shift
   status=0
-  (cd "$repo" && PATH="${check_path_prefix:+$check_path_prefix:}/usr/bin:/bin" ./scripts/check-risk.sh "$@") >"$repo.out" 2>&1 || status=$?
+  (cd "$repo" && PATH="${check_path_prefix:+$check_path_prefix:}$ISOLATED_PATH" ./scripts/check-risk.sh "$@") >"$repo.out" 2>&1 || status=$?
 }
 
 # expect_level <repo> <level> <description> [argument...]

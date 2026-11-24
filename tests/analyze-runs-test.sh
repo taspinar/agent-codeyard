@@ -60,7 +60,7 @@ analyze() {
   shift
   (
     cd "$repo"
-    PATH="${EXTRA_PATH:-}$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo.agent" ./scripts/analyze-runs.sh "$@"
+    PATH="${EXTRA_PATH:-}$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$repo.agent" ./scripts/analyze-runs.sh "$@"
   ) >"$repo.out" 2>&1
 }
 

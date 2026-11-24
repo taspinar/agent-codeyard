@@ -105,7 +105,7 @@ run_apply() {
   (
     cd "$repo"
     printf '%s\n' "$answer" |
-      PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo.log" ./scripts/apply-triage.sh "$@"
+      PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$repo.log" ./scripts/apply-triage.sh "$@"
   ) >"$repo.out" 2>&1
 }
 
@@ -353,6 +353,18 @@ record_reviewed_tree "$repo" "$repo/$review" "$repo/$triage"
 if run_apply "$repo" y "$triage"; then
   fail "a failed verification returned success"
 fi
+
+# A missing prerequisite of the machine (status 78 of verify.sh and its
+# ENVIRONMENT line) is passed on unchanged, apart from the status 4 of a
+# failed verification, so that a caller does not repair the code for it.
+repo="$(setup_repo environment-missing)"
+fake_missing_prerequisite "$repo"
+git -C "$repo" commit -qam "Lose a prerequisite"
+record_reviewed_tree "$repo" "$repo/$review" "$repo/$triage"
+status=0
+run_apply "$repo" y "$triage" || status=$?
+[[ "$status" -eq 78 ]] || { cat "$repo.out" >&2; fail "a missing prerequisite did not end apply-triage.sh with status 78 ($status)"; }
+grep -q '^ENVIRONMENT  faked-tool for this test — install faked-tool$' "$repo.out" || fail "the ENVIRONMENT line of verify.sh was not shown: $(cat "$repo.out")"
 
 # --unattended asks nothing: the agent runs without a terminal, its final
 # message is stored and shown, and the result is verified as usual.

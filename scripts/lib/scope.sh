@@ -20,11 +20,18 @@
 # runs a command may create or change them, they are never part of what is
 # reviewed or committed, and they can hold tens of thousands of files.
 
+# scope_gnu_stat: whether the stat on PATH takes the GNU form ('stat -c');
+# else it is a BSD stat ('stat -f'). The tool decides, not the system: on
+# macOS GNU coreutils may come first on PATH.
+scope_gnu_stat() {
+  stat -c '%a' -- / >/dev/null 2>&1
+}
+
 scope_file_mode() {
-  if [[ "$(uname -s)" == "Darwin" ]]; then
-    stat -f '%Lp' "$1"
-  else
+  if scope_gnu_stat; then
     stat -c '%a' "$1"
+  else
+    stat -f '%Lp' "$1"
   fi
 }
 
@@ -113,10 +120,10 @@ scope_snapshot() {
         printf './%s\0' "$path"
       done <"$work/regular" >"$work/operands"
       tr '\0' '\n' <"$work/operands" | git hash-object --stdin-paths >"$work/hashes"
-      if [[ "$(uname -s)" == "Darwin" ]]; then
-        xargs -0 stat -f '%Lp' <"$work/operands" >"$work/modes"
-      else
+      if scope_gnu_stat; then
         xargs -0 stat -c '%a' <"$work/operands" >"$work/modes"
+      else
+        xargs -0 stat -f '%Lp' <"$work/operands" >"$work/modes"
       fi
       while IFS= read -r -d '' path && IFS= read -r hash <&3 && IFS= read -r mode <&4; do
         printf '%q\tregular:%s:%s\n' "$path" "$mode" "$hash"

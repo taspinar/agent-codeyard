@@ -161,6 +161,25 @@ scope_unchanged "$tmp/records-before.tsv" "$tmp/records-after.tsv" 2>"$tmp/diff"
 }
 rm -rf "$repo/.agents/run" "$repo/.agents/records"
 
+# The modes are read with the form of the stat on PATH, not of the system:
+# GNU coreutils first on PATH while uname says Darwin, and a BSD stat while
+# uname says Linux, give the snapshot of the plain tools.
+make_platform_tools "$tmp/darwin-gnu" Darwin gnu
+make_platform_tools "$tmp/linux-bsd" Linux bsd
+chmod 750 "$repo/docs/PROJECT_REQUIREMENTS.md"
+ln -s PROJECT_REQUIREMENTS.md "$repo/docs/link.md"
+scope_snapshot "$repo" allowed "$tmp/plain.tsv"
+grep -q $'^docs/PROJECT_REQUIREMENTS.md\tregular:750:' "$tmp/plain.tsv" || fail "the snapshot does not hold the mode: $(cat "$tmp/plain.tsv")"
+for platform in darwin-gnu linux-bsd; do
+  PATH="$tmp/$platform:$PATH" scope_snapshot "$repo" allowed "$tmp/$platform.tsv" ||
+    fail "the snapshot failed with the stat of $platform"
+  cmp -s "$tmp/plain.tsv" "$tmp/$platform.tsv" || fail "the snapshot with the stat of $platform differs: $(diff "$tmp/plain.tsv" "$tmp/$platform.tsv")"
+  [[ "$(PATH="$tmp/$platform:$PATH" scope_file_mode "$repo/docs/PROJECT_REQUIREMENTS.md")" == 750 ]] ||
+    fail "scope_file_mode with the stat of $platform did not read the mode"
+done
+chmod 644 "$repo/docs/PROJECT_REQUIREMENTS.md"
+rm "$repo/docs/link.md"
+
 # And the time: three snapshots with 6000 ignored files take at most a few
 # seconds longer than three without them.
 mkdir -p "$repo/.venv/lib"

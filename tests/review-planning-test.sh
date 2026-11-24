@@ -71,7 +71,7 @@ run_review() {
 
   (
     cd "$repo"
-    PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo.log" ./scripts/review-planning.sh "$@"
+    PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$repo.log" ./scripts/review-planning.sh "$@"
   ) >"$repo.out" 2>&1
 }
 
@@ -145,7 +145,7 @@ run_review "$repo" --agent codex --model model-c || {
 grep -Fq "planning-project-bootstrap-review-01.json" "$repo.log" || fail "the re-review did not reference the previous review"
 
 # A planning review is not triaged as a feature review.
-if (cd "$repo" && PATH="$tmp/bin:/usr/bin:/bin" ./scripts/triage-review.sh "$artifact.json" </dev/null) >"$repo.triage.out" 2>&1; then
+if (cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/triage-review.sh "$artifact.json" </dev/null) >"$repo.triage.out" 2>&1; then
   fail "a planning review was accepted by triage-review.sh"
 fi
 grep -Fq "review-planning.sh" "$repo.triage.out" || fail "triage-review.sh did not point to the planning review"

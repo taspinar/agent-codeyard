@@ -159,7 +159,6 @@ risk_highest() {
 # risk_triage_mode) makes RISK_POLICY_REFS local, so a ref that moved
 # between two classifications is read again, and an entry point called by
 # another one shares its refs. Nothing is written to a file or exported.
-# Indexed arrays, not associative ones: Bash 3.2 has none.
 RISK_POLICY_COMMITS=()
 RISK_POLICY_EXISTS=()
 RISK_POLICY_WRITTEN=()

@@ -147,7 +147,7 @@ run_triage() {
   (
     cd "$repo"
     printf '%s\n' "$answer" |
-      PATH="$tmp/bin:/usr/bin:/bin" MOCK_AGENT_LOG="$repo.log" MOCK_GH_LOG="$repo.gh" \
+      PATH="$tmp/bin:$ISOLATED_PATH" MOCK_AGENT_LOG="$repo.log" MOCK_GH_LOG="$repo.gh" \
         ./scripts/triage-review.sh "$@"
   ) >"$repo.out" 2>&1
 }
@@ -269,7 +269,7 @@ grep -Fq "./scripts/triage-review.sh --publish .agents/triage/feature-5-test-rev
   fail "a failed publication did not print the retry command"
 (
   cd "$repo"
-  PATH="$tmp/bin:/usr/bin:/bin" MOCK_GH_LOG="$repo.gh" ./scripts/triage-review.sh --publish .agents/triage/feature-5-test-review-01-triage.json
+  PATH="$tmp/bin:$ISOLATED_PATH" MOCK_GH_LOG="$repo.gh" ./scripts/triage-review.sh --publish .agents/triage/feature-5-test-review-01-triage.json
 ) >"$repo.retry.out" 2>&1 || {
   cat "$repo.retry.out" >&2
   fail "retrying the publication failed"
@@ -594,7 +594,7 @@ repo="$(setup_repo owner-final-declined)"
 printf '%s\n' "$owner_decisions" >"$repo.decisions.json"
 (
   cd "$repo"
-  printf 'y\nn\n' | PATH="$tmp/bin:/usr/bin:/bin" MOCK_GH_LOG="$repo.gh" \
+  printf 'y\nn\n' | PATH="$tmp/bin:$ISOLATED_PATH" MOCK_GH_LOG="$repo.gh" \
     ./scripts/triage-review.sh "$review" --decisions "$repo.decisions.json" --reason "$reason"
 ) >"$repo.out" 2>&1 || fail "declining the final confirmation returned an error"
 if compgen -G "$repo/.agents/triage/*" >/dev/null || [[ -e "$repo.gh.comments" ]]; then

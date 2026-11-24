@@ -29,6 +29,111 @@ unset VERIFY_TRUSTED_TREES VERIFY_ORIGIN CODEYARD_AGENT_SESSION
 # (VERIFY_PARALLEL): a verify.sh that the test runs keeps its own fixture's.
 unset VERIFY_PARALLEL
 
+# The isolated test toolchain (scripts/lib/environment.sh): a directory of
+# links to the selected tools only (Bash 4 or newer, GNU sed, GNU timeout and
+# the coreutils, jq, Git), never an agent CLI, gh, or another network tool.
+# A test that runs a workflow script with a restricted PATH uses
+#
+#   PATH="$ISOLATED_PATH"                 normal isolated execution
+#   PATH="<fakes>:$ISOLATED_PATH"         with fake agents or tools first
+#
+# and never a fixed '/usr/bin:/bin' alone: on macOS that is Bash 3.2, a BSD
+# sed, and no timeout. A test that makes a tool unavailable on purpose (Bash,
+# jq, Git, ...) builds its own PATH without the toolchain, or with the links
+# of TEST_TOOLCHAIN_BIN it wants. Without a required tool the test stops
+# here with the ENVIRONMENT line of verify.sh and its status 78.
+# shellcheck source=../scripts/lib/environment.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/scripts/lib/environment.sh"
+TEST_TOOLCHAIN_BIN="$(environment_toolchain_build)" || {
+  echo "The workflow self-tests cannot run on this machine: a prerequisite is missing (the ENVIRONMENT lines above)." >&2
+  exit "$ENVIRONMENT_STATUS"
+}
+ISOLATED_PATH="$TEST_TOOLCHAIN_BIN:/usr/bin:/bin"
+# The test's own commands use the same tools, first: on macOS its sed -i and
+# stat -c are those of GNU then, as on Linux.
+PATH="$TEST_TOOLCHAIN_BIN:$PATH"
+
+# pty_run <input> <command>
+# Runs <command> with sh at a pseudo-terminal and types <input>, as is (end
+# each answer with a newline); returns the status of the command. On Linux
+# that is util-linux 'script -qec'. The BSD 'script' of macOS turns the end
+# of its input into a ^D that can reach the terminal before the input, so
+# that the command reads nothing: its input stays open until the command
+# has ended.
+pty_run() {
+  local status=0
+  local input
+  local feeder
+
+  if grep -q util-linux <<<"$(script --version 2>/dev/null)"; then
+    printf '%s' "$1" | script -qec "$2" /dev/null || status=$?
+  else
+    # Opened by 'exec', so that $! is the feeder's PID (a redirection of an
+    # external command is made in its own process).
+    exec {input}< <(printf '%s' "$1"; exec sleep 600 2>/dev/null)
+    feeder=$!
+    script -q /dev/null sh -c "$2" <&"$input" || status=$?
+    exec {input}<&-
+    kill "$feeder" 2>/dev/null || true
+  fi
+  return "$status"
+}
+
+# make_platform_tools <bin-dir> <system> <form>
+# Creates a 'uname' that says <system> (Darwin, Linux) and a 'stat' and
+# 'date' that take only the <form> of their arguments: 'gnu' (stat -c, date
+# -d) or 'bsd' (stat -f, date -j -f; BSD stat takes no '--'). Both run the
+# toolchain's tools, translating the BSD form. Put <bin-dir> first on PATH to
+# show that a script chooses the form by the tool on PATH and not by the
+# system: GNU coreutils first on PATH on macOS, a BSD stat elsewhere.
+make_platform_tools() {
+  local bin="$1"
+  local stat_path
+  local date_path
+
+  mkdir -p "$bin"
+  stat_path="$(printf '%q' "$(readlink "$TEST_TOOLCHAIN_BIN/stat")")"
+  date_path="$(printf '%q' "$(readlink "$TEST_TOOLCHAIN_BIN/date")")"
+  printf '#!/usr/bin/env bash\necho %q\n' "$2" >"$bin/uname"
+  if [[ "$3" == gnu ]]; then
+    cat >"$bin/stat" <<FAKE
+#!/usr/bin/env bash
+[[ "\${1:-}" == -c ]] || { echo "stat: cannot read file system information for '\${2:-}'" >&2; exit 1; }
+exec $stat_path "\$@"
+FAKE
+    cat >"$bin/date" <<FAKE
+#!/usr/bin/env bash
+[[ "\${1:-}" != -j ]] || { echo "date: invalid option -- 'j'" >&2; exit 1; }
+exec $date_path "\$@"
+FAKE
+  else
+    cat >"$bin/stat" <<FAKE
+#!/usr/bin/env bash
+[[ "\${1:-}" == -f ]] || { echo "stat: illegal option -- \${1#-}" >&2; exit 1; }
+case "\${2:-}" in
+  %Lp) format=%a ;;
+  %m) format=%Y ;;
+  *) echo "stat: unsupported format in this fake: \${2:-}" >&2; exit 1 ;;
+esac
+shift 2
+for path in "\$@"; do
+  [[ "\$path" != -* ]] || { echo "stat: \$path: stat: No such file or directory" >&2; exit 1; }
+done
+exec $stat_path -c "\$format" -- "\$@"
+FAKE
+    cat >"$bin/date" <<FAKE
+#!/usr/bin/env bash
+[[ "\${1:-}" != -d ]] || { echo "date: illegal option -- d" >&2; exit 1; }
+if [[ "\${1:-}" == -j && "\${2:-}" == -f ]]; then
+  # date -j -f <format> <date> [+<output>]: the date in the given format.
+  exec $date_path -d "\$4" "\${@:5}"
+fi
+exec $date_path "\$@"
+FAKE
+  fi
+  chmod +x "$bin/uname" "$bin/stat" "$bin/date"
+}
+
 make_fake_agents() {
   local bin="$1"
   local jq_path
@@ -272,4 +377,22 @@ expect_comments_recorded() {
   cat "$1"/*.jsonl 2>/dev/null | jq -e -s --arg role "$2" \
     'any(.type == "issue-comments" and .role == $role and .passed == 3 and .others == 2 and .workflow == 3)' >/dev/null ||
     fail "the run record does not say how many comments were passed on to the $2"
+}
+
+# fake_missing_prerequisite <repo> [<control-file>]
+# Makes the preflight of the verify.sh of <repo> (its scripts/lib/
+# environment.sh) find a general prerequisite missing, so that verify.sh ends
+# with the environment status 78 and an ENVIRONMENT line: always, or, with
+# <control-file>, only while that file exists. For the tests of the scripts
+# that pass the status on; the preflight itself is tested on its own
+# (tests/environment-test.sh).
+fake_missing_prerequisite() {
+  local file="$1/scripts/lib/environment.sh"
+
+  [[ -f "$file" ]] || cp "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/scripts/lib/environment.sh" "$file"
+  if [[ -n "${2:-}" ]]; then
+    printf 'environment_general_missing() { [[ ! -e %q ]] || printf '"'"'faked-tool for this test\\tinstall faked-tool\\n'"'"'; }\n' "$2" >>"$file"
+  else
+    printf 'environment_general_missing() { printf '"'"'faked-tool for this test\\tinstall faked-tool\\n'"'"'; }\n' >>"$file"
+  fi
 }

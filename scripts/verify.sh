@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+case $0 in */*) bootstrap_dir=${0%/*} ;; *) if [ -f "$0" ]; then bootstrap_dir=.; else bootstrap_dir=$(command -v "$0" 2>/dev/null) && bootstrap_dir=${bootstrap_dir%/*} || bootstrap_dir=.; fi ;; esac; if [ -f "$bootstrap_dir/lib/bootstrap.sh" ]; then . "$bootstrap_dir/lib/bootstrap.sh"; elif [ "${BASH_VERSINFO:-0}" -lt 4 ]; then echo "ENVIRONMENT  Bash 4 or newer (this is ${BASH_VERSION:-not Bash}) — install Bash 4 or newer and put it first on PATH"; echo "Error: ${0##*/} needs Bash 4 or newer and did not find lib/bootstrap.sh; it stopped before it did anything." >&2; exit 78; fi
 
 set -euo pipefail
 
@@ -64,6 +65,13 @@ records_arguments=("$@")
 # 75: the machine is busy, which says nothing about the code. A run without a
 # heavy check, such as --only of the light groups, takes no slot. Without a
 # 'heavy:' line nothing is locked.
+#
+# Before any check, a preflight (scripts/lib/environment.sh) checks the
+# prerequisites of this machine: those of the workflow always, and those of
+# the workflow self-tests only when a self-test is going to run. A missing
+# one is reported as 'ENVIRONMENT  <what> — <install command>'; no check
+# runs, nothing is recorded, and the exit status is 78 (EX_CONFIG), which
+# run-feature.sh does not retry or repair.
 #
 # scripts/verify.conf may declare one 'parallel: <n>': up to <n> checks of the
 # run, over the checks of both files, run at the same time, each in a process
@@ -170,6 +178,12 @@ usage() {
   echo "verification (\$VERIFY_LOCK_DIR, by default /tmp/agentic-verify-<uid>). When"
   echo "another run holds it, the summary shows BUSY with that run, no check runs,"
   echo "nothing is recorded, and the exit status is 75. Without the line nothing locks."
+  echo
+  echo "Before any check, a preflight checks the prerequisites of this machine: Bash 4"
+  echo "or newer, git, and jq 1.6 or newer always, and the toolchain of the workflow"
+  echo "self-tests (GNU sed, GNU timeout and date) only when a self-test is going to"
+  echo "run. A missing one shows ENVIRONMENT with its install command, no check runs,"
+  echo "nothing is recorded, and the exit status is 78."
   echo
   echo "A line 'parallel: <n>' in scripts/verify.conf runs up to <n> checks of both files"
   echo "at a time; the output of each check follows as one block when it ends, and the"
@@ -995,18 +1009,59 @@ elif [[ "$partial" -eq 1 ]]; then
   echo "Only the groups: ${only//,/, }. A partial run is not a verification and records nothing."
 fi
 
+# Whether --reuse finds a recorded pass for exactly this content, and what
+# that pass covered of the workflow self-tests ('ran', 'skipped', 'none').
+reuse_candidate=0
+recorded_workflow=""
+if [[ "$recordable" -eq 1 && "$reuse" -eq 1 && -n "$tree_before" &&
+  "$(verification_field "$root" tree)" == "$tree_before" ]]; then
+  reuse_candidate=1
+  recorded_workflow="$(verification_field "$root" workflow-tests)"
+fi
+
+# The preflight (scripts/lib/environment.sh): the general prerequisites of the
+# workflow always, and those of the workflow self-tests (their isolated
+# toolchain) only when a self-test is going to run. A missing one is a
+# missing prerequisite of this machine, not a failure of the code: no check
+# runs, nothing is recorded, and the status is 78 with one ENVIRONMENT line
+# for each. Without the library (a project that removed the workflow
+# scripts) nothing is checked here. It runs before --reuse accepts a
+# recorded pass: a pass that covered the self-tests stands in for them only
+# on a machine that can run them, so their prerequisites are checked then
+# too, also when this run would skip them.
+if [[ -f "$root/scripts/lib/environment.sh" ]]; then
+  source "$root/scripts/lib/environment.sh"
+  self_tests_run=0
+  if [[ "$reuse_candidate" -eq 1 && "$recorded_workflow" == "ran" ]]; then
+    self_tests_run=1
+  elif [[ -z "$workflow_skipped" ]]; then
+    for ((index = project_count; index < ${#names[@]}; index++)); do
+      skipped_check "$index" || { self_tests_run=1; break; }
+    done
+  fi
+  environment_missing="$(
+    environment_general_missing
+    [[ "$self_tests_run" -eq 0 ]] || environment_toolchain_missing
+  )"
+  if [[ -n "$environment_missing" ]]; then
+    echo
+    echo "== Verification summary =="
+    printf '%s\n' "$environment_missing" | environment_report
+    echo "Verification not run: a prerequisite of this machine is missing$([[ "$self_tests_run" -eq 0 ]] || echo ", for the workflow self-tests or for every run"). This is not a failure of the code, no check ran, and nothing was recorded. Install what the ENVIRONMENT lines name, then run again; ./scripts/doctor.sh lists every prerequisite." >&2
+    exit "$ENVIRONMENT_STATUS"
+  fi
+fi
+
 # With --reuse, a recorded pass for exactly this content stands in for a run.
 # A record made without the workflow self-tests does not cover a run that
 # needs them. With VERIFY_TRUSTED_TREES set, the trust contract of the
 # workflow scripts (lib/verification.sh), only a pass whose tree is in the
 # list counts: any other record may have been written in an agent session.
-if [[ "$recordable" -eq 1 ]]; then
-  if [[ "$reuse" -eq 1 && -n "$tree_before" && "$(verification_field "$root" tree)" == "$tree_before" ]] &&
-    [[ -n "${VERIFY_TRUSTED_TREES+set}" ]] && ! verification_tree_trusted "$tree_before"; then
+if [[ "$reuse_candidate" -eq 1 ]]; then
+  if [[ -n "${VERIFY_TRUSTED_TREES+set}" ]] && ! verification_tree_trusted "$tree_before"; then
     echo
     echo "A pass is recorded for this content, but not by a workflow script of this run (VERIFY_TRUSTED_TREES); every check runs."
-  elif [[ "$reuse" -eq 1 && -n "$tree_before" && "$(verification_field "$root" tree)" == "$tree_before" ]]; then
-    recorded_workflow="$(verification_field "$root" workflow-tests)"
+  else
     if [[ "$recorded_workflow" != "skipped" || ( -n "$workflow_skipped" && "$run_all" -eq 0 ) ]]; then
       echo
       echo "Verification already passed for this content at $(verification_field "$root" verified-at); not run again."

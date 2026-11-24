@@ -1,0 +1,89 @@
+name: macOS
+on:
+  workflow_dispatch:
+
+# The template's own: an on-demand verification of the workflow on macOS, a
+# diagnostic tool that the owner starts (Issue 407, owner decision of
+# 2026-11-24). It runs ./scripts/verify.sh --all with the documented
+# prerequisites of docs/development.md, "Prerequisites". It runs on no push
+# and on no schedule, has no path filter, and is not a required check: the
+# required check is 'verify' of ci.yml. It is not in the paths of
+# .agents/template.conf, so a sync never hands it to a project; a project
+# made from a copy of the template has it, and there the job 'scope' skips
+# it: it runs only in the repository that .agents/template.conf names under
+# 'repository:', as ci.yml tells the template from a project.
+#
+# The GITHUB_TOKEN is read-only; nothing here writes with it.
+permissions:
+  contents: read
+
+jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      template: ${{ steps.scope.outputs.template }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .agents/template.conf
+          sparse-checkout-cone-mode: false
+      - name: Decide whether this is the template
+        id: scope
+        env:
+          REPOSITORY: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          template=""
+          if [[ -f .agents/template.conf ]]; then
+            template="$(sed -n 's/^repository:[[:space:]]*//p' .agents/template.conf | head -n 1 | sed 's/[[:space:]]*$//')"
+          fi
+          template="${template%/}"
+          template="${template%.git}"
+          if [[ -n "$template" && "${template,,}" == "${REPOSITORY,,}" ]]; then
+            echo "template=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "template=false" >>"$GITHUB_OUTPUT"
+            echo "Not the template ($REPOSITORY): the macOS verification is the template's own and is skipped."
+          fi
+
+  verify-macos:
+    needs: scope
+    if: ${{ needs.scope.outputs.template == 'true' }}
+    runs-on: macos-latest
+    timeout-minutes: 150
+    env:
+      # The runner has 3 cores: three checks at a time, and three self-tests
+      # at a time inside adopted-project, instead of the 4 of a Linux host.
+      VERIFY_PARALLEL: 3
+      ADOPTED_PROJECT_JOBS: 3
+    steps:
+      # The full history: verify.sh compares with the base branch.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The documented prerequisites: Bash 4 or newer, GNU coreutils and
+      # sed, and jq, first on PATH as docs/development.md says.
+      - name: Install the prerequisites
+        run: |
+          brew install bash coreutils gnu-sed jq
+          prefix="$(brew --prefix)"
+          {
+            echo "$prefix/bin"
+            echo "$prefix/opt/gnu-sed/libexec/gnubin"
+            echo "$prefix/opt/coreutils/libexec/gnubin"
+          } >>"$GITHUB_PATH"
+      - name: Show the tools
+        run: |
+          command -v bash sed timeout date jq git
+          bash --version | head -n 1
+          sed --version | head -n 1
+      # The website of the template is checked by --all too.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: website/.nvmrc
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Install the website browser
+        working-directory: website
+        run: npm ci --no-audit --no-fund && npx --no-install playwright install chromium
+      - name: Verify everything
+        run: ./scripts/verify.sh --all

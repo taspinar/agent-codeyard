@@ -29,6 +29,12 @@ make_bin() {
   shift
 
   mkdir -p "$bin"
+  # The prerequisites of the workflow self-tests that doctor.sh checks
+  # (lib/environment.sh), from the isolated toolchain, apart from git and
+  # jq, which are listed like any tool; MAKE_BIN_WITHOUT leaves one out.
+  for tool in bash sed timeout date; do
+    [[ " ${MAKE_BIN_WITHOUT:-} " == *" $tool "* ]] || ln -sf "$TEST_TOOLCHAIN_BIN/$tool" "$bin/$tool"
+  done
   # The sandbox check needs mkdir, rm and sleep whatever else is present.
   for tool in mkdir rm sleep "$@"; do
     case "$tool" in
@@ -127,8 +133,11 @@ claude_settings="$tmp/claude-settings.json"
 # The codex here is a fake, so the test runs also inside a Codex session,
 # which the real check skips (CODEX_SESSION_ID, CODEX_THREAD_ID): an
 # implementer's own run of verify.sh gets here.
+# HOMEBREW_PREFIX names a directory without brew: the PATH of the test is
+# all doctor.sh may find, also on a Mac where Homebrew's GNU tools are
+# installed (scripts/lib/environment.sh looks in Homebrew's places).
 run_doctor() {
-  PATH="$1" AGENT_CONFIG_FILE="$config" ATTRIBUTION_CONFIG_FILE="$attribution" \
+  PATH="$1" HOMEBREW_PREFIX="$tmp/no-homebrew" AGENT_CONFIG_FILE="$config" ATTRIBUTION_CONFIG_FILE="$attribution" \
     ATTRIBUTION_CLAUDE_SETTINGS_FILE="$claude_settings" TMPDIR="$tmp/scratch" DOCTOR_CODEX_TIMEOUT="${DOCTOR_CODEX_TIMEOUT:-20}" \
     CODEX_SESSION_ID="${MOCK_CODEX_SESSION_ID:-}" CODEX_THREAD_ID= \
     "$bash_path" "$script" >"$tmp/out.log" 2>&1
@@ -165,6 +174,16 @@ if grep -Eq '^(FAILED|WARNING)' "$tmp/out.log"; then
   fail "complete environment reported a problem"
 fi
 grep -Eq '^OK +git has a commit identity' "$tmp/out.log" || fail "the commit identity was not reported"
+grep -Eq '^OK +the workflow self-tests find their toolchain' "$tmp/out.log" || fail "the toolchain of the self-tests was not reported: $(cat "$tmp/out.log")"
+
+# A missing prerequisite of the workflow self-tests (here GNU sed) is the
+# preflight of verify.sh (lib/environment.sh): a warning with the install
+# command, since verify.sh needs it only when a self-test is going to run.
+bin_without_sed="$(MAKE_BIN_WITHOUT=sed make_bin without-sed git gh jq codex claude)"
+run_doctor "$bin_without_sed" || { cat "$tmp/out.log" >&2; fail "a missing prerequisite of the self-tests was reported as a failure"; }
+grep -Eq '^WARNING +GNU sed for the workflow self-tests is missing: \./scripts/verify\.sh ends with status 78' "$tmp/out.log" ||
+  fail "a missing GNU sed was not reported as a prerequisite of the self-tests: $(cat "$tmp/out.log")"
+grep -Eq '^ +Install it: .*(apt-get install sed|brew install gnu-sed)' "$tmp/out.log" || fail "the install command of GNU sed is missing: $(cat "$tmp/out.log")"
 
 # The Codex sandbox check: the implementer uses codex, so a real unattended
 # session ran in a scratch repository, with the writable roots of agent.sh,
