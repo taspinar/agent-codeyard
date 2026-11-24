@@ -251,7 +251,7 @@ The website of the template is its own: it is not synced to a project, and a pro
 | --- | --- | --- |
 | [`website/`](https://github.com/taspinar/agent-codeyard/tree/main/website/) | The documentation site, published on GitHub Pages: an Astro project with static output | Delete in a project |
 | [`.github/workflows/pages.yml`](https://github.com/taspinar/agent-codeyard/blob/main/.github/workflows/pages.yml) | Builds [`website/`](https://github.com/taspinar/agent-codeyard/tree/main/website/) with Node and `npm ci`, checks it, and publishes the output and nothing else, only in a repository that sets the variable `PUBLISH_DOCUMENTATION` to `true` | Delete in a project |
-| [`.github/workflows/macos.yml`](https://github.com/taspinar/agent-codeyard/blob/main/.github/workflows/macos.yml) | Runs `./scripts/verify.sh --all` on macOS with the documented prerequisites, on every pull request, on `main`, and every night; only in the template, and skipped in any other repository | Delete in a project |
+| [`.github/workflows/macos.yml`](https://github.com/taspinar/agent-codeyard/blob/main/.github/workflows/macos.yml) | Runs `./scripts/verify.sh --all` on macOS with the documented prerequisites, on demand, when the owner starts it (`workflow_dispatch`), never on a push or a schedule and no required check; only in the template, and skipped in any other repository | Delete in a project |
 
 Inside `website/`:
 

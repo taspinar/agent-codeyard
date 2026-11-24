@@ -246,6 +246,44 @@ rebuilt="$(TMPDIR="$tmp" environment_toolchain_build)"
 [[ -L "$rebuilt/sed" ]] || fail "a toolchain without one of its links was not rebuilt"
 [[ "$(find "$tmp" -maxdepth 1 -name 'codeyard-test-toolchain.*' | wc -l)" -eq 1 ]] ||
   fail "building the toolchain left directories behind: $(ls "$tmp")"
+
+# The shared directory cannot be planted or changed unnoticed (criterion 10):
+# a link that points elsewhere, an extra entry before /usr/bin, a directory
+# that others may write, one that is a symbolic link, or one of another
+# owner is not used; it is built again, or this run uses its own.
+shared="${rebuilt%/bin}"
+sed_target="$(readlink "$shared/bin/sed")"
+mkdir -p "$tmp/planted"
+printf '#!/bin/sh\necho planted\n' >"$tmp/planted/sed"
+chmod +x "$tmp/planted/sed"
+ln -sfn "$tmp/planted/sed" "$shared/bin/sed"
+[[ "$(readlink "$(TMPDIR="$tmp" environment_toolchain_build)/sed")" == "$sed_target" ]] ||
+  fail "a link that points to another tool was used"
+ln -s "$tmp/planted/sed" "$shared/bin/curl"
+[[ ! -e "$(TMPDIR="$tmp" environment_toolchain_build)/curl" ]] || fail "an extra entry in the toolchain was used"
+chmod g+w "$shared/bin"
+TMPDIR="$tmp" environment_toolchain_build >/dev/null
+[[ -z "$(find "$shared/bin" -prune -perm -020)" ]] || fail "a toolchain that others may write was used"
+chmod o+w "$shared/links"
+TMPDIR="$tmp" environment_toolchain_build >/dev/null
+[[ -z "$(find "$shared/links" -prune -perm -002)" ]] || fail "a toolchain whose links file others may write was used"
+environment_toolchain_intact "$shared" || fail "the rebuilt toolchain is not intact"
+environment_toolchain_intact "$shared" "$(($(id -u) + 4242))" && fail "a toolchain of another owner counts as intact"
+# A symbolic link in its place, to a copy that is otherwise perfect.
+cp -R "$shared" "$tmp/copy"
+rm -rf "$shared"
+ln -s "$tmp/copy" "$shared"
+[[ "$(TMPDIR="$tmp" environment_toolchain_build)" == "$shared/bin" ]] || fail "the toolchain moved"
+[[ -d "$shared" && ! -L "$shared" ]] || fail "a symbolic link in the place of the toolchain was used"
+# One that cannot be removed (as another user's in a sticky /tmp) and is not
+# intact is never used: this run builds and uses its own directory.
+chmod o+w "$shared"
+chmod a-w "$shared/bin"
+own_bin="$(TMPDIR="$tmp" environment_toolchain_build)"
+chmod u+w "$shared/bin"
+[[ "$own_bin" != "$shared/bin" && -L "$own_bin/sed" ]] || fail "a toolchain that could not be rebuilt was used: $own_bin"
+[[ "$(readlink "$own_bin/sed")" == "$sed_target" ]] || fail "the own toolchain does not link the resolved sed"
+rm -rf "${own_bin%/bin}" "$shared" "$tmp/copy"
 # Without a required tool it cannot be built: the ENVIRONMENT line and a
 # failure.
 status=0

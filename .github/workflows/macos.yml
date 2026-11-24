@@ -1,23 +1,23 @@
 name: macOS
 on:
+  # Temporary, for Issue 407 only: the one full macOS verification of the
+  # final integrated implementation runs on its pull request, because a
+  # workflow that only workflow_dispatch starts cannot be started before it
+  # is on main. A separate step of Issue 407 removes this trigger before the
+  # merge, leaving workflow_dispatch alone.
   pull_request:
-  push:
-    branches: [main]
-  schedule:
-    - cron: '41 2 * * *'
   workflow_dispatch:
 
-# The template's own: the workflow verified on macOS, so that a new
-# self-test with a Linux assumption (a fixed /usr/bin:/bin, a GNU option of
-# a BSD tool, Bash 4 syntax under /bin/bash 3.2) is caught (Issue 407). It
-# runs ./scripts/verify.sh --all with the documented prerequisites of
-# docs/development.md, "Prerequisites", on every pull request, on main, and
-# every night. It is not a required check: the required check is 'verify' of
-# ci.yml. It is not in the paths of .agents/template.conf, so a sync never
-# hands it to a project; a project made from a copy of the template has it,
-# and there the job 'scope' skips it: it runs only in the repository that
-# .agents/template.conf names under 'repository:', as ci.yml tells the
-# template from a project.
+# The template's own: an on-demand verification of the workflow on macOS, a
+# diagnostic tool that the owner starts (Issue 407, owner decision of
+# 2026-11-24). It runs ./scripts/verify.sh --all with the documented
+# prerequisites of docs/development.md, "Prerequisites". It runs on no push
+# and on no schedule, has no path filter, and is not a required check: the
+# required check is 'verify' of ci.yml. It is not in the paths of
+# .agents/template.conf, so a sync never hands it to a project; a project
+# made from a copy of the template has it, and there the job 'scope' skips
+# it: it runs only in the repository that .agents/template.conf names under
+# 'repository:', as ci.yml tells the template from a project.
 #
 # The GITHUB_TOKEN is read-only; nothing here writes with it.
 permissions:

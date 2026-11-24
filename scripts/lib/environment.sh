@@ -300,16 +300,51 @@ environment_report() {
   done
 }
 
-# environment_toolchain_intact <dir>: whether the toolchain in <dir> holds
-# exactly the links of ENVIRONMENT_TOOLCHAIN_LINKS, each still there.
+# environment_toolchain_intact <dir> [<uid>]: whether the toolchain in <dir>
+# is the one ENVIRONMENT_TOOLCHAIN_LINKS describes and nobody else can have
+# changed it. The directory may lie in a shared /tmp, where another user can
+# make it first (Issue 407, criterion 10), so it counts only when:
+#
+# - <dir>, <dir>/bin, <dir>/links, and <dir>/complete are what they should
+#   be (directories and regular files, no symbolic link among them), owned
+#   by <uid> (this user by default), and writable by neither group nor
+#   others; only their owner can then add, remove, or replace an entry;
+# - links holds exactly ENVIRONMENT_TOOLCHAIN_LINKS;
+# - bin holds exactly the names of those links, nothing more, and each is a
+#   symbolic link to the path it was resolved to.
+#
+# Three processes in all (id, find, readlink), whatever the number of links,
+# so that a warm lookup stays as fast as before.
 environment_toolchain_intact() {
+  local dir="$1"
+  local uid="${2:-}"
   local name
   local path
+  local entry
+  local count=0
+  local -a names=()
+  local -a links=()
+  local expected=""
 
-  [[ -f "$1/links" && "$(<"$1/links")" == "${ENVIRONMENT_TOOLCHAIN_LINKS%$'\n'}" ]] || return 1
+  [[ -n "$uid" ]] || uid="$(id -u 2>/dev/null)" || return 1
+  [[ -d "$dir" && ! -L "$dir" && -d "$dir/bin" && ! -L "$dir/bin" ]] || return 1
+  [[ -f "$dir/links" && ! -L "$dir/links" && -f "$dir/complete" && ! -L "$dir/complete" ]] || return 1
+  [[ -z "$(find "$dir" "$dir/bin" "$dir/links" "$dir/complete" -prune \( ! -user "$uid" -o -perm -020 -o -perm -002 \) -print 2>/dev/null)" ]] || return 1
+  [[ "$(<"$dir/links")" == "${ENVIRONMENT_TOOLCHAIN_LINKS%$'\n'}" ]] || return 1
   while read -r name path; do
-    [[ -z "$name" || -L "$1/bin/$name" ]] || return 1
+    [[ -n "$name" ]] || continue
+    [[ -L "$dir/bin/$name" ]] || return 1
+    names+=("$name")
+    links+=("$dir/bin/$name")
+    expected+="$path"$'\n'
   done <<<"$ENVIRONMENT_TOOLCHAIN_LINKS"
+  # Nothing else in bin: an extra entry would come before /usr/bin and /bin.
+  for entry in "$dir/bin"/* "$dir/bin"/.[!.]* "$dir/bin"/..?*; do
+    [[ -e "$entry" || -L "$entry" ]] || continue
+    count=$((count + 1))
+  done
+  [[ "$count" -eq "${#names[@]}" ]] || return 1
+  [[ "${#links[@]}" -eq 0 || "$(readlink "${links[@]}" 2>/dev/null)" == "${expected%$'\n'}" ]] || return 1
 }
 
 # environment_toolchain_build
@@ -327,6 +362,7 @@ environment_toolchain_build() {
   local work
   local name
   local path
+  local uid
 
   if ! environment_toolchain_resolve; then
     printf '%s' "$ENVIRONMENT_MISSING" | environment_report >&2
@@ -334,13 +370,16 @@ environment_toolchain_build() {
   fi
   base="${base%/}"
   sum="$(printf '%s' "$ENVIRONMENT_TOOLCHAIN_LINKS" | cksum | tr ' ' '-')" || sum=""
-  final="$base/codeyard-test-toolchain.$(id -u 2>/dev/null || echo user).${sum%%-*}"
-  if [[ -n "$sum" && -f "$final/complete" ]]; then
-    if environment_toolchain_intact "$final"; then
+  uid="$(id -u 2>/dev/null)" || uid=""
+  final="$base/codeyard-test-toolchain.${uid:-user}.${sum%%-*}"
+  if [[ -n "$sum" && -n "$uid" ]] && { [[ -e "$final" ]] || [[ -L "$final" ]]; }; then
+    if environment_toolchain_intact "$final" "$uid"; then
       printf '%s\n' "$final/bin"
       return 0
     fi
-    # A cleaner of the temporary directory removed some of it.
+    # A cleaner of the temporary directory removed some of it, or it is not
+    # this user's alone: removed when this user may, and built again. One
+    # that stays (another user's in a sticky /tmp) is never used; see below.
     rm -rf "$final" 2>/dev/null || true
   fi
   work="$(mktemp -d "$base/codeyard-test-toolchain.XXXXXX" 2>/dev/null)" || {
@@ -354,18 +393,32 @@ environment_toolchain_build() {
   done <<<"$ENVIRONMENT_TOOLCHAIN_LINKS"
   printf '%s' "$ENVIRONMENT_TOOLCHAIN_LINKS" >"$work/links"
   : >"$work/complete"
+  # Whatever the umask: only its owner may change it (environment_toolchain_intact).
+  chmod go-w "$work/bin" "$work/links" "$work/complete"
   if [[ -z "$sum" ]]; then
     # Without a checksum nothing can be shared: this run's own directory.
     printf '%s\n' "$work/bin"
     return 0
   fi
-  # Another test may have built the same toolchain meanwhile: a rename onto
-  # an existing directory moves this one into it instead, which is removed
-  # again; the one that was there first stays.
-  mv "$work" "$final" 2>/dev/null || true
-  [[ ! -d "$final/${work##*/}" ]] || rm -rf "$final/${work##*/}"
-  [[ ! -d "$work" ]] || rm -rf "$work"
-  if [[ -f "$final/complete" ]]; then
+  # The shared directory is used only when it is intact afterwards, whoever
+  # made it: another test of this user may have built the same one
+  # meanwhile. Otherwise (another user's, which could not be removed) this
+  # run's own directory, which mktemp made for this user alone.
+  if [[ -n "$uid" ]] && ! [[ -e "$final" || -L "$final" ]]; then
+    mv "$work" "$final" 2>/dev/null || true
+    # Another test made it in between: the rename moved this one into it.
+    [[ ! -d "$final/${work##*/}" ]] || rm -rf "$final/${work##*/}"
+  fi
+  if [[ -d "$work" ]]; then
+    if [[ -n "$uid" ]] && environment_toolchain_intact "$final" "$uid"; then
+      rm -rf "$work"
+      printf '%s\n' "$final/bin"
+      return 0
+    fi
+    printf '%s\n' "$work/bin"
+    return 0
+  fi
+  if environment_toolchain_intact "$final" "$uid"; then
     printf '%s\n' "$final/bin"
     return 0
   fi

@@ -32,8 +32,10 @@
   not come first. The workflow scripts use the `stat` and `date` that come
   first on `PATH` in the form that tool takes (GNU `stat -c` and `date -d`,
   or BSD `stat -f` and `date -j -f`), whatever the system is. The
-  template's own CI runs `./scripts/verify.sh --all` on macOS too, on every
-  pull request and every night.
+  template has an on-demand macOS verification of its own, which runs
+  `./scripts/verify.sh --all` on macOS when the owner starts it (Actions,
+  "macOS", "Run workflow"); it runs on no push and on no schedule and is no
+  required check.
 - Project-specific tools documented in this file after the template is adopted
 
 Run `./scripts/doctor.sh` to check these prerequisites, including that you can
@@ -1054,7 +1056,13 @@ links to explicitly selected tools only, Bash 4 or newer, GNU `sed`, GNU
 Homebrew's GNU directories first, then from `PATH`; never an agent CLI, `gh`,
 or another network tool. On Linux the links point at the system's tools. It
 is kept once per user and content under `${TMPDIR:-/tmp}`
-(`codeyard-test-toolchain.*`), and a test uses it by intent:
+(`codeyard-test-toolchain.*`). A kept directory is used again only when it,
+its `bin`, and its files are owned by the current user and writable by
+neither group nor others, none of them is a symbolic link, and `bin` holds
+exactly the expected links, each pointing at the tool that was resolved;
+otherwise it is built again, and when another user's directory is in the
+way, the test uses a directory of its own. A test uses the toolchain by
+intent:
 
 - normal isolated execution: `PATH="$ISOLATED_PATH"`, the toolchain followed
   by `/usr/bin:/bin`;
