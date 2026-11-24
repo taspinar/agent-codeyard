@@ -230,10 +230,10 @@ check "$repo"
 # A project deletes the template's website and its workflow
 # (docs/repository-setup.md), while the documents it takes over still name
 # them. The template's own docs-references line still passes there, and it
-# needs its --later entry for the workflow to pass. Only where this
-# repository still has the template's site: elsewhere, such as in a project
-# that deleted it, its documents are the project's own.
-if [[ -f "$source_root/website/.codeyard-site" && -f "$source_root/.github/workflows/pages.yml" ]]; then
+# needs its --later entry for the workflow to pass. In the template only
+# (template_repository in tests/lib-fakes.sh): in a project its documents,
+# its website/, and its scripts/verify.conf are the project's own.
+if template_repository "$source_root"; then
   repo="$tmp/project"
   mkdir -p "$repo"
   # The content as it is verified: the worktree with its new files. A file

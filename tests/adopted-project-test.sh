@@ -37,12 +37,12 @@ source "$source_root/tests/lib-fakes.sh"
 self="tests/$(basename "${BASH_SOURCE[0]}")"
 
 # The template's files, as an adoption gives them to a project: without the
-# documentation site and the CI workflows of the template, its decisions,
+# website of the template (website/) and the CI workflows of the template, its decisions,
 # records, and top-level README and LICENSE, and without the state of the
 # repository these tests run in.
 project="$tmp/project"
 mkdir -p "$project"
-(cd "$source_root" && git ls-files -co --exclude-standard -z -- . ':(exclude)documentation' ':(exclude).github/workflows' \
+(cd "$source_root" && git ls-files -co --exclude-standard -z -- . ':(exclude)website' ':(exclude).github/workflows' \
   ':(exclude)README.md' ':(exclude)LICENSE' ':(exclude).agents/approval-requests' ':(exclude).agents/verification-baseline' \
   ':(exclude).agents/template.conf' ':(exclude).gitignore' |
   while IFS= read -r -d '' path; do
@@ -51,11 +51,15 @@ mkdir -p "$project"
   done |
   tar --null -T - -cf -) | tar -C "$project" -xf -
 [[ -x "$project/$self" ]] || fail "the fixture project does not have the self-tests"
+# A project without the template's site: no self-test may need it.
+[[ ! -e "$project/website" ]] || fail "the fixture project has files under website/: $(cd "$project" && find website -type f | head -n 3)"
 
-# The project's own state.
+# The project's own state. Its own CI is one job that runs verify.sh, in a
+# layout of its own: no self-test may check it as the template's ci.yml.
 mkdir -p "$project/.github/workflows" "$project/docs/decisions"
-printf 'name: project-ci\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make test\n' \
+printf 'name: project-ci\non: [push, pull_request]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: make test\n      - run: ./scripts/verify.sh --all\n' \
   >"$project/.github/workflows/ci.yml"
+grep -Fq './scripts/verify.sh' "$project/.github/workflows/ci.yml" || fail "the fixture's own CI does not run verify.sh"
 # Its planning is approved: no self-test may need the draft the template
 # ships.
 sed -e 's/^Status: Draft$/Status: Approved/' -e 's/^Approved at: Not approved$/Approved at: 2026-01-05T09:00:00Z/' \
@@ -95,7 +99,7 @@ reviewer: codex gpt-6-astra
 reviewer@high: codex gpt-6-luna
 triage: claude opus
 triage-implementer: claude sonnet
-analyst: claude sonnet
+analyst: codex gpt-6-luna
 assessor: claude sonnet
 EOF
 grep -Fqx 'implementer: claude sonnet' "$project/.agents/agents.conf" || fail "the fixture has no agents of its own"
@@ -105,15 +109,16 @@ printf '# Plan of the project Issue 12\n' >"$project/.agents/plans/12-orders-api
 printf '\n## Orders\n\nThe orders API follows `.agents/plans/12-orders-api.md`.\n' >>"$project/docs/architecture.md"
 grep -Fq '`.agents/plans/12-orders-api.md`' "$project/docs/architecture.md" ||
   fail "the fixture has no document that names a plan of its own"
-# It has a test file of its own, which pipes into a quiet grep, a form the
+# It has a test file of its own, named like a self-test, that neither
+# sources tests/lib-fakes.sh nor avoids a pipe into a quiet grep, a form the
 # workflow's self-tests do not use (tests/pipe-grep-test.sh): the project's
 # tests follow its own rules. The pipe is written as $bar so that this file
 # does not hold the form.
 bar='|'
 own_test="./scripts/orders.sh list $bar grep -q order"
-printf '#!/usr/bin/env bash\nset -euo pipefail\n%s\n' "$own_test" >"$project/tests/orders.sh"
-chmod +x "$project/tests/orders.sh"
-grep -Fqx "$own_test" "$project/tests/orders.sh" || fail "the fixture has no test file of its own"
+printf '#!/usr/bin/env bash\nset -euo pipefail\n%s\n' "$own_test" >"$project/tests/orders-test.sh"
+chmod +x "$project/tests/orders-test.sh"
+grep -Fqx "$own_test" "$project/tests/orders-test.sh" || fail "the fixture has no test file of its own"
 template_conf "$tmp/template.conf"
 sed -E -e '/^repository:/ s#:.*#: https://example.com/owner/template#' \
   -e '/^paths:/ s#$# :(exclude).github/workflows/ci.yml#' "$tmp/template.conf" >"$project/.agents/template.conf"
@@ -121,7 +126,7 @@ printf 'commit: 0123456789abcdef0123456789abcdef01234567\nbase: develop\n' >>"$p
 grep -Fq ':(exclude).github/workflows/ci.yml' "$project/.agents/template.conf" || fail "the fixture does not exclude its CI"
 workflow_gitignore "$tmp/workflow.gitignore"
 {
-  printf '# The project'"'"'s own rules.\n*.json\n*.log\n'
+  printf '# The project'"'"'s own rules.\n*.json\n*.log\ndocs/drafts/\ntests/fixtures/\n'
   printf '\n# agent-codeyard: the working files of the workflow (added by adopt-repository.sh)\n'
   cat "$tmp/workflow.gitignore"
 } >"$project/.gitignore"

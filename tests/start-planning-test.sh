@@ -283,7 +283,12 @@ setup_repo() {
   # repository these tests run in, which are approved once its planning is.
   printf '# Project Requirements\n\nStatus: Draft\nApproved at: Not approved\n\n## Project goal\n\n<!-- REQUIRED: Describe the product outcome and why it matters. -->\n' \
     >"$seed/docs/PROJECT_REQUIREMENTS.md"
-  cp "$root/.gitignore" "$seed/.gitignore"
+  # The workflow's rules and the .env rule the ignored-file cases need, not
+  # the .gitignore of the repository these tests run in: a project's own may
+  # ignore docs/ or tests/ paths.
+  workflow_gitignore "$seed/.gitignore.workflow"
+  { printf '.env\n.env.*\n'; cat "$seed/.gitignore.workflow"; } >"$seed/.gitignore"
+  rm "$seed/.gitignore.workflow"
 
   printf '# Agents\n' >"$seed/AGENTS.md"
   printf '# Repository setup\n' >"$seed/docs/repository-setup.md"

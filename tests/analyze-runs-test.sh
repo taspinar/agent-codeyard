@@ -33,7 +33,9 @@ setup_repo() {
   copy_workflow "$repo"
   cp "$source_root/scripts/lib/report.jq" "$repo/scripts/lib/"
   workflow_gitignore "$repo/.gitignore"
-  cp "$source_root/.agents/agents.conf" "$repo/.agents/agents.conf"
+  # The analyst of the template's agents, not the project's: an adopted
+  # project may give the role to Codex, which this test does not fake.
+  printf 'analyst: claude fable\n' >"$repo/.agents/agents.conf"
   printf 'commit: 0123456789abcdef0123456789abcdef01234567\n' >"$repo/.agents/template.conf"
   git -C "$repo" init -q -b main
   git -C "$repo" add -A

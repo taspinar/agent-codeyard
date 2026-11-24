@@ -1446,9 +1446,13 @@ project="$(setup_project parallel-variable "lint: ruff check .")"
 if VERIFY_PARALLEL=many run_with "$project"; then fail "VERIFY_PARALLEL=many was accepted"; fi
 grep -Fq "VERIFY_PARALLEL needs a whole number" "$project/out.log" || fail "the refusal of VERIFY_PARALLEL did not say why"
 
-# Every self-test passes through tests/lib-fakes.sh before it starts anything.
-for test in "$source_root"/tests/*-test.sh; do
-  grep -Eq '^source "\$(source_)?root/tests/lib-fakes\.sh"$' "$test" ||
-    fail "${test#"$source_root/"} does not source tests/lib-fakes.sh"
-done
+# Every self-test passes through tests/lib-fakes.sh before it starts anything:
+# each test file that scripts/verify-workflow.conf runs. A project's own test
+# named tests/<x>-test.sh is not a self-test and follows its own rules.
+self_tests="$(sed -nE 's#^[a-z0-9-]+( \[[^]]*\])?( partition [^: ]+)?( budget)?( framework)?: \./(tests/[a-z0-9-]+-test\.sh)([[:space:]].*)?$#\5#p' "$source_root/scripts/verify-workflow.conf")"
+[[ "$(wc -l <<<"$self_tests")" -gt 1 ]] || fail "no self-tests found in scripts/verify-workflow.conf"
+while IFS= read -r test; do
+  grep -Eq '^source "\$(source_)?root/tests/lib-fakes\.sh"$' "$source_root/$test" ||
+    fail "$test does not source tests/lib-fakes.sh"
+done <<<"$self_tests"
 echo "verify tests passed"
