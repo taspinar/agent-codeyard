@@ -17,6 +17,7 @@ Read `AGENTS.md`, `.agents/prompts/project-planner.md`, and the rest of the repo
 - Every requirement, including MVP scope, non-goals, security, privacy, data, and deployment constraints, is covered by the architecture or a roadmap feature, or is explicitly out of scope.
 - Technology and architecture choices are justified by the requirements, not assumed.
 - Each roadmap feature has a stable ID, a clear outcome, in-scope and out-of-scope behavior, dependencies on existing feature IDs only, testable acceptance criteria, and a risk.
+- A feature that adds recurring work (a trigger, a schedule, a CI job, a self-test, or a check that always runs) states where it runs, how often, and why a narrower trigger or a form started on demand does not give the guarantee; no feature carries "no test case is removed or weakened", or a count of tests or assertions, as a criterion instead of naming the guarantee it must keep (`docs/development.md`, "Recurring work in an Issue").
 - Features are independently deliverable vertical slices where that fits, in an order that respects their dependencies.
 - ADRs exist for decisions that need a durable record, and none are ceremonial.
 - In a project that adopted the workflow, no ADR presents a decision of the
