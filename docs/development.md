@@ -3521,8 +3521,12 @@ protected and the pull request carries no approval request; "Owner approval
 required", the conclusion `action_required` and not a failure, when it
 carries an approval request that names its content tree, whether for a
 protected path or for another reason of `finish-feature.sh` (a major impact
-on the architecture, a skipped review); a failure when a protected change
-has no request or a request is refused. What the check shows, and whether to require it, is
+on the architecture, a skipped review), and also for a protected change
+without a request, which comes from a pull request made by hand such as a
+project's setup; a failure when a request is refused or the gate could
+not run. A feature of the workflow never goes out without its request:
+`publish-feature.sh` pushes nothing while the branch changes a protected
+path and its finish commit carries no request. What the check shows, and whether to require it, is
 in [`docs/repository-setup.md`](repository-setup.md).
 
 **Your approval is your own merge.** You merge the commit you see, so an

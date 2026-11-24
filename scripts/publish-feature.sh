@@ -477,6 +477,31 @@ if [[ "$attribution" == "disabled" ]]; then
   fi
 fi
 
+# The approval request of a protected change. The check 'guardrails' in CI
+# (gate-pull-request.sh) waits for the owner on a protected change without
+# one, as for a project's setup made by hand; a feature of the workflow
+# always carries it, since finish-feature.sh writes it with the finish
+# commit. So nothing is pushed while the branch changes a protected path, by
+# the rules of the base, and its finish commit carries no request: the
+# feature is finished again, which writes it.
+[[ -n "$base_ref" ]] ||
+  fail "could not find the base branch '$feature_base' of the feature, so whether it changes a protected path cannot be checked. Nothing was pushed."
+protected_fork="$(git -C "$root" merge-base "$base_ref" HEAD)" ||
+  fail "the branch shares no history with $base_ref. Nothing was pushed."
+protected_paths="$(guardrails_classify "$root" "$feature_rules" "$protected_fork" HEAD |
+  awk -F '\t' '$1 == "protected" { printf "%s (%s)\n", $2, $3 }' | sort -u)"
+if [[ -n "$protected_paths" && "$request_committed" -eq 0 ]]; then
+  echo "Error: the branch changes what only the owner may approve, and its finish commit carries no approval request ($request_relative):" >&2
+  printf '%s\n' "$protected_paths" | sed 's/^/  - /' >&2
+  if [[ -n "$finish_blocked" ]]; then
+    echo "Nothing was pushed: $finish_blocked, which writes the request with the finish commit." >&2
+  else
+    echo "Nothing was pushed. Finish the feature again with ./scripts/finish-feature.sh $issue, which writes the request with the finish commit." >&2
+  fi
+  records_stop "${0##*/}" "the branch changes a protected path, and its finish commit carries no approval request"
+  exit 1
+fi
+
 url="$(gh pr list --head "$branch" --state open --json url --jq '.[0].url // empty')" ||
   fail "could not ask GitHub for the pull request of $branch."
 # An open pull request into another branch than the base of the feature

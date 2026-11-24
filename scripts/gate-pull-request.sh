@@ -14,14 +14,15 @@ usage() {
   echo
   echo "  success          nothing the owner must approve is changed and the pull"
   echo "                   request carries no approval request"
-  echo "  action_required  the pull request carries an approval request that the gate"
-  echo "                   accepts, whether or not it changes a protected path (a"
-  echo "                   major impact on the architecture or a skipped review also"
-  echo "                   makes finish-feature.sh write one): the owner's approval is"
-  echo "                   required"
-  echo "  failure          a protected path is changed without an accepted approval"
-  echo "                   request, a request is refused (status 4), or the gate"
-  echo "                   could not run"
+  echo "  action_required  the pull request changes a protected path, or carries an"
+  echo "                   approval request that the gate accepts, whether or not it"
+  echo "                   changes a protected path (a major impact on the"
+  echo "                   architecture or a skipped review also makes"
+  echo "                   finish-feature.sh write one): the owner's approval is"
+  echo "                   required. A protected change without a request, such as a"
+  echo "                   project's setup made by hand, says so in the summary."
+  echo "  failure          an approval request is refused (status 4): malformed or"
+  echo "                   naming another content tree; or the gate could not run"
   echo
   echo "Writes <out-dir>/conclusion (one of the three), <out-dir>/title, and"
   echo "<out-dir>/summary.md (the reasons and the output of the gate), and prints the"
@@ -93,9 +94,13 @@ case "$status" in
     if [[ "$has_request" -eq 1 ]]; then
       approval_required "The pull request changes what only the owner may approve."
     else
-      conclusion="failure"
-      title="Approval request missing"
-      text="The pull request changes what only the owner may approve and carries no approval request (.agents/approval-requests/<issue>.json), which finish-feature.sh writes and commits with such a feature."$'\n\n'"Reasons:"$'\n'"$(bullets protected)"
+      # A protected change without a request: a pull request made by hand,
+      # such as a project's setup. The owner decides it like any other; a
+      # feature of the workflow carries its request, and publish-feature.sh
+      # pushes none without it.
+      conclusion="action_required"
+      title="Owner approval required"
+      text="The pull request changes what only the owner may approve. This is not a defect: the owner reviews it and merges it, or not."$'\n\n'"Protected paths:"$'\n'"$(bullets protected)"$'\n\n'"no approval request: a pull request made outside the feature workflow, such as a project's setup"
     fi
     ;;
   4)

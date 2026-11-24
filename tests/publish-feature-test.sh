@@ -679,6 +679,32 @@ run_publish "$repo" 12 || { cat "$repo.out" >&2; fail "publishing after every fi
   { diff <(printf '%s\n' "$before_body") <(normalize "$repo.gh.body") >&2; fail "a field of the request changed the pull request"; }
 grep -Fq "Merge it now." "$repo.out" || fail "the changed explanation was not displayed"
 
+# A protected change goes out only with the approval request of its finish
+# commit: CI waits for the owner on a protected change without one, as for a
+# project's setup made by hand, so publishing refuses a feature without it.
+repo="$(setup_repo protected-no-request)"
+mkdir -p "$repo/docs/decisions"
+printf '# ADR 001: Thing\n\nStatus: Proposed\n' >"$repo/docs/decisions/001-thing.md"
+git -C "$repo" add docs/decisions/001-thing.md
+git -C "$repo" commit -q --amend --no-edit
+if run_publish "$repo" 12; then fail "a protected change without an approval request was published"; fi
+pushed "$repo" && fail "a protected change without an approval request was pushed"
+grep -Fq "its finish commit carries no approval request (.agents/approval-requests/12.json)" "$repo.out" ||
+  { cat "$repo.out" >&2; fail "the refusal does not name the missing request"; }
+grep -Fq -- "- docs/decisions/001-thing.md (an ADR is added, changed, or removed)" "$repo.out" ||
+  fail "the refusal does not name the protected path"
+grep -Fq "Nothing was pushed" "$repo.out" || fail "the refusal does not say that nothing was pushed"
+if grep -Fq "pr create" "$repo.gh" 2>/dev/null; then fail "a pull request was opened for a protected change without a request"; fi
+# With the request of finish-feature.sh in the finish commit, it is published.
+mkdir -p "$repo/.agents/approval-requests"
+jq -n --arg tree "$(content_tree_of "$repo")" --arg sha "$sha0" '{schema: "approval-request/v1", content_tree: $tree,
+  commit: {branch: "feature/12-marker", parent: $sha, base: $sha}, review: null,
+  reasons: ["docs/decisions/001-thing.md: an ADR is added, changed, or removed"], explanation: "Please approve the ADR."}' >"$repo/$request"
+git -C "$repo" add "$request"
+git -C "$repo" commit -q --amend --no-edit
+run_publish "$repo" 12 || { cat "$repo.out" >&2; fail "a protected change with its approval request was not published"; }
+pushed "$repo" || fail "a protected change with its approval request was not pushed"
+
 # The risk level and its reasons in the pull request are computed at the
 # publication, from the diff and the rules of the base as it is now: the
 # level the finish commit recorded is replaced, and named when it differs,
@@ -936,8 +962,15 @@ expect_fix_blocked "$repo" "a commit after a merge added work that no merge brou
 repo="$(merged_repo fix-protected)"
 printf 'changed\n' >"$repo/config/app.conf"
 git -C "$repo" commit -qam "Fix the configuration after the merge"
-expect_fix_blocked "$repo" "a fix after a merge changed a protected path" \
-  "changes the protected path config/app.conf, and the merge approval was decided for the finish commit"
+# Its finish commit carries no approval request, so nothing is pushed: CI
+# would only wait for the owner.
+short="$(git -C "$repo" rev-parse --short HEAD)"
+if run_publish "$repo" 12; then fail "a fix after a merge that changed a protected path was published without a request"; fi
+pushed "$repo" && fail "a fix after a merge that changed a protected path was pushed without a request"
+grep -Fq -- "- config/app.conf (listed as protected in .agents/policies/guardrails.conf)" "$repo.out" ||
+  { cat "$repo.out" >&2; fail "the refusal does not name the protected path of the fix"; }
+grep -Fq "Nothing was pushed: the commit $short (Fix the configuration after the merge) changes the protected path config/app.conf, and the merge approval was decided for the finish commit; undo it into the working tree (git reset --soft $short^), review the change with ./scripts/review-feature.sh 12, and finish the feature again with ./scripts/finish-feature.sh 12, which writes the request with the finish commit." "$repo.out" ||
+  { cat "$repo.out" >&2; fail "the refusal does not say how to finish the feature again"; }
 
 # A fix before the merge is a change of the feature, whatever comes after it.
 repo="$(setup_repo fix-before-merge)"
