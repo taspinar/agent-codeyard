@@ -219,6 +219,32 @@ verify "$dir" || { cat "$dir/out.log" >&2; fail "verify.sh failed without a work
 [[ -z "$(skip_line "$dir")" ]] || fail "a framework-only skip was reported although no self-test ran"
 [[ "$(field "$dir" framework-checks)" == none ]] || fail "the record of a run without self-tests does not say 'none'"
 
+# --framework-checks alone, still without a workflow change: the
+# framework-only self-test runs, the other self-tests stay skipped with
+# their SKIP line, and the record says both. The pass above, which ran no
+# self-test, does not stand in for it; its own pass does.
+verify "$dir" --reuse --framework-checks || { cat "$dir/out.log" >&2; fail "verify.sh --framework-checks failed without a workflow change"; }
+grep -Fq "it ran no framework-only self-test" "$dir/out.log" || fail "a pass without self-tests stood in for --framework-checks: $(cat "$dir/out.log")"
+ran "$dir" framework || fail "--framework-checks did not run the framework-only self-test without a workflow change: $(cat "$dir/out.log")"
+if ran "$dir" plain; then fail "--framework-checks ran a self-test that is not framework-only without a workflow change"; fi
+grep -Eq '^SKIP +workflow self-tests \(1 checks that are not framework-only\): no workflow file differs from .*; --all runs them$' "$dir/out.log" ||
+  fail "the summary does not say that the other self-tests were skipped: $(cat "$dir/out.log")"
+[[ -z "$(skip_line "$dir")" ]] || fail "--framework-checks reported a framework-only skip without a workflow change"
+[[ "$(field "$dir" workflow-tests)" == skipped ]] || fail "the record of --framework-checks alone does not say that the other self-tests were skipped"
+[[ "$(field "$dir" framework-checks)" == ran ]] || fail "the record of --framework-checks alone does not say that the framework-only self-tests ran"
+verify "$dir" --reuse --framework-checks || fail "verify.sh --reuse --framework-checks failed after its own pass"
+grep -Fq "Verification already passed" "$dir/out.log" || fail "the pass of --framework-checks alone was not reused: $(cat "$dir/out.log")"
+verify "$dir" --reuse || fail "verify.sh --reuse failed after --framework-checks alone"
+grep -Fq "Verification already passed" "$dir/out.log" || fail "the pass of --framework-checks alone was not reused by a run without the option"
+verify "$dir" --all --reuse || fail "verify.sh --all --reuse failed after --framework-checks alone"
+ran "$dir" plain || fail "the pass of --framework-checks alone stood in for --all"
+# With --only it runs the framework-only self-tests of the named groups.
+verify "$dir" --only plain --framework-checks || fail "verify.sh --only plain --framework-checks failed"
+[[ ! -e "$dir/checks.log" ]] || fail "--only plain --framework-checks ran a self-test without a workflow change"
+verify "$dir" --only fw --framework-checks || fail "verify.sh --only fw --framework-checks failed"
+ran "$dir" framework || fail "--only fw --framework-checks did not run the framework-only self-test without a workflow change"
+if ran "$dir" plain; then fail "--only fw --framework-checks ran the other self-test"; fi
+
 # The marker belongs to the self-tests only, and to checks only.
 dir="$(project in-project-conf https://github.com/example/project "$template_url")"
 printf 'lint [default] framework: true\n' >"$dir/scripts/verify.conf"

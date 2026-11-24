@@ -59,7 +59,8 @@ records_arguments=("$@")
 # the template by a URL and the origin is another one. Without
 # template.conf, with a local path, or with no or an unreadable origin, it
 # runs. --framework-checks runs it anywhere, as when a project proposes a
-# change of the workflow upstream.
+# change of the workflow upstream: also when no workflow file changed, and
+# then the other self-tests stay skipped.
 #
 # Every check is timed. The durations are recorded with the pass and in the
 # run record (lib/verification.sh). Each of the two files may declare one
@@ -174,7 +175,10 @@ usage() {
   echo "A self-test declared as '<name> [<group>] framework: <command>' in"
   echo "scripts/verify-workflow.conf is framework-only: it runs in the template, and"
   echo "is skipped with a SKIP line in a repository whose origin is not the template"
-  echo "that .agents/template.conf names. --framework-checks runs it anywhere."
+  echo "that .agents/template.conf names. --framework-checks runs it anywhere, also when"
+  echo "no workflow file changed: the other self-tests then stay skipped, as without"
+  echo "the option. With --only it runs those of the named groups, and with --changed"
+  echo "those that the changed files select."
   echo
   echo "--groups prints the groups that have a check, one per line."
   echo
@@ -907,11 +911,14 @@ partial_skipped() {
 
 # skipped_check <index>
 # Succeeds when this run leaves out the check <index>: a partial run
-# (partial_skipped), or a framework-only self-test outside the template
-# (framework_skipped).
+# (partial_skipped), a framework-only self-test outside the template
+# (framework_skipped), or a self-test that is not framework-only in a run
+# that runs the framework-only ones alone (framework_alone).
 framework_skipped=()
+framework_alone=0
 skipped_check() {
-  partial_skipped "$1" || [[ "${framework_skipped[$1]:-}" == "yes" ]]
+  partial_skipped "$1" || [[ "${framework_skipped[$1]:-}" == "yes" ]] ||
+    [[ "$framework_alone" -eq 1 && "$1" -ge "$project_count" && "${frameworks[$1]}" != "yes" ]]
 }
 
 [[ "$list_groups" -eq 1 ]] || echo "== Agentic project verification =="
@@ -1001,6 +1008,7 @@ fi
 project_count="${#names[@]}"
 workflow_note=""
 workflow_skipped=""
+workflow_unchanged=0
 workflow_base=""
 if [[ -f "$workflow_config" ]]; then
   load_checks "$workflow_config" yes
@@ -1021,7 +1029,10 @@ if [[ -f "$workflow_config" ]]; then
     workflow_files_changed || changed_status=$?
     case "$changed_status" in
       0) workflow_note="a workflow file differs from $workflow_base" ;;
-      1) workflow_skipped="SKIP  workflow self-tests ($workflow_count checks): no workflow file differs from $workflow_base; --all runs them" ;;
+      1)
+        workflow_unchanged=1
+        workflow_skipped="SKIP  workflow self-tests ($workflow_count checks): no workflow file differs from $workflow_base; --all runs them"
+        ;;
       *) workflow_note="could not determine whether a workflow file changed" ;;
     esac
   fi
@@ -1032,9 +1043,34 @@ fi
 # positively not the template; a doubt runs them, and so does
 # --framework-checks. framework_state is what the record of a pass says of
 # them: 'ran', 'skipped', or 'none' (no such check, or no self-test ran).
+#
+# --framework-checks alone runs them also when no workflow file changed
+# (framework_alone): then the other self-tests stay skipped, with their SKIP
+# line (others_skipped), and the record says 'workflow-tests: skipped' next to
+# 'framework-checks: ran'. With --only it runs those of the named groups, and
+# with --changed those that the changed files select.
 framework_state="none"
 framework_lines=()
 framework_reason=""
+others_skipped=""
+if [[ "$force_framework" -eq 1 && "$workflow_unchanged" -eq 1 && "$list_groups" -eq 0 ]]; then
+  framework_count=0
+  others_count=0
+  for ((index = project_count; index < ${#names[@]}; index++)); do
+    if [[ "${frameworks[$index]}" != "yes" ]]; then
+      others_count=$((others_count + 1))
+    elif ! partial_skipped "$index"; then
+      framework_count=$((framework_count + 1))
+    fi
+  done
+  if [[ "$framework_count" -gt 0 ]]; then
+    framework_alone=1
+    workflow_skipped=""
+    workflow_note="--framework-checks runs the framework-only self-tests in any repository; no workflow file differs from $workflow_base, so the other self-tests are skipped"
+    [[ "$others_count" -eq 0 ]] ||
+      others_skipped="SKIP  workflow self-tests ($others_count checks that are not framework-only): no workflow file differs from $workflow_base; --all runs them"
+  fi
+fi
 if [[ "$list_groups" -eq 0 && "${#names[@]}" -gt "$project_count" && -z "$workflow_skipped" ]]; then
   framework_count=0
   for ((index = project_count; index < ${#names[@]}; index++)); do
@@ -1063,7 +1099,7 @@ if [[ "$list_groups" -eq 0 && "${#names[@]}" -gt "$project_count" && -z "$workfl
         framework_skipped[$index]=yes
         framework_lines+=("SKIP  ${names[$index]} (framework-only): $framework_reason; it tests the template itself and runs there; --framework-checks runs it here")
       done
-    else
+    elif [[ "$framework_alone" -eq 0 ]]; then
       workflow_note+="; the framework-only self-tests run: ${framework_reason:-the template cannot be told}"
     fi
   fi
@@ -1104,11 +1140,18 @@ if [[ "$recordable" -eq 1 && "$reuse" -eq 1 && -n "$tree_before" &&
   reuse_candidate=1
   recorded_workflow="$(verification_field "$root" workflow-tests)"
   # A pass that left out the framework-only self-tests does not stand in for
-  # a run that runs them.
-  if [[ "$(verification_field "$root" framework-checks)" == "skipped" && "$framework_state" == "ran" ]]; then
+  # a run that runs them: one that skipped them, or, for a run of them alone,
+  # one without any self-test.
+  recorded_framework="$(verification_field "$root" framework-checks)"
+  if [[ "$framework_state" == "ran" ]] &&
+    [[ "$recorded_framework" == "skipped" || ( "$framework_alone" -eq 1 && "$recorded_framework" != "ran" ) ]]; then
     reuse_candidate=0
     echo
-    echo "A pass is recorded for this content, but it skipped the framework-only self-tests, which this run runs; every check runs."
+    if [[ "$recorded_framework" == "skipped" ]]; then
+      echo "A pass is recorded for this content, but it skipped the framework-only self-tests, which this run runs; every check runs."
+    else
+      echo "A pass is recorded for this content, but it ran no framework-only self-test, which this run runs; every check runs."
+    fi
   fi
 fi
 
@@ -1155,7 +1198,7 @@ if [[ "$reuse_candidate" -eq 1 ]]; then
     echo
     echo "A pass is recorded for this content, but not by a workflow script of this run (VERIFY_TRUSTED_TREES); every check runs."
   else
-    if [[ "$recorded_workflow" != "skipped" || ( -n "$workflow_skipped" && "$run_all" -eq 0 ) ]]; then
+    if [[ "$recorded_workflow" != "skipped" || ( ( -n "$workflow_skipped" || "$framework_alone" -eq 1 ) && "$run_all" -eq 0 ) ]]; then
       echo
       echo "Verification already passed for this content at $(verification_field "$root" verified-at); not run again."
       echo "Run ./scripts/verify.sh without --reuse to run every check."
@@ -1974,7 +2017,7 @@ fi
 # complete run of that file.
 if [[ "$partial" -eq 0 ]]; then
   duration_budget "scripts/verify.conf" "$project_budget_seconds" 0 "$project_count"
-  [[ -n "$workflow_skipped" ]] ||
+  [[ -n "$workflow_skipped" || "$framework_alone" -eq 1 ]] ||
     duration_budget "scripts/verify-workflow.conf" "$workflow_budget_seconds" "$project_count" "${#names[@]}"
 fi
 
@@ -1982,6 +2025,7 @@ echo
 echo "== Verification summary =="
 [[ "${#results[@]}" -eq 0 ]] || printf '%s\n' "${results[@]}"
 [[ -z "$workflow_skipped" ]] || echo "$workflow_skipped"
+[[ -z "$others_skipped" ]] || echo "$others_skipped"
 [[ "${#framework_lines[@]}" -eq 0 ]] || printf '%s\n' "${framework_lines[@]}"
 if [[ "$duration_exceeded" -gt 0 ]]; then
   echo "The checks took longer than the target of 'budget-seconds' (BUDGET): a measurement, not a failure. The owner decides whether to change the target or the checks; nothing repairs it automatically."
@@ -2057,12 +2101,12 @@ if [[ "$recordable" -eq 1 ]]; then
   if [[ -n "$tree_before" && "$(fingerprint_worktree "$root" "$scratch")" == "$tree_before" ]]; then
     if [[ ! -f "$workflow_config" ]]; then
       workflow_state="none"
-    elif [[ -n "$workflow_skipped" ]]; then
+    elif [[ -n "$workflow_skipped" || "$framework_alone" -eq 1 ]]; then
       workflow_state="skipped"
     else
       workflow_state="ran"
     fi
-    [[ "$workflow_state" == "ran" ]] || framework_state="none"
+    [[ "$workflow_state" == "ran" || "$framework_alone" -eq 1 ]] || framework_state="none"
     verification_write "$root" "$tree_before" "$workflow_state" "$budgets_file" "$durations_file" "$framework_state" ||
       echo "Warning: could not record the passed verification." >&2
   else

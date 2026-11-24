@@ -1145,9 +1145,23 @@ SKIP  adopted-project (framework-only): this repository (github.com/owner/projec
 The record of the pass says `framework-checks: skipped` next to
 `workflow-tests: ran` (`ran` when they ran, `none` when no self-test ran).
 `--reuse` does not take a pass that skipped them for a run that runs them.
-`./scripts/verify.sh --framework-checks` runs them in any repository, also
-with `--all`, `--only`, and `--changed`: before a project proposes a change
-of the workflow upstream, or to reproduce a failure of the template's CI.
+`./scripts/verify.sh --framework-checks` runs them in any repository: before
+a project proposes a change of the workflow upstream, or to reproduce a
+failure of the template's CI. It needs no `--all` and no changed workflow
+file. When no workflow file differs from the base, the framework-only
+self-tests run alone: the other self-tests stay skipped as without the
+option, with their own line, and the record says `workflow-tests: skipped`
+next to `framework-checks: ran`:
+
+```text
+SKIP  workflow self-tests (99 checks that are not framework-only): no workflow file differs from origin/main; --all runs them
+```
+
+A pass that ran no framework-only self-test does not stand in, with
+`--reuse`, for such a run. The option combines with `--all` (every
+self-test), with `--only` (the framework-only self-tests of the named
+groups), and with `--changed` (those that the changed files select; when
+they select none, none runs).
 
 **In CI** nothing changes in the template. In a project the job
 `group-adopted-project` still runs: its `verify.sh --all --only
@@ -1156,7 +1170,8 @@ adopted-project` prints the `SKIP` line and passes, so the job succeeds, and
 group. A group job is never skipped by a condition of the workflow: a
 skipped group job still fails the aggregate check, and the reason belongs in
 the job's log. `tests/template-repository-test.sh` runs the predicate, the
-skip, the record, the option, the step `scope`, and the group job of
+skip, the record, the option with and without a changed workflow file, the
+step `scope`, and the group job of
 `ci.yml` with `check-ci-groups.sh --results`.
 
 **Three layers.** The checks of a project fall into three layers, each with
@@ -1179,7 +1194,7 @@ When each runs, in a project unless the row says otherwise:
 | The adoption | no (`SKIP`): `template.conf` names the template, the origin is the project | yes: the workflow files are new | yes |
 | A change of configuration under `paths:` (`.agents/policies`, `template.conf`, `.github/workflows`) | no (`SKIP`) | yes | yes |
 | A change of `scripts/verify.conf` only | no | no: it is not a workflow file | yes |
-| Custom edits of workflow code | no (`SKIP`); `--framework-checks` before proposing them upstream | yes | yes |
+| Custom edits of workflow code | no (`SKIP`); `--framework-checks` before proposing them upstream, which runs them with or without a changed workflow file | yes | yes |
 | Push to `main` and the nightly run | no (`SKIP`) | yes (`--all`) | yes |
 | An unknown origin (no `template.conf`, a local path, no or an unreadable origin) | yes, whenever the self-tests run | as the event decides | yes |
 | The template itself | yes, whenever the self-tests run | yes | yes |
