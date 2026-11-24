@@ -1,19 +1,19 @@
 {
   "schema": "approval-request/v1",
-  "content_tree": "3fe613917d8c758a7b85fdbe60aaba4446808214",
+  "content_tree": "2e7601a26cfa9b8a31f386e2d698bd5e4901ce23",
   "commit": {
     "branch": "feature/462-no-workflow-self-test",
-    "parent": "795333c35987e978923fde78a22f0413b51e5654",
-    "base": "795333c35987e978923fde78a22f0413b51e5654"
+    "parent": "c9f2e7ff52d29cf49b560f95b8ccc77e0d92b5c0",
+    "base": "0fd886453e9d29c9c0ad2ba6213244398faf91ac"
   },
   "review": {
-    "round": 1,
+    "round": 5,
     "verdict": "PASS",
     "reviewer": "codex (gpt-6-luna)"
   },
   "reasons": [
     "scripts/verify-workflow.conf: an existing check or line is changed or removed",
-    "the independent review classified the impact on the architecture as major: The change alters shared verification and adoption behavior: it narrows workflow-test selection, adds template-only contract checks, and adds a project CI-group check to the generated verification configuration. These changes affect infrastructure used by adopting projects, while staying within the existing script-based workflow. ",
+    "the independent review classified the impact on the architecture as major: The change narrows shared workflow-test selection and adds a project-level CI-group check to `scripts/verify.conf` and adoption output. These behaviors affect verification infrastructure inherited by adopting projects, while retaining the existing script-based design. ",
     "the review could not confirm: ./scripts/verify.sh --all passes."
   ],
   "explanation": "Issue #462: No workflow self-test reads a file a project owns; the self-test trigger names workflow code only. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."

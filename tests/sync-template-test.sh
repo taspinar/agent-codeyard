@@ -1084,7 +1084,8 @@ expect_pr src/app.txt 1 ran "could not determine whether a workflow file changed
 # (origin/main) and sees none. The scope decides: it gives 'all', and the
 # group job runs the self-tests with --all, also when the scope cannot
 # compare (no base). A framework-only self-test stays skipped in the project.
-if [[ -f "$ci_workflow" ]] && grep -Fq 'scripts/verify.sh' "$ci_workflow"; then
+# It reads the group jobs of the template's ci.yml, so it runs in the template only.
+if [[ "$in_template" -eq 1 ]]; then
   other_root="$tmp/ci-other-base"
   mkdir -p "$other_root/work/scripts/lib" "$other_root/work/.github/workflows" "$other_root/work/.agents" "$other_root/work/src"
   cp "$source_root/scripts/verify.sh" "$other_root/work/scripts/"

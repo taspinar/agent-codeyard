@@ -30,19 +30,21 @@ commit_all() {
   own_git -C "$1" -c user.name=Test -c user.email=test@example.com commit -qm "$2"
 }
 
-# The template checkout the assessment runs from, from the files the
-# template carries into an adopted project too; its product files and CI,
-# which an adoption leaves behind, are written here.
+# The template checkout the assessment runs from: the workflow code of this
+# checkout (copy_workflow), and every other file of the template written
+# here. This repository's own AGENTS.md, agents, and documents are never
+# read: in a project they are the project's.
 template="$tmp/template"
 mkdir -p "$template/docs" "$template/.github/workflows" "$template/src"
 copy_workflow "$template"
 workflow_gitignore "$template/.gitignore"
-cp "$source_root/AGENTS.md" "$template/"
+printf '# Agent Instructions\n\nThe instructions of the template.\n' >"$template/AGENTS.md"
 printf '# The template\n' >"$template/README.md"
 printf 'The licence of the template.\n' >"$template/LICENSE"
-cp "$source_root/.agents/agents.conf" "$template/.agents/"
+printf 'assessor: claude model-a\n' >"$template/.agents/agents.conf"
 template_conf "$template/.agents/template.conf"
-cp "$source_root/docs/architecture.md" "$source_root/docs/development.md" "$template/docs/"
+printf '# The architecture of the template\n' >"$template/docs/architecture.md"
+printf '# The development guide of the template\n' >"$template/docs/development.md"
 printf 'name: ci of the template\non: [push]\njobs: {}\n' >"$template/.github/workflows/ci.yml"
 : >"$template/src/.gitkeep"
 # The starter files of a new project, a decision record of the template's

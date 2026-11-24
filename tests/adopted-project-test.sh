@@ -88,6 +88,8 @@ printf '# 0001. Store orders in PostgreSQL\n\nStatus: Accepted\n\nThe project ke
 # writing roles stay on Claude: with Codex there, tests/agent-sandbox-test.sh
 # starts the real Codex CLI with the project's model wherever it is logged
 # in, which is a check of the project's own account, not of the workflow.
+# The assessor, a role that only reads, is on Codex: no self-test of the
+# assessment or the adoption may take its assessor from this file.
 cat >"$project/.agents/agents.conf" <<'EOF'
 # The project's agents.
 project-grill: claude sonnet
@@ -100,9 +102,16 @@ reviewer@high: codex gpt-6-luna
 triage: claude opus
 triage-implementer: claude sonnet
 analyst: codex gpt-6-luna
-assessor: claude sonnet
+assessor: codex gpt-6-luna
 EOF
 grep -Fqx 'implementer: claude sonnet' "$project/.agents/agents.conf" || fail "the fixture has no agents of its own"
+# Its AGENTS.md is its own: the section of the template's that an adoption
+# appends has another heading here. No self-test may need the instructions
+# the template ships.
+sed 's/^## Definition of Done$/## When the work is done/' "$project/AGENTS.md" >"$tmp/agents.md"
+mv "$tmp/agents.md" "$project/AGENTS.md"
+grep -Fqx '## When the work is done' "$project/AGENTS.md" && ! grep -Fqx '## Definition of Done' "$project/AGENTS.md" ||
+  fail "the fixture has no AGENTS.md of its own"
 # Its documents name a plan of its own, which the template does not have.
 mkdir -p "$project/.agents/plans"
 printf '# Plan of the project Issue 12\n' >"$project/.agents/plans/12-orders-api.md"

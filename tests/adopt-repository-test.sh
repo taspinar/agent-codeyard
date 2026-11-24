@@ -28,21 +28,27 @@ commit_all() {
   git -C "$1" -c user.name=Test -c user.email=test@example.com commit -qm "$2"
 }
 
-# The template checkout the assessment and the adoption run from, from the
-# files the template carries into an adopted project too; its product files
-# and CI, which an adoption leaves behind, are written here.
+# The template checkout the assessment and the adoption run from: the
+# workflow code of this checkout (copy_workflow), and every other file of
+# the template written here. This repository's own AGENTS.md, agents,
+# attribution, documents, and pull request template are never read: in a
+# project they are the project's.
 template="$tmp/template"
 mkdir -p "$template/docs" "$template/.github/workflows" "$template/src"
 copy_workflow "$template"
 workflow_gitignore "$template/.gitignore"
-cp "$source_root/AGENTS.md" "$template/"
+printf '# Agent Instructions\n\nThe instructions of the template.\n\n## Definition of Done\n- `./scripts/verify.sh` passes.\n' >"$template/AGENTS.md"
 printf '# The template\n' >"$template/README.md"
-cp "$source_root/.agents/agents.conf" "$source_root/.agents/attribution.conf" "$template/.agents/"
+printf 'implementer: claude model-i\nreviewer: codex model-r\ntriage: claude model-t\ntriage-implementer: claude model-f\nassessor: claude model-a\n' \
+  >"$template/.agents/agents.conf"
+printf 'agent-attribution: disabled\n' >"$template/.agents/attribution.conf"
 template_conf "$template/.agents/template.conf"
-cp "$source_root/docs/architecture.md" "$source_root/docs/workflow.md" "$source_root/docs/evaluation.md" "$source_root/docs/example.md" "$template/docs/"
+for document in architecture workflow evaluation example; do
+  printf '# The %s of the template\n\nA document of the template.\n' "$document" >"$template/docs/$document.md"
+done
 printf 'name: ci of the template\non: [push]\njobs: {}\n' >"$template/.github/workflows/ci.yml"
 printf 'name: guardrails\non: [pull_request]\njobs: {}\n' >"$template/.github/workflows/guardrails.yml"
-cp "$source_root/.github/PULL_REQUEST_TEMPLATE.md" "$template/.github/"
+printf '## Summary\n\n## Verification\n' >"$template/.github/PULL_REQUEST_TEMPLATE.md"
 : >"$template/src/.gitkeep"
 # The starter files of a new project, a decision record of the template's
 # own, and a directory its template.conf excludes: an adoption carries none
