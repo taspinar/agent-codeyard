@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "938bd2bf296d119f2e675b563aaab0da7496daa7",
+  "commit": {
+    "branch": "feature/482-after-a-failed-verification",
+    "parent": "a1563a1f0ea23dfa3f1864961ef85776ecc83eef",
+    "base": "a1563a1f0ea23dfa3f1864961ef85776ecc83eef"
+  },
+  "review": {
+    "round": 5,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The change adds a repeat mode and persistent failed-run records to shared verification infrastructure, and changes the protected workflow orchestrator to use them. This extends behavior that other workflow steps rely on, so the owner approval gate applies. "
+  ],
+  "explanation": "Issue #482: After a failed verification, run-feature.sh repeats only the checks that failed (step 2 of #469). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

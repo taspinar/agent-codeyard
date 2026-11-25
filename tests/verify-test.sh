@@ -406,6 +406,83 @@ ran() {
   tr '\n' ';' <"$1/tools.log" 2>/dev/null || true
 }
 
+# --repeat: after a failed run, run-feature.sh repeats only the checks that
+# failed. On the same content, after a run of a workflow script, the checks
+# that passed there and the repeated ones together are the pass of the
+# content, recorded with the repeated checks named. Otherwise every check runs.
+failed_record="/.agents/verification/failed"
+setup_repeat_project() {
+  local project
+
+  project="$(setup_recorded_project "$1")"
+  printf '%s\n' "lint: ruff check ." "tests: pytest" >"$project/scripts/verify.conf"
+  git -C "$project" commit -qam "Two checks"
+  printf '%s\n' "$project"
+}
+# fail_first <project>: a run of the orchestrator in which the check 'tests' fails.
+fail_first() {
+  if VERIFY_ORIGIN="${2:-orchestrator}" MOCK_PYTEST_EXIT=1 run_with "$1"; then fail "the first run with a failing check passed"; fi
+  [[ -f "$1$failed_record" ]] || fail "a failed run left no record of the failure"
+}
+
+project="$(setup_repeat_project repeat)"
+fail_first "$project"
+grep -Fqx "failed: tests" "$project$failed_record" || fail "the record of the failed run does not name the failed check: $(cat "$project$failed_record")"
+grep -Fqx "ran: lint tests" "$project$failed_record" || fail "the record of the failed run does not name the checks that ran: $(cat "$project$failed_record")"
+[[ ! -e "$project$record" ]] || fail "a failed run left the record of a pass"
+[[ -z "$(git -C "$project" status --porcelain)" ]] || fail "the record of the failed run changed the working tree"
+VERIFY_ORIGIN=orchestrator run_with "$project" --repeat tests || { cat "$project/out.log" >&2; fail "the repeat of the failed check failed"; }
+[[ "$(ran "$project")" == "pytest ;" ]] || fail "the repeat did not run only the failed check: $(ran "$project")"
+grep -Fq "Only the checks that failed in the run of " "$project/out.log" || fail "the repeat did not say that it ran only the failed checks: $(cat "$project/out.log")"
+grep -Fqx "repeated: tests" "$project$record" || fail "the pass of the two runs does not name the repeated check: $(cat "$project$record" 2>/dev/null)"
+[[ "$(cut -f1,4 "$project/.agents/verification/durations" | tr '\t\n' ':;')" == "lint:pass;tests:pass;" ]] ||
+  fail "the durations of the pass are not those of the two runs: $(cat "$project/.agents/verification/durations")"
+[[ ! -e "$project$failed_record" ]] || fail "the pass left the record of the failed run"
+tree="$(sed -n 's/^tree: //p' "$project$record")"
+VERIFY_TRUSTED_TREES="$tree" VERIFY_ORIGIN=script expect_reused "$project" "the two runs together passed" --reuse
+
+# A check that fails again on the repeat is a real failure: nothing passed.
+project="$(setup_repeat_project repeat-fails)"
+fail_first "$project"
+if VERIFY_ORIGIN=orchestrator MOCK_PYTEST_EXIT=1 run_with "$project" --repeat tests; then fail "a repeat whose check failed again passed"; fi
+[[ "$(ran "$project")" == "pytest ;" ]] || fail "the failing repeat did not run only the failed check: $(ran "$project")"
+grep -Eq "^FAIL +tests" "$project/out.log" || fail "the failing repeat did not name its check"
+[[ ! -e "$project$record" && ! -e "$project$failed_record" ]] || fail "a failing repeat left a record"
+VERIFY_ORIGIN=orchestrator run_with "$project" --repeat tests || fail "the run after a failed repeat failed"
+grep -Fq "no failed run is recorded" "$project/out.log" || fail "a repeat after a failed repeat was combined: $(cat "$project/out.log")"
+[[ "$(ran "$project")" == "ruff check .;pytest ;" ]] || fail "after a failed repeat not every check ran: $(ran "$project")"
+
+# Changed content: every check runs, and the pass is that of a full run.
+project="$(setup_repeat_project repeat-changed)"
+fail_first "$project"
+printf 'two\n' >>"$project/src/app.txt"
+VERIFY_ORIGIN=orchestrator run_with "$project" --repeat tests || { cat "$project/out.log" >&2; fail "the repeat on changed content failed"; }
+[[ "$(ran "$project")" == "ruff check .;pytest ;" ]] || fail "the repeat on changed content did not run every check: $(ran "$project")"
+grep -Fq "Every check runs; the failed checks cannot be repeated alone: the content changed since the failed run." "$project/out.log" ||
+  fail "the full run on changed content did not say why: $(cat "$project/out.log")"
+[[ -f "$project$record" ]] || fail "the full run on changed content was not recorded"
+if grep -q '^repeated:' "$project$record"; then fail "a full run was recorded as a repeat"; fi
+
+# Other failed checks than the repeat names, a failed run at a terminal, and
+# a repeat that is not the orchestrator's: every check runs.
+project="$(setup_repeat_project repeat-names)"
+fail_first "$project"
+VERIFY_ORIGIN=orchestrator run_with "$project" --repeat lint || fail "the repeat of other checks failed"
+[[ "$(ran "$project")" == "ruff check .;pytest ;" ]] || fail "a repeat of other checks than those that failed did not run every check: $(ran "$project")"
+grep -Fq "the failed run recorded other failed checks (tests) than the repeat names (lint)" "$project/out.log" || fail "the refused repeat did not say why: $(cat "$project/out.log")"
+project="$(setup_repeat_project repeat-manual)"
+fail_first "$project" manual
+VERIFY_ORIGIN=orchestrator run_with "$project" --repeat tests || fail "the repeat after a run at a terminal failed"
+[[ "$(ran "$project")" == "ruff check .;pytest ;" ]] || fail "a failed run at a terminal was combined: $(ran "$project")"
+grep -Fq "the failed run was not started by a workflow script" "$project/out.log" || fail "the refused repeat did not say why: $(cat "$project/out.log")"
+project="$(setup_repeat_project repeat-agent)"
+fail_first "$project"
+CODEYARD_AGENT_SESSION=1 run_with "$project" --repeat tests || fail "the repeat in an agent session failed"
+[[ "$(ran "$project")" == "ruff check .;pytest ;" ]] || fail "a repeat in an agent session was combined: $(ran "$project")"
+grep -Fq "this run is not the orchestrator's own" "$project/out.log" || fail "the refused repeat did not say why: $(cat "$project/out.log")"
+if run_with "$project" --repeat tests --reuse; then fail "--repeat with --reuse was accepted"; fi
+[[ ! -e "$project/tools.log" ]] || fail "checks ran although --repeat took another option"
+
 project="$(setup_project groups "lint [code]: ruff check ." "tests[code]: pytest unit" \
   "slow  [e2e-1]: pytest e2e" "plain: ruff plain")"
 

@@ -538,7 +538,13 @@ merge_moved_base() {
 
 # repair_verification <step-title>
 # Called when the verification failed in a step. Repeats it once and compares
-# the checks that failed in both runs. A check that failed only once is
+# the checks that failed in both runs. The repeat runs only the checks that
+# failed (verify.sh --repeat): on the same content, with the record of the
+# failed run, the checks that passed there and the failed ones that pass on
+# the repeat are recorded together as the pass of the content, which the
+# step done again reuses. When the content changed or the two runs cannot be
+# combined for another reason, verify.sh runs every check, as it does when
+# the first run names no failed check. A check that failed only once is
 # unstable: it is recorded, and the run goes on. For the checks that failed
 # twice the implementer is resumed with their names in the handoff note, at
 # most MAX_REPAIRS times. Sets step_status to 0 when the run can go on, to 4
@@ -556,10 +562,23 @@ repair_verification() {
   local twice
   local once
   local repeat_status=0
+  local repeat=()
+  local repeat_scope
 
   first="$(failing_checks "$first_log")"
+  if [[ -n "$first" ]]; then
+    repeat=(--repeat "$(printf '%s' "$first" | tr '\n' ',')")
+    [[ "${repeat[1]}" =~ ^[a-z0-9][a-z0-9-]*(,[a-z0-9][a-z0-9-]*)*$ ]] || repeat=()
+  fi
   mkdir -p "$(dirname "$log")"
-  (cd "$worktree" && VERIFY_ORIGIN=orchestrator ./scripts/verify.sh) >"$log" 2>&1 || repeat_status=$?
+  (cd "$worktree" && VERIFY_ORIGIN=orchestrator ./scripts/verify.sh ${repeat[@]+"${repeat[@]}"}) >"$log" 2>&1 || repeat_status=$?
+  # What the repeat ran, for the log of the run: only the failed checks, or
+  # every check and why.
+  if grep -q '^Only the checks that failed in the run of ' "$log" 2>/dev/null; then
+    repeat_scope="the repeat ran only the failed checks"
+  else
+    repeat_scope="the repeat ran every check$(sed -n 's/^Every check runs; the failed checks cannot be repeated alone: \(.*\)\.$/: \1/p' "$log" | sed -n 1p)"
+  fi
   # A pass of this run's own: the step done again reuses it.
   [[ "$repeat_status" -ne 0 ]] || verification_trust "$(verification_field "$worktree" tree)"
   environment_stop "$title" "$repeat_status" "$log"
@@ -576,6 +595,7 @@ repair_verification() {
   second="$(failing_checks "$log")"
   twice="$(comm -12 <(printf '%s\n' "$first") <(printf '%s\n' "$second") | grep . || true)"
   once="$(comm -3 <(printf '%s\n' "$first") <(printf '%s\n' "$second") | tr -d '\t' | grep . | tr '\n' ' ' || true)"
+  once="${once% }"
 
   if [[ "$repeat_status" -eq 0 || ( -z "$twice" && -n "$second" && -n "$first" ) ]]; then
     unstable=$((unstable + 1))
@@ -584,7 +604,7 @@ repair_verification() {
       step_status=4
       return 0
     fi
-    note "$title" "temporary" "unstable checks, failed in one of two verification runs: ${once:-unknown}" "Going on; the step is done again"
+    note "$title" "temporary" "unstable checks, failed in one of two verification runs: ${once:-unknown} ($repeat_scope)" "Going on; the step is done again"
     step_status=0
     return 0
   fi
@@ -602,7 +622,7 @@ repair_verification() {
     return 0
   fi
   repairs=$((repairs + 1))
-  note "$title" "failed" "checks failed in two verification runs: $(printf '%s' "$twice" | tr '\n' ' ')${once:+; unstable, failed once: $once}" "Repair attempt $repairs of $MAX_REPAIRS by the implementer"
+  note "$title" "failed" "checks failed in two verification runs: $(printf '%s' "$twice" | tr '\n' ' ')${once:+; unstable, failed once: $once} ($repeat_scope)" "Repair attempt $repairs of $MAX_REPAIRS by the implementer"
   mkdir -p "$worktree/.agents/handoffs"
   {
     echo

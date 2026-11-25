@@ -400,6 +400,8 @@ verification-per-tree
 implementer-keeps-failing
 reviewer-keeps-failing
 unstable
+repeat-failed-only
+repeat-two-failed
 alternating
 busy
 environment

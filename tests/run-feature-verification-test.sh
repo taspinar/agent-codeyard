@@ -93,7 +93,7 @@ else grep -q "FAIL  *sound" ".agents/handoffs/$RUN_ISSUE.md" && rm -f broken.txt
 run_feature "$repo" 2 thing
 expect_published "$repo"
 expect_sessions "$repo" 2 1 0 0
-grep -Fq "| verification before round 1 | failed | checks failed in two verification runs: sound | Repair attempt 1 of 3 by the implementer" <<<"$(log_of "$repo")" ||
+grep -Fq "| verification before round 1 | failed | checks failed in two verification runs: sound (the repeat ran only the failed checks) | Repair attempt 1 of 3 by the implementer" <<<"$(log_of "$repo")" ||
   fail "the failed verification after the session was not repaired: $(log_of "$repo")"
 [[ "$(jq -r '.verification.status' "$repo-2-thing/.agents/reviews/feature-2-thing-review-01.json")" == "passed" ]] ||
   fail "the review after the repair was not made on a passed verification"
@@ -144,6 +144,39 @@ expect_published "$repo"
 expect_sessions "$repo" 1 1 0 0
 grep -Fq "unstable checks, failed in one of two verification runs: unstable" <<<"$(log_of "$repo")" ||
   fail "the unstable check is not named in the log of the feature"
+
+# The repeat runs only the check that failed: the check that passed does not
+# run again, the two runs together are the pass of the content, and the step
+# done again reuses that pass instead of verifying again.
+scenario repeat-failed-only
+repo="$(VERIFY_CONF="steady: true
+unstable: sh -c 'test -e .agents/run/seen || { mkdir -p .agents/run; touch .agents/run/seen; false; }'" setup_repo repeat-failed-only)"
+run_feature "$repo" 2 thing
+expect_published "$repo"
+expect_sessions "$repo" 1 1 0 0
+grep -Fq "unstable checks, failed in one of two verification runs: unstable (the repeat ran only the failed checks)" <<<"$(log_of "$repo")" ||
+  fail "the repeat of only the failed check is not in the log of the feature: $(log_of "$repo")"
+if grep -Fq -- "-- steady" "$repo-2-thing/.agents/run/2-verify.log"; then fail "the repeat ran a check that had passed: $(cat "$repo-2-thing/.agents/run/2-verify.log")"; fi
+grep -Fq -- "-- unstable" "$repo-2-thing/.agents/run/2-verify.log" || fail "the repeat did not run the failed check"
+[[ "$(grep -c -- '^-- steady took' "$repo.out")" -eq 1 ]] ||
+  fail "the check that passed ran again after the repeat: $(grep -c -- '^-- steady took' "$repo.out") runs"
+
+# Two failed checks are repeated together, without the check that passed:
+# the list of failed checks given to --repeat names both.
+scenario repeat-two-failed
+repo="$(VERIFY_CONF="steady: true
+unstable-a: sh -c 'test -e .agents/run/seen-a || { mkdir -p .agents/run; touch .agents/run/seen-a; false; }'
+unstable-b: sh -c 'test -e .agents/run/seen-b || { mkdir -p .agents/run; touch .agents/run/seen-b; false; }'" setup_repo repeat-two-failed)"
+run_feature "$repo" 2 thing
+expect_published "$repo"
+expect_sessions "$repo" 1 1 0 0
+grep -Fq "unstable checks, failed in one of two verification runs: unstable-a unstable-b (the repeat ran only the failed checks)" <<<"$(log_of "$repo")" ||
+  fail "the repeat of only the two failed checks is not in the log of the feature: $(log_of "$repo")"
+if grep -Fq -- "-- steady" "$repo-2-thing/.agents/run/2-verify.log"; then fail "the repeat of two failed checks ran a check that had passed: $(cat "$repo-2-thing/.agents/run/2-verify.log")"; fi
+grep -Fq -- "-- unstable-a" "$repo-2-thing/.agents/run/2-verify.log" || fail "the repeat did not run the first failed check"
+grep -Fq -- "-- unstable-b" "$repo-2-thing/.agents/run/2-verify.log" || fail "the repeat did not run the second failed check"
+[[ "$(grep -c -- '^-- steady took' "$repo.out")" -eq 1 ]] ||
+  fail "the check that passed ran again after the repeat of two failed checks: $(grep -c -- '^-- steady took' "$repo.out") runs"
 
 # Two checks that fail in turn, each in one run only, are unstable too: no
 # check failed twice, so nothing is repaired.
