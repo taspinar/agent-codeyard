@@ -13,10 +13,11 @@
 # (VERIFICATION_BUDGETS): a check declared as '<name> [<group>] budget:
 # <command>' measures something against a target, and a result over the
 # target does not fail the verification. The record keeps every budget result
-# with the output of its check, so that the scripts that reuse the pass can
-# show the measurement where a decision is made: the reviewer's context, the
-# handoff note, the commit message, and the pull request. The file exists only
-# together with the pass, and only when the run had a budget check.
+# with the output of its check, so that a run that reuses the pass shows the
+# measurement in its summary as well, and the run record keeps it (Issue 503:
+# the handoff note, the reviewer's context, the commit message, and the pull
+# request do not repeat it). The file exists only together with the pass, and
+# only when the run had a budget check.
 #
 # Next to it as well, the duration of every check of that run
 # (VERIFICATION_DURATIONS), so that the time the verification takes, and

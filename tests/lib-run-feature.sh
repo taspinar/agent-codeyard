@@ -465,8 +465,6 @@ by-hand
 resumed
 refused
 budget
-budget-measured
-budget-restart
 budget-as-evidence
 duration-budget
 REGISTER

@@ -171,7 +171,7 @@ Do not try fixes at random. For a failing check or unexpected behaviour:
 A `BUDGET` line in the summary of `./scripts/verify.sh` is not a failure: a
 budget check measured something over its target, and the verification passed.
 Do not optimize for it and do not change the budget unless the Issue asks for
-it; the measurement reaches the reviewer and the owner by itself.
+it; the owner finds the measurement in that summary and in the run record.
 
 If the evidence refutes the hypothesis, undo what you changed for it before
 forming the next one. After three materially different failed repair attempts,

@@ -1,0 +1,23 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "284cf9f460420d08cff2f48bdad4638f8ccd63d6",
+  "commit": {
+    "branch": "feature/503-the-template-has-no",
+    "parent": "fc9a018f8a22f3c185c5c1c2b63bccb2d7c1ec63",
+    "base": "fc9a018f8a22f3c185c5c1c2b63bccb2d7c1ec63"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/finish-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/review-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/verify-workflow.conf: an existing check or line is changed or removed",
+    "scripts/verify.conf: an existing check or line is changed or removed",
+    "the independent review classified the impact on the architecture as major: The change alters the shared workflow’s budget reporting path across verification, feature review, handoff, commit, and pull request behavior. The reporting now ends at the verification summary and run record. This is a change to shared workflow behavior, although it stays within Issue #503’s scope. "
+  ],
+  "explanation": "Issue #503: The template has no duration target, and no commit or pull request repeats a budget paragraph (items 5 and 12 of #426). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
