@@ -9,8 +9,10 @@ set -euo pipefail
 # directory (mkdir, git init, rm), waits for the session (sleep) and removes
 # it again, and the search for the approval requests and plans that a project
 # inherited from the template (lib/inherited.sh), which reads Git with sed,
-# grep, and sort, and the preflight of ./scripts/verify.sh
-# (lib/environment.sh), which asks the tools it checks for their version.
+# grep, and sort, the role of the repository (lib/template-repository.sh),
+# which reads .agents/template.conf with sed and head, and the preflight of
+# ./scripts/verify.sh (lib/environment.sh), which asks the tools it checks
+# for their version.
 # Nothing of the project is changed.
 
 script_dir="${BASH_SOURCE[0]%/*}"
@@ -21,6 +23,7 @@ source "$script_dir/lib/github.sh"
 source "$script_dir/lib/attribution.sh"
 source "$script_dir/lib/inherited.sh"
 source "$script_dir/lib/environment.sh"
+source "$script_dir/lib/template-repository.sh"
 
 failed=0
 gh_ready=0
@@ -401,6 +404,24 @@ if have git; then
   fi
   if git rev-parse --show-toplevel >/dev/null 2>&1; then
     ok "current directory is inside a Git repository"
+    # Whether this is the template, as ./scripts/verify.sh and the job
+    # 'scope' of ci.yml decide it (lib/template-repository.sh): read here,
+    # so a wrong role is seen before a verification runs the self-tests
+    # that test the template itself, or skips them.
+    { IFS= read -r template_role || true; IFS= read -r template_reason || true; } < <(template_repository_role "$root" || true)
+    case "$template_role" in
+      template)
+        note "this repository is the template: ./scripts/verify.sh runs the framework-only self-tests" "$template_reason"
+        ;;
+      project)
+        note "this repository is a project made from the template: ./scripts/verify.sh skips the framework-only self-tests" \
+          "$template_reason. In a clone of the template, set its origin to the template's URL: git remote set-url origin <url>"
+        ;;
+      *)
+        warn "whether this repository is the template cannot be told, so ./scripts/verify.sh runs the framework-only self-tests here: $template_reason" \
+          "In a project, put the template's URL in 'repository:' of .agents/template.conf, and give the repository an origin that is a URL; see docs/development.md, \"Framework-only self-tests\"."
+        ;;
+    esac
     if git remote get-url origin >/dev/null 2>&1; then
       ok "remote 'origin' is configured"
       # The approval requests and plans of the template's own Issues, which

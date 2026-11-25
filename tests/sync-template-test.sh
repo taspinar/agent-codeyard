@@ -282,6 +282,63 @@ run_sync "$project" --template "$same" || {
 }
 grep -Fqx "repository: $same" "$project/.agents/template.conf" || fail "the new location at the same commit was not recorded"
 
+# A sync from a local path, such as a clone of the template on this machine,
+# keeps a 'repository:' that is a URL: the URL tells the template from a
+# project (scripts/lib/template-repository.sh), and a path would make the
+# framework-only self-tests run in the project (Issue 470). A sync from
+# another URL, such as a fork, still records that URL; Git's insteadOf maps
+# the URLs to the local repositories, so nothing is fetched from a network.
+source "$source_root/scripts/lib/template-repository.sh"
+recorded_url="https://github.com/owner/template"
+fork_url="https://github.com/other/template-fork"
+url_env=(GIT_CONFIG_COUNT=2
+  GIT_CONFIG_KEY_0="url.$template.insteadOf" GIT_CONFIG_VALUE_0="$recorded_url"
+  GIT_CONFIG_KEY_1="url.$fork.insteadOf" GIT_CONFIG_VALUE_1="$fork_url")
+project="$tmp/by-url"
+mkdir -p "$project"
+git -C "$template" archive "$version_one" | tar -x -C "$project"
+sed "s#^repository:.*#repository: $recorded_url#" "$project/.agents/template.conf" >"$project/template.conf.tmp"
+mv "$project/template.conf.tmp" "$project/.agents/template.conf"
+git -C "$project" init -q -b main
+commit_all "$project" "Create the project from the template"
+[[ "$(template_repository_role "$project" "https://github.com/owner/project" | head -n 1)" == "project" ]] ||
+  fail "the fixture project is not a project before the sync"
+run_sync "$project" --template "$template" --from "$version_one" || {
+  cat "$project.out" >&2
+  fail "a sync from a local path failed"
+}
+grep -Fqx "echo untouched two" "$project/scripts/untouched.sh" || fail "the sync from a local path took nothing over"
+grep -Fqx "repository: $recorded_url" "$project/.agents/template.conf" || {
+  cat "$project/.agents/template.conf" >&2
+  fail "a sync from a local path replaced the URL of the template"
+}
+grep -Fq "kept 'repository: $recorded_url'; the sync came from the local path $template" "$project.out" ||
+  fail "keeping the URL was not reported: $(cat "$project.out")"
+role="$(template_repository_role "$project" "https://github.com/owner/project")"
+[[ "$(head -n 1 <<<"$role")" == "project" ]] || fail "a sync from a local path changed the role: $role"
+commit_all "$project" "Sync from a local clone"
+# At the recorded commit, the local path is up to date: no branch, no change.
+git -C "$project" switch -q main
+git -C "$project" merge -q --ff-only "fix/sync-template-${version_two:0:7}"
+run_sync "$project" --template "$template" || {
+  cat "$project.out" >&2
+  fail "a sync from a local path at the recorded commit failed"
+}
+grep -Fq "Already up to date" "$project.out" || fail "a local path at the recorded commit was not up to date: $(cat "$project.out")"
+[[ "$(git -C "$project" branch --show-current)" == "main" && -z "$(git -C "$project" status --porcelain)" ]] ||
+  fail "an up-to-date sync from a local path created a branch or changed the project"
+# The recorded URL still works, through the mapping.
+(export "${url_env[@]}" && run_sync "$project") || {
+  cat "$project.out" >&2
+  fail "a sync from the recorded URL failed"
+}
+grep -Fq "Already up to date" "$project.out" || fail "the recorded URL was not up to date: $(cat "$project.out")"
+(export "${url_env[@]}" && run_sync "$project" --template "$fork_url") || {
+  cat "$project.out" >&2
+  fail "a sync from the URL of a fork failed"
+}
+grep -Fqx "repository: $fork_url" "$project/.agents/template.conf" || fail "a sync from the URL of a fork did not record it"
+
 # The configuration is written by the sync, so a linked configuration file or
 # a linked .agents directory stops it before anything changes.
 project="$(setup_project linked-config)"
