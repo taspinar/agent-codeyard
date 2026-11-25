@@ -14,8 +14,7 @@
 # (docs/development.md, "Running a feature with one command"); anything else is a failure that a retry
 # does not change.
 github_transient_error() {
-  printf '%s\n' "$1" |
-    grep -Eiq 'timeout|timed out|connection (reset|refused)|could not resolve host|no such host|network is unreachable|temporary failure|EOF|HTTP 5[0-9][0-9]|50[234] |service unavailable|bad gateway|overloaded'
+  grep -Eiq 'timeout|timed out|connection (reset|refused)|could not resolve host|no such host|network is unreachable|temporary failure|EOF|HTTP 5[0-9][0-9]|50[234] |service unavailable|bad gateway|overloaded' <<<"$1"
 }
 
 # github_required_checks <branch>

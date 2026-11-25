@@ -96,7 +96,7 @@ git -C "$root" rev-parse --verify --quiet "$base_ref^{commit}" >/dev/null ||
 # The finished feature: the commit that finish-feature.sh made, before the
 # merges of the base that brought it up to date already (lib/guardrails.sh).
 finish_commit="$(guardrails_finish_after_fixes "$root" "$issue" HEAD "$base_ref" "$base" | sed -n 1p)"
-if ! git -C "$root" log -1 --format=%B "$finish_commit" | grep -q '^Completion: ' &&
+if ! grep -q '^Completion: ' <<<"$(git -C "$root" log -1 --format=%B "$finish_commit")" &&
   [[ -z "$(git -C "$root" log -1 --format=%H --grep='^Completion: ' "$base_ref..HEAD")" ]]; then
   fail "the feature is not finished: no commit of the branch was made by finish-feature.sh. Finish it first: ./scripts/finish-feature.sh $issue \"<commit summary>\""
 fi
@@ -176,8 +176,9 @@ fi
 # the pass in its message. The commit is the record here, not the file
 # .agents/verification/passed, which an agent session may have written.
 finish_verified=0
-if git -C "$root" log -1 --format=%B "$finish_commit" | grep -q '^Completion: ' &&
-  git -C "$root" log -1 --format=%B "$finish_commit" | grep -Fqx -- '- ./scripts/verify.sh passed'; then
+finish_message="$(git -C "$root" log -1 --format=%B "$finish_commit")"
+if grep -q '^Completion: ' <<<"$finish_message" &&
+  grep -Fqx -- '- ./scripts/verify.sh passed' <<<"$finish_message"; then
   finish_verified=1
 fi
 if [[ "$finish_verified" -eq 1 ]] &&

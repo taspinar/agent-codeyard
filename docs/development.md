@@ -1306,7 +1306,12 @@ at the first match as well. `tests/pipe-grep-test.sh` fails on such a pipe in
 the workflow's test files, the `tests/*.sh` that `scripts/verify-workflow.conf`
 names, also one that continues on the next line. A project's own test files
 are its own and follow its rules; in the template every `tests/*.sh` must be
-named there, so none escapes the check.
+named there, so none escapes the check. The workflow scripts follow the same
+rule (Issue #509): there a wrong result is a wrong decision of the workflow,
+such as `check-ci-groups.sh` calling a group that is there missing. The check
+reads every `*.sh` under `scripts/`, less the files and directories that the
+`paths:` entry of `scripts/verify-workflow.conf` excludes with
+`:(exclude)<path>`, where a project leaves out its own scripts.
 
 A few more traps of the tools, each met in a feature of the template:
 

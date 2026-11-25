@@ -1080,7 +1080,7 @@ select_changed_tests() {
     selected="$all"
     if [[ "$selected" == "yes" ]]; then
       :
-    elif tr '\0' '\n' <"$list" | grep -Fqx "${patterns[@]}"; then
+    elif grep -Fqx "${patterns[@]}" <<<"$(tr '\0' '\n' <"$list")"; then
       selected=yes
     else
       for reader in "${readers[@]}"; do

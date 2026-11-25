@@ -1552,7 +1552,7 @@ step "pull request" ./scripts/publish-feature.sh "$issue"
 
 echo
 echo "run-feature.sh is done: the pull request of Issue #$issue is open."
-if git -C "$worktree" log -1 --format=%b | grep -Fqx -- "- required from the project owner, for exactly this commit"; then
+if grep -Fqx -- "- required from the project owner, for exactly this commit" <<<"$(git -C "$worktree" log -1 --format=%b)"; then
   echo
   echo "MERGE APPROVAL REQUIRED. This pull request changes what only the owner may"
   echo "approve; the reasons are in its description. Nothing may merge it for you:"
@@ -1561,7 +1561,7 @@ if git -C "$worktree" log -1 --format=%b | grep -Fqx -- "- required from the pro
 fi
 echo "Read it, also the triage decisions that were approved without you, follow its"
 echo "checks, and merge it. Then clean up with: ./scripts/cleanup-worktree.sh $issue"
-if git -C "$worktree" log -1 --format=%b | grep -Fq -- "- pending at post_merge: "; then
+if grep -Fq -- "- pending at post_merge: " <<<"$(git -C "$worktree" log -1 --format=%b)"; then
   echo
   echo "The Issue stays open after the merge: the commit lists evidence of the post_merge"
   echo "gate. Record it with ./scripts/record-post-merge.sh $issue \"<criterion>\" \"<evidence>\";"

@@ -659,7 +659,7 @@ else
 fi
 echo "  ./scripts/publish-feature.sh $issue"
 echo "After the merge, from the primary checkout: ./scripts/cleanup-worktree.sh $issue"
-if [[ "$gate_status" == "awaiting_evidence" ]] && completion_pending_gates "$root" "$issue" | grep -qx "post_merge"; then
+if [[ "$gate_status" == "awaiting_evidence" ]] && grep -qx "post_merge" <<<"$(completion_pending_gates "$root" "$issue")"; then
   echo "The Issue stays open until the post_merge evidence is recorded after the merge:"
   echo "  ./scripts/record-post-merge.sh $issue \"<criterion>\" \"<evidence>\""
 fi

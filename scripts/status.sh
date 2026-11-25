@@ -510,7 +510,7 @@ while IFS= read -r issue; do
       recorded_known=1
       recorded="$(cd "$primary" && github_post_merge_recorded "$issue" 2>/dev/null)" || recorded_known=0
       while IFS= read -r criterion; do
-        if [[ "$recorded_known" -eq 1 ]] && printf '%s\n' "$recorded" | grep -Fqx -- "$criterion"; then
+        if [[ "$recorded_known" -eq 1 ]] && grep -Fqx -- "$criterion" <<<"$recorded"; then
           continue
         fi
         decision="record the post-merge evidence: ./scripts/record-post-merge.sh $issue \"$criterion\" \"<evidence>\""
