@@ -80,7 +80,7 @@ Every feature has its own branch and worktree, so several can run at once. Nothi
 
 ### A plan for a complex Issue
 
-For an Issue with many parts, a technical plan in `.agents/plans/` holds the implementation details, linked from the Issue. The Issue keeps the scope and the acceptance criteria. Do not turn each step of a plan into an Issue of its own.
+For an Issue with many parts, a technical plan `.agents/plans/<issue>-<slug>.md` holds the implementation details; the implementer finds it by the Issue number in its name. The Issue keeps the scope and the acceptance criteria. Do not turn each step of a plan into an Issue of its own.
 
 An Issue that adds work that runs again and again, such as a new trigger, a schedule, a CI job or a check on every change, says where it runs, how often, and why a narrower trigger or a check you start on demand would not do. "No test is removed" is not a default criterion: when an Issue removes code, its tests go with it, and an Issue that must keep a guarantee names that guarantee. The reviewer may in turn recommend removing a test or narrowing a trigger.
 

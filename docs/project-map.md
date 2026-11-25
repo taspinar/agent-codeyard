@@ -96,7 +96,6 @@ the website describes the current template.
 | `scripts/check-risk.sh` | The risk level of a feature, `low`, `medium`, or `high`, with every reason and what the level requires of the review rounds, by the risk policy of its base; exits 0, 1, or 2 for the level |
 | `scripts/check-review.sh` | Reports whether a review still matches what it covers |
 | `scripts/check-skills.sh` | Checks the metadata of the project skills, the skills a plan selects (`--issue`, which prints their files), and prints the digest of a skill (`--digest`); reads and hashes files only. A project without skills passes |
-| `scripts/update-issue-with-plan.sh` | Links an optional feature plan to its Issue |
 | `scripts/cleanup-worktree.sh` | Removes a merged worktree and its branch and updates `main` |
 | `scripts/sync-template.sh` | Takes over the template's changes since the version the project has; never commits |
 | `scripts/assess-repository.sh` | Assesses an existing repository for an adoption, read-only: the facts, a report of a read-only agent, and a proposal; runs none of its code and changes nothing in it |
@@ -141,7 +140,6 @@ the website describes the current template.
 | `.agents/prompts/requirements-reviewer.md` | The review of the Draft requirements in `start-planning.sh`, before the owner approves them |
 | `.agents/prompts/planning-reviewer.md` | `review-planning.sh` |
 | `.agents/prompts/planning-reviser.md` | `revise-planning.sh` |
-| `.agents/prompts/planner.md` | Optional feature plans in `.agents/plans/` |
 | `.agents/prompts/implementer.md` | `start-feature.sh` |
 | `.agents/prompts/reviewer.md` | `review-feature.sh` |
 | `.agents/prompts/triage-reviewer.md` | `triage-review.sh` |
