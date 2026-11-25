@@ -57,8 +57,11 @@ chmod +x "$tmp/bin/gh"
 # Creates a clone on a finished feature branch of Issue 12, with a remote,
 # and a second clone, '<repo>-other', in which the base moves on. Git ignores
 # the build directory of the site, 'old-site/build/'. The finish commit
-# states that the feature is complete, as finish-feature.sh writes it; with
+# states that the feature is complete and that its verification passed, as
+# finish-feature.sh writes it; with UNVERIFIED set it records no pass. With
 # APPROVAL set it also carries an approval request and requires the owner.
+# The workflow files of the fixture are those under tools/, and its one
+# self-test prints SELFTEST-RAN.
 setup_repo() {
   local label="$1"
   local remote="$tmp/$label-remote.git"
@@ -70,6 +73,9 @@ setup_repo() {
   workflow_gitignore "$repo/.gitignore"
   printf 'old-site/build/\n' >>"$repo/.gitignore"
   printf 'sound: test ! -e broken.txt\n' >"$repo/scripts/verify.conf"
+  printf 'paths: tools\nselftest: echo SELFTEST-RAN\n' >"$repo/scripts/verify-workflow.conf"
+  mkdir -p "$repo/tools"
+  printf 'tool\n' >"$repo/tools/tool.sh"
   mkdir -p "$repo/old-site"
   printf '# Site\n' >"$repo/old-site/index.md"
   git -C "$repo" config user.name "Update Test"
@@ -95,8 +101,11 @@ setup_repo() {
     git -C "$repo" add .agents/approval-requests/12.json
     approval=(-m "Merge approval:" -m "- required from the project owner, for exactly this commit")
   fi
+  local verification=(-m "Verification:
+- ./scripts/verify.sh passed")
+  [[ -z "${UNVERIFIED:-}" ]] || verification=()
   git -C "$repo" commit -qm "Add the marker" -m "Issue: #12" -m "Completion: complete
-- met: The marker exists (feature.txt)" -m "Review: round 1, PASS, by claude (model-r)" ${approval[@]+"${approval[@]}"}
+- met: The marker exists (feature.txt)" ${verification[@]+"${verification[@]}"} -m "Review: round 1, PASS, by claude (model-r)" ${approval[@]+"${approval[@]}"}
   mkdir -p "$repo/.agents/completion"
   jq -n '{schema: "completion/v1", status: "complete",
     criteria: [{criterion: "The marker exists", status: "met", evidence: "feature.txt"}], remaining: []}' \
@@ -182,6 +191,66 @@ MOCK_OPEN_PR="https://github.com/example/project/pull/7" run_update "$repo" 12
 [[ "$(git -C "$repo" rev-parse HEAD)" == "$head" ]] || fail "an up-to-date feature got another commit"
 grep -Fq "already contains origin/main; nothing to merge" "$repo.out" || fail "an up-to-date branch was not reported"
 grep -Fq "pr edit https://github.com/example/project/pull/7 --body-file" "$repo.gh" || fail "the open pull request was not updated"
+# The merge brought no workflow file, and the feature changed none: the
+# checks of the project ran, the workflow self-tests did not (not --all).
+grep -Fq "Verifying the merged content: ./scripts/verify.sh (the normal trigger" "$repo.out" ||
+  { cat "$repo.out" >&2; fail "the content after a merge was not verified with the normal trigger"; }
+grep -Fq "PASS  sound" "$repo.out" || fail "the checks of the project did not run after the merge"
+grep -Fq "SKIP  workflow self-tests" "$repo.out" || { cat "$repo.out" >&2; fail "the workflow self-tests were not skipped after a merge without a workflow file"; }
+if grep -Fq "SELFTEST-RAN" "$repo.out"; then fail "a workflow self-test ran after a merge without a workflow file"; fi
+# A step after it that requires the self-tests does not take that pass
+# for them: they run.
+(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/verify.sh --reuse --all) >"$repo.verify" 2>&1 ||
+  { cat "$repo.verify" >&2; fail "the verification with the self-tests failed"; }
+grep -Fq "PASS  selftest" "$repo.verify" || { cat "$repo.verify" >&2; fail "the pass of the update stood in for the workflow self-tests"; }
+
+# Nothing to merge, and the content is that of the finish commit, which
+# records its pass: no check runs, and the branch is published.
+repo="$(setup_repo current)"
+finish="$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" push -q origin main
+run_update "$repo" 12
+[[ "$status" -eq 0 ]] || { cat "$repo.out" >&2; fail "updating a current feature failed ($status)"; }
+grep -Fq "already contains origin/main; nothing to merge" "$repo.out" || fail "the current branch was not reported"
+grep -Fq "Not verifying again: nothing was merged, and the content is exactly that of the finish commit" "$repo.out" ||
+  { cat "$repo.out" >&2; fail "the reason why nothing is verified was not given"; }
+if grep -Eq "^(PASS|FAIL|SKIP)  |Verifying the merged content" "$repo.out"; then cat "$repo.out" >&2; fail "a check ran although nothing was merged"; fi
+[[ "$(pushed_head "$repo")" == "$finish" ]] || fail "the current branch was not published"
+# A finish commit that records no pass is no evidence: every check runs.
+repo="$(UNVERIFIED=1 setup_repo unrecorded)"
+git -C "$repo" push -q origin main
+run_update "$repo" 12
+[[ "$status" -eq 0 ]] || { cat "$repo.out" >&2; fail "updating a feature whose finish records no pass failed ($status)"; }
+grep -Fq "Verifying the merged content: ./scripts/verify.sh --all (no finish commit that records its pass" "$repo.out" ||
+  { cat "$repo.out" >&2; fail "a finish commit without a recorded pass did not verify every check"; }
+grep -Fq "PASS  selftest" "$repo.out" || fail "the self-tests did not run without a recorded pass"
+
+# A merge that brings a change of a workflow file runs the workflow
+# self-tests.
+repo="$(setup_repo workflow-merge)"
+move_base "$repo" "Change the tool" 'printf "tool 2\n" >tools/tool.sh'
+run_update "$repo" 12
+[[ "$status" -eq 0 ]] || { cat "$repo.out" >&2; fail "updating after a merge of a workflow file failed ($status)"; }
+grep -Fq "./scripts/verify.sh --all (the merge changed workflow files since the finish commit: tools/tool.sh" "$repo.out" ||
+  { cat "$repo.out" >&2; fail "the merged workflow file did not ask for the self-tests"; }
+grep -Fq "PASS  selftest" "$repo.out" || { cat "$repo.out" >&2; fail "the workflow self-tests did not run after a merge of a workflow file"; }
+grep -Fq "PASS  sound" "$repo.out" || fail "the checks of the project did not run after a merge of a workflow file"
+
+# A feature that changed a workflow file itself runs them after a merge
+# that brings none: the normal trigger sees the difference from the base.
+repo="$(setup_repo workflow-feature)"
+git -C "$repo" reset -q --soft HEAD^
+printf 'tool of the feature\n' >"$repo/tools/tool.sh"
+git -C "$repo" add tools/tool.sh
+git -C "$repo" commit -qm "Add the marker" -m "Issue: #12" -m "Completion: complete
+- met: The marker exists (feature.txt)" -m "Verification:
+- ./scripts/verify.sh passed"
+move_base "$repo" "Meanwhile on main" 'printf "meanwhile\n" >other.txt'
+run_update "$repo" 12
+[[ "$status" -eq 0 ]] || { cat "$repo.out" >&2; fail "updating a feature that changed a workflow file failed ($status)"; }
+grep -Fq "Verifying the merged content: ./scripts/verify.sh (the normal trigger" "$repo.out" ||
+  { cat "$repo.out" >&2; fail "the feature with a workflow file was not verified with the normal trigger"; }
+grep -Fq "PASS  selftest" "$repo.out" || { cat "$repo.out" >&2; fail "the self-tests did not run for a workflow file of the feature"; }
 
 # A merge of the base that conflicts with the feature stops before anything
 # changed: the files and the commands that continue are named, and nothing
