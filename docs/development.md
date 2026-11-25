@@ -176,7 +176,11 @@ in `tests/` that is not a self-test, such as `tests/lib-fakes.sh`, which every
 self-test sources, or a `tests/lib-<x>.sh` that no self-test sources (also
 when `scripts/<x>.sh` exists), selects every self-test; the files in the directories
 under `tests/` are the project's. A self-test that runs no test
-file of its own is left to the full verification. It records nothing, takes
+file of its own is left to the full verification, and so is
+`adopted-project`, whatever changed, also `tests/adopted-project-test.sh`
+itself or `tests/lib-fakes.sh`: it runs other self-tests again in a fixture
+project and takes minutes (see "Workflow self-tests"), and the summary says
+that it was left to the full verification. It records nothing, takes
 neither `--only`, `--all`, nor `--reuse`, and the completion gate refuses it
 as evidence like `--only`. The implementer and the triage-implementer of `run-feature.sh` run
 it instead of the full suite; the run makes the full verification after the
@@ -259,10 +263,15 @@ have nothing to run (see "Workflow self-tests"):
   would fail the mapping of every project that syncs the template.
 - `group-adopted-project` and `group-self-tests-1` to `group-self-tests-3`:
   the self-tests, in the groups that `scripts/verify-workflow.conf` gives
-  them. `adopted-project` is the longest and a group of its own; the others
-  are spread by their duration on CI, not by their count, so that no group
-  takes longer than `adopted-project`. A new self-test goes into the group
-  with the least time.
+  them. `adopted-project` is a group of its own, with the check of its list
+  (`adopted-project-list`); the others are spread by their duration on CI,
+  not by their count, so that none takes much longer than another. Since
+  `adopted-project` runs only the self-tests that read what its fixture
+  varies (Issue 478), it takes one to two minutes locally instead of about
+  eleven; the check of its list takes four to seven minutes locally and is
+  now the longest self-test, so the group takes five to nine minutes there.
+  Its duration on CI is not measured yet, and with it whether the group is
+  still the longest. A new self-test goes into the group with the least time.
 - `mapping`: `./scripts/check-ci-groups.sh --workflow
   .github/workflows/ci.yml`.
 - `verify`, the aggregate and the required check: `if: always()`, it needs
@@ -1116,12 +1125,75 @@ Codex), a document that names a plan of its own, a test file of its own
 named `tests/<x>-test.sh` that does not follow the rules of the self-tests,
 ignore rules of its own for `docs/` and `tests/` paths and a rule `*.json`
 that the adoption's section un-ignores again, and no `README.md` or
-`LICENSE`, and runs every
-other self-test there, four at a time, or `ADOPTED_PROJECT_JOBS` at a time
-when it is set (a lower value for a host with few cores); each has to pass.
-It starts them in the order of `scripts/verify-workflow.conf`, so the
-longest self-tests are listed first: a long test that starts last would end
-last and hold up the whole.
+`LICENSE`. There it runs the self-tests that read something the fixture
+varies, four at a time, or `ADOPTED_PROJECT_JOBS` at a time when it is set (a
+lower value for a host with few cores); each has to pass. Every other
+self-test has the same inputs in the fixture as in the template, and the
+framework-only ones never run in a project, so running them again there
+proves nothing new.
+
+The list is `fixture_tests` at the top of `tests/adopted-project-test.sh`,
+one line per self-test with what it reads, and the run prints it. The test
+derives what the fixture varies from the fixture itself (every file that the
+fixture and the repository it was built from do not have alike) and searches
+each self-test that is not framework-only, with the shared parts
+`tests/lib-<y>.sh` it sources: a test reads a varied file when it names it,
+or a directory or glob that holds one, through its root variable
+(`"$source_root/.agents/agents.conf"`); when it hands the repository on as a
+whole (`template_repository "$source_root"`, `cd "$source_root"`, or a path
+in a variable, `"$source_root/$path"`); or when it calls a helper of
+`tests/lib-fakes.sh` that reads one and whose result differs in the fixture
+(`template_conf`; `workflow_gitignore` gives the same lines in both); or
+when it runs a script of the repository that reads one, followed through the
+scripts and the shared parts `scripts/lib/<y>.sh` that script runs and
+sources (`"$source_root/scripts/check-risk.sh"`, directly, after an
+interpreter or an assignment such as `PATH=...`, or through a variable that
+holds its path and is run). A script is counted as if it ran in the
+repository itself, whatever directory the test runs it in: its root
+variable, from its own path or from `git rev-parse --show-toplevel`, counts
+like the test's, and so does its `script_dir/..`. A script that is only
+copied (`cp "$source_root/scripts/check-risk.sh" "$repo/scripts/"`) runs in
+the copy and does not count. A test starts in the root of the repository,
+so a relative path counts too where its working directory is still the
+root: a file it reads (`cat .agents/agents.conf`, `grep ... AGENTS.md`, an
+input redirection, a `[[ -f ]]` test) or a script it runs
+(`./scripts/check-risk.sh`, `bash scripts/<x>.sh`), at its top level, in a
+function it calls there, or after a `cd "$source_root"`; a script it runs
+counts as if it ran in the root as well. The check follows the working
+directory while it stays in the repository: `cd .`, `cd ./`, `cd "$PWD"`,
+and `cd "$(pwd)"` change nothing, a `cd` into a directory of the repository
+(`cd tests`, `cd "$source_root/docs"`) counts the paths read there from that
+directory (`../AGENTS.md` is the root's `AGENTS.md`), `cd -` and `popd` go
+back, and `.` is a path like any other (`ls .` in the root reads the
+repository). After a `cd` elsewhere (a variable, an absolute path), in a
+subshell or a command substitution that changes into another directory,
+and in a `git`, `tar`, or `make` command after `-C <dir>` with such a
+directory (`git -C "$repo"`), a relative path is not the repository's; a
+heredoc, the values of an array, a `case` pattern,
+and the pattern of `grep`, `sed`, `awk`, or `jq` are no paths. Such a
+test that is not on the list fails the run before any self-test starts, and
+so does an entry that is no self-test, is framework-only, is listed twice,
+or does not say what the test reads; `tests/adopted-project-list-test.sh`
+tests each case, and `./tests/adopted-project-test.sh --check-list` runs the
+check alone in seconds. A new self-test that reads the repository it runs in
+goes on the list with what it reads. What the check does not see is a path
+it cannot read from the text: a path assembled at run time, or a command
+in a string run later (`bash -c '...'`, `eval`): keep such
+a test isolated with a copy or a variable such as `AGENT_CONFIG_FILE`, as
+the self-tests do, or list it.
+
+The full form runs every other self-test in the fixture, the framework-only
+ones too, as the test did before Issue 478, except
+`tests/adopted-project-list-test.sh`, which inside the fixture would build a
+fixture of the fixture that varies nothing:
+
+```bash
+./tests/adopted-project-test.sh --all
+```
+
+It starts the self-tests in the order of `scripts/verify-workflow.conf`, so
+the longest self-tests are listed first: a long test that starts last would
+end last and hold up the whole.
 
 The tests of `scripts/run-feature.sh` are split into parts,
 `tests/run-feature-<part>-test.sh`, each a check of its own, that share the
@@ -1185,8 +1257,9 @@ which one is first on your `PATH`.
 
 Some self-tests test the template as a framework, not the project that uses
 it. `tests/adopted-project-test.sh` builds a fixture project from the files
-of the repository it runs in and runs every other self-test there: in the
-template that is the proof, before a release, that no self-test reads a file
+of the repository it runs in and runs there the self-tests that read what
+the fixture varies (see "Workflow self-tests"): in the template that is the
+proof, before a release, that no self-test reads a file
 of the repository hosting it (#304, #392 and #411 broke in projects that
 way). In a project the fixture is built from the project's own files, so it
 repeats the direct self-tests, which already run on the project's real
@@ -1209,6 +1282,7 @@ The checks marked so, and why:
 | Check | Framework-only | Why |
 |---|---|---|
 | `adopted-project` | yes | It repeats the direct self-tests in a project; its distinct catches were all in the template's own CI. |
+| `adopted-project-list` | yes | It tests the list of `adopted-project`, which runs only in the template. |
 | `adoption`, `adopt-repository`, `assess-repository` | yes | The adoption tooling runs from a clone of the template, never from a project. |
 | `scenario-register` | no | It costs seconds and guards a project's own edits of the parts of the tests of `run-feature.sh`. |
 | `sync-template` | no | Projects use `sync-template.sh`. |

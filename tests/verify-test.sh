@@ -1230,7 +1230,9 @@ done
 # of no script (tests/lib-fakes.sh), which every self-test sources, selects
 # every self-test, and so does tests/lib-<script>.sh that no self-test sources
 # (tests/lib-beta.sh beside scripts/beta.sh); a file in a directory under tests/ (the project's tests)
-# selects none.
+# selects none. tests/adopted-project-test.sh is never selected, also when
+# it or tests/lib-fakes.sh changed (Issue 478): the full verification runs
+# it.
 project="$(setup_recorded_project changed-parts)"
 mkdir -p "$project/tests"
 printf 'one\n' >"$project/scripts/alpha.sh"
@@ -1238,13 +1240,14 @@ printf '# shared\n' >"$project/tests/lib-alpha.sh"
 printf '# fakes\n' >"$project/tests/lib-fakes.sh"
 printf 'beta\n' >"$project/scripts/beta.sh"
 printf '# orphan\n' >"$project/tests/lib-beta.sh"
-for name in alpha-one alpha-two other; do
+for name in alpha-one alpha-two other adopted-project; do
   printf '#!/usr/bin/env bash\nsource_root="$(cd "$(dirname "$0")/.." && pwd)"\nsource "$source_root/tests/lib-fakes.sh"\n' >"$project/tests/$name-test.sh"
-  [[ "$name" == "other" ]] || printf 'source "$source_root/tests/lib-alpha.sh"\n' >>"$project/tests/$name-test.sh"
+  [[ "$name" == "other" || "$name" == "adopted-project" ]] || printf 'source "$source_root/tests/lib-alpha.sh"\n' >>"$project/tests/$name-test.sh"
   printf 'echo "%s-test" >>"$MOCK_TOOL_LOG"\n' "$name" >>"$project/tests/$name-test.sh"
   chmod +x "$project/tests/$name-test.sh"
 done
-printf '%s\n' "paths: scripts tests" "alpha-one: ./tests/alpha-one-test.sh" "alpha-two: ./tests/alpha-two-test.sh" \
+printf '%s\n' "paths: scripts tests" "adopted-project [adopted-project] framework: ./tests/adopted-project-test.sh" \
+  "alpha-one: ./tests/alpha-one-test.sh" "alpha-two: ./tests/alpha-two-test.sh" \
   "other: ./tests/other-test.sh" >"$project/scripts/verify-workflow.conf"
 git -C "$project" add -A
 git -C "$project" commit -qm "Self-tests of alpha in two parts"
@@ -1264,6 +1267,11 @@ expect_parts tests/lib-alpha.sh "alpha-one-test alpha-two-test"
 expect_parts tests/alpha-two-test.sh "alpha-two-test"
 expect_parts tests/lib-fakes.sh "alpha-one-test alpha-two-test other-test"
 expect_parts tests/lib-beta.sh "alpha-one-test alpha-two-test other-test"
+grep -Fq -- "--changed selects 3 of 4, of the files changed since main: alpha-one, alpha-two, other; adopted-project is left to the full verification" "$project/out.log" ||
+  fail "--changed does not say that it left adopted-project to the full verification: $(cat "$project/out.log")"
+expect_parts tests/adopted-project-test.sh ""
+grep -Fq "SKIP  workflow self-tests (4 checks): --changed selects none; adopted-project, which the files changed since main select, is left to the full verification" "$project/out.log" ||
+  fail "--changed with only tests/adopted-project-test.sh changed does not skip every self-test: $(cat "$project/out.log")"
 mkdir -p "$project/tests/unit"
 printf '# unit\n' >"$project/tests/unit/test_app.py"
 run_changed || fail "--changed with a changed project test failed: $(cat "$project/out.log")"

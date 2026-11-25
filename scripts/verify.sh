@@ -19,7 +19,8 @@ records_arguments=("$@")
 # changed since the base: the check that runs tests/<x>-test.sh when that
 # file, scripts/<x>.sh, or scripts/lib/<x>.sh changed, or when a changed file
 # of scripts/lib/ that is not a shell script (a jq program, for one) is named
-# by scripts/<x>.sh or scripts/lib/<x>.sh as 'lib/<name>'. Like --only it is a
+# by scripts/<x>.sh or scripts/lib/<x>.sh as 'lib/<name>'. It never runs
+# tests/adopted-project-test.sh, whatever changed. Like --only it is a
 # partial run, never a verification: it records nothing. The full
 # verification runs after the session (run-feature.sh).
 #
@@ -160,7 +161,8 @@ usage() {
   echo "those of the files changed since the base branch: the check that runs"
   echo "tests/<x>-test.sh when that file, scripts/<x>.sh, or scripts/lib/<x>.sh changed,"
   echo "or when a changed file of scripts/lib/ that is not a shell script is named by"
-  echo "scripts/<x>.sh or scripts/lib/<x>.sh as 'lib/<name>'."
+  echo "scripts/<x>.sh or scripts/lib/<x>.sh as 'lib/<name>'. It never runs"
+  echo "tests/adopted-project-test.sh, whatever changed: the full verification does."
   echo "It is the targeted check of an agent session: a partial run, which records"
   echo "nothing; the full verification runs after the session."
   echo
@@ -821,7 +823,10 @@ shared_test_file_changed() {
 # or through another library (affected_libs). Any other changed file
 # directly under tests/ (shared_test_file_changed: tests/lib-fakes.sh, or a
 # tests/lib-<y>.sh that no self-test sources) selects every self-test. A self-test that runs no test file of its own is
-# left to the full verification. Sets workflow_note, or workflow_skipped when
+# left to the full verification, and so is tests/adopted-project-test.sh,
+# whatever changed: it runs other self-tests again in a fixture project and
+# takes minutes, so an agent session's targeted check never runs it (Issue
+# 478); the orchestrator's full run does. Sets workflow_note, or workflow_skipped when
 # none is selected. Without a base no self-test is selected: the full
 # verification decides.
 selected_tests=()
@@ -840,6 +845,7 @@ select_changed_tests() {
   local all=no
   local count=0
   local chosen=""
+  local held_back=""
 
   if ! changed_files "$list"; then
     workflow_skipped="SKIP  workflow self-tests ($workflow_count checks): the base branch could not be determined, so no changed file selects one; the full verification decides"
@@ -884,7 +890,9 @@ select_changed_tests() {
         fi
       done
     fi
-    if [[ "$selected" == "yes" ]]; then
+    if [[ "$selected" == "yes" && "$test" == "adopted-project" ]]; then
+      held_back="${names[$index]}"
+    elif [[ "$selected" == "yes" ]]; then
       selected_tests[$index]=yes
       count=$((count + 1))
       chosen="${chosen:+$chosen, }${names[$index]}"
@@ -894,6 +902,11 @@ select_changed_tests() {
     workflow_skipped="SKIP  workflow self-tests ($workflow_count checks): --changed selects none, since no tested file changed since ${base_ref:-the base}; the full verification decides"
   else
     workflow_note="--changed selects $count of $workflow_count, of the files changed since $base_ref: $chosen"
+  fi
+  if [[ -n "$held_back" && "$count" -eq 0 ]]; then
+    workflow_skipped="SKIP  workflow self-tests ($workflow_count checks): --changed selects none; $held_back, which the files changed since ${base_ref:-the base} select, is left to the full verification"
+  elif [[ -n "$held_back" ]]; then
+    workflow_note+="; $held_back is left to the full verification"
   fi
 }
 
