@@ -65,6 +65,19 @@ expect_errors "evidence that cites a partial run" "$(printf '%s' "$complete" | s
 expect_errors "evidence that cites the targeted check of a session" "$(printf '%s' "$complete" | sed 's#tests/test_search.py#./scripts/verify.sh --changed passed#')" \
   "criterion 1 cites a partial run of the checks (verify.sh --only or --changed) as evidence, which is not a verification"
 expect_errors "evidence that cites the full run" "$(printf '%s' "$complete" | sed 's#tests/test_search.py#./scripts/verify.sh passed#')"
+# The full verification that run-feature.sh makes after an unattended
+# session is the evidence of "./scripts/verify.sh --all passes" (Issue 490);
+# a --changed run named for that criterion is still refused.
+all_passes='{"schema": "completion/v1", "status": "complete", "criteria": [
+  {"criterion": "`./scripts/verify.sh --all` passes", "status": "met", "evidence": "EVIDENCE"}
+], "remaining": []}'
+expect_errors "the orchestrator's full run as evidence" \
+  "${all_passes/EVIDENCE/the full verification that run-feature.sh makes after this session}"
+expect_errors "the orchestrator's pass named with its command" \
+  "${all_passes/EVIDENCE/the pass of ./scripts/verify.sh --all that run-feature.sh records after this session}"
+expect_errors "a targeted run for the full verification" \
+  "${all_passes/EVIDENCE/./scripts/verify.sh --changed passed in this session}" \
+  "criterion 1 cites a partial run of the checks (verify.sh --only or --changed) as evidence, which is not a verification"
 expect_errors "no criteria" '{"schema": "completion/v1", "status": "complete", "criteria": [], "remaining": []}' \
   "criteria must list at least one acceptance criterion"
 expect_errors "a criterion without evidence" \

@@ -149,6 +149,8 @@ exactly the content it verified, and the script that follows reuses it; a
 change after the run costs another full run. In an unattended session run
 `./scripts/verify.sh --changed` instead (or the partial check your task
 names): `run-feature.sh` makes the full verification after the session.
+When the changed files select every self-test, `--changed` runs none of them
+and says so, since that full verification runs them all.
 
 When you update the completion record (`.agents/completion/<issue-number>.json`),
 the rules of `.agents/prompts/implementer.md` under "Completion" apply. A
@@ -156,7 +158,9 @@ partial run of the checks (`./scripts/verify.sh --changed` or `--only`) is a
 check for you, not evidence: the record cannot cite it. For a criterion that
 the full verification shows, the evidence is the pass that `run-feature.sh`
 makes after your session (or your own run of the full `./scripts/verify.sh`
-at a terminal), never the targeted run. `apply-triage.sh` checks the record
+at a terminal), never the targeted run: write it as "the full verification
+that run-feature.sh makes after this session", and do not name
+`./scripts/verify.sh --changed` in it, which the gate refuses. `apply-triage.sh` checks the record
 with the rules of the completion gate right after your session, and a record
 that is missing or does not pass goes back to you before the review.
 

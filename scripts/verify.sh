@@ -20,7 +20,9 @@ records_arguments=("$@")
 # file, scripts/<x>.sh, or scripts/lib/<x>.sh changed, or when a changed file
 # of scripts/lib/ that is not a shell script (a jq program, for one) is named
 # by scripts/<x>.sh or scripts/lib/<x>.sh as 'lib/<name>'. It never runs
-# tests/adopted-project-test.sh, whatever changed. Like --only it is a
+# tests/adopted-project-test.sh, whatever changed, and when the files select
+# every other self-test (a change to tests/lib-fakes.sh) it runs none of
+# them: the full verification runs them all. Like --only it is a
 # partial run, never a verification: it records nothing. The full
 # verification runs after the session (run-feature.sh).
 #
@@ -179,6 +181,8 @@ usage() {
   echo "or when a changed file of scripts/lib/ that is not a shell script is named by"
   echo "scripts/<x>.sh or scripts/lib/<x>.sh as 'lib/<name>'. It never runs"
   echo "tests/adopted-project-test.sh, whatever changed: the full verification does."
+  echo "When the changed files select every other self-test (a change to"
+  echo "tests/lib-fakes.sh), it runs none of them: the full verification runs them all."
   echo "It is the targeted check of an agent session: a partial run, which records"
   echo "nothing; the full verification runs after the session."
   echo
@@ -859,7 +863,9 @@ shared_test_file_changed() {
 # left to the full verification, and so is tests/adopted-project-test.sh,
 # whatever changed: it runs other self-tests again in a fixture project and
 # takes minutes, so an agent session's targeted check never runs it (Issue
-# 478); the orchestrator's full run does. Sets workflow_note, or workflow_skipped when
+# 478); the orchestrator's full run does. When the selection is every
+# self-test that --changed can select, none of them runs: the full
+# verification after the session runs the same suite (Issue 490). Sets workflow_note, or workflow_skipped when
 # none is selected. Without a base no self-test is selected: the full
 # verification decides.
 selected_tests=()
@@ -879,6 +885,7 @@ select_changed_tests() {
   local count=0
   local chosen=""
   local held_back=""
+  local selectable=0
 
   if ! changed_files "$list"; then
     workflow_skipped="SKIP  workflow self-tests ($workflow_count checks): the base branch could not be determined, so no changed file selects one; the full verification decides"
@@ -923,6 +930,7 @@ select_changed_tests() {
         fi
       done
     fi
+    [[ "$test" == "adopted-project" ]] || selectable=$((selectable + 1))
     if [[ "$selected" == "yes" && "$test" == "adopted-project" ]]; then
       held_back="${names[$index]}"
     elif [[ "$selected" == "yes" ]]; then
@@ -931,6 +939,14 @@ select_changed_tests() {
       chosen="${chosen:+$chosen, }${names[$index]}"
     fi
   done
+  if [[ "$count" -gt 0 && "$count" -eq "$selectable" ]]; then
+    # Every self-test it could select: the full verification that
+    # run-feature.sh makes after the session runs exactly these again, so the
+    # session runs none of them (Issue 490).
+    selected_tests=()
+    workflow_skipped="SKIP  workflow self-tests ($workflow_count checks): --changed selects every one, of the files changed since $base_ref, so it runs none: the full verification that run-feature.sh makes after the session runs them all"
+    return 0
+  fi
   if [[ "$count" -eq 0 ]]; then
     workflow_skipped="SKIP  workflow self-tests ($workflow_count checks): --changed selects none, since no tested file changed since ${base_ref:-the base}; the full verification decides"
   else

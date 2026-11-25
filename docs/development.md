@@ -180,7 +180,13 @@ file of its own is left to the full verification, and so is
 `adopted-project`, whatever changed, also `tests/adopted-project-test.sh`
 itself or `tests/lib-fakes.sh`: it runs other self-tests again in a fixture
 project and takes minutes (see "Workflow self-tests"), and the summary says
-that it was left to the full verification. It records nothing, takes
+that it was left to the full verification. When the changed files select
+every self-test that `--changed` can select (a change to
+`tests/lib-fakes.sh`, or to a library that every self-test sources), it runs
+none of them, and its `SKIP` line says that the full verification that
+`run-feature.sh` makes after the session runs them all: the session would
+otherwise run the complete suite only for the orchestrator to run it again
+on the same content (Issue 490). A smaller selection runs as before. It records nothing, takes
 neither `--only`, `--all`, nor `--reuse`, and the completion gate refuses it
 as evidence like `--only`. The implementer and the triage-implementer of `run-feature.sh` run
 it instead of the full suite; the run makes the full verification after the
@@ -2481,6 +2487,15 @@ criterion is `met`, `not_met`, `not_applicable`, or `pending`, each with
 evidence. `complete` needs every criterion met or not applicable and nothing
 remaining; `partial` and `blocked` need something that remains. A record that
 breaks these rules is invalid.
+
+The evidence of a criterion cannot be a partial run of the checks: a record
+that cites `./scripts/verify.sh --changed` or `--only` is refused. For a
+criterion that the full verification shows, such as "`./scripts/verify.sh
+--all` passes", an unattended session names the pass that `run-feature.sh`
+makes after it, for example "the full verification that run-feature.sh makes
+after this session", and the gate accepts it as `met`: that pass exists
+before anything is reviewed, and a failure of it comes back as a repair
+session (Issue 490).
 
 #### Evidence that cannot exist yet
 

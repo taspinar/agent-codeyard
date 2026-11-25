@@ -115,9 +115,11 @@ done
 
 # ---------------------------------------------------------- verify.sh
 # project <name> <origin> [<template-repository>]: a repository with
-# verify.sh, its libraries, a project check, and two self-tests: 'framework'
-# (framework-only, group fw) and 'plain' (group plain). Each records in
-# checks.log that it ran.
+# verify.sh, its libraries, a project check, and three self-tests: 'framework'
+# (framework-only, group fw), 'plain' and 'other' (group plain). Each records
+# in checks.log that it ran. 'other' keeps a --changed selection of the two
+# others smaller than every self-test, which --changed leaves to the full
+# verification (Issue 490).
 project() {
   local dir="$tmp/verify/$1"
   mkdir -p "$dir/scripts/lib" "$dir/tests" "$dir/.agents"
@@ -126,9 +128,9 @@ project() {
     "$source_root/scripts/lib/template-repository.sh" "$dir/scripts/lib/"
   cp "$source_root/scripts/check-ci-groups.sh" "$dir/scripts/"
   printf 'lint: true\n' >"$dir/scripts/verify.conf"
-  printf 'paths: tests scripts/verify-workflow.conf\nframework [fw] framework: ./tests/framework-test.sh\nplain [plain]: ./tests/plain-test.sh\n' \
+  printf 'paths: tests scripts/verify-workflow.conf\nframework [fw] framework: ./tests/framework-test.sh\nplain [plain]: ./tests/plain-test.sh\nother [plain]: ./tests/other-test.sh\n' \
     >"$dir/scripts/verify-workflow.conf"
-  for name in framework plain; do
+  for name in framework plain other; do
     printf '#!/usr/bin/env bash\necho %s >>checks.log\n' "$name" >"$dir/tests/$name-test.sh"
     chmod +x "$dir/tests/$name-test.sh"
   done
@@ -198,6 +200,7 @@ printf '# changed\n' >>"$dir/tests/framework-test.sh"
 printf '# changed\n' >>"$dir/tests/plain-test.sh"
 verify "$dir" --changed || { cat "$dir/out.log" >&2; fail "verify.sh --changed failed in a project"; }
 ran "$dir" plain || fail "--changed did not run the selected self-test"
+if ran "$dir" other; then fail "--changed ran a self-test that no changed file selects"; fi
 if ran "$dir" framework; then fail "--changed ran the framework-only self-test in a project"; fi
 [[ -n "$(skip_line "$dir")" ]] || fail "--changed did not report the skip: $(cat "$dir/out.log")"
 verify "$dir" --changed --framework-checks || fail "verify.sh --changed --framework-checks failed"
@@ -240,8 +243,8 @@ verify "$dir" || { cat "$dir/out.log" >&2; fail "verify.sh failed without a work
 verify "$dir" --reuse --framework-checks || { cat "$dir/out.log" >&2; fail "verify.sh --framework-checks failed without a workflow change"; }
 grep -Fq "it ran no framework-only self-test" "$dir/out.log" || fail "a pass without self-tests stood in for --framework-checks: $(cat "$dir/out.log")"
 ran "$dir" framework || fail "--framework-checks did not run the framework-only self-test without a workflow change: $(cat "$dir/out.log")"
-if ran "$dir" plain; then fail "--framework-checks ran a self-test that is not framework-only without a workflow change"; fi
-grep -Eq '^SKIP +workflow self-tests \(1 checks that are not framework-only\): no workflow file differs from .*; --all runs them$' "$dir/out.log" ||
+if ran "$dir" plain || ran "$dir" other; then fail "--framework-checks ran a self-test that is not framework-only without a workflow change"; fi
+grep -Eq '^SKIP +workflow self-tests \(2 checks that are not framework-only\): no workflow file differs from .*; --all runs them$' "$dir/out.log" ||
   fail "the summary does not say that the other self-tests were skipped: $(cat "$dir/out.log")"
 [[ -z "$(skip_line "$dir")" ]] || fail "--framework-checks reported a framework-only skip without a workflow change"
 [[ "$(field "$dir" workflow-tests)" == skipped ]] || fail "the record of --framework-checks alone does not say that the other self-tests were skipped"
