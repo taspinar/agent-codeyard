@@ -30,6 +30,17 @@ records_arguments=("$@")
 # (scripts/lib/verification.sh). With --reuse, a second run on identical
 # content is skipped.
 #
+# A check of scripts/verify.conf may name its inputs: 'inputs: <check>
+# <input>...', Git pathspecs and '@<file>', a list file of the repository with
+# one pathspec per line, or 'exists <path>' for a path whose existence alone
+# the check reads. The check runs only when an input changed, compared as the
+# self-tests are (the last trusted pass, or the base branch), and otherwise
+# shows SKIP with the reason; 'exists' counts only an added or removed path.
+# It runs when that cannot be determined (a missing list file, no base) and
+# on the base branch itself, and always with --all and --baseline. A pass
+# that skipped one records 'skipped-by-inputs: <check>...', which --all does
+# not reuse.
+#
 # A run that failed is recorded too, apart from a pass and never as one: the
 # content, the checks that ran, those that failed, and the budget results and
 # durations of the run. --repeat <check>,... is the repeat of run-feature.sh
@@ -174,6 +185,12 @@ usage() {
   echo "that file differs from the base branch. --all runs them regardless. Within a"
   echo "run of a workflow script that keeps trusted passes (VERIFY_TRUSTED_TREES), they"
   echo "are compared with the tree of its last trusted pass instead of the base branch."
+  echo
+  echo "A check of scripts/verify.conf whose inputs a line 'inputs: <check> <input>...'"
+  echo "names (Git pathspecs, and '@<file>', a list of them, where 'exists <path>' counts"
+  echo "only when the path is added or removed) runs only when an input changed, compared"
+  echo "as the self-tests are, and shows SKIP otherwise. It runs when that cannot be"
+  echo "determined or the run is on the base branch itself; --all always runs it."
   echo
   echo "--changed runs every check of scripts/verify.conf and, of the self-tests, only"
   echo "those of the files changed since the base branch: the check that runs"
@@ -479,6 +496,9 @@ accepted_reasons=()
 accepted_lines=()
 accepted_scopes=()
 accepted_statuses=()
+input_names=()
+input_words=()
+input_lines=()
 
 # completed_status <status>: whether a non-zero exit status is the check's
 # own, so that the check ran to its end. 1..123 and 128 are; 124 of 'timeout'
@@ -506,7 +526,9 @@ completed_status() {
 # a scoped exception sets accepted_scopes to 'changed-files' (its reason is
 # then the command for the changed files) or 'recorded', and is empty
 # otherwise, and accepted_statuses to the exit statuses it declares, each
-# between spaces (' 1 2 ').
+# between spaces (' 1 2 '). The reserved entry 'inputs: <check> <input>...',
+# in scripts/verify.conf only, adds the inputs of a check to input_names and
+# input_words (check_inputs_changed).
 load_checks() {
   local file="$1"
   local paths_entry="$2"
@@ -527,6 +549,7 @@ load_checks() {
   local heavy_names=""
   local heavy_line=0
   local heavy_list=()
+  local input_list=()
   local index
 
   budget_seconds=""
@@ -546,7 +569,7 @@ load_checks() {
       [[ "$paths_entry" == "yes" ]] ||
         config_fail "'framework' marks a self-test of scripts/verify-workflow.conf that runs only in the template; a check of $label is the project's own and always runs, on line $line_number of $label."
       case "$name" in
-        paths | budget-seconds | accepted-failure | parallel | heavy)
+        paths | budget-seconds | accepted-failure | parallel | heavy | inputs)
           config_fail "'$name' is not a check and cannot be framework-only, on line $line_number of $label."
           ;;
       esac
@@ -608,6 +631,29 @@ load_checks() {
         accepted_reasons+=("$value")
         accepted_statuses+=("")
       fi
+      continue
+    fi
+    if [[ "$name" == "inputs" ]]; then
+      [[ "$paths_entry" == "no" ]] ||
+        config_fail "'inputs' is declared in scripts/verify.conf only, for a check of the project, not on line $line_number of $label."
+      [[ -z "$group" && -z "$budget" && -z "$partition" ]] ||
+        config_fail "'inputs' names the inputs of a check, it is not a check: it takes no group or partition and is no budget check, on line $line_number of $label."
+      [[ "$value" =~ ^([a-z0-9][a-z0-9-]*)[[:space:]]+([^[:space:]].*)$ ]] ||
+        config_fail "'inputs' needs the name of a check and at least one Git pathspec or '@<list file>', on line $line_number of $label: $value"
+      name="${BASH_REMATCH[1]}"
+      value="${BASH_REMATCH[2]}"
+      for existing in ${input_names[@]+"${input_names[@]}"}; do
+        [[ "$existing" != "$name" ]] ||
+          config_fail "'inputs' names the check $name more than once in $label."
+      done
+      read -r -a input_list <<<"$value"
+      for existing in "${input_list[@]}"; do
+        [[ "$existing" != "@" && ! "$existing" =~ ^@(/|(.*/)?\.\.(/|$)) ]] ||
+          config_fail "'inputs' names the list file '${existing#@}', which is not a path inside the repository, on line $line_number of $label."
+      done
+      input_names+=("$name")
+      input_words+=("$value")
+      input_lines+=("$line_number")
       continue
     fi
     if [[ "$name" == "parallel" ]]; then
@@ -746,6 +792,127 @@ changed_files() {
     git -C "$root" diff -z --name-only --no-renames --diff-filter=d "$base_commit" -- &&
       git -C "$root" ls-files -z --others --exclude-standard --
   } >"$1"
+}
+
+# input_resolve <words>
+# The inputs of an 'inputs:' line: input_content, the Git pathspecs of the
+# files whose content the check reads, and input_exists, the paths whose
+# existence alone it reads. A word '@<file>' names a list file of the
+# repository: it is an input itself, and each of its lines is a pathspec, or
+# 'exists <path>'; '#' starts a comment. input_missing is a list file that is
+# not there.
+input_resolve() {
+  local words=()
+  local word
+  local file
+  local line
+  local number
+
+  input_content=()
+  input_exists=()
+  input_missing=""
+  read -r -a words <<<"$1"
+  for word in "${words[@]}"; do
+    if [[ "$word" != @* ]]; then
+      input_content+=("$word")
+      continue
+    fi
+    file="${word#@}"
+    input_content+=("$file")
+    if [[ ! -f "$root/$file" ]]; then
+      input_missing="$file"
+      continue
+    fi
+    number=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      number=$((number + 1))
+      [[ "$line" =~ $comment_pattern ]] && continue
+      if [[ "$line" =~ ^[[:space:]]*exists[[:space:]]+([^[:space:]]*[^[:space:]/])/?[[:space:]]*$ ]]; then
+        input_exists+=("${BASH_REMATCH[1]}")
+      elif [[ "$line" =~ ^[[:space:]]*([^[:space:]]+)[[:space:]]*$ ]]; then
+        input_content+=("${BASH_REMATCH[1]}")
+      else
+        config_fail "malformed input on line $number of $file, the list of inputs that scripts/verify.conf names: $line"
+      fi
+    done <"$root/$file"
+  done
+}
+
+# check_inputs_changed <words>
+# Exits 0 when an input of an 'inputs:' line changed: a file of its pathspecs
+# differs, or a path of 'exists' was added or removed, compared as the
+# workflow self-tests compare (workflow_files_changed): with the tree of the
+# last trusted pass of the run, or without one with the base branch, counting
+# uncommitted and untracked files. Exits 1 when no input changed, and 2 when
+# that cannot be determined: a list file is missing, the base is unknown, or
+# the run is on the base branch itself, where nothing tells a change apart
+# from the base (a push to main in CI). Sets inputs_base to what was
+# compared with and inputs_reason to the input that changed or the reason.
+check_inputs_changed() {
+  local trusted
+  local ref
+  local changed
+  local current
+  local index
+  local then_states=()
+
+  inputs_base=""
+  inputs_reason=""
+  input_resolve "$1"
+  if [[ -n "$input_missing" ]]; then
+    inputs_reason="its list of inputs $input_missing is missing"
+    return 2
+  fi
+  if trusted="$(trusted_base)"; then
+    inputs_base="the last trusted pass of this run (tree ${trusted:0:12})"
+    ref="$trusted"
+    changed="$(git -C "$root" diff-tree -r --name-only "$trusted" "$tree_before" -- "${input_content[@]}")" || {
+      inputs_reason="the inputs could not be compared with $inputs_base"
+      return 2
+    }
+  else
+    if ! feature_base; then
+      inputs_reason="the base branch could not be determined"
+      return 2
+    fi
+    current="$(git -C "$root" symbolic-ref -q --short HEAD 2>/dev/null || true)"
+    if [[ "$current" == "${base_ref#origin/}" ||
+      ( -z "$current" && "$(git -C "$root" rev-parse -q --verify HEAD 2>/dev/null)" == "$base_commit" ) ]]; then
+      inputs_reason="this run is on the base branch ${base_ref#origin/} itself, so no change can be told apart from it"
+      return 2
+    fi
+    inputs_base="$base_ref"
+    ref="$base_commit"
+    changed="$(
+      git -C "$root" diff --name-only "$base_commit" -- "${input_content[@]}" &&
+        git -C "$root" ls-files --others --exclude-standard -- "${input_content[@]}"
+    )" || {
+      inputs_reason="the inputs could not be compared with $inputs_base"
+      return 2
+    }
+  fi
+  if [[ -n "$changed" ]]; then
+    inputs_reason="${changed%%$'\n'*} differs from $inputs_base"
+    return 0
+  fi
+  [[ "${#input_exists[@]}" -gt 0 ]] || return 1
+  mapfile -t then_states < <(printf "$ref:%s\n" "${input_exists[@]}" | git -C "$root" cat-file --batch-check='%(objecttype)')
+  if [[ "${#then_states[@]}" -ne "${#input_exists[@]}" ]]; then
+    inputs_reason="the inputs could not be compared with $inputs_base"
+    return 2
+  fi
+  for index in "${!input_exists[@]}"; do
+    if [[ "${then_states[$index]}" == *" missing" ]]; then
+      [[ ! -e "$root/${input_exists[$index]}" ]] || {
+        inputs_reason="${input_exists[$index]}, which it needs to exist, was added since $inputs_base"
+        return 0
+      }
+    elif [[ ! -e "$root/${input_exists[$index]}" ]]; then
+      inputs_reason="${input_exists[$index]}, which it needs to exist, was removed since $inputs_base"
+      return 0
+    fi
+  done
+  return 1
 }
 
 # reads_changed_lib_file <test> <list>
@@ -974,16 +1141,19 @@ partial_skipped() {
 # skipped_check <index>
 # Succeeds when this run leaves out the check <index>: a partial run
 # (partial_skipped), a framework-only self-test outside the template
-# (framework_skipped), or a self-test that is not framework-only in a run
-# that runs the framework-only ones alone (framework_alone).
+# (framework_skipped), a self-test that is not framework-only in a run
+# that runs the framework-only ones alone (framework_alone), or a check of
+# scripts/verify.conf none of whose inputs changed (input_skipped).
 framework_skipped=()
+input_skipped=()
 framework_alone=0
 repeat_active=0
 repeat_only=()
 skipped_check() {
   partial_skipped "$1" || [[ "${framework_skipped[$1]:-}" == "yes" ]] ||
     [[ "$framework_alone" -eq 1 && "$1" -ge "$project_count" && "${frameworks[$1]}" != "yes" ]] ||
-    [[ "$repeat_active" -eq 1 && "${repeat_only[$1]:-}" != "yes" ]]
+    [[ "$repeat_active" -eq 1 && "${repeat_only[$1]:-}" != "yes" ]] ||
+    [[ "${input_skipped[$1]:-}" == "yes" ]]
 }
 
 # selected_checks: the names of the checks that this run runs, separated by
@@ -1038,6 +1208,12 @@ for index in "${!accepted_names[@]}"; do
     [[ "$name" != "${accepted_names[$index]}" ]] || continue 2
   done
   config_fail "'accepted-failure' on line ${accepted_lines[$index]} of scripts/verify.conf names '${accepted_names[$index]}', which is not a check of scripts/verify.conf."
+done
+for index in "${!input_names[@]}"; do
+  for name in "${names[@]}"; do
+    [[ "$name" != "${input_names[$index]}" ]] || continue 2
+  done
+  config_fail "'inputs' on line ${input_lines[$index]} of scripts/verify.conf names '${input_names[$index]}', which is not a check of scripts/verify.conf."
 done
 for index in "${!accepted_names[@]}"; do
   [[ -n "${accepted_scopes[$index]}" ]] || continue
@@ -1211,6 +1387,34 @@ if [[ "$list_groups" -eq 0 && "${#names[@]}" -gt "$project_count" && -z "$workfl
   fi
 fi
 
+# The checks of scripts/verify.conf with inputs ('inputs:'): one runs only
+# when an input changed, compared as the workflow self-tests compare, and
+# when that cannot be determined. --all and a baseline run every check, and a
+# check that this run leaves out anyway is not compared.
+input_notes=()
+input_skip_lines=()
+input_skipped_names=""
+if [[ "$list_groups" -eq 0 && "$run_all" -eq 0 && "$baseline_mode" -eq 0 && "${#input_names[@]}" -gt 0 ]]; then
+  for ((index = 0; index < project_count; index++)); do
+    for ((input = 0; input < ${#input_names[@]}; input++)); do
+      [[ "${input_names[$input]}" != "${names[$index]}" ]] || break
+    done
+    [[ "$input" -lt "${#input_names[@]}" ]] || continue
+    partial_skipped "$index" && continue
+    inputs_status=0
+    check_inputs_changed "${input_words[$input]}" || inputs_status=$?
+    case "$inputs_status" in
+      0) input_notes+=("${names[$index]} runs: $inputs_reason") ;;
+      1)
+        input_skipped[$index]=yes
+        input_skipped_names="${input_skipped_names:+$input_skipped_names }${names[$index]}"
+        input_skip_lines+=("SKIP  ${names[$index]}: none of its inputs ('inputs:' in scripts/verify.conf) changed since $inputs_base; --all runs it")
+        ;;
+      *) input_notes+=("${names[$index]} runs: whether its inputs changed cannot be determined, $inputs_reason") ;;
+    esac
+  done
+fi
+
 # The groups that have a check, in the order of their first check.
 known_groups=""
 for group in "${groups[@]}"; do
@@ -1227,7 +1431,7 @@ if [[ "$list_groups" -eq 1 ]]; then
   exit 0
 fi
 if [[ "$changed_mode" -eq 1 ]]; then
-  echo "Only the checks of the changed files (--changed): every check of scripts/verify.conf and the self-tests of the files changed since the base. A partial run is not a verification and records nothing."
+  echo "Only the checks of the changed files (--changed): every check of scripts/verify.conf whose inputs changed, and the self-tests of the files changed since the base. A partial run is not a verification and records nothing."
 elif [[ "$partial" -eq 1 ]]; then
   IFS=, read -r -a wanted <<<"$only"
   for group in "${wanted[@]}"; do
@@ -1235,6 +1439,11 @@ elif [[ "$partial" -eq 1 ]]; then
       config_fail "no check is in the group '$group'. The groups are: ${known_groups//,/, }."
   done
   echo "Only the groups: ${only//,/, }. A partial run is not a verification and records nothing."
+fi
+if [[ "${#input_notes[@]}" -gt 0 || "${#input_skip_lines[@]}" -gt 0 ]]; then
+  echo
+  [[ "${#input_notes[@]}" -eq 0 ]] || printf '%s\n' "${input_notes[@]}"
+  [[ "${#input_skip_lines[@]}" -eq 0 ]] || printf '%s\n' "${input_skip_lines[@]}"
 fi
 
 # --repeat: only the checks that failed in the recorded failed run of this
@@ -1298,6 +1507,14 @@ if [[ "$recordable" -eq 1 && "$reuse" -eq 1 && -n "$tree_before" &&
     else
       echo "A pass is recorded for this content, but it ran no framework-only self-test, which this run runs; every check runs."
     fi
+  fi
+  # A pass that left out a check whose inputs had not changed does not stand
+  # in for --all, which runs it.
+  recorded_inputs="$(verification_field "$root" skipped-by-inputs)"
+  if [[ "$reuse_candidate" -eq 1 && "$run_all" -eq 1 && -n "$recorded_inputs" ]]; then
+    reuse_candidate=0
+    echo
+    echo "A pass is recorded for this content, but it skipped $recorded_inputs, whose inputs had not changed, and --all runs every check; every check runs."
   fi
 fi
 
@@ -2180,6 +2397,7 @@ echo "== Verification summary =="
 [[ -z "$workflow_skipped" ]] || echo "$workflow_skipped"
 [[ -z "$others_skipped" ]] || echo "$others_skipped"
 [[ "${#framework_lines[@]}" -eq 0 ]] || printf '%s\n' "${framework_lines[@]}"
+[[ "${#input_skip_lines[@]}" -eq 0 ]] || printf '%s\n' "${input_skip_lines[@]}"
 if [[ "$duration_exceeded" -gt 0 ]]; then
   echo "The checks took longer than the target of 'budget-seconds' (BUDGET): a measurement, not a failure. The owner decides whether to change the target or the checks; nothing repairs it automatically."
 fi
@@ -2299,7 +2517,7 @@ if [[ "$recordable" -eq 1 ]]; then
     framework_state="$(framework_record_state "$workflow_state")"
     repeated=""
     [[ "$repeat_active" -eq 0 ]] || repeated="${repeat_names//,/ }"
-    verification_write "$root" "$tree_before" "$workflow_state" "$budgets_file" "$durations_file" "$framework_state" "$repeated" ||
+    verification_write "$root" "$tree_before" "$workflow_state" "$budgets_file" "$durations_file" "$framework_state" "$repeated" "$input_skipped_names" ||
       echo "Warning: could not record the passed verification." >&2
   else
     verification_forget "$root"

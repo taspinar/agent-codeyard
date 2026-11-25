@@ -8,6 +8,12 @@
 # - every link to a place on a page finds that place;
 # - every link to a file of this repository on GitHub names a file that exists;
 # - every script a page names exists in scripts/;
+# - check-inputs.conf, the list of the files outside website/ that this check
+#   reads, is complete (--build): it lists, as 'exists <path>', every
+#   repository path and script a page names, and no other, and every file
+#   outside website/ that a source of the site names by a relative path
+#   ('../'), which is read for its content. scripts/verify.conf runs the
+#   check only when website/ or a file of that list changed ('inputs:');
 # - every page has a title, a description and a canonical address, and every
 #   address of sitemap.xml is a page of the output; a redirect page (a retired
 #   route: noindex and a refresh) is checked by its target instead, and a link
@@ -38,6 +44,9 @@
 #       with the command that installs them.
 #   ./website/check.sh <output> <base-path> [<site-url>]
 #       Checks an output that is already built for that base path.
+#   ./website/check.sh --inputs <output>
+#       Checks check-inputs.conf against an output that is already built: the
+#       paths its pages name, and the files the sources read.
 #   ./website/check.sh --tokens <style sheet>...
 #       Checks that outside :root and @font-face a font or spacing property
 #       names only tokens (var()), 0 and keywords, and that no rule names a
@@ -119,6 +128,7 @@ check_output() {
           path="${target#"$repository/"*/*/}"
           path="${path%%#*}"
           [[ -e "$root/$path" ]] || problem "$name links to $path, which is not in the repository"
+          [[ -z "${named_file:-}" ]] || printf '%s\t%s\n' "${path%/}" "${page#"$output"/}" >>"$named_file"
           ;;
         http://* | https://* | mailto:*) ;;
         "#"*)
@@ -147,6 +157,12 @@ check_output() {
         [[ -f "$root/$script" ]] || problem "$name names $script, which is not in the repository"
       else
         [[ -f "$root/scripts/$script" ]] || problem "$name names $script, which is not in scripts/"
+      fi
+      if [[ -n "${named_file:-}" ]]; then
+        path="$script"
+        [[ "$script" == */* ]] || path="scripts/$script"
+        while [[ "$path" == ./* ]]; do path="${path#./}"; done
+        printf '%s\t%s\n' "$path" "${page#"$output"/}" >>"$named_file"
       fi
     done < <(sed 's/<[^>]*>/ /g' "$page" | grep -oE '([[:alnum:]_.-]+/)*[a-z][a-z-]*\.sh' | sort -u)
 
@@ -185,6 +201,65 @@ check_output() {
   echo "website: $count pages checked under $base."
 }
 
+# normalize <path>: the path with its '.' and '..' components resolved, for
+# a path that need not exist (realpath -m is not portable).
+normalize() {
+  local part result=""
+  local IFS=/
+  for part in $1; do
+    case "$part" in
+      "" | .) ;;
+      ..) result="${result%/*}" ;;
+      *) result="$result/$part" ;;
+    esac
+  done
+  echo "${result:-/}"
+}
+
+# source_reads: every file outside website/ that a source of the site names by
+# a relative path ('../'), resolved from the directory of that source, one per
+# line, relative to the repository. The sources are the files of website/
+# without the installed and built ones and the design reference.
+source_reads() {
+  local file reference path
+  while IFS= read -r -d '' file; do
+    while IFS= read -r reference; do
+      path="$(normalize "$(dirname "$file")/$reference")"
+      case "$path" in
+        "$site" | "$site"/*) ;;
+        "$root"/*) [[ ! -f "$path" ]] || echo "${path#"$root"/}" ;;
+      esac
+    done < <(grep -oE '(\.\./)+[A-Za-z0-9_.][A-Za-z0-9_./-]*' "$file" 2>/dev/null | sort -u)
+  done < <(find "$site" \( -name node_modules -o -name .astro -o -name dist -o -name reports -o -path "$site/design" \) -prune -o -type f -print0)
+}
+
+# check_inputs <named>: check-inputs.conf against what the check reads. <named>
+# holds the paths that the pages name, each with a page that names it.
+# WEBSITE_CHECK_INPUTS names another list, for check-test.sh.
+check_inputs() {
+  local named="$1" list="${WEBSITE_CHECK_INPUTS:-$site/check-inputs.conf}" path page
+  [[ -f "$list" ]] || { problem "check-inputs.conf, the list of the inputs of this check, is missing"; return; }
+  sed -E 's/^[[:space:]]*#.*//; s/^[[:space:]]+//; s/[[:space:]]+$//' "$list" | awk 'NF == 2 && $1 == "exists" { sub(/\/$/, "", $2); print $2 }' | LC_ALL=C sort -u >"$work/inputs-exists"
+  sed -E 's/^[[:space:]]*#.*//; s/^[[:space:]]+//; s/[[:space:]]+$//' "$list" | awk 'NF == 1' | LC_ALL=C sort -u >"$work/inputs-content"
+  sed -E 's/^[[:space:]]*#.*//; s/^[[:space:]]+//; s/[[:space:]]+$//' "$list" | awk 'NF > 2 || (NF == 2 && $1 != "exists")' >"$work/inputs-malformed"
+  while IFS= read -r path; do
+    problem "check-inputs.conf has a line that is neither '<path>' nor 'exists <path>': $path"
+  done <"$work/inputs-malformed"
+  cut -f1 "$named" | grep -Ev '^website(/|$)' | LC_ALL=C sort -u >"$work/needed-exists" || true
+  LC_ALL=C sort -u "$work/inputs-exists" "$work/inputs-content" >"$work/inputs-all"
+  while IFS= read -r path; do
+    page="$(awk -F '\t' -v path="$path" '$1 == path { print $2; exit }' "$named")"
+    problem "check-inputs.conf does not list $path, which $page names: add 'exists $path'"
+  done < <(LC_ALL=C comm -23 "$work/needed-exists" "$work/inputs-all")
+  while IFS= read -r path; do
+    problem "check-inputs.conf lists 'exists $path', which no page names: remove it"
+  done < <(LC_ALL=C comm -13 "$work/needed-exists" "$work/inputs-exists")
+  source_reads | LC_ALL=C sort -u >"$work/needed-content"
+  while IFS= read -r path; do
+    problem "check-inputs.conf does not list $path, which a source of the site reads: add it as a line '$path'"
+  done < <(LC_ALL=C comm -23 "$work/needed-content" "$work/inputs-content")
+}
+
 # browser_ready: exits unless Playwright Chromium starts. Downloads it only when
 # it is not installed, so a run with the browser in place needs no network.
 browser_ready() {
@@ -219,6 +294,8 @@ if [[ "${1:-}" == "--build" || "${1:-}" == "--browser" ]]; then
   (cd "$site" && node --test "src/**/*.test.ts" >"$work/tests.log" 2>&1) ||
     { cat "$work/tests.log" >&2; problem "the unit tests of src/ fail"; }
   for css in "$site"/src/styles/*.css; do check_tokens "$css"; done
+  named_file="$work/named"
+  : >"$named_file"
   for base in /agent-codeyard/ /; do
     output="$work/output-$(echo "$base" | tr -d /)"
     (cd "$site" && SITE_URL="$default_site_url" BASE_PATH="$base" ASTRO_TELEMETRY_DISABLED=1 \
@@ -242,6 +319,14 @@ if [[ "${1:-}" == "--build" || "${1:-}" == "--browser" ]]; then
     fi
     rm -f "$browser_log"
   done
+  check_inputs "$named_file"
+elif [[ "${1:-}" == "--inputs" && $# -eq 2 ]]; then
+  work="$(mktemp -d)"
+  trap 'rm -rf "$work"' EXIT
+  named_file="$work/named"
+  : >"$named_file"
+  check_output "$(cd "$2" && pwd -P)" / "$default_site_url" >/dev/null
+  check_inputs "$named_file"
 elif [[ "${1:-}" == "--tokens" && $# -ge 2 ]]; then
   shift
   for css in "$@"; do check_tokens "$css"; done

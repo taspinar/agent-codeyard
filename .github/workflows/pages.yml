@@ -27,8 +27,8 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
-# Two jobs, the layout of GitHub's Pages starter workflow: "build" checks the
-# site and uploads it, "deploy" only publishes the upload. In one job,
+# Two jobs, the layout of GitHub's Pages starter workflow: "build" builds the
+# site, checks the build, and uploads it, "deploy" only publishes the upload. In one job,
 # deploy-pages listed the run's artifacts half a second after the upload and
 # did not find it yet (Issue 475); the job boundary puts the upload safely
 # behind the listing.
@@ -51,12 +51,10 @@ jobs:
       - name: Install the dependencies
         working-directory: website
         run: npm ci --no-audit --no-fund
-      - name: Install the browser for the website checks
-        working-directory: website
-        run: npx --no-install playwright install --with-deps chromium
-      - name: Check the site against the repository
-        working-directory: website
-        run: ./check.sh --build
+      # The site is checked against the repository (./check.sh --build, with
+      # the browser) by the website check of ./scripts/verify.sh, which the
+      # push run of ci.yml runs with --all on this commit; this job checks
+      # only the build it publishes (Issue 491).
       - id: pages
         uses: actions/configure-pages@v6
       - name: Build the site

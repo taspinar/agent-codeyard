@@ -587,7 +587,7 @@ verify_file() {
     printf '# %s, %s in %s.\n' "$name" "$origin" "$source" >>"$1"
     [[ -z "$actions" ]] || printf '# It may take external actions: %s.\n' "$actions" >>"$1"
     case "$name" in
-      paths | budget-seconds | heavy | parallel | accepted-failure)
+      paths | budget-seconds | heavy | parallel | accepted-failure | inputs)
         printf '# Not taken over: %s is a reserved word of this file. Add the check under another name.\n' "$name" >>"$1"
         continue
         ;;

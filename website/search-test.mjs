@@ -196,8 +196,10 @@ if (process.argv[2]) {
 }
 
 // Shipped examples must move with their source configuration.
-for (const [slug, source] of [['agent-roles', '.agents/agents.conf'], ['risk-policy', '.agents/policies/risk.conf']]) {
-  const config = await readFile(new URL(`../${source}`, import.meta.url), 'utf8');
+// The sources are named by their whole relative paths, so that check.sh finds
+// them for check-inputs.conf.
+for (const [slug, source] of [['agent-roles', '../.agents/agents.conf'], ['risk-policy', '../.agents/policies/risk.conf']]) {
+  const config = await readFile(new URL(source, import.meta.url), 'utf8');
   const active = config.split('\n').filter(line => line && !line.startsWith('#')).join('\n');
   const content = await readFile(new URL(`./src/content/docs/${slug}.md`, import.meta.url), 'utf8');
   assert(content.includes('```text\n' + active + '\n```'), `Stale shipped example: ${slug}`);

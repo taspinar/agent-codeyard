@@ -1,0 +1,21 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "6f09172a4e90b63466ec36b93774322e6eb76a43",
+  "commit": {
+    "branch": "feature/491-the-website-check-runs",
+    "parent": "aaef794b5df77cb75ca2d5c32e10b9af90681f13",
+    "base": "aaef794b5df77cb75ca2d5c32e10b9af90681f13"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".github/workflows/pages.yml: the file defines or carries out the workflow and its gate",
+    "scripts/lib/guardrails.sh: the file defines or carries out the workflow and its gate",
+    "scripts/verify.conf: an existing check or line is changed or removed",
+    "the independent review classified the impact on the architecture as major: The new `inputs:` capability changes shared verification behavior across project checks, including comparison against trusted verification trees and pass reuse, and `pages.yml` changes the deployment workflow by removing its repository check. These extend beyond a local website implementation, though they do not contradict an accepted architecture decision. "
+  ],
+  "explanation": "Issue #491: The website check runs only when the site or a file it reads changed; Pages does not repeat check.sh --build (step 2 of #468). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

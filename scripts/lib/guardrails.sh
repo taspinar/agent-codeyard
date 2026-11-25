@@ -49,7 +49,8 @@ GUARDRAILS_BUILTIN_PROTECTED=(
 # The verification configuration: adding a check is sensitive, changing or
 # removing a line is protected, and so is adding an accepted exception for a
 # failing check ('accepted-failure:'), which lets the verification pass while
-# that check fails.
+# that check fails, and adding the inputs of a check ('inputs:'), which lets
+# the verification pass without running it on a change outside them.
 GUARDRAILS_CHECK_LISTS=(scripts/verify.conf scripts/verify-workflow.conf)
 
 # guardrails_rules_refs <root> <base-branch>
@@ -141,6 +142,8 @@ guardrails_classify() {
       printf 'protected\t%s\t%s\n' "$list" "an existing check or line is changed or removed"
     elif printf '%s\n' "$removed" | grep -Eq '^\+[[:space:]]*accepted-failure[[:space:]]*:'; then
       printf 'protected\t%s\t%s\n' "$list" "the failure of a check is accepted as an exception"
+    elif printf '%s\n' "$removed" | grep -Eq '^\+[[:space:]]*inputs[[:space:]]*:'; then
+      printf 'protected\t%s\t%s\n' "$list" "a check is limited to the changes of its inputs"
     else
       printf 'sensitive\t%s\t%s\n' "$list" "a check is added"
     fi

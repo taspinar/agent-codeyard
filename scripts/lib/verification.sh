@@ -132,7 +132,7 @@ verification_field() {
   sed -n "s/^$2: //p" "$1/$VERIFICATION_RECORD" | head -n 1
 }
 
-# verification_write <root> <tree> <workflow-tests> [<budgets-file>] [<durations-file>] [<framework-checks>] [<repeated>]
+# verification_write <root> <tree> <workflow-tests> [<budgets-file>] [<durations-file>] [<framework-checks>] [<repeated>] [<skipped-by-inputs>]
 # <workflow-tests> is 'ran', 'skipped', or 'none'. <framework-checks>, the
 # framework-only self-tests (scripts/verify-workflow.conf), is 'ran',
 # 'skipped' (outside the template, scripts/lib/template-repository.sh), or
@@ -143,7 +143,10 @@ verification_field() {
 # format of verification_duration_add, kept the same way. <repeated> names
 # the checks, separated by spaces, that a repeat ran after a failed run of
 # the same content (verify.sh --repeat); the record then says so in a line
-# 'repeated: <check>...'. The record says who started the run
+# 'repeated: <check>...'. <skipped-by-inputs> names the checks of
+# scripts/verify.conf that the run left out because none of their inputs
+# changed ('inputs:'), in a line 'skipped-by-inputs: <check>...'; a run
+# with --all does not reuse such a pass. The record says who started the run
 # (verification_origin). The record of a failed run is removed.
 verification_write() {
   mkdir -p "$(dirname "$1/$VERIFICATION_RECORD")" &&
@@ -154,6 +157,9 @@ verification_write() {
   fi
   if [[ -n "${7:-}" ]]; then
     printf 'repeated: %s\n' "$7" >>"$1/$VERIFICATION_RECORD" || return 1
+  fi
+  if [[ -n "${8:-}" ]]; then
+    printf 'skipped-by-inputs: %s\n' "$8" >>"$1/$VERIFICATION_RECORD" || return 1
   fi
   verification_failed_forget "$1"
   if [[ -n "${4:-}" && -s "$4" ]]; then

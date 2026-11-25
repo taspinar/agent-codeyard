@@ -151,6 +151,14 @@ expect_level "$repo" protected "a feature accepts the failure of a check"
 grep -Fq "protected: scripts/verify.conf (the failure of a check is accepted as an exception)" "$repo.out" ||
   fail "the accepted exception was not named: $(cat "$repo.out")"
 
+# The inputs of a check let the verification pass without running it on a
+# change outside them: adding them is protected too.
+repo="$(setup_repo inputs-added)"
+printf 'inputs: unit src\n' >>"$repo/scripts/verify.conf"
+expect_level "$repo" protected "a feature limits a check to its inputs"
+grep -Fq "protected: scripts/verify.conf (a check is limited to the changes of its inputs)" "$repo.out" ||
+  fail "the inputs were not named: $(cat "$repo.out")"
+
 repo="$(setup_repo baseline-added)"
 mkdir -p "$repo/.agents"
 printf 'pass: lint\npass: unit\n' >"$repo/.agents/verification-baseline"
