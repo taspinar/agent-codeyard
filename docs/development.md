@@ -1085,7 +1085,7 @@ framework-only self-tests run, as `verify.sh` runs them there.
 
 | Event | The template | A project |
 |---|---|---|
-| Pull request | `--all` | compared with the base of the pull request: no job of the self-tests without a workflow change; `--all` with one, as in a sync of the template, and when the base cannot be determined |
+| Pull request | as in a project: no job of the self-tests without a workflow change; `--all` with one, and when the base cannot be determined | compared with the base of the pull request: no job of the self-tests without a workflow change; `--all` with one, as in a sync of the template, and when the base cannot be determined |
 | Push to `main` | `--all` | as a pull request, compared with the commit before the push: no job of the self-tests without a workflow change, `--all` with one; `--all` when that commit cannot be determined |
 | Run by hand (`workflow_dispatch`) | `--all` | `--all` |
 
@@ -1095,10 +1095,15 @@ them, so a project's pull request and its push to `main` report in
 minutes. A sync of the template changes workflow files, so its pull request
 and its push run them. A self-test that fails for another reason, such as
 a new runner image, is the framework's to find, in the template's own CI,
-which runs everything on every event; a project that wants a full run
-starts `ci.yml` by hand ("Run workflow" on the Actions tab), which runs
-`--all`. The template runs them on every pull request and push, since nearly
-every change there is a workflow change.
+which runs everything on every push to `main`; a project that wants a full
+run starts `ci.yml` by hand ("Run workflow" on the Actions tab), which runs
+`--all`. The template's pull request follows the rule of a project: one
+that changes no file under `paths:`, such as a change of the documentation
+or the website alone, starts no job of the self-tests, and one that changes
+such a file runs them all. `paths:` names every file a self-test reads, so
+a pull request that can break a self-test runs it. The template's push to
+`main` keeps `--all` (an owner decision, to reconsider after the other
+reductions of the CI time).
 
 `scope` compares the commit checked out with the base of the pull request
 (`github.event.pull_request.base.sha`) or with the commit before the push
@@ -1110,7 +1115,8 @@ the repository does not have it, and when it is no ancestor of the pushed
 commit, as after a forced push: then everything runs, as `verify.sh` runs
 every self-test when it cannot tell. Its outputs are `verify` (`all` or
 `changed`) and `skip`, the group jobs that do not start: on a pull request
-or a push of a project without a workflow change, every group of
+without a workflow change, in the template or a project, or on a push of a
+project without one, every group of
 `scripts/verify-workflow.conf` that has no check of `scripts/verify.conf`;
 in a project, also a group whose self-tests are all framework-only. A
 skipped job starts no runner, clones nothing, and runs no setup action,
@@ -1192,8 +1198,9 @@ show the cron line `tests/status-test.sh` runs; that its `agents.conf` and
 `risk.conf` match what the tests ship. The template is the repository whose
 origin is the `repository:` of its `.agents/template.conf`; a project, and
 any doubt, such as an origin that is a local path, is not. CI runs every
-self-test of the template on every pull request and push, so a change of one
-of those files there runs its contract checks; in a project they never run.
+self-test of the template on every push to `main` and on every pull request
+that changes a file under `paths:`, which names those files, so a change of
+one of them there runs its contract checks; in a project they never run.
 Whether a project's own CI matches its groups is the project's question, and
 a check of its own: the line `ci-groups` of `scripts/verify.conf` runs
 `./scripts/check-ci-groups.sh --workflow .github/workflows/ci.yml` when its
@@ -3510,7 +3517,8 @@ implementation to the open pull request, without asking anything:
 ```
 
 ```text
-./scripts/run-feature.sh <issue> [slug] [base-branch] [--implemented] [--risk <level>]
+./scripts/run-feature.sh <issue> [slug] [base-branch] [--implemented] [--risk <level>] [--rounds <m>]
+./scripts/run-feature.sh <issue> --owner-finding [--risk <level>] [--rounds <m>]
 ```
 
 From the primary checkout it runs:
@@ -3641,6 +3649,63 @@ Know what you hand over before you use it:
   usage limits of your agents without a moment at which you can stop them.
 - The commit message is not edited: its summary is the title of the Issue
   and its list of changes is what the implementer wrote.
+
+#### An owner finding on an open pull request
+
+When you find something wrong in a feature whose pull request is open, post
+the finding as a comment on the Issue and run:
+
+```bash
+./scripts/run-feature.sh 12 --owner-finding
+```
+
+It takes the finding through the steps of a run, in this one process, so the
+pass of the fixed content is reused by the commit (see "Recorded
+verification"); the trust list stays in the process, and no agent gets it:
+
+1. It starts only on a finished feature, one with a commit of
+   `finish-feature.sh` on the branch; otherwise it stops before any session.
+2. It merges the base when it moved since the finish, as a run does for a
+   failed verification: a conflict, staged changes, or an untracked file
+   that the merge would write over stop it before anything is merged, with
+   the files named.
+3. It reviews the complete feature when one of your comments on the Issue
+   (the comments an agent is given, see "Comments on the Issue") was written
+   or edited after the latest review and the finish commit. The reviewer
+   gets the comment with the Issue. Without such a comment nothing is
+   reviewed again unless the content changed since the finish, and the run
+   says so.
+4. The rounds follow as in a run: triage, fixes, the run's own full
+   verification, and a review, every round of the complete feature, until a
+   review leaves nothing to fix. A feature with one fix round has two
+   reviews and two full verifications, one of the merged and one of the
+   fixed content; the commit reuses the second.
+5. `finish-feature.sh` commits the fixes as a new finish commit on top of the
+   published one, with its own approval request when the merge needs you,
+   and `publish-feature.sh` pushes it. The push is a fast-forward of the
+   published branch, and the approval request covers the commit that is
+   pushed: no `git reset` and no forced push. When the review leaves nothing
+   to fix, nothing is committed, and a merge of the base is published.
+
+The round limit counts the rounds of this chain, after the round the finish
+commit was made on (`Review: round <n>` in its message), and `--rounds <m>`
+raises it as for any run. It stops for you where a run stops: an agent that
+needs your decision, a finding that is refuted with evidence, used rounds, or
+a step that keeps failing; the stop names the command that continues,
+with `--owner-finding`. Running it again continues where it stopped: a
+review of the chain that a stop left before its triage or fixes is triaged
+and fixed, also when it is newer than your comment and nothing changed; once
+the chain's fixes are committed, it only publishes.
+
+The same steps by hand, for one of them on its own:
+`./scripts/update-feature.sh <issue>` (or `git merge origin/<base>`),
+`./scripts/review-feature.sh <issue>`, `./scripts/triage-review.sh
+<review-json> --unattended` and `--publish <triage-json>`,
+`./scripts/apply-triage.sh <triage-json>`, `./scripts/review-feature.sh
+<issue>`, `./scripts/finish-feature.sh <issue> "<summary>"`, and
+`./scripts/publish-feature.sh <issue>`. Each of them verifies on its own when
+it runs outside a run. Commit a fix only with `finish-feature.sh`: a commit
+of your own after the finish is not covered by its approval request.
 
 ### The overview of every feature
 

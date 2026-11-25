@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "ff62447c177ec06ebc530fa1c0428d5c41f75c7c",
+  "commit": {
+    "branch": "feature/493-one-command-takes-an",
+    "parent": "ac0039f9878686bcca217bfbb47451dff1b46013",
+    "base": "ac0039f9878686bcca217bfbb47451dff1b46013"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS WITH MINOR FINDINGS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The change adds an owner-finding mode to `scripts/run-feature.sh` that changes shared workflow orchestration, review and verification ordering, and commit/publication behavior. It has major architectural impact within the requested scope. "
+  ],
+  "explanation": "Issue #493: One command takes an owner finding on an open pull request through fix, verify, review and commit (step 5 of #469). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

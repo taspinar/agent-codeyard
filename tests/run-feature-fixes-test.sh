@@ -273,4 +273,163 @@ if grep -Fq "Review of changes only" "$repo.control/reviewer.args"; then
   fail "a round after a changed base reviewed only the changes"
 fi
 
+# owner_comment <repo> <text>: a comment of the owner on the Issue, written
+# now, which the fake GitHub returns from then on (MOCK_ISSUE_COMMENTS). The
+# second before it keeps it newer than the review and the commit of the run
+# before.
+owner_comment() {
+  sleep 1
+  jq -n --arg body "$2" '[{user: {login: "project-owner"}, author_association: "OWNER",
+    created_at: (now | floor | todate), updated_at: (now | floor | todate), body: $body}]' >"$1.comments.json"
+  export MOCK_ISSUE_COMMENTS="$1.comments.json"
+}
+
+# An owner finding on the open pull request of a finished feature: one
+# command merges the moved base, reviews the complete feature with the
+# comment, triages, fixes, verifies, reviews the complete feature again,
+# commits on top of the published commit, and publishes. The checks run once
+# for each content: the commit reuses the pass of the fixed content. The
+# approval request of the new commit covers what is pushed, which is a
+# fast-forward of the published branch. No agent gets the trusted list.
+scenario owner-finding
+repo="$(setup_repo owner-finding)"
+run_feature "$repo" 2 thing
+expect_published "$repo"
+expect_sessions "$repo" 1 1 0 0
+published="$(git -C "$repo" ls-remote origin refs/heads/feature/2-thing | cut -f1)"
+printf 'other work\n' >"$repo/other.txt"
+git -C "$repo" add other.txt
+git -C "$repo" commit -qm "Other work on main"
+git -C "$repo" push -q origin main
+owner_comment "$repo" "Finding: the feature file says nothing about the owner."
+trusted_probe='printf "%s\n" "${VERIFY_TRUSTED_TREES-unset}" >>"$RUN_CONTROL/trusted-in-agents"'
+printf '%s\n' "$trusted_probe; $major_and_minor" >"$repo.control/reviewer-2.sh"
+printf '%s\n' "$trusted_probe"'; reply="{\"architecture_impact\": {\"level\": \"major\", \"rationale\": \"Adds shared infrastructure.\", \"checked_against\": []}, \"verdict\": \"PASS\", \"limitations\": \"\", \"findings\": []}"' \
+  >"$repo.control/reviewer-3.sh"
+printf '%s\n' "$trusted_probe; eval \"\$default\"" >"$repo.control/fixes.sh"
+verifications_before="$(full_verifications "$repo")"
+run_feature "$repo" 2 --owner-finding
+expect_published "$repo"
+expect_sessions "$repo" 1 3 1 1
+grep -Fq "Finding: the feature file says nothing about the owner." "$repo.control/reviewer-2.context" ||
+  fail "the review of the owner's finding was not given the comment"
+if grep -Fq "Review of changes only" "$repo.control/reviewer.args"; then fail "a round of the owner's finding reviewed only the changes"; fi
+git -C "$repo-2-thing" merge-base --is-ancestor origin/main HEAD && [[ -f "$repo-2-thing/other.txt" ]] ||
+  fail "the moved base was not merged"
+grep -Fqx "fixed" <<<"$(tail -n 1 "$repo-2-thing/feature.txt")" || fail "the fix is not in the feature"
+[[ "$(($(full_verifications "$repo") - verifications_before))" -eq 2 ]] ||
+  fail "the chain made $(($(full_verifications "$repo") - verifications_before)) full verifications instead of two, one for the merged and one for the fixed content"
+last="$(cat "$repo"/.agents/run/records/*.jsonl | jq -c -s 'sort_by(.epoch) | map(select(.type == "verification" and .origin != "agent-session")) | last | {reused, trusted, origin}')"
+[[ "$last" == '{"reused":true,"trusted":true,"origin":"script"}' ]] ||
+  fail "the commit did not reuse the trusted pass of the fixed content: $last"
+grep -q "^Review: round 3, PASS" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" ||
+  fail "the fix was not committed on the review of the complete feature"
+head="$(git -C "$repo-2-thing" rev-parse HEAD)"
+[[ "$(git -C "$repo" ls-remote origin refs/heads/feature/2-thing | cut -f1)" == "$head" ]] ||
+  fail "the published branch is not the new commit"
+git -C "$repo-2-thing" merge-base --is-ancestor "$published" "$head" ||
+  fail "the new commit does not build on the published one, so its push needed force"
+if grep -Eq -- '--force|reset' "$repo.out"; then fail "the chain reset or forced: $(grep -E -- '--force|reset' "$repo.out")"; fi
+grep -Fq "MERGE APPROVAL REQUIRED" "$repo.out" || fail "the major impact of the last review did not need the owner's approval"
+request="$(git -C "$repo-2-thing" show HEAD:.agents/approval-requests/2.json)"
+tree="$(sed -n 's/^Content tree of that commit: \([0-9a-f]*\) .*/\1/p' "$repo.out" | tail -n 1)"
+[[ -n "$tree" && "$(jq -r '.content_tree' <<<"$request")" == "$tree" && "$(jq -r '.review.round' <<<"$request")" == 3 ]] ||
+  fail "the approval request of the published commit does not cover it: $request (content tree $tree)"
+grep -Fqx "The merge approval above was decided for commit \`$head\`." "$repo.control/pr-body" ||
+  fail "the pull request does not bind the approval to the published commit"
+[[ -s "$repo.control/trusted-in-agents" ]] && ! grep -vqx unset "$repo.control/trusted-in-agents" ||
+  fail "an agent received the trusted list: $(cat "$repo.control/trusted-in-agents" 2>/dev/null)"
+# Running the command again continues where the feature stands: the comment
+# is older than the latest review, so nothing is reviewed again.
+run_feature "$repo" 2 --owner-finding
+expect_published "$repo"
+expect_sessions "$repo" 1 3 1 1
+grep -Fq "no comment of the owner on Issue #2 is newer than the latest review" <<<"$(log_of "$repo")" ||
+  fail "the run again did not say that no comment is new"
+[[ "$(git -C "$repo-2-thing" rev-parse HEAD)" == "$head" ]] || fail "the run again committed"
+unset MOCK_ISSUE_COMMENTS
+
+# The chain stops for the owner where a run stops: an agent that needs a
+# decision (3), and the command that continues names the mode.
+scenario owner-finding-blocked
+repo="$(setup_repo owner-finding-blocked)"
+run_feature "$repo" 2 thing
+expect_published "$repo"
+owner_comment "$repo" "Finding: wrong content."
+: >"$repo.control/gh.log"
+printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-2.sh"
+printf '%s\n' "question='which content?'; $ask; reply=\"BLOCKED: which content\"" >"$repo.control/fixes-1.sh"
+run_feature "$repo" 2 --owner-finding
+expect_stopped "$repo" 3 "needs a decision of yours"
+grep -Fq "Then run again: ./scripts/run-feature.sh 2 --owner-finding" "$repo.out" ||
+  fail "the stop does not name the command of the mode"
+unset MOCK_ISSUE_COMMENTS
+
+# A chain that stopped after its review and before the triage continues on
+# that review when run again: the comment is older than the review then and
+# the content is unchanged, yet the finding is triaged, fixed, and reviewed
+# again before anything is published.
+scenario owner-finding-resumed
+repo="$(setup_repo owner-finding-resumed)"
+run_feature "$repo" 2 thing
+expect_published "$repo"
+published="$(git -C "$repo" ls-remote origin refs/heads/feature/2-thing | cut -f1)"
+owner_comment "$repo" "Finding: wrong content."
+: >"$repo.control/gh.log"
+printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-2.sh"
+printf '%s\n' 'exit 9' >"$repo.control/triage.sh"
+run_feature "$repo" 2 --owner-finding
+expect_stopped "$repo" 1 "the triage of round 2 failed"
+triage_sessions="$(sessions "$repo" triage)"
+expect_sessions "$repo" 1 2 "$triage_sessions" 0
+rm -f "$repo.control/triage.sh"
+run_feature "$repo" 2 --owner-finding
+expect_published "$repo"
+expect_sessions "$repo" 1 3 "$((triage_sessions + 1))" 1
+grep -Fqx "fixed" <<<"$(tail -n 1 "$repo-2-thing/feature.txt")" || fail "the resumed chain did not fix the finding"
+grep -q "^Review: round 3, PASS" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" ||
+  fail "the resumed chain did not commit the fix on a review of the complete feature"
+[[ "$(git -C "$repo" ls-remote origin refs/heads/feature/2-thing | cut -f1)" != "$published" ]] ||
+  fail "the resumed chain published the commit without the fix"
+unset MOCK_ISSUE_COMMENTS
+
+# A step that keeps failing stops the chain (1), and a feature that is not
+# finished is not taken: no session starts for it.
+scenario owner-finding-failed
+repo="$(setup_repo owner-finding-failed)"
+run_feature "$repo" 2 thing
+expect_published "$repo"
+owner_comment "$repo" "Finding: wrong content."
+: >"$repo.control/gh.log"
+printf '%s\n' 'exit 9' >"$repo.control/reviewer.sh"
+run_feature "$repo" 2 --owner-finding
+expect_stopped "$repo" 1 "the review did not complete"
+expect_sessions "$repo" 1 5 0 0
+repo="$(setup_repo owner-finding-unfinished)"
+printf '%s\n' "question='which file?'; $ask; reply=\"BLOCKED: which file\"" >"$repo.control/implementer.sh"
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 3 "needs a decision of yours"
+run_feature "$repo" 2 --owner-finding
+expect_stopped "$repo" 1 "no commit of the branch was made by finish-feature.sh"
+expect_sessions "$repo" 1 0 0 0
+unset MOCK_ISSUE_COMMENTS
+
+# The round limit of the chain counts its own rounds, after the round the
+# finish commit was made on: five rounds that each still find something to
+# fix stop it, at round 6 of the branch.
+scenario owner-finding-rounds
+repo="$(setup_repo owner-finding-rounds)"
+run_feature "$repo" 2 thing
+expect_published "$repo"
+owner_comment "$repo" "Finding: still wrong."
+: >"$repo.control/gh.log"
+printf '%s\n' "$only_major" >"$repo.control/reviewer.sh"
+printf '%s\n' 'reply="{\"decisions\": [{\"finding_id\": \"M1\", \"decision\": \"FIX_NOW\", \"rationale\": \"It is wrong.\", \"followup\": null}]}"' >"$repo.control/triage.sh"
+run_feature "$repo" 2 --owner-finding
+expect_stopped "$repo" 1 "5 review rounds are used and round 6 still has findings that must be fixed"
+expect_sessions "$repo" 1 6 5 4
+grep -Fq "./scripts/run-feature.sh 2 --owner-finding --rounds 7" "$repo.out" ||
+  fail "the stop for used rounds does not offer a higher limit for the mode: $(cat "$repo.out")"
+unset MOCK_ISSUE_COMMENTS
+
 scenarios_done "${BASH_SOURCE[0]}"

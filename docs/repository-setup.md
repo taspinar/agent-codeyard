@@ -150,8 +150,9 @@ commit message and the pull request. In a team, turn it on.
 ## 4. Required status checks
 
 The template's CI runs `./scripts/verify.sh` in parallel jobs, one per group
-of checks (in the template with `--all` on every pull request and push; in
-a project the self-tests run only when a workflow file changed, and by hand
+of checks (in the template with `--all` on every push to `main`; on a pull
+request, and in a project also on a push, the self-tests run only when a
+workflow file changed, and by hand
 with `workflow_dispatch`; see "Workflow self-tests" and "A parallel CI" in
 [`docs/development.md`](development.md)). The required check is the
 aggregate job `verify`, which passes only when every group job succeeded or

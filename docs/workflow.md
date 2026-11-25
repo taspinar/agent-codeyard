@@ -209,6 +209,12 @@ flowchart TD
   used (`--rounds <m>` raises the limit, at a terminal only). It stops, and
   says how to continue, when a step fails or an agent needs your decision. `docs/development.md` describes what you hand over
   with it.
+- `run-feature.sh <issue> --owner-finding` takes a finding you posted on the
+  Issue of a finished feature, whose pull request is open, through the same
+  steps in one process: the merge of a moved base, a review of the complete
+  feature with your comment, the triage, the fixes, the verification, a
+  review of the complete feature, a new finish commit on top of the
+  published one, and its publication, without a reset or a forced push.
 
 ## Artifacts
 
@@ -357,7 +363,7 @@ exits with status 3.
 |---|---|
 | `doctor.sh` | Once after creating a repository from the template, and whenever a tool may be missing |
 | `check-docs.sh` | To check that the Markdown files name files that exist; add it to `scripts/verify.conf` to run it with every verification |
-| `verify.sh` | Any time; runs the checks in `scripts/verify.conf`, and is run by `review-feature.sh`, `apply-triage.sh`, `finish-feature.sh`, and CI. A pass is recorded for the content it verified, and `verify.sh --reuse` skips a second run on identical content. The workflow self-tests run only when a workflow file changed; `verify.sh --all` always runs them; CI uses it on every pull request and push of the template, in a project on a pull request or a push to `main` that changes a workflow file or whose base cannot be determined, and in a run started by hand. A check declared as a budget (`<name> [<group>] budget: <command>`) is a measurement: over its target it is `BUDGET`, with its output, and the verification still passes; the result is given to the reviewer, listed in the commit and the pull request, and never repaired automatically (docs/development.md, "Budgets"). Every check is timed and the durations are recorded; a line `budget-seconds: <n>` sets a target for the duration of the checks of a file, which is a budget in the same way. The template ships no budget check, and `budget-seconds: 600` for its workflow self-tests. A line `parallel: <n>` in `scripts/verify.conf` runs up to `<n>` checks at a time with the same result; the template ships `parallel: 4`, which a sync does not take over into a project (docs/development.md, "Checks at the same time") |
+| `verify.sh` | Any time; runs the checks in `scripts/verify.conf`, and is run by `review-feature.sh`, `apply-triage.sh`, `finish-feature.sh`, and CI. A pass is recorded for the content it verified, and `verify.sh --reuse` skips a second run on identical content. The workflow self-tests run only when a workflow file changed; `verify.sh --all` always runs them; CI uses it on every push to `main` of the template, on a pull request (in the template or a project) or a project's push to `main` that changes a workflow file or whose base cannot be determined, and in a run started by hand. A check declared as a budget (`<name> [<group>] budget: <command>`) is a measurement: over its target it is `BUDGET`, with its output, and the verification still passes; the result is given to the reviewer, listed in the commit and the pull request, and never repaired automatically (docs/development.md, "Budgets"). Every check is timed and the durations are recorded; a line `budget-seconds: <n>` sets a target for the duration of the checks of a file, which is a budget in the same way. The template ships no budget check, and `budget-seconds: 600` for its workflow self-tests. A line `parallel: <n>` in `scripts/verify.conf` runs up to `<n>` checks at a time with the same result; the template ships `parallel: 4`, which a sync does not take over into a project (docs/development.md, "Checks at the same time") |
 | `check-review.sh <review-json>` | To see whether a review still matches the content it covers |
 | `check-risk.sh [<base>]` | To see the risk level of the feature in the worktree, every reason for it, and what the level requires of the review rounds; exits 0, 1, or 2 for `low`, `medium`, or `high`, for a CI step |
 | `finish-planning.sh --check` | To see whether the planning approval still matches the planning documents |
