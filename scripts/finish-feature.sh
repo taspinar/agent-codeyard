@@ -408,24 +408,10 @@ if [[ "$verification_status" -eq 78 ]]; then
 fi
 [[ "$verification_status" -eq 0 ]] || fail "verification failed; nothing was committed."
 echo
-# The budget results of that verification (lib/verification.sh): a budget
-# over its target passed the verification as a measurement, and the commit
-# and the pull request list it, so that the owner decides with it in view. A
-# commit message carries the last lines of a long output and says where the
-# whole output is: next to the recorded pass, in the handoff note that
-# run-feature.sh writes, and in the run record.
-budget_lines=20
-budget_full="$VERIFICATION_BUDGETS of the working tree, the handoff note of the Issue, and the run record of run-feature.sh"
+# The commit message and the pull request say that the verification passed.
+# A budget result of that verification is not repeated there (Issue 503): it
+# is in the summary of ./scripts/verify.sh and in the run record.
 verification_lines="- ./scripts/verify.sh passed"
-budget_results="$(verification_budgets "$root")"
-if [[ -n "$budget_results" ]]; then
-  verification_lines+=$'\n'"$(printf '%s\n' "$budget_results" | verification_budget_report "$budget_lines" "$budget_full" | sed 's/^budget /- budget /')"
-  if verification_budgets_exceeded "$budget_results"; then
-    echo "A budget check exceeded its target; the commit message lists the measurement:"
-    printf '%s\n' "$budget_results" | verification_budget_report "$budget_lines" "$budget_full" | sed 's/^/  /'
-    echo
-  fi
-fi
 
 # The review was checked against the content before the verification; it
 # is current for the content that was verified, unless a check changed it.

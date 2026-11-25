@@ -71,8 +71,10 @@ records_arguments=("$@")
 # over it. Such a result is a measurement, not a failure: the summary shows it
 # as BUDGET with the output of the check, and the verification passes when
 # every other check passed. The budget results are recorded with the pass
-# (lib/verification.sh) and in the run record, so that the scripts show them
-# where a decision is made; nothing repairs them. A budget check that does not
+# (lib/verification.sh) and in the run record: the summary and the run record
+# are where a project owner finds them, and the handoff note, the reviewer's
+# context, the commit message, and the pull request do not repeat them
+# (Issue 503); nothing repairs them. A budget check that does not
 # finish (a signal, or the status 124 of 'timeout') or could not run (125 to
 # 127, the statuses of 'timeout' and the shell for a command that was not
 # invoked) is a FAIL like any check.

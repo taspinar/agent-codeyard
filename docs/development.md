@@ -523,16 +523,12 @@ A budget is a measurement, never a failure and never a repair order:
   that may hang in `timeout`.
 - The results are recorded with the pass, in `.agents/verification/budgets`
   next to the record (see "Recorded verification"), and in the run record
-  (the `verification` event, `budgets`), so the scripts that reuse the pass
-  show the measurement where a decision is made: `review-feature.sh` gives it
-  to the reviewer ("Budget results of the verification") with the whole
-  output of each check, `finish-feature.sh` lists it under `Verification:`
-  in the commit message, which `publish-feature.sh` copies into the pull
-  request, with the last 20 lines of the output and, when lines were left
-  out, where the whole output is (the budget record, the handoff note, the
-  run record), and `run-feature.sh` writes an exceeded budget with its whole
-  output to the handoff note and its first line to the log of the feature
-  (see "Running a feature with one command").
+  (the `verification` event of `.agents/run/records/`, `budgets`), and a run
+  that reuses the pass shows them in its summary again. That summary and the
+  run record are where a project owner finds a budget result: the handoff
+  note, the reviewer's context, the commit message, and the pull request do
+  not repeat it. In a run of `run-feature.sh`, the summary is in the output
+  of the step that verified, which the run prints.
 - Nothing repairs it. `run-feature.sh` starts no repair session for a budget
   result; the result changes neither the scope of the feature nor the
   architecture, needs no ADR, and opens no Issue by itself. The reviewer may
@@ -576,9 +572,8 @@ a failure and never a repair order.
   wall-clock time of the file's checks next to it,
   `(<total>s, <wall>s wall-clock, target <n>s)`.
 - The result is recorded as a budget result named `duration of <file>`: with
-  the pass in `.agents/verification/budgets`, in the run record, in the
-  handoff note, the reviewer's context, the commit message, and the pull
-  request, as above. `run-feature.sh` starts no repair for it, and the
+  the pass in `.agents/verification/budgets` and in the run record, as
+  above. `run-feature.sh` starts no repair for it, and the
   completion gate refuses a record that cites `budget-seconds` as the
   evidence of a met criterion.
 - Within the target nothing is shown and no budget result is kept; the
@@ -591,10 +586,11 @@ a failure and never a repair order.
   group, and is declared at most once per file. Like any line of these files,
   changing or removing it is protected by the merge approval gate.
 
-The template ships `budget-seconds: 600` in `scripts/verify-workflow.conf`,
-a target for its own workflow self-tests, which took 915 s when the line was
-added, and no target in `scripts/verify.conf`. A project changes or removes
-the line like any line of these files.
+The template sets no target in either file: the 600 s it once set for its
+own workflow self-tests was exceeded in every run and no step acted on it
+(Issue 503). The durations of the checks are recorded either way. A project
+adds the line to `scripts/verify.conf`, or to `scripts/verify-workflow.conf`,
+like any line of these files.
 
 ### Recorded verification
 
@@ -3573,7 +3569,7 @@ only together with what it recorded:
 | Missing prerequisite | A step ends with status 78, or failed with an `ENVIRONMENT` line of the preflight of `verify.sh` in its output (see "Missing prerequisites") | Stops with status 78: no retry, no repeat of the verification, no repair session, and never an unstable check. Notes `environment` with what is missing |
 | Base moved | A check failed in both runs, and the base moved since the feature started and merges cleanly | Merges the base into the branch, notes `base merged`, and does the step again on the merged content, without a session of the implementer; see "Bringing a finished feature up to date with its base" |
 | Failed verification | A check failed in both runs, and the base did not move | Resumes the implementer with those checks in the handoff note, at most three times (`AGENTS.md`); a review follows. A repair session is retried like any other |
-| Budget exceeded | The verification passed, and a budget check (`<name> [<group>] budget: <command>`, see "Budgets") exceeded its target | Goes on: no repair session, whatever the measurement. Writes the measurement to the handoff note, with the note that it is not a repair order, and to the log and the run record, once per result and only where a note cannot make a review stale. The heading of the note names the result (`budget result <digest>`, of the budgets that exceeded their targets): a run that starts again, as after an owner exception, finds it and writes no second note, which would make the review and the exception stale (before a review round, after the verification of an unreviewed `low` feature, after the commit). The reviewer's context, the commit message, and the pull request get it from the verification record |
+| Budget exceeded | The verification passed, and a budget check (`<name> [<group>] budget: <command>`, see "Budgets") exceeded its target | Goes on: no repair session, whatever the measurement. The measurement is in the summary of the verification, in the output of the run, and in its `verification` event of the run record; the handoff note, the reviewer's context, the commit message, and the pull request do not repeat it (see "Budgets") |
 | Blocked | An agent ends with `BLOCKED:` and the handoff note holds a question under "Open questions", or the completion record says `blocked` | Stops with status 3. Without such a question there is nothing to answer: the line is ignored and the run goes on |
 | Not complete | The implementer ended normally, but the completion gate does not pass: no record, an invalid one, `partial`, remaining work in the handoff note, or no summary of the changes | Resumes the implementer with the reasons in the handoff note, at most four sessions in a run. Nothing is reviewed or committed before the gate passes |
 

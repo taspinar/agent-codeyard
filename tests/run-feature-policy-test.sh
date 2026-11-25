@@ -356,12 +356,10 @@ run_feature "$repo" 2 other
 expect_sessions "$repo" 0 0 0 0
 
 # A budget check ('<name> [<group>] budget: <command>' in verify.conf) over
-# its target is a measurement, never a repair order: the verification passes,
-# no repair session starts, and the result goes to the handoff note, the log
-# and the run record, the reviewer's context, the commit message, and the
-# pull request. The implementer does not verify itself, as the unattended
-# contract asks: the budget is measured by the run's own verification after
-# the session, and goes to the handoff note before the review.
+# its target is a measurement, never a repair order: the verification passes
+# and no repair session starts. The result is in the summary of verify.sh and
+# in the run record, and not in the handoff note, the reviewer's context, the
+# commit message, or the pull request (Issue 503).
 budget_conf=$'sound: test ! -e broken.txt\nperf budget: echo "1.4 s, target 1.0 s"; false'
 scenario budget
 repo="$(VERIFY_CONF="$budget_conf" setup_repo budget)"
@@ -370,59 +368,20 @@ expect_published "$repo"
 expect_sessions "$repo" 1 1 0 0
 if grep -Fq "Repair attempt" <<<"$(log_of "$repo")"; then fail "a repair was started for a budget over its target"; fi
 if grep -Fq "## Verification failed" "$repo-2-thing/.agents/handoffs/2.md"; then fail "a budget was recorded as a failed verification"; fi
-grep -Fq "| review, round 1 | budget | budget perf exceeded: 1.4 s, target 1.0 s |" <<<"$(log_of "$repo")" ||
-  fail "the budget is not in the log of the feature: $(log_of "$repo")"
-grep -Fq "## Budget exceeded" "$repo-2-thing/.agents/handoffs/2.md" || fail "the budget was not recorded in the handoff note"
-grep -Fqx -- "- budget perf exceeded: 1.4 s, target 1.0 s" "$repo-2-thing/.agents/handoffs/2.md" ||
-  fail "the handoff note lacks the measurement: $(cat "$repo-2-thing/.agents/handoffs/2.md")"
-grep -Fq "not a repair order" "$repo-2-thing/.agents/handoffs/2.md" || fail "the handoff note does not say that a budget is not a repair order"
-grep -Fq "## Budget results of the verification" "$repo.control/reviewer-1.context" || fail "the reviewer was not told the budget results"
-grep -Fqx -- "- budget perf exceeded: 1.4 s, target 1.0 s" "$repo.control/reviewer-1.context" || fail "the reviewer's context lacks the measurement"
-grep -Fqx -- "- budget perf exceeded: 1.4 s, target 1.0 s" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" ||
-  fail "the commit message lacks the budget: $(git -C "$repo-2-thing" log -1 --format=%B)"
-grep -Fqx -- "- ./scripts/verify.sh passed" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" || fail "the commit message lacks the passed verification"
-grep -Fqx -- "- budget perf exceeded: 1.4 s, target 1.0 s" "$repo.control/pr-body" || fail "the pull request description lacks the budget"
-grep -Fqx "Closes #2" "$repo.control/pr-body" || fail "a budget over its target kept the pull request from closing the Issue"
+grep -Eq '^BUDGET +perf' "$repo.out" &&
+  grep -Fq "1.4 s, target 1.0 s" "$repo.out" ||
+  fail "the summary of verify.sh lacks the budget: $(cat "$repo.out")"
 cat "$repo"/.agents/run/records/*.jsonl | jq -e -s 'any(.type == "verification" and .status == 0
   and (.budgets | any(.name == "perf" and .status == "exceeded" and .output == "1.4 s, target 1.0 s")))' >/dev/null ||
   fail "the budget is not in the verification events of the run record"
-cat "$repo"/.agents/run/records/*.jsonl | jq -e -s 'any(.type == "note" and .outcome == "budget" and (.reason | startswith("budget perf exceeded")))' >/dev/null ||
-  fail "the budget is not noted in the run record"
-[[ "$(grep -c "## Budget exceeded" "$repo-2-thing/.agents/handoffs/2.md")" -eq 1 ]] || fail "the budget was recorded more than once"
-
-# When the implementer verifies its own result as well, the budget is
-# recorded before the review, which then covers the handoff note and stays
-# current; the same measurement is not recorded again.
-scenario budget-measured
-repo="$(VERIFY_CONF="$budget_conf" setup_repo budget-measured)"
-printf '%s\n' 'eval "$default"; ./scripts/verify.sh >/dev/null 2>&1 || reply="The verification failed."' >"$repo.control/implementer.sh"
-run_feature "$repo" 2 thing
-expect_published "$repo"
-expect_sessions "$repo" 1 1 0 0
-grep -Fq "| review, round 1 | budget | budget perf exceeded: 1.4 s, target 1.0 s |" <<<"$(log_of "$repo")" ||
-  fail "the budget measured by the implementer is not in the log before the review: $(log_of "$repo")"
-[[ "$(grep -c "## Budget exceeded" "$repo-2-thing/.agents/handoffs/2.md")" -eq 1 ]] ||
-  fail "the budget was recorded $(grep -c "## Budget exceeded" "$repo-2-thing/.agents/handoffs/2.md") times instead of once"
-grep -Fqx -- "- budget perf exceeded: 1.4 s, target 1.0 s" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" ||
-  fail "the commit message lacks the budget measured by the implementer"
-
-# A run that starts again finds the note of the same budget result in the
-# handoff note and does not write it again: the note is part of what a review
-# covers, so a second note would make the review, and an owner exception
-# bound to it, stale. The first run stops on a failed review, the second
-# verifies again, measures the same budget over its target, and goes on.
-scenario budget-restart
-repo="$(VERIFY_CONF="$budget_conf" setup_repo budget-restart)"
-printf '%s\n' 'exit 1' >"$repo.control/reviewer-1.sh"
-RUN_FEATURE_RETRIES=0 run_feature "$repo" 2 thing
-expect_stopped "$repo" 1 "the review did not complete"
-[[ "$(grep -c "## Budget exceeded" "$repo-2-thing/.agents/handoffs/2.md")" -eq 1 ]] || fail "the first run did not record the budget"
-run_feature "$repo" 2
-expect_published "$repo"
-[[ "$(grep -c "## Budget exceeded" "$repo-2-thing/.agents/handoffs/2.md")" -eq 1 ]] ||
-  fail "the restart recorded the same budget result again: $(cat "$repo-2-thing/.agents/handoffs/2.md")"
-grep -Fqx -- "- budget perf exceeded: 1.4 s, target 1.0 s" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" ||
-  fail "the commit message of the restarted run lacks the budget"
+if grep -Fqsi "budget" "$repo-2-thing/.agents/handoffs/2.md"; then fail "the handoff note repeats the budget: $(cat "$repo-2-thing/.agents/handoffs/2.md")"; fi
+if grep -Fqi "budget" "$repo.control/reviewer-1.context"; then fail "the reviewer's context repeats the budget"; fi
+if grep -Fqi "budget" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)"; then
+  fail "the commit message repeats the budget: $(git -C "$repo-2-thing" log -1 --format=%B)"
+fi
+grep -Fqx -- "- ./scripts/verify.sh passed" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" || fail "the commit message lacks the passed verification"
+if grep -Fqi "budget" "$repo.control/pr-body"; then fail "the pull request description repeats the budget: $(cat "$repo.control/pr-body")"; fi
+grep -Fqx "Closes #2" "$repo.control/pr-body" || fail "a budget over its target kept the pull request from closing the Issue"
 
 # A completion record that cites the budget check as evidence of a met
 # criterion does not pass the gate: the implementer is resumed with the
@@ -441,8 +400,9 @@ grep -Fq "cites the budget check 'perf' as evidence of a met criterion" <<<"$(lo
 # A target for the duration of the checks ('budget-seconds: <n>' in
 # verify.conf) that a run exceeds is a budget result like that of a budget
 # check: the verification passes, no repair session starts, and the
-# measurement with the slowest checks reaches the handoff note, the log, the
-# reviewer, the commit message, the pull request, and the run record.
+# measurement with the slowest checks is in the summary of verify.sh and the
+# run record, and not in the handoff note, the reviewer's context, the commit
+# message, or the pull request.
 scenario duration-budget
 repo="$(VERIFY_CONF=$'budget-seconds: 1\nsound: test ! -e broken.txt\nslow: sleep 1.2' setup_repo duration-budget)"
 run_feature "$repo" 2 thing
@@ -450,18 +410,15 @@ expect_published "$repo"
 expect_sessions "$repo" 1 1 0 0
 if grep -Fq "Repair attempt" <<<"$(log_of "$repo")"; then fail "a repair was started for a duration over its target"; fi
 if grep -Fq "## Verification failed" "$repo-2-thing/.agents/handoffs/2.md"; then fail "a duration over its target was recorded as a failed verification"; fi
-grep -Fq "| review, round 1 | budget | budget duration of scripts/verify.conf exceeded |" <<<"$(log_of "$repo")" ||
-  fail "the duration over its target is not in the log of the feature: $(log_of "$repo")"
-grep -Fqx -- "- budget duration of scripts/verify.conf exceeded:" "$repo-2-thing/.agents/handoffs/2.md" &&
-  grep -Eq '^  slow [0-9.]+s$' "$repo-2-thing/.agents/handoffs/2.md" ||
-  fail "the handoff note lacks the duration and the slowest checks: $(cat "$repo-2-thing/.agents/handoffs/2.md")"
-grep -Fqx -- "- budget duration of scripts/verify.conf exceeded:" "$repo.control/reviewer-1.context" || fail "the reviewer's context lacks the duration"
-grep -Fqx -- "- budget duration of scripts/verify.conf exceeded:" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" ||
-  fail "the commit message lacks the duration: $(git -C "$repo-2-thing" log -1 --format=%B)"
-grep -Fqx -- "- budget duration of scripts/verify.conf exceeded:" "$repo.control/pr-body" || fail "the pull request description lacks the duration"
+grep -Eq '^BUDGET +duration of scripts/verify.conf' "$repo.out" ||
+  fail "the summary of verify.sh lacks the duration: $(cat "$repo.out")"
 cat "$repo"/.agents/run/records/*.jsonl | jq -e -s 'any(.type == "verification" and .status == 0
   and (.budgets | any(.name == "duration of scripts/verify.conf" and .status == "exceeded"))
   and (.checks | any(.name == "slow" and .seconds >= 1.2)))' >/dev/null ||
   fail "the duration is not in the verification events of the run record"
+if grep -Fqsi "budget" "$repo-2-thing/.agents/handoffs/2.md"; then fail "the handoff note repeats the duration"; fi
+if grep -Fqi "budget" "$repo.control/reviewer-1.context"; then fail "the reviewer's context repeats the duration"; fi
+if grep -Fqi "budget" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)"; then fail "the commit message repeats the duration"; fi
+if grep -Fqi "budget" "$repo.control/pr-body"; then fail "the pull request description repeats the duration"; fi
 
 scenarios_done "${BASH_SOURCE[0]}"
