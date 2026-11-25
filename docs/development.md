@@ -268,8 +268,9 @@ have nothing to run (see "Workflow self-tests"):
   not by their count, so that none takes much longer than another. Since
   `adopted-project` runs only the self-tests that read what its fixture
   varies (Issue 478), it takes one to two minutes locally instead of about
-  eleven; the check of its list takes four to seven minutes locally and is
-  now the longest self-test, so the group takes five to nine minutes there.
+  eleven; the check of its list takes about twenty seconds since Issue 486
+  (its cases share two runs of the check), so the group takes one and a half
+  to two and a half minutes there.
   Its duration on CI is not measured yet, and with it whether the group is
   still the longest. A new self-test goes into the group with the least time.
 - `mapping`: `./scripts/check-ci-groups.sh --workflow
