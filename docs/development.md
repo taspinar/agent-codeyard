@@ -48,18 +48,11 @@ agent CLI fails when `.agents/agents.conf` assigns it to a role and is a
 warning otherwise. It fails when Git has no commit identity (`user.name` and
 `user.email`, at any configuration level), with the two `git config` commands
 that set one: without it `finish-feature.sh` fails at the commit, after the
-implementation, the review, and the triage are done. When a role with write
-access (`project-grill`, `project-planner`, `implementer`,
-`triage-implementer`, also by a level line) uses Codex, it runs one short
-real `codex exec` session in a scratch repository under your temporary
-directory, with agent.sh's unattended profile, and reports as `FAILED`, with
-its path, a runtime directory under `.agents/` that the session cannot write
-(see "Codex and `.agents/`" under "Configuring agents"); the check never
-prompts, a session that does not end is stopped after `DOCTOR_CODEX_TIMEOUT`
-seconds (180 by default), and it is skipped with a warning when Codex is not
-installed, not logged in, or the script itself runs inside a Codex session.
-It also warns when a pull request into `main` can be merged while its checks
-fail, because no ruleset or branch protection requires a status check; see
+implementation, the review, and the triage are done. It starts no agent
+session: whether a Codex role with write access can write the runtime
+directories under `.agents/` shows at its first real session (see "Codex and
+`.agents/`" under "Configuring agents"). It also warns when a pull request
+into `main` can be merged while its checks fail, because no ruleset or branch protection requires a status check; see
 `docs/repository-setup.md`. In a project, it warns once while approval
 requests or plans of the template's own Issues remain, with their count and
 the command that removes them, `./scripts/start-planning.sh` (see "Project
@@ -1603,9 +1596,9 @@ below). `tests/agent-levels-test.sh` checks the lines of the shipped file,
 which it holds itself: what each level resolves to, and that `doctor.sh`
 accepts them without a same-provider warning. Only in the template does it
 check that `.agents/agents.conf` still holds exactly those lines; a project's
-agents are its own. With no writing role on Codex, `doctor.sh` and
-`tests/agent-sandbox-test.sh` have no Codex sandbox to check and skip that
-check; they run it again as soon as a line gives Codex write access.
+agents are its own. With no writing role on Codex,
+`tests/agent-sandbox-test.sh` has no Codex sandbox to check and skips that
+check; it runs it again as soon as a line gives Codex write access.
 
 `AGENT_CONFIG_FILE` selects another configuration file for a run, for the
 workflow scripts and `doctor.sh`; `ATTRIBUTION_CONFIG_FILE` does the same for
@@ -1684,8 +1677,15 @@ runs inside the sandbox therefore cannot record its pass
 primary checkout): both are warnings of the scripts, the verification itself
 passes or fails as always, and the step that follows the session verifies
 the result again. `tests/agent-sandbox-test.sh` checks the grant with the
-real Codex CLI, when it is installed and logged in, and `doctor.sh` checks
-the Codex of your host the same way (see "Prerequisites").
+real Codex CLI, when it is installed and logged in. `doctor.sh` does not
+start a session to check it: a Codex of your host that does not honour the
+grant shows at the first session with write access, which leaves no
+completion record. `start-feature.sh` then reports the Issue as not complete
+(`missing`) and, for a Codex session, names the likely cause: the runtime
+directories, the writable roots of the sandbox, and the remedy (update
+Codex, or give the role to Claude in `.agents/agents.conf`). Within
+`run-feature.sh` that report is in the output of every implementer session,
+and the run stops when its sessions are used.
 
 **The artifact manifest.** Every agent session, of every profile and
 provider, runs inside a manifest of the artifacts that an agent may only

@@ -245,6 +245,18 @@ $AGENT_UNATTENDED_PROMPT" "$final_message" || agent_status=$?
     echo "The Issue is not complete ($(printf '%s\n' "$session_gate" | sed -n 1p)):"
     printf '%s\n' "$session_gate" | sed '1d; s/^/  - /'
     echo
+    # Codex mounts .agents/ read-only in its sandbox; agent.sh opens the
+    # runtime directories as writable roots (AGENT_CODEX_WRITABLE_DIRS). A
+    # Codex that does not honour the grant cannot write the record: the gate
+    # then says 'missing', and this names the likely cause.
+    if [[ "$agent" == "codex" && "$(printf '%s\n' "$session_gate" | sed -n 1p)" == "missing" ]]; then
+      echo "Codex left no completion record. Its sandbox keeps .agents/ read-only and refuses a write there"
+      echo "unless scripts/lib/agent.sh's grant works: the runtime directories ${AGENT_CODEX_WRITABLE_DIRS// /, }"
+      echo "are opened as writable roots of the workspace-write sandbox (sandbox_workspace_write.writable_roots)."
+      echo "When the session's output shows such a write refused, this codex does not honour the grant:"
+      echo "update Codex, or give the role to Claude in .agents/agents.conf."
+      echo
+    fi
     echo "Continue the work with: $0 $issue --resume"
     echo "finish-feature.sh commits only a feature whose completion gate passes."
   fi
