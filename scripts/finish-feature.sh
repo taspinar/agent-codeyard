@@ -214,55 +214,29 @@ if [[ "$attribution" == "disabled" ]]; then
   fi
 fi
 
-# 1. Verification passes. A pass that was already recorded for exactly this
-# content, by apply-triage.sh or review-feature.sh, is not repeated, where
-# the trust contract trusts it (lib/verification.sh): with the trusted
-# passes of a run, only one of them; with --unattended and without them,
-# none.
-echo "Checking repository verification..."
-verification_status=0
-verification_run "$root" script "$unattended" || verification_status=$?
-if [[ "$verification_status" -eq 78 ]]; then
-  # A prerequisite of this machine is missing (the ENVIRONMENT lines of
-  # verify.sh): passed on unchanged, so that a caller does not repair the
-  # code for it.
-  echo "Error: the verification could not run: a prerequisite of this machine is missing (the ENVIRONMENT lines above); nothing was committed." >&2
-  records_stop "${0##*/}" "the verification could not run: a prerequisite of this machine is missing; nothing was committed."
-  exit 78
-fi
-[[ "$verification_status" -eq 0 ]] || fail "verification failed; nothing was committed."
-echo
-# The budget results of that verification (lib/verification.sh): a budget
-# over its target passed the verification as a measurement, and the commit
-# and the pull request list it, so that the owner decides with it in view. A
-# commit message carries the last lines of a long output and says where the
-# whole output is: next to the recorded pass, in the handoff note that
-# run-feature.sh writes, and in the run record.
-budget_lines=20
-budget_full="$VERIFICATION_BUDGETS of the working tree, the handoff note of the Issue, and the run record of run-feature.sh"
-verification_lines="- ./scripts/verify.sh passed"
-budget_results="$(verification_budgets "$root")"
-if [[ -n "$budget_results" ]]; then
-  verification_lines+=$'\n'"$(printf '%s\n' "$budget_results" | verification_budget_report "$budget_lines" "$budget_full" | sed 's/^budget /- budget /')"
-  if verification_budgets_exceeded "$budget_results"; then
-    echo "A budget check exceeded its target; the commit message lists the measurement:"
-    printf '%s\n' "$budget_results" | verification_budget_report "$budget_lines" "$budget_full" | sed 's/^/  /'
-    echo
-  fi
-fi
-
 tmp_work="$(mktemp -d "${TMPDIR:-/tmp}/finish-feature.XXXXXX")"
 trap 'rm -rf "$tmp_work"' EXIT
-# The content tree: the Git tree hash of the content without the metadata
-# the workflow writes about it (lib/fingerprint.sh). It is the value the
-# verification was recorded for and the review is current for, what an
-# approval request names, and what check-guardrails.sh recomputes from the
-# commit. It is computed before the commit and checked against the commit
-# after it.
-content_tree="$(fingerprint_worktree "$root" "$tmp_work")" ||
-  fail "could not compute the content tree of the working tree."
+# require_current_review: refuses when the latest review is not current for
+# the working tree. Checked with the other gates of the review, before any
+# check runs, and again after the verification, so that the review is
+# current for the content that was verified.
+require_current_review() {
+  local current=0
 
-# 2. The latest review is current and resolved, unless explicitly skipped.
+  review_is_current "$root" "$tmp_work" "$latest" || current=$?
+  case "$current" in
+    0) ;;
+    1)
+      review_stale_notice "$root" "$tmp_work" "$latest"
+      fail "the latest review ($latest_relative) is stale: the code changed after it. Run ./scripts/review-feature.sh $issue again."
+      ;;
+    *) fail "could not compute the fingerprint of the working tree." ;;
+  esac
+}
+
+# 1. The latest review is current and resolved, unless explicitly skipped.
+# Every gate that does not depend on the result of the verification is
+# checked before any check runs, so that a refusal costs no verification.
 slug="${branch//\//-}"
 shopt -s nullglob
 reviews=("$root/.agents/reviews/${slug}-review-"[0-9][0-9].json)
@@ -310,16 +284,7 @@ else
   [[ -z "$feature_merge_base" || "$(jq -r '.merge_base' "$latest")" == "$feature_merge_base" ]] ||
     fail "the latest review ($latest_relative) compared the feature against $(jq -r '.merge_base' "$latest" | cut -c1-12), but the feature left its base at $(cut -c1-12 <<<"$feature_merge_base") now: the base of the branch changed since the review. Run ./scripts/review-feature.sh $issue again."
 
-  current=0
-  review_is_current "$root" "$tmp_work" "$latest" || current=$?
-  case "$current" in
-    0) ;;
-    1)
-      review_stale_notice "$root" "$tmp_work" "$latest"
-      fail "the latest review ($latest_relative) is stale: the code changed after it. Run ./scripts/review-feature.sh $issue again."
-      ;;
-    *) fail "could not compute the fingerprint of the working tree." ;;
-  esac
+  require_current_review
 
   # The review that a commit rests on covers the complete feature. A round
   # that reviewed only changes confirms fixes; whether the Issue is done is
@@ -409,16 +374,6 @@ else
   fi
 fi
 
-# 3. Show the manual steps the implementer recorded for this feature.
-manual_steps="- none"
-manual_file="$root/.agents/manual-steps/$issue.md"
-if [[ -f "$manual_file" ]] && grep -q '[^[:space:]]' "$manual_file"; then
-  manual_steps="$(grep '[^[:space:]]' "$manual_file")"
-  echo "This feature needs these manual steps from you:"
-  printf '%s\n' "$manual_steps" | sed 's/^/  /'
-  echo
-fi
-
 # The implementer's summary of the changes. Lines that are not list items are
 # left out, so the message keeps its shape.
 changes="- TODO: summarize the main changes"
@@ -433,6 +388,66 @@ elif [[ "$unattended" -eq 1 ]]; then
   # Nobody edits the message of an unattended commit, so it would go out
   # without saying what changed.
   fail "the implementer supplied no summary of the changes (.agents/summaries/$issue.md), and an unattended commit is not edited. Resume the implementer with ./scripts/start-feature.sh $issue --resume, or write the summary. Nothing was committed."
+fi
+
+# 2. Verification passes. A pass that was already recorded for exactly this
+# content, by apply-triage.sh or review-feature.sh, is not repeated, where
+# the trust contract trusts it (lib/verification.sh): with the trusted
+# passes of a run, only one of them; with --unattended and without them,
+# none.
+echo "Checking repository verification..."
+verification_status=0
+verification_run "$root" script "$unattended" || verification_status=$?
+if [[ "$verification_status" -eq 78 ]]; then
+  # A prerequisite of this machine is missing (the ENVIRONMENT lines of
+  # verify.sh): passed on unchanged, so that a caller does not repair the
+  # code for it.
+  echo "Error: the verification could not run: a prerequisite of this machine is missing (the ENVIRONMENT lines above); nothing was committed." >&2
+  records_stop "${0##*/}" "the verification could not run: a prerequisite of this machine is missing; nothing was committed."
+  exit 78
+fi
+[[ "$verification_status" -eq 0 ]] || fail "verification failed; nothing was committed."
+echo
+# The budget results of that verification (lib/verification.sh): a budget
+# over its target passed the verification as a measurement, and the commit
+# and the pull request list it, so that the owner decides with it in view. A
+# commit message carries the last lines of a long output and says where the
+# whole output is: next to the recorded pass, in the handoff note that
+# run-feature.sh writes, and in the run record.
+budget_lines=20
+budget_full="$VERIFICATION_BUDGETS of the working tree, the handoff note of the Issue, and the run record of run-feature.sh"
+verification_lines="- ./scripts/verify.sh passed"
+budget_results="$(verification_budgets "$root")"
+if [[ -n "$budget_results" ]]; then
+  verification_lines+=$'\n'"$(printf '%s\n' "$budget_results" | verification_budget_report "$budget_lines" "$budget_full" | sed 's/^budget /- budget /')"
+  if verification_budgets_exceeded "$budget_results"; then
+    echo "A budget check exceeded its target; the commit message lists the measurement:"
+    printf '%s\n' "$budget_results" | verification_budget_report "$budget_lines" "$budget_full" | sed 's/^/  /'
+    echo
+  fi
+fi
+
+# The review was checked against the content before the verification; it
+# is current for the content that was verified, unless a check changed it.
+[[ -z "$latest" ]] || require_current_review
+
+# The content tree: the Git tree hash of the content without the metadata
+# the workflow writes about it (lib/fingerprint.sh). It is the value the
+# verification was recorded for and the review is current for, what an
+# approval request names, and what check-guardrails.sh recomputes from the
+# commit. It is computed before the commit and checked against the commit
+# after it.
+content_tree="$(fingerprint_worktree "$root" "$tmp_work")" ||
+  fail "could not compute the content tree of the working tree."
+
+# 3. Show the manual steps the implementer recorded for this feature.
+manual_steps="- none"
+manual_file="$root/.agents/manual-steps/$issue.md"
+if [[ -f "$manual_file" ]] && grep -q '[^[:space:]]' "$manual_file"; then
+  manual_steps="$(grep '[^[:space:]]' "$manual_file")"
+  echo "This feature needs these manual steps from you:"
+  printf '%s\n' "$manual_steps" | sed 's/^/  /'
+  echo
 fi
 
 # The merge approval gate: whether the owner must approve the merge of this

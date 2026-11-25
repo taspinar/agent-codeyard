@@ -3015,13 +3015,16 @@ worktree:
 
 The script refuses another branch than `feature/12-*` or a tree without
 changes, and a feature whose completion gate does not pass (see "The
-completion gate"). It verifies the result with `./scripts/verify.sh --reuse`,
-and checks the latest review of the
+completion gate"). It checks the latest review of the
 feature: it must be current, cover the complete feature, and have no critical
 or major finding. Every
 review round with findings needs an approved triage that was published on the
 Issue (the newest triage of that round counts), and the latest round may have
-no `FIX_NOW` findings left to apply. After fixes, run a new review round first;
+no `FIX_NOW` findings left to apply. These gates, and every other one that
+needs no verification, are checked before any check runs, so a refusal costs
+no verification. Only then does it verify the result with
+`./scripts/verify.sh --reuse`, and it checks that the review is still current
+for the verified content. After fixes, run a new review round first;
 a passed newer round confirms the fixes of earlier rounds. A failed
 publication can be repeated with `./scripts/triage-review.sh --publish
 <triage-json>`.

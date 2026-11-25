@@ -266,6 +266,57 @@ run_finish "$repo" 12 "Add the marker" || {
 grep -Fqx "Review: round 3, PASS, by claude (model-r)" <<<"$(message "$repo")" ||
   fail "the commit message does not name the review of the complete feature"
 
+# The gates that need no verification are checked before any check runs:
+# a refusal of the review or its triage costs no verification. Each refused
+# case counts the runs of its only check, which must not have started.
+# counted <repo>: makes the only check of the repository count its runs, and
+# keeps the fixture review current for that configuration.
+counted() {
+  printf 'count: echo run >>verify-count.log\n' >"$1/scripts/verify.conf"
+  record_reviewed_tree "$1" "$1/$review"
+}
+
+repo="$(setup_repo early-untriaged PASS_WITH_MINOR_FINDINGS "$minor")"
+counted "$repo"
+expect_no_commit "$repo" "the latest round is not triaged" 12 "Add the marker"
+grep -Fq "the findings of round 1 are not triaged" "$repo.out" || fail "the untriaged round was not given as the reason"
+[[ "$(count_runs "$repo")" -eq 0 ]] || fail "a check ran before the untriaged round was refused"
+! grep -Fq "Checking repository verification" "$repo.out" || fail "the verification started before the untriaged round was refused"
+
+repo="$(setup_repo early-changes PASS "[]")"
+counted "$repo"
+add_changes_review "$repo" >/dev/null
+expect_no_commit "$repo" "the latest review covers only changes" 12 "Add the marker"
+grep -Fq "covers only the changes since round 1" "$repo.out" || fail "the review of changes only was not given as the reason"
+[[ "$(count_runs "$repo")" -eq 0 ]] || fail "a check ran before the review of changes only was refused"
+
+repo="$(setup_repo early-other-tree PASS "[]")"
+counted "$repo"
+printf 'more work\n' >>"$repo/feature.txt"
+expect_no_commit "$repo" "the latest review is of another tree" 12 "Add the marker"
+grep -Fq "is stale: the code changed after it" "$repo.out" || fail "the review of another tree was not refused as stale"
+[[ "$(count_runs "$repo")" -eq 0 ]] || fail "a check ran before the review of another tree was refused"
+
+# A feature whose gates pass is verified, once, and committed as before.
+repo="$(setup_repo early-pass PASS_WITH_MINOR_FINDINGS "$minor")"
+counted "$repo"
+add_triage "$repo" ACCEPT
+run_finish "$repo" 12 "Add the marker" || {
+  cat "$repo.out" >&2
+  fail "finishing a feature whose gates pass failed"
+}
+[[ "$(count_runs "$repo")" -eq 1 ]] || fail "a feature whose gates pass was not verified once"
+grep -Fqx -- "- ./scripts/verify.sh passed" <<<"$(message "$repo")" || fail "the commit message does not record the verification"
+
+# The review is checked again after the verification: a check that changes
+# the content leaves a review of the content before it, which is stale.
+repo="$(setup_repo changed-by-check PASS "[]")"
+printf 'count: echo changed >>feature.txt\n' >"$repo/scripts/verify.conf"
+record_reviewed_tree "$repo" "$repo/$review"
+expect_no_commit "$repo" "a check changed the reviewed content" 12 "Add the marker"
+grep -Fq "Checking repository verification" "$repo.out" || fail "the verification did not run for current gates"
+grep -Fq "is stale: the code changed after it" "$repo.out" || fail "content changed by a check was not refused as stale"
+
 # A latest round made on a partial check (verification.status: partial) is
 # an intermediate round too, also when it reviewed the complete feature
 # after a further change; a later round on the full verification is
