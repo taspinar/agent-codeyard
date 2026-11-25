@@ -244,7 +244,9 @@ setup_repo() {
   printf '%s\n' "$repo"
 }
 
-# run_feature <repo> <argument...>: sets 'status' to the exit status.
+# run_feature <repo> <argument...>: sets 'status' to the exit status. The
+# retries wait 0 seconds; TEST_RETRY_WAIT='' leaves the wait of the script,
+# and TEST_PATH_PREFIX puts a directory, of a fake 'sleep' say, first on PATH.
 run_feature() {
   local repo="$1"
 
@@ -252,8 +254,8 @@ run_feature() {
   status=0
   (
     cd "$repo"
-    PATH="$tmp/bin:$ISOLATED_PATH" RUN_CONTROL="$repo.control" RUN_ISSUE="${1:-}" GIT_EDITOR=false \
-      RUN_FEATURE_RETRY_WAIT=0 START_FEATURE_GH_WAIT=0 \
+    PATH="${TEST_PATH_PREFIX:+$TEST_PATH_PREFIX:}$tmp/bin:$ISOLATED_PATH" RUN_CONTROL="$repo.control" RUN_ISSUE="${1:-}" GIT_EDITOR=false \
+      RUN_FEATURE_RETRY_WAIT="${TEST_RETRY_WAIT-0}" START_FEATURE_GH_WAIT=0 \
       ./scripts/run-feature.sh "$@" </dev/null
   ) >"$repo.out" 2>&1 || status=$?
 }
@@ -393,6 +395,9 @@ clarification-without-question
 issue-flaky
 implementer-fails-once
 reviewer-fails-once
+reviewer-transient-twice
+reviewer-fails-plainly
+retry-waits
 one-verification
 review-usage-limit
 verification-after-session

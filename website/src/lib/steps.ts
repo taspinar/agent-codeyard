@@ -245,7 +245,7 @@ export const feature: Step[] = [
     id: "run-unattended",
     title: "Run a feature unattended",
     summary: "One command runs a feature from the implementation to the pull request and stops when it needs you; it never merges.",
-    text: "One command runs the implementation, the checks, the review rounds with their triage and fixes, the commit and the pull request. It retries a temporary failure, and stops when an agent needs you or it cannot safely go on, with the reason and the command that resolves it.",
+    text: "One command runs the implementation, the checks, the review rounds with their triage and fixes, the commit and the pull request. It retries a known transient error once, and stops when an agent needs you or it cannot safely go on, with the reason and the command that resolves it.",
     facts: [
       ["who", "Script that coordinates the agents"],
       ["script", "`./scripts/run-feature.sh <issue> [--risk <level>]`"],

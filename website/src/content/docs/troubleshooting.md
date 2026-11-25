@@ -48,7 +48,7 @@ The workflow passes the model name on as you wrote it and never replaces it, so 
 
 To stop a run yourself, stop it like any command in the terminal (Ctrl+C). Nothing is merged, and the work stays in the feature's worktree. Run the same command again and it continues where the feature stands, skipping the steps that are done; if it stopped for a decision of yours, answer it first in the handoff note or on the Issue.
 
-The implementer keeps a handoff note with what is done and what remains, so the work continues without the earlier conversation. An unattended run retries a temporary failure itself, such as a short loss of the network while it reads the Issue. <a href="#workflow-and-commands/resume">Resume a feature that stopped</a> has the route.
+The implementer keeps a handoff note with what is done and what remains, so the work continues without the earlier conversation. An unattended run retries a known transient error once itself, such as a short loss of the network while it reads the Issue; any other failure stops it. <a href="#workflow-and-commands/resume">Resume a feature that stopped</a> has the route.
 
 ### "an agent needs a decision; its question is in the handoff note"
 
@@ -74,7 +74,7 @@ The commit needs a completion record that says complete or awaiting evidence, an
 - **Recovered when:** the step runs past the point where it stopped.
 - **Output:** the provider's own message, which the script shows; an unattended run also writes it into its log, `.agents/run/<issue>-log`.
 
-The provider refused the session because a usage or rate limit is reached. An unattended run retries the step and writes the limit into its log.
+The provider refused the session because a usage or rate limit is reached. An unattended run retries the step up to three times, with a growing wait, and writes the limit into its log.
 
 ### "could not read the comments of Issue #…"
 

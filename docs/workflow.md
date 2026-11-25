@@ -207,7 +207,10 @@ flowchart TD
   cleanup with one command and without questions: the agents run unattended,
   the triage is approved without you, and at most five review rounds are
   used (`--rounds <m>` raises the limit, at a terminal only). It stops, and
-  says how to continue, when a step fails or an agent needs your decision. `docs/development.md` describes what you hand over
+  says how to continue, when a step fails or an agent needs your decision.
+  A step that fails on a known transient error is tried again once after
+  30 seconds, one that an agent's usage limit stopped three times with a
+  growing wait, and any other failure stops the run. `docs/development.md` describes what you hand over
   with it.
 - `run-feature.sh <issue> --owner-finding` takes a finding you posted on the
   Issue of a finished feature, whose pull request is open, through the same

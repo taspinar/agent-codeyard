@@ -28,8 +28,8 @@ run_feature "$repo" 2 thing
 expect_published "$repo"
 expect_sessions "$repo" 2 3 1 1
 
-# A repair of the verification after the fixes that fails once, after it
-# changed the content, is tried again as a repair: start-feature.sh does not
+# A repair of the verification after the fixes that fails once on a known
+# transient error, after it changed the content, is tried again as a repair: start-feature.sh does not
 # take the --continue of an interrupted fix session.
 scenario fixes-break-repair-fails
 repo="$(setup_repo fixes-break-repair-fails)"
@@ -37,7 +37,7 @@ printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
 printf '%s\n' 'printf "fixed\n" >>feature.txt; printf "x\n" >broken.txt; reply="Fixed."' >"$repo.control/fixes.sh"
 printf '%s\n' 'case "$count" in
   1) eval "$default" ;;
-  2) printf "half repaired\n" >>feature.txt; exit 9 ;;
+  2) printf "half repaired\n" >>feature.txt; echo "Error: read tcp: connection reset by peer" >&2; exit 9 ;;
   *) rm -f broken.txt; reply="Repaired." ;;
 esac' >"$repo.control/implementer.sh"
 run_feature "$repo" 2 thing
@@ -57,7 +57,7 @@ printf '%s\n' 'printf "fixed\n" >>feature.txt; printf "x\n" >broken.txt; reply="
 printf '%s\n' 'if [[ "$count" -eq 1 ]]; then eval "$default"; else printf "tried\n" >>feature.txt; exit 9; fi' \
   >"$repo.control/implementer.sh"
 run_feature "$repo" 2 thing
-expect_stopped "$repo" 1 "the repair of the verification before round 2 failed (start-feature.sh exited with status 9, also after the retries)"
+expect_stopped "$repo" 1 "the repair of the verification before round 2 failed (start-feature.sh exited with status 9)"
 if grep -Fq -- "--continue" "$repo.out"; then fail "an exhausted repair was given --continue"; fi
 
 # A fixing agent that changed a file and then failed is continued with the
@@ -96,12 +96,13 @@ expect_sessions "$repo" 1 1 1 1
 [[ ! -e "$repo-2-thing/.agents/run/2-fixes-started" ]] || fail "the mark of a rejected session was kept"
 grep -Fq "nothing is tried again" <<<"$(log_of "$repo")" || fail "the rejected session is not in the log of the feature"
 
-# A fixing agent that failed before it changed anything is started again.
+# A fixing agent that failed on a known transient error before it changed
+# anything is started again.
 for code in 4 5; do
   scenario fixes-fail-once
   repo="$(setup_repo "fixes-fail-once-$code")"
   printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
-  printf '%s\n' "exit $code" >"$repo.control/fixes-1.sh"
+  printf '%s\n' 'echo "Error: read tcp: connection reset by peer" >&2; exit '"$code" >"$repo.control/fixes-1.sh"
   run_feature "$repo" 2 thing
   expect_published "$repo"
   expect_sessions "$repo" 1 3 1 2
@@ -404,7 +405,7 @@ owner_comment "$repo" "Finding: wrong content."
 printf '%s\n' 'exit 9' >"$repo.control/reviewer.sh"
 run_feature "$repo" 2 --owner-finding
 expect_stopped "$repo" 1 "the review did not complete"
-expect_sessions "$repo" 1 5 0 0
+expect_sessions "$repo" 1 2 0 0
 repo="$(setup_repo owner-finding-unfinished)"
 printf '%s\n' "question='which file?'; $ask; reply=\"BLOCKED: which file\"" >"$repo.control/implementer.sh"
 run_feature "$repo" 2 thing
