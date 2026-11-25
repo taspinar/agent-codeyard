@@ -1551,6 +1551,100 @@ project="$(setup_project parallel-variable "lint: ruff check .")"
 if VERIFY_PARALLEL=many run_with "$project"; then fail "VERIFY_PARALLEL=many was accepted"; fi
 grep -Fq "VERIFY_PARALLEL needs a whole number" "$project/out.log" || fail "the refusal of VERIFY_PARALLEL did not say why"
 
+# The inputs of a check ('inputs:' in scripts/verify.conf, Issue 491): the
+# check runs only when an input changed since the base, and otherwise shows
+# SKIP with the reason. A file of a pathspec counts by its content; a path of
+# 'exists' in a list file only when it is added or removed, as by a rename.
+# --all, the base branch itself, and a missing list file run it.
+project="$(setup_recorded_project inputs)"
+mkdir -p "$project/site" "$project/docs" "$project/tools"
+printf '%s\n' "lint: ruff check ." "inputs: site site @site/inputs.conf" "site: pytest" >"$project/scripts/verify.conf"
+printf '%s\n' "# what the site reads" "docs/read.md" "" "exists tools/named.sh" "exists docs/" >"$project/site/inputs.conf"
+printf 'page\n' >"$project/site/page.txt"
+printf 'read\n' >"$project/docs/read.md"
+printf 'named\n' >"$project/tools/named.sh"
+printf 'other\n' >"$project/tools/other.sh"
+git -C "$project" add -A
+git -C "$project" commit -qm "A site with inputs"
+git -C "$project" checkout -q -b feature/1-inputs
+# expect_input <description> <ran|skipped> [option...]
+expect_input() {
+  local description="$1"
+  local expected="$2"
+
+  shift 2
+  run_with "$project" "$@" || fail "verification failed when $description: $(cat "$project/out.log")"
+  grep -Fq "ruff" "$project/tools.log" || fail "the check without inputs did not run when $description"
+  if [[ "$expected" == ran ]]; then
+    grep -Fq "pytest" "$project/tools.log" || fail "the check did not run when $description: $(cat "$project/out.log")"
+    if grep -Fq "SKIP  site" "$project/out.log"; then fail "a SKIP of the check was shown when $description"; fi
+  else
+    if grep -Fq "pytest" "$project/tools.log"; then fail "the check ran when $description: $(cat "$project/out.log")"; fi
+    grep -Fq "SKIP  site: none of its inputs ('inputs:' in scripts/verify.conf) changed since main; --all runs it" "$project/out.log" ||
+      fail "the skip was not reported with its reason when $description: $(cat "$project/out.log")"
+  fi
+}
+expect_input "nothing changed" skipped
+printf 'two\n' >>"$project/tools/other.sh"
+printf 'two\n' >>"$project/tools/named.sh"
+expect_input "only a script changed, also one whose existence alone is an input" skipped
+grep -Fqx "skipped-by-inputs: site" "$project$record" || fail "the pass does not record the check it skipped: $(cat "$project$record")"
+expect_reused "$project" "the same content was verified" --reuse
+expect_checks_ran "$project" "--all does not reuse a pass that skipped a check" --all --reuse
+grep -Fq "pytest" "$project/tools.log" || fail "--all --reuse did not run the skipped check"
+grep -Fq "it skipped site, whose inputs had not changed" "$project/out.log" || fail "--all --reuse did not say why it ran: $(cat "$project/out.log")"
+[[ -z "$(sed -n 's/^skipped-by-inputs: //p' "$project$record")" ]] || fail "a pass of --all records a skipped check"
+expect_input "--all is given" ran --all
+expect_input "a script changed, with --changed" skipped --changed
+expect_input "a script changed, with --only" skipped --only default
+git -C "$project" checkout -q -- tools
+git -C "$project" mv tools/named.sh tools/renamed.sh
+expect_input "a path the check needs to exist was renamed" ran
+grep -Fq "site runs: tools/named.sh, which it needs to exist, was removed since main" "$project/out.log" || fail "the rename was not named: $(cat "$project/out.log")"
+expect_input "a rename, with --changed" ran --changed
+git -C "$project" mv tools/renamed.sh tools/named.sh
+expect_input "a rename was undone" skipped
+printf 'two\n' >>"$project/docs/read.md"
+expect_input "a file the check reads changed" ran
+grep -Fq "site runs: docs/read.md differs from main" "$project/out.log" || fail "the changed input was not named: $(cat "$project/out.log")"
+git -C "$project" checkout -q -- docs
+printf 'new\n' >"$project/site/new.txt"
+expect_input "an untracked file of a pathspec was added" ran
+rm "$project/site/new.txt"
+printf '# more\n' >>"$project/site/inputs.conf"
+expect_input "the list file changed" ran
+git -C "$project" checkout -q -- site
+git -C "$project" rm -q --cached site/inputs.conf
+mv "$project/site/inputs.conf" "$project/inputs.conf.bak"
+expect_input "the list file is missing" ran
+grep -Fq "site runs: whether its inputs changed cannot be determined, its list of inputs site/inputs.conf is missing" "$project/out.log" || fail "the missing list was not named: $(cat "$project/out.log")"
+mv "$project/inputs.conf.bak" "$project/site/inputs.conf"
+git -C "$project" add site/inputs.conf
+expect_input "the list file is back" skipped
+git -C "$project" checkout -q main
+expect_input "the run is on the base branch itself" ran
+grep -Fq "this run is on the base branch main itself" "$project/out.log" || fail "the base branch was not named: $(cat "$project/out.log")"
+git -C "$project" checkout -q feature/1-inputs
+printf '%s\n' "exists a b" >>"$project/site/inputs.conf"
+if run_with "$project"; then fail "a malformed line of a list of inputs was accepted"; fi
+grep -Fq "malformed input on line 6 of site/inputs.conf" "$project/out.log" || fail "the malformed line was not named: $(cat "$project/out.log")"
+git -C "$project" checkout -q -- site
+
+# The line is exact: a check of scripts/verify.conf, once, no group, a list
+# file inside the repository, and only in scripts/verify.conf.
+for lines in "inputs: none site|site: pytest" "inputs: site site|inputs: site docs|site: pytest" "inputs [code]: site site|site: pytest" \
+  "inputs: site|site: pytest" "inputs: site @../outside|site: pytest" "inputs: site @/etc/list|site: pytest"; do
+  IFS='|' read -r -a config_lines <<<"$lines"
+  project="$(setup_project "inputs-refused-$RANDOM" "${config_lines[@]}")"
+  expect_failure "$project" "'$lines' must be refused"
+  grep -Fq "'inputs'" "$project/out.log" || fail "the refusal of '$lines' did not say why: $(cat "$project/out.log")"
+  [[ ! -e "$project/tools.log" ]] || fail "checks ran despite '$lines'"
+done
+project="$(setup_workflow_project inputs-in-workflow)"
+printf '%s\n' "inputs: self-test tools" "paths: tools" "self-test: pytest" >"$project/scripts/verify-workflow.conf"
+if run_with "$project" --all; then fail "'inputs' in scripts/verify-workflow.conf was accepted"; fi
+grep -Fq "'inputs' is declared in scripts/verify.conf only" "$project/out.log" || fail "the refusal of 'inputs' in the self-tests did not say why: $(cat "$project/out.log")"
+
 # Every self-test passes through tests/lib-fakes.sh before it starts anything:
 # each test file that scripts/verify-workflow.conf runs. A project's own test
 # named tests/<x>-test.sh is not a self-test and follows its own rules.

@@ -105,6 +105,62 @@ target for the duration of the checks is a budget (see "Budgets").
 There is no automatic stack detection and no optional check: remove a check
 from `scripts/verify.conf` rather than letting it be skipped.
 
+### The inputs of a check
+
+A check that reads only a known part of the repository may name it, so that
+it runs only when that part changed. One line per check, in
+`scripts/verify.conf` only:
+
+```text
+inputs: <check> <input>...
+```
+
+Each input is a Git pathspec, as under `paths:` of
+`scripts/verify-workflow.conf`, or `@<file>`: a list file of the repository,
+which is an input itself and holds one input per line, with `#` for
+comments:
+
+- `<path>`: a file whose content the check reads. It counts when it changes,
+  is added, or is removed.
+- `exists <path>`: a path whose existence alone the check reads, such as a
+  file a page links to. It counts only when it is added or removed, as by a
+  rename, not when its content changes.
+
+The inputs are compared as the workflow self-tests are (see "Workflow
+self-tests"): with the tree of the last trusted pass of the run of a
+workflow script, or without one with the base of the feature, counting
+uncommitted and untracked files. When no input changed, the check does not
+run, and the summary shows
+
+```text
+SKIP  <check>: none of its inputs ('inputs:' in scripts/verify.conf) changed since <base>; --all runs it
+```
+
+When one changed, the output says which before the checks start
+(`<check> runs: <path> differs from <base>`). The check runs when that cannot
+be determined: a list file is missing, the base is unknown, or the run is on
+the base branch itself, where nothing tells a change apart from the base, as
+on a push to `main` in CI. `./scripts/verify.sh --all` and `--baseline` run
+it always. `--only` and `--changed` compare the inputs as a full run does.
+A pass that skipped a check says so in its record (`skipped-by-inputs:`),
+and `--all --reuse` does not reuse it.
+
+The list must be complete: a check whose inputs are not all named can pass on
+a change it never saw. Adding an `inputs:` line therefore needs the owner's
+approval at the merge, as an `accepted-failure:` does
+(`scripts/check-guardrails.sh`). Name only what the check reads, and give the check a
+test of its list where the list is long. The template's website check
+is the example: `inputs: website website @website/check-inputs.conf`. The
+list names the files outside `website/` whose content the site check reads
+(`.agents/agents.conf`, `.agents/policies/risk.conf`, the website line of
+`scripts/verify.conf`), and, as `exists`, every repository file a page
+links to and every script a page names. `website/check.sh --build` fails
+when the list misses a path that a page names, or a file outside `website/`
+that a source of the site names by a relative path (`../`), and when it
+lists an `exists` that no page names. A change of only a script's content
+skips the website check; a rename of a script that a page names runs it, and
+the check then reports the page.
+
 ### Groups of checks
 
 A check may name a group in square brackets after its name:

@@ -106,6 +106,43 @@ expect_fault redirect-missing-place / \
 expect_fault redirect-unmapped-anchor / \
   'mkdir -p old && printf "%s" "<script>var map = {\"step\":\"/docs/#intro\"};</script><meta http-equiv=\"refresh\" content=\"0; url=/docs/#intro\"><meta name=\"robots\" content=\"noindex\">" >old/index.html && sed -i "s|run doctor.sh|<a href=\"/old/#other\">o</a>|" index.html' "links to /old/#other, which its redirect does not map"
 
+# The list of the inputs (check-inputs.conf): a list that names every path
+# the pages name as 'exists', and every file outside website/ that a source
+# reads, passes; a path the pages name or a file a source reads that it
+# leaves out, an 'exists' that no page names, and a malformed line fail.
+# scripts/verify.conf names the list as the inputs of the website check.
+output "$work/inputs" /
+sed -i 's|doctor.sh|./scripts/status.sh and doctor.sh|' "$work/inputs/index.html"
+reads="$(grep -Ev '^[[:space:]]*(#|exists[[:space:]]|$)' "$site/check-inputs.conf")"
+[[ -n "$reads" ]] || fail "inputs: check-inputs.conf lists no file that a source reads"
+printf '%s\n' "# inputs" "$reads" "exists docs/workflow.md" "exists scripts/doctor.sh" "exists scripts/status.sh" >"$work/inputs.conf"
+WEBSITE_CHECK_INPUTS="$work/inputs.conf" "$site/check.sh" --inputs "$work/inputs" >/dev/null 2>&1 ||
+  fail "inputs: a complete list does not pass: $(WEBSITE_CHECK_INPUTS="$work/inputs.conf" "$site/check.sh" --inputs "$work/inputs" 2>&1)"
+# expect_inputs_fault <name> <list> <message>
+expect_inputs_fault() {
+  local result
+  printf '%s\n' "$2" >"$work/inputs-$1.conf"
+  if result="$(WEBSITE_CHECK_INPUTS="$work/inputs-$1.conf" "$site/check.sh" --inputs "$work/inputs" 2>&1)"; then
+    fail "inputs: $1: check.sh passed"
+  elif ! grep -Fq "$3" <<<"$result"; then
+    fail "inputs: $1: no '$3' in: $result"
+  fi
+}
+expect_inputs_fault missing-script "$(grep -v 'scripts/status.sh' "$work/inputs.conf")" \
+  "does not list scripts/status.sh, which index.html names: add 'exists scripts/status.sh'"
+expect_inputs_fault missing-link "$(grep -v 'docs/workflow.md' "$work/inputs.conf")" \
+  "does not list docs/workflow.md, which index.html names"
+expect_inputs_fault stale "$(cat "$work/inputs.conf"; echo "exists scripts/verify.sh")" \
+  "lists 'exists scripts/verify.sh', which no page names: remove it"
+first_read="$(head -n 1 <<<"$reads")"
+expect_inputs_fault missing-read "$(grep -Fxv "$first_read" "$work/inputs.conf")" \
+  "does not list $first_read, which a source of the site reads"
+expect_inputs_fault malformed "$(cat "$work/inputs.conf"; echo "exist scripts/doctor.sh")" \
+  "neither '<path>' nor 'exists <path>': exist scripts/doctor.sh"
+grep -Eq '^inputs: website( [^ ]+)* website( [^ ]+)* @website/check-inputs\.conf( |$)' "$site/../scripts/verify.conf" ||
+  fail "inputs: scripts/verify.conf does not name website/ and check-inputs.conf as the inputs of the website check"
+rm -rf "$work/inputs"
+
 # The tokens: a style sheet that names only tokens passes; a literal font,
 # spacing or colour value outside :root and @font-face is reported.
 tokens="$work/tokens.css"
