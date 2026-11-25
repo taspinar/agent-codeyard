@@ -232,20 +232,28 @@ try {
     // Without JavaScript every topic is on the page, in order, and a deep link is a real id.
     const plain = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 1280, height: 800 } });
     const q = await plain.newPage();
-    await q.goto(origin + base + 'docs/#risk-policy/shipped-configuration');
+    await q.goto(origin + base + 'docs/');
     assert.deepEqual(await q.evaluate(() => [...document.querySelectorAll('.docs-topics > [data-topic]')].filter(s => s.checkVisibility()).map(s => s.id)), topics.map(t => t.id), 'Without JavaScript every topic is shown');
-    // The web fonts swap in after the first layout and move the target; the
-    // browser keeps its fragment anchor and scrolls again in the next frame.
-    // Measure once the fonts are in and the target has stayed put for three
-    // samples (no requestAnimationFrame without JavaScript), within 5 s.
-    const where = () => q.locator('[id="risk-policy/shipped-configuration"]').evaluate(e => ({ ready: document.readyState === 'complete' && document.fonts.status === 'loaded', top: e.getBoundingClientRect().top, header: document.querySelector('.top').getBoundingClientRect().bottom, height: innerHeight }));
-    let target = await where();
-    for (let stable = 0, start = Date.now(); stable < 3 && Date.now() - start < 5000;) {
+    // The web fonts swap in after the first layout and shorten the text above
+    // a deep target. When the load event completes before the first layout
+    // has requested them, which happens on a busy machine, the browser no
+    // longer holds the fragment in view and the target ends above the
+    // viewport (#512): a late layout change, not the native scroll this check
+    // proves. So the page settles first: the fonts are in and the height of
+    // the document has stayed put for three samples (no requestAnimationFrame
+    // without JavaScript), within 5 s, or the check fails. Then the deep
+    // link is followed, a fragment navigation that the browser scrolls natively.
+    const settled = () => q.evaluate(() => ({ ready: document.readyState === 'complete' && document.fonts.status === 'loaded', height: document.documentElement.scrollHeight }));
+    let stable = 0, last = await settled();
+    for (const start = Date.now(); stable < 3 && Date.now() - start < 5000;) {
       await new Promise(r => setTimeout(r, 50));
-      const next = await where();
-      stable = next.ready && next.top === target.top ? stable + 1 : 0;
-      target = next;
+      const next = await settled();
+      stable = next.ready && next.height === last.height ? stable + 1 : 0;
+      last = next;
     }
+    assert(last.ready && stable >= 3, `Without JavaScript the docs page settles within 5 s before the deep link is followed: fonts loaded and the height unchanged for three samples (${JSON.stringify({ ...last, stable })})`);
+    await q.goto(origin + base + 'docs/#risk-policy/shipped-configuration');
+    const target = await q.locator('[id="risk-policy/shipped-configuration"]').evaluate(e => ({ top: e.getBoundingClientRect().top, header: document.querySelector('.top').getBoundingClientRect().bottom, height: innerHeight }));
     assert(target.top >= target.header && target.top < target.height, `Without JavaScript a deep link scrolls natively, below the sticky header (${JSON.stringify(target)})`);
     await plain.close();
     console.log(`  Technical Documentation: ${sections.length} sections, ${topics.length} topics, ${retired.length} redirect pages walked with and without JavaScript.`);
