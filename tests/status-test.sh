@@ -509,6 +509,42 @@ mkdir "$repo/.agents/status/lock" "$repo/.agents/status/lock.recover"
 touch -t 202001010000 "$repo/.agents/status/lock" "$repo/.agents/status/lock.recover"
 grep -q '^#16 ' <<<"$(STATUS_LOCK_WAIT=1 status --changes 2>&1)" || fail "an old recovery lock blocks --changes for good"
 [[ ! -e "$repo/.agents/status/lock.recover" ]] || fail "an old recovery lock is left behind"
+# #487: the mkdir of uutils coreutils (Ubuntu 25.10 and newer) succeeds for
+# both of two runs that create the lock at the same time. The fake mkdir is
+# that second run: it succeeds for the lock directory that is already there.
+# The lock is still held: only the run that creates its owner holds it.
+real_mkdir="$(command -v mkdir)"
+cat >"$tmp/bin/mkdir" <<MKDIR
+#!/usr/bin/env bash
+if [[ -n "\${FAKE_MKDIR_RACE:-}" && \$# -eq 1 && "\$1" == */.agents/status/lock && -d "\$1" ]]; then
+  exit 0
+fi
+exec "$real_mkdir" "\$@"
+MKDIR
+chmod +x "$tmp/bin/mkdir"
+open_pr 116 '.isDraft = false'
+mkdir "$repo/.agents/status/lock"
+held="$(printf 'pid=%s\nstarted=%s' "$$" "$(LC_ALL=C ps -o lstart= -p "$$" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')")"
+printf '%s\n' "$held" >"$repo/.agents/status/lock/owner"
+code=0
+err="$(FAKE_MKDIR_RACE=1 STATUS_LOCK_WAIT=1 status --changes 2>&1)" || code=$?
+[[ "$code" -ne 0 ]] || fail "a run whose mkdir of the held lock succeeds takes the lock: $err"
+grep -Fq "another --changes holds" <<<"$err" || fail "a held lock is not reported when mkdir succeeds for it: $err"
+[[ "$(cat "$repo/.agents/status/lock/owner" 2>/dev/null)" == "$held" ]] ||
+  fail "a run whose mkdir of the held lock succeeds replaces or removes the lock"
+rm -rf "$repo/.agents/status/lock"
+grep -q '^#16 ' <<<"$(FAKE_MKDIR_RACE=1 status --changes)" || fail "the change is lost while the lock was held"
+[[ ! -e "$repo/.agents/status/lock" ]] || fail "--changes leaves its lock behind"
+rm -f "$tmp/bin/mkdir"
+# A run releases only its own lock: when another run holds the lock at the
+# end (it removed this run's lock and took it), that lock stays.
+printf 'command: cat >/dev/null; rm -rf .agents/status/lock; mkdir .agents/status/lock; printf "pid=1\\nstarted=other\\n" >.agents/status/lock/owner\n' \
+  >"$repo/.agents/notify.conf"
+open_pr 116 '.isDraft = true'
+grep -q '^#16 ' <<<"$(status --changes)" || fail "the change is not reported when another run takes the lock"
+[[ "$(cat "$repo/.agents/status/lock/owner" 2>/dev/null)" == "$(printf 'pid=1\nstarted=other')" ]] ||
+  fail "a run removes the lock that another run holds at its end"
+rm -rf "$repo/.agents/status/lock"
 printf 'command: cat >"%s/notified"\n' "$tmp" >"$repo/.agents/notify.conf"
 
 # GitHub that cannot be read: the overview says so, --changes keeps the

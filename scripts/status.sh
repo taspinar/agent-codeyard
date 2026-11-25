@@ -67,18 +67,26 @@ primary="$(records_primary)"
 # --changes is one transaction: read the previous overview, compare, notify,
 # and keep the new overview. Two at the same time (cron and a run by hand)
 # would both notify the same change, or keep their overviews in the wrong
-# order, so the whole run holds a lock: a directory created with mkdir, which
-# is atomic on Linux and macOS alike. Its file 'owner' names the process; a
-# lock whose process is gone (a crash, SIGKILL), or that has no owner and is
-# older than a grace period, is stale and is removed under a second lock, so
-# that two runs do not both remove it. A run that waits
-# longer than STATUS_LOCK_WAIT seconds (default 300) fails and changes
-# nothing.
+# order, so the whole run holds a lock: the directory .agents/status/lock and
+# its file 'owner', which names the process. The run that creates 'owner'
+# holds the lock: Bash creates it with noclobber, an exclusive create (O_EXCL)
+# that the kernel decides, so that exactly one run wins whatever 'mkdir' does.
+# mkdir alone does not decide it: the mkdir of uutils coreutils (Ubuntu 25.10
+# and newer) succeeds for both of two runs that create the same directory at
+# the same time, and both then took the lock (#487). A lock whose process is
+# gone (a crash, SIGKILL), or that has no owner, or an empty one, and is older
+# than a grace period, is stale and is removed under a second lock, so that
+# two runs do not both remove it. A run removes only the lock that names it.
+# A run that waits longer than STATUS_LOCK_WAIT seconds (default 300) fails
+# and changes nothing.
 state_dir="$primary/.agents/status"
 lock_dir="$state_dir/lock"
 lock_held=0
+lock_owner=""
 release_lock() {
-  [[ "$lock_held" -eq 0 ]] || rm -rf "$lock_dir"
+  if [[ "$lock_held" -eq 1 && "$(cat "$lock_dir/owner" 2>/dev/null)" == "$lock_owner" ]]; then
+    rm -rf "$lock_dir"
+  fi
   lock_held=0
 }
 # lock_stale <owner-text>: whether the process that the text names is
@@ -102,10 +110,14 @@ lock_stale() {
 }
 # lock_old <dir>: whether the directory is older than the grace period
 # (VERIFY_LOCK_RECOVER_SECONDS). A lock without an owner is being taken right
-# now, or was left by a run killed between mkdir and writing its owner; only
-# an old one is stale. The same holds for a recovery lock.
+# now, or was left by a run killed while it took the lock; only an old one is
+# stale. The same holds for a recovery lock. A directory whose time cannot be
+# read (it was removed a moment ago) is not old.
 lock_old() {
-  [[ -e "$1" && $(($(date +%s) - $(verify_lock_mtime "$1"))) -gt "$VERIFY_LOCK_RECOVER_SECONDS" ]]
+  local mtime
+
+  mtime="$(verify_lock_mtime "$1")"
+  [[ "$mtime" =~ ^[0-9]+$ && "$mtime" -gt 0 && -e "$1" && $(($(date +%s) - mtime)) -gt "$VERIFY_LOCK_RECOVER_SECONDS" ]]
 }
 # recover_lock <owner-text>: removes the stale lock under the recovery lock,
 # only when it is still the lock that was seen: the same owner, or still no
@@ -116,24 +128,30 @@ recover_lock() {
   if ! mkdir "$recover" 2>/dev/null; then
     lock_old "$recover" && rmdir "$recover" 2>/dev/null && mkdir "$recover" 2>/dev/null || return 1
   fi
-  if [[ "$(cat "$lock_dir/owner" 2>/dev/null)" == "$1" ]] && { [[ -n "$1" ]] || { [[ ! -e "$lock_dir/owner" ]] && lock_old "$lock_dir"; }; }; then
+  if [[ "$(cat "$lock_dir/owner" 2>/dev/null)" == "$1" ]] && { [[ -n "$1" ]] || lock_old "$lock_dir"; }; then
     rm -rf "$lock_dir"
   fi
   rmdir "$recover" 2>/dev/null || true
+}
+# claim_lock: creates the owner of the lock, exclusively; fails when another
+# run did first, or when the directory is gone.
+claim_lock() {
+  lock_owner="$(printf 'pid=%s\nstarted=%s' "$$" "$(verify_lock_started "$$")")"
+  (set -C && printf '%s\n' "$lock_owner" >"$lock_dir/owner") 2>/dev/null
 }
 take_lock() {
   local waited=0 limit="${STATUS_LOCK_WAIT:-300}" owner
 
   while :; do
-    if mkdir "$lock_dir" 2>/dev/null; then
+    # Only a run whose mkdir succeeded claims: a directory that is there
+    # without an owner is being taken by another run.
+    if mkdir "$lock_dir" 2>/dev/null && claim_lock; then
       lock_held=1
       trap release_lock EXIT
-      printf 'pid=%s\nstarted=%s\n' "$$" "$(verify_lock_started "$$")" >"$lock_dir/owner.tmp" &&
-        mv "$lock_dir/owner.tmp" "$lock_dir/owner"
       return 0
     fi
     owner="$(cat "$lock_dir/owner" 2>/dev/null)" || owner=""
-    if { if [[ -n "$owner" ]]; then lock_stale "$owner"; else [[ ! -e "$lock_dir/owner" ]] && lock_old "$lock_dir"; fi; } &&
+    if { if [[ -n "$owner" ]]; then lock_stale "$owner"; else lock_old "$lock_dir"; fi; } &&
       recover_lock "$owner"; then
       continue
     fi

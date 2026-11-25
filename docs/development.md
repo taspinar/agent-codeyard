@@ -3782,7 +3782,10 @@ the new one, so a run by hand and a scheduled one do not report the same
 change twice. Another run waits up to five minutes (`STATUS_LOCK_WAIT`
 seconds), then fails and changes nothing; a lock whose process is gone is
 taken over, and so is one without an owner (a run killed while taking it)
-once it is older than a minute.
+once it is older than a minute. The run that creates the lock's `owner` file
+holds it, with an exclusive create of the shell, so that the lock holds also
+with a `mkdir` that is not atomic (that of uutils coreutils, the default of
+Ubuntu from 25.10); a run removes only the lock that names it.
 
 To be told, name a command in `.agents/notify.conf` of the primary checkout:
 one line `command: <shell command>`. It gets exactly the output of
