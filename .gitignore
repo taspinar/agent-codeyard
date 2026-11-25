@@ -51,8 +51,8 @@ credentials*.json
 # The previous overview of scripts/status.sh --changes, against which the
 # next one reports what changed. Local.
 .agents/status/
-# The implementer's optional notes on a run, kept in its experience record
-# (scripts/lib/experience.sh). Never published.
+# Files that earlier versions of the workflow wrote here; ignored so that a
+# file left in a worktree is never committed with a feature (git add -A).
 .agents/experience/
 # The analyses of analyze-runs.sh: their input, result, and report. Local.
 .agents/analysis/

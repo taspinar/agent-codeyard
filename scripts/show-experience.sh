@@ -8,9 +8,9 @@ usage() {
   echo
   echo "Shows the experience records of a feature: per run what a script derived"
   echo "from the reviews, the triage, the verifications, the stops, and the"
-  echo "completion record, and the notes of the agent when they were valid. An"
-  echo "invalid record is shown as invalid, with what is wrong, and never as a"
-  echo "source. Without an Issue, in a feature worktree, it shows that feature."
+  echo "completion record. An invalid record is shown as invalid, with what is"
+  echo "wrong, and never as a source. Without an Issue, in a feature worktree, it"
+  echo "shows that feature."
   echo "Reads the run records of the primary checkout; needs no network."
   exit 1
 }
@@ -86,17 +86,16 @@ result="$(jq -n -r \
                   | ((($from_active + $from_copy) | index([$f])) != null) or ($f == "feature-\($issue)")))
      | map({run: (._file | rtrimstr(".jsonl") | if startswith("feature-") then null else . end),
             time: null, command: null, errors: ["line \(._line) of \(._file) is not JSON"]})) as $unparsed
-  | {issue: ($issue | tonumber), valid: ($records | map(select(.valid)) | map(.record + {command, time})),
+  # A record of a workflow before #500 also holds a part `agent`, which is not
+  # shown and is no source.
+  | {issue: ($issue | tonumber), valid: ($records | map(select(.valid)) | map(.record + {command, time} | del(.agent))),
      invalid: (($records | map(select(.valid | not)) | map({run, time, command, errors})) + $unparsed)}
   | if $mode == "json" then . else
       def observation: "- \(.kind): \(.what)"
         + (if .circumstances then "\n  - circumstances: \(.circumstances)" else "" end)
-        + (if .tried then "\n  - tried: \(.tried)" else "" end)
         + (if .result then "\n  - result: \(.result)" else "" end)
         + (if (.evidence // []) | length > 0 then "\n  - evidence: \(.evidence | map("\(.type) \(.ref)") | join(", "))" else "" end)
         + (if .missing_evidence then "\n  - missing evidence: \(.missing_evidence)" else "" end)
-        + (if .uncertainty then "\n  - uncertainty: \(.uncertainty)" else "" end)
-        + (if .corrects then "\n  - corrects: \(.corrects)" else "" end)
         + "\n";
       "# Experience of feature #\(.issue)\n\n"
       + (if (.valid | length) == 0 and (.invalid | length) == 0 then "No experience record was made for this feature.\n" else "" end)
@@ -106,11 +105,6 @@ result="$(jq -n -r \
           + "Review rounds \(.derived.review_rounds), verification \(.derived.verification.runs) (\(.derived.verification.failed) failed)"
           + (if .derived.stop then ", stopped with status \(.derived.stop.status)" else "" end) + ".\n\n"
           + (if .none_relevant then "No relevant observation was derived.\n" else (.observations | map(observation) | add) end)
-          + (if .agent.status == "valid" then
-               "\nThe agent:\n\n" + (if .agent.none then "No relevant observations, it says.\n" else (.agent.observations | map(observation) | add) end)
-             elif .agent.status == "invalid" then
-               "\nThe notes of the agent were invalid and are not kept:\n\n" + (.agent.errors | map("- \(.)\n") | add)
-             else "" end)
           + "\n") | add // "")
       + (if (.invalid | length) == 0 then "" else
           "## Invalid records\n\nThese are not a source for an analysis.\n\n"

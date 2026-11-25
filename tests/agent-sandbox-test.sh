@@ -7,8 +7,8 @@ set -euo pipefail
 # checks what the session can write. Codex 0.164 mounts .agents/, .git/, and
 # .codex/ read-only in its workspace-write sandbox; agent.sh grants exactly
 # the runtime directories that the implementer and the triage-implementer
-# write (completion record, handoff note, summary, manual steps, experience
-# notes) and nothing else. The write profile cannot run without a terminal:
+# write (completion record, handoff note, summary, manual steps) and nothing
+# else. The write profile cannot run without a terminal:
 # its command line is checked with a fake codex and must grant the same roots.
 #
 # Skipped, with a message, when codex is not installed, not logged in, or no
@@ -93,7 +93,7 @@ git -C "$repo" symbolic-ref HEAD refs/heads/feature/177-sandbox
 git -C "$repo" add -A
 git -C "$repo" -c user.name=test -c user.email=test@example.com commit -qm "scratch feature worktree"
 
-allowed=(.agents/completion .agents/handoffs .agents/summaries .agents/manual-steps .agents/experience)
+allowed=(.agents/completion .agents/handoffs .agents/summaries .agents/manual-steps)
 protected=(.agents/policies .agents/prompts .git .codex)
 
 # A protected directory exists before the session starts, so that a denied
@@ -178,13 +178,13 @@ for path in "${protected[@]}"; do
 done
 grep -Fxq "denied $base/sibling" "$results" || fail "the unattended session can write outside the worktree: $base/sibling"
 
-# The command line grants the five directories and no other path.
+# The command line grants the four directories and no other path.
 roots_unattended="$(grep '^ARG=sandbox_workspace_write.writable_roots=' "$MOCK_AGENT_LOG" | head -n 1)"
 [[ -n "$roots_unattended" ]] || fail "the unattended invocation passes no writable roots"
 for path in "${allowed[@]}"; do
   [[ "$roots_unattended" == *"\"$repo/$path\""* ]] || fail "the writable roots leave out $path: $roots_unattended"
 done
-[[ "$(grep -o '"' <<<"$roots_unattended" | wc -l)" -eq 10 ]] || fail "the writable roots name more than the five directories: $roots_unattended"
+[[ "$(grep -o '"' <<<"$roots_unattended" | wc -l)" -eq 8 ]] || fail "the writable roots name more than the four directories: $roots_unattended"
 grep -Fxq "ARG=workspace-write" "$MOCK_AGENT_LOG" || fail "the unattended session does not run in the workspace-write sandbox"
 
 # The write profile grants the same roots in the same sandbox.

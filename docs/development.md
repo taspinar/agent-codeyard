@@ -1308,6 +1308,27 @@ names, also one that continues on the next line. A project's own test files
 are its own and follow its rules; in the template every `tests/*.sh` must be
 named there, so none escapes the check.
 
+A few more traps of the tools, each met in a feature of the template:
+
+- `jq -r` prints a newline after a string that already ends with one. Text
+  handed on as a file, such as a diff for `git apply`, comes out with
+  `jq -j`, with a final newline added only when it is missing (#403).
+- Under `set -euo pipefail`, reading a file that may be missing through a
+  pipe, as in `value="$(sed -n ... "$file" 2>/dev/null | head -n 1)"`, ends
+  the script when the file is missing; test for the file first (#395).
+- `git rev-list --before=@<epoch>` misreads a small epoch and returns
+  `HEAD`; pass an ISO date (#157).
+- `copy_workflow` of `tests/lib-fakes.sh` copies `scripts/*.sh`,
+  `scripts/lib/*.sh`, the prompts, and the schemas. A test of a script that
+  reads another file, such as `scripts/verify-workflow.conf`, a policy, or
+  `scripts/lib/report.jq`, copies or writes that file into its fixture
+  (#189, #195).
+- `run-feature.sh` sources its libraries from its own directory: a run
+  started from the primary checkout judges a feature with the scripts of that
+  checkout, not with those of the feature's branch. A change to
+  `scripts/lib/completion.sh`, say, takes effect in a run only after the
+  merge; the self-tests test the branch's scripts (#218).
+
 The self-tests run the workflow scripts with a restricted `PATH`, so that
 fakes stand in for the agent CLIs and `gh` and nothing else of the machine is
 found by accident. They never use a fixed `/usr/bin:/bin` alone: on macOS
@@ -1633,10 +1654,10 @@ with broader permissions instead.
 **Codex and `.agents/`.** Codex 0.164 and later mount `.agents/`, `.git/`, and
 `.codex/` read-only in the workspace-write sandbox, also inside the worktree
 that the session may write otherwise. The implementer and the
-triage-implementer have to write five directories under `.agents/`
+triage-implementer have to write four directories under `.agents/`
 (`.agents/prompts/implementer.md`, `.agents/prompts/triage-implementer.md`):
-the completion record, the handoff note, the summary, the manual steps, and
-the experience notes. A Codex session of the `write` and of the `unattended`
+the completion record, the handoff note, the summary, and the manual steps.
+A Codex session of the `write` and of the `unattended`
 profile therefore gets exactly these opened as writable roots of its sandbox
 (`-c sandbox_workspace_write.writable_roots=[...]`, built from the worktree):
 
@@ -1644,9 +1665,8 @@ profile therefore gets exactly these opened as writable roots of its sandbox
 - `.agents/handoffs/`
 - `.agents/summaries/`
 - `.agents/manual-steps/`
-- `.agents/experience/`
 
-All five are ignored by Git. `agent.sh` creates them before the session
+All four are ignored by Git. `agent.sh` creates them before the session
 starts, because the sandbox refuses a writable root that does not exist (every
 command of the session then fails) and the session cannot create a directory
 inside the read-only `.agents/` itself. Nothing else under `.agents/` is
@@ -4507,7 +4527,6 @@ brings the rules.
 | `finding` | a finding of a feature review that the run stored: `round`, `id`, `severity`, and `previous` (`round`, `id`, `relation`) when it continues an earlier finding; see "Earlier rounds and re-raised findings" |
 | `risk` | the risk level of the feature as `run-feature.sh` printed it: `when` (at the start, or before a review round), `level`, and `reasons`; or the level of the first session of `start-feature.sh` when the owner gave a hint; and `hints`, when there is one: each with `level` and `source` (`issue-label` or `command-line`) |
 | `issue-comments` | the comments of the Issue that a step read for its agent: `issue`, `role` (`implementer`, `reviewer`, or `triage agent`), `passed` and the `authors` of the passed comments, `left_out` (by the size limit), `others` (comments of other authors), and `workflow` (the workflow's own reports) |
-| `experience-notes` | a session of the run changed the agent's experience notes: the `call` and the `hash` of the notes |
 | `experience` | the experience record of a feature run, under `record`: see below |
 
 **Token usage** keeps the field names of the provider, with `source` saying
@@ -4662,28 +4681,17 @@ the triage, the run record, the handoff note, or the completion record. A
 finding without a triage in the run says that its evidence is missing. A run
 with nothing to observe says so (`none_relevant`).
 
-**What the agent adds, optionally.** The implementer may write what only it
-knows in `.agents/experience/<issue>.json`, which Git ignores (the prompt
-shows the format): per observation its `kind` (`fact`, `hypothesis`, or
-`proposal`), `what` happened, the `circumstances`, what was `tried` and its
-`result`, the `evidence` (each with only a `type` and a `ref`) or the
-`missing_evidence`, the `uncertainty`, and
-`corrects` for an observation of an earlier run that it corrects. Notes count
-for the run whose session of the implementer or the triage implementer wrote
-them (an `experience-notes` event with their hash, never their content), and
-only while the file still holds what that session left. They are checked: notes that are not
-valid, such as a fact without evidence or a field the format does not know,
-are reported and not kept.
+A record of an earlier version of the workflow can hold fields, and its run
+events, that are no longer written: they are not judged, not shown, and no
+source for an analysis.
 
 **Never a gate.** A record that cannot be made is reported, and the run keeps
 its own outcome; nothing in a review, the completion gate, `finish-feature.sh`,
 or `publish-feature.sh` depends on it. A record is written once and never
-rewritten, so the original observations stay, and a correction is a new
-observation that names what it corrects. A record changes nothing in the
-repository. What looks like a secret is replaced by `[redacted]`, a private
-key with its whole body, and the handoff note and the transcripts are not
-copied. The limit of 20 observations applies to the notes of the agent; what
-a script derives is as long as the run was.
+rewritten. A record changes nothing in the repository. What looks like a
+secret is replaced by `[redacted]`, a private key with its whole body, and
+the handoff note and the transcripts are not copied. A record is as long as
+the run was.
 
 ```bash
 ./scripts/show-experience.sh 12         # the records of feature 12, as Markdown

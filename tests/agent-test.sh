@@ -393,12 +393,12 @@ for profile in write unattended; do
   agent_run "$profile" codex model-a "$workdir" "the prompt" "$tmp/final.txt" >/dev/null ||
     fail "the codex $profile session failed"
   roots="$(codex_roots_of)"
-  expected="[\"$workdir/.agents/completion\",\"$workdir/.agents/handoffs\",\"$workdir/.agents/summaries\",\"$workdir/.agents/manual-steps\",\"$workdir/.agents/experience\"]"
-  [[ "$roots" == "$expected" ]] || fail "the codex $profile session grants other writable roots than the five runtime directories: ${roots:-none}"
-  for dir in completion handoffs summaries manual-steps experience; do
+  expected="[\"$workdir/.agents/completion\",\"$workdir/.agents/handoffs\",\"$workdir/.agents/summaries\",\"$workdir/.agents/manual-steps\"]"
+  [[ "$roots" == "$expected" ]] || fail "the codex $profile session grants other writable roots than the four runtime directories: ${roots:-none}"
+  for dir in completion handoffs summaries manual-steps; do
     [[ -d "$workdir/.agents/$dir" ]] || fail "the codex $profile session started without .agents/$dir in the work directory"
   done
-  if grep -Eq -- '--add-dir|writable_roots=\[[^]]*(policies|prompts|schemas|plans|reviews|triage|run|\.git|\.codex)' "$MOCK_AGENT_LOG"; then
+  if grep -Eq -- '--add-dir|writable_roots=\[[^]]*(policies|prompts|schemas|plans|reviews|triage|run|experience|\.git|\.codex)' "$MOCK_AGENT_LOG"; then
     fail "the codex $profile session opens more than the runtime directories: $(cat "$MOCK_AGENT_LOG")"
   fi
   : >"$MOCK_AGENT_LOG"

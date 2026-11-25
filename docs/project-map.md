@@ -120,7 +120,7 @@ the website describes the current template.
 | `scripts/lib/verification.sh` | The record of the last passed verification of a working tree, the durations of its checks, and the results of its budget checks, with their report for the summary of `verify.sh` |
 | `scripts/lib/verify-lock.sh` | The machine-wide slot for heavy verification: a lock directory outside every worktree, taken by a run of `verify.sh` that starts a check named under `heavy:`, released when it ends, recovered after a crash, and shared with a verification nested in it |
 | `scripts/lib/records.sh` | The run records: duration and token usage per run, step, and agent call, and the copy per feature or planning |
-| `scripts/lib/experience.sh` | The experience record of a feature run: what a script derives from the run, and the agent's optional notes once they are valid |
+| `scripts/lib/experience.sh` | The experience record of a feature run: what a script derives from the run |
 | `scripts/lib/report.jq` | The report of `report-runs.sh`: totals, comparisons, and the summary for GitHub, from numeric fields only |
 | `scripts/lib/completion.sh` | The completion gate: validation of the implementer's completion record, the remaining work a handoff note lists, and the decision the scripts act on |
 | `scripts/lib/exceptions.sh` | The owner's exceptions to blocking findings: where a record is stored, its SHA-256, its validation against its schema and its binding to the latest, current review, the lines of the commit message, and the records published on the Issue |
@@ -181,8 +181,7 @@ the website describes the current template.
 
 A Codex session with write access (the `write` and the `unattended` profile)
 may write only `.agents/completion/`, `.agents/handoffs/`,
-`.agents/summaries/`, `.agents/manual-steps/`, and `.agents/experience/` of
-these: Codex 0.164 and later mount `.agents/` read-only in the sandbox, and
+`.agents/summaries/`, and `.agents/manual-steps/` of these: Codex 0.164 and later mount `.agents/` read-only in the sandbox, and
 `scripts/lib/agent.sh` opens exactly the directories that the implementer and
 the triage-implementer have to write, all ignored by Git. The policies, the
 prompts, the schemas, the plans, the reviews, the triage, `.agents/run/`,

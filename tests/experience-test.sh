@@ -2,9 +2,9 @@
 
 set -euo pipefail
 
-# Experience records: what a script derives from a run without an agent, the
-# optional notes of the agent and their validation, and that a record never
-# changes the outcome of the work.
+# Experience records: what a script derives from a run without an agent, their
+# validation, records of an older workflow, and that a record never changes
+# the outcome of the work.
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
@@ -115,7 +115,7 @@ record="$(records "$repo")"
 jq -e '.observations | all(.kind != "fact" or ((.evidence | length) > 0) or (.missing_evidence != null))' <<<"$record" >/dev/null ||
   fail "a fact has no evidence"
 jq -e '.observations | any(.id == "verification")' <<<"$record" >/dev/null || fail "the repaired verification is not observed"
-jq -e '.agent.status == "absent"' <<<"$record" >/dev/null || fail "an absent agent part is not said so"
+jq -e 'has("agent") | not' <<<"$record" >/dev/null || fail "the record has a part of the agent: $record"
 # What looks like a secret is not copied.
 if grep -Fq "ghp_abcdefghij" <<<"$record"; then fail "a token reached the record"; fi
 grep -Fq "[redacted]" <<<"$record" || fail "the token was not replaced"
@@ -154,41 +154,27 @@ jq -e '.none_relevant == true and (.observations | length) == 0' <<<"$(records "
   fail "a run without observations does not say so"
 grep -Fq "No relevant observation was derived." <<<"$(show "$repo" 12)" || fail "the absence of observations is not shown"
 
-# The notes of the agent: facts, hypotheses, and proposals apart, kept when
-# valid; a correction is one; "none" is a valid answer.
-repo="$(setup_repo notes)"
-in_run "$repo" 0 'mkdir -p .agents/experience; cat >.agents/experience/12.json <<JSON
-{"schema": "experience-notes/v1", "observations": [
-  {"kind": "fact", "what": "The test timed out twice", "evidence": [{"type": "check", "ref": "pytest run 2"}], "tried": "cached the fixture", "result": "passed"},
-  {"kind": "hypothesis", "what": "The network call is slow", "uncertainty": "not measured"},
-  {"kind": "proposal", "what": "Cache fixtures by default", "corrects": "20261001T000000Z-1-1/2"}]}
-JSON
-  AGENT_ROLE=implementer experience_notes_written "$PWD" "" call-1'
-record="$(records "$repo")"
-[[ "$(jq -c '[.agent.status, [.agent.observations[].kind]]' <<<"$record")" == '["valid",["fact","hypothesis","proposal"]]' ]] ||
-  fail "valid notes were not kept apart by kind: $record"
+# A record of a workflow before #500 holds a part `agent` with the notes of
+# the agent, and its run an `experience-notes` event. It stays valid; its
+# derived part is shown, the notes are not. A notes file that a session
+# leaves in .agents/experience/ is not read.
+repo="$(setup_repo old-record)"
+in_run "$repo" 0 'write_round; mkdir -p .agents/experience; printf "%s\n" "{\"schema\": \"experience-notes/v1\", \"observations\": [{\"kind\": \"hypothesis\", \"what\": \"A note of today\"}]}" >.agents/experience/12.json'
+jq -e 'has("agent") | not' <<<"$(records "$repo")" >/dev/null || fail "a notes file was read into the record"
+file="$(ls "$repo"/.agents/run/records/*.jsonl)"
+jq -c 'select(.type == "experience") | .record.agent = {status: "valid", none: false, observations: [{kind: "hypothesis", what: "An old note"}]}' "$file" >"$tmp/old-record.json"
+jq -c --arg run "$(jq -r 'select(.type == "run-start") | .run' "$file")" -n '{schema: "run-record/v1", run: $run, time: "2026-10-01T00:00:00Z", epoch: 1, type: "experience-notes", call: "call-1", hash: "abc"}' >>"$file"
+grep -v '"type":"experience"' "$file" >"$tmp/old-file.jsonl" || true
+cat "$tmp/old-record.json" >>"$tmp/old-file.jsonl"
+cp "$tmp/old-file.jsonl" "$file"
+json="$(show "$repo" 12 --json)"
+[[ "$(jq -c '[(.valid | length), (.invalid | length), (.valid[0].derived.review_rounds)]' <<<"$json")" == "[1,0,1]" ]] || fail "an old record with notes is not valid: $json"
+jq -e '.valid[0] | has("agent") | not' <<<"$json" >/dev/null || fail "the notes of an old record are shown: $json"
 markdown="$(show "$repo" 12)"
-grep -Fq -- "- hypothesis: The network call is slow" <<<"$markdown" || fail "a hypothesis is not shown as one"
-grep -Fq -- "  - corrects: 20261001T000000Z-1-1/2" <<<"$markdown" || fail "a correction is not recognisable"
-repo="$(setup_repo none)"
-in_run "$repo" 0 'mkdir -p .agents/experience; printf "%s\n" "{\"schema\": \"experience-notes/v1\", \"none\": true}" >.agents/experience/12.json; AGENT_ROLE=implementer experience_notes_written "$PWD" "" call-1'
-jq -e '.agent == {status: "valid", none: true, observations: []}' <<<"$(records "$repo")" >/dev/null || fail "notes that say none are not valid"
-
-# Invalid notes are reported and not kept; the run keeps its outcome.
-repo="$(setup_repo invalid-notes)"
-status=0
-in_run "$repo" 0 'mkdir -p .agents/experience; printf "%s\n" "{\"schema\": \"experience-notes/v1\", \"observations\": [{\"kind\": \"fact\", \"what\": \"It works\"}, {\"kind\": \"guess\", \"what\": \"x\", \"transcript\": \"...\"}]}" >.agents/experience/12.json; AGENT_ROLE=implementer experience_notes_written "$PWD" "" call-1' \
-  2>"$tmp/invalid.err" || status=$?
-[[ "$status" -eq 0 ]] || fail "invalid notes changed the outcome of the run"
-record="$(records "$repo")"
-[[ "$(jq -r '.agent.status' <<<"$record")" == "invalid" ]] || fail "invalid notes were kept"
-jq -e '.agent | has("observations") | not' <<<"$record" >/dev/null || fail "invalid notes reached the record"
-grep -Fq "a fact without evidence" "$tmp/invalid.err" || fail "a fact without evidence was not reported"
-grep -Fq "unknown field: transcript" "$tmp/invalid.err" || fail "an unknown field was not reported"
-# Notes and reviews of an earlier run, also one in the same second, are not
-# this run's: a run claims what it wrote, not what changed recently.
-in_run "$repo" 0 ':' 2>/dev/null
-[[ "$(latest_record "$repo" | jq -r '.agent.status')" == "absent" ]] || fail "notes of an earlier run were taken for this one"
+if grep -Eq "An old note|A note of today" <<<"$markdown"; then fail "the notes of an old record are shown: $markdown"; fi
+grep -Fq "Review round 1 found a major finding" <<<"$markdown" || fail "the derived part of an old record is not shown: $markdown"
+# Reviews of an earlier run, also one in the same second, are not this run's:
+# a run claims what it wrote, not what changed recently.
 repo="$(setup_repo same-second)"
 in_run "$repo" 0 'write_round'
 in_run "$repo" 0 ':'
@@ -212,13 +198,6 @@ repo="$(setup_repo overlapping)"
   jq -c 'select(.type == "experience") | .record.derived.review_rounds' "$first" >"$tmp/overlapping-first"
 )
 [[ "$(cat "$tmp/overlapping-first")" == "0" ]] || fail "a run took the review of a run beside it"
-# Notes that changed after the session that wrote them are not attributed.
-repo="$(setup_repo notes-changed)"
-in_run "$repo" 0 'mkdir -p .agents/experience; printf "%s\n" "{\"schema\": \"experience-notes/v1\", \"none\": true}" >.agents/experience/12.json
-  AGENT_ROLE=implementer experience_notes_written "$PWD" "" call-1
-  printf "%s\n" "{\"schema\": \"experience-notes/v1\", \"none\": false, \"observations\": []}" >.agents/experience/12.json' 2>/dev/null
-[[ "$(latest_record "$repo" | jq -r '.agent.errors[0]')" == "the notes changed after the session of this run that wrote them; they are not attributed to it" ]] ||
-  fail "notes that changed after their session were attributed"
 
 # A record that cannot be made, or one that is damaged, changes no outcome
 # and is never shown as valid.
@@ -290,19 +269,19 @@ record="$(records "$repo")"
   fail "the gates do not name the content each judged"
 [[ "$(show "$repo" 12 --json | jq '.valid | length')" == "1" ]] || fail "a record with gates is not valid"
 
-# A run with many findings gives a valid record: the limit of 20 is for the
-# notes of an agent.
+# A run with many findings gives a valid record: the observations have no
+# limit, a record is as long as the run was.
 repo="$(setup_repo many)"
 in_run "$repo" 0 'jq -n "{schema: \"review/v1\", issue: 12, round: 1, head: \"h\", findings: [range(25) | {id: \"MIN\(.)\", severity: \"minor\", title: \"Finding \(.)\"}]}" >.agents/reviews/feature-12-thing-review-01.json; records_artifact review .agents/reviews/feature-12-thing-review-01.json'
 [[ "$(records "$repo" | jq '.observations | length')" == "25" ]] || fail "the findings of a run were not all observed"
 [[ "$(show "$repo" 12 --json | jq -c '[(.valid | length), (.invalid | length)]')" == "[1,0]" ]] || fail "a record with many findings is invalid"
 
-# A private key in the notes is removed whole.
+# A private key in a finding is removed whole.
 repo="$(setup_repo private-key)"
-in_run "$repo" 0 'mkdir -p .agents/experience; jq -n "{schema: \"experience-notes/v1\", observations: [{kind: \"hypothesis\", what: \"The key was\n-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAA\nQyNTUxOQAAACDtopsecret\n-----END OPENSSH PRIVATE KEY-----\nin the log\"}]}" >.agents/experience/12.json; AGENT_ROLE=implementer experience_notes_written "$PWD" "" call-1'
+in_run "$repo" 0 'jq -n "{schema: \"review/v1\", issue: 12, round: 1, head: \"h\", findings: [{id: \"M1\", severity: \"major\", title: \"The key was\n-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAA\nQyNTUxOQAAACDtopsecret\n-----END OPENSSH PRIVATE KEY-----\nin the log\"}]}" >.agents/reviews/feature-12-thing-review-01.json; records_artifact review .agents/reviews/feature-12-thing-review-01.json'
 record="$(records "$repo")"
 if grep -Eq "b3BlbnNzaC1rZXktdjEAAAA|topsecret|END OPENSSH" <<<"$record"; then fail "key material reached the record"; fi
-[[ "$(jq -r '.agent.observations[0].what' <<<"$record")" == $'The key was\n[redacted]\nin the log' ]] || fail "the private key was not replaced: $record"
+[[ "$(jq -r '.observations[0].what' <<<"$record")" == $'Review round 1 found a major finding: The key was\n[redacted]\nin the log' ]] || fail "the private key was not replaced: $record"
 
 # A record whose derived part is damaged is invalid, and the valid records
 # beside it are still shown.
@@ -314,20 +293,21 @@ json="$(show "$repo" 12 --json)"
 [[ "$(jq -c '[(.valid | length), (.invalid | length)]' <<<"$json")" == "[1,1]" ]] || fail "a damaged derived part is not invalid: $json"
 jq -e '.invalid[0].errors | any(. == "the derived part is not an object")' <<<"$json" >/dev/null || fail "the damaged derived part is not named"
 
-# Blank evidence is no evidence: a fact with an empty or a blank reference,
-# or with a blank reason for missing evidence, makes notes invalid, and a
-# stored record with one is invalid.
-for observation in '{"kind": "fact", "what": "x", "evidence": [{"type": "", "ref": ""}]}' \
+# Blank evidence is no evidence: a stored record with an empty or a blank
+# reference, with a blank reason for missing evidence, with evidence that
+# holds more than a type and a reference, or with an observation that is no
+# fact, is invalid.
+for observation in '{"kind": "fact", "what": "x", "evidence": [{"type": " ", "ref": ""}]}' \
   '{"kind": "fact", "what": "x", "evidence": [{"type": "check", "ref": "   "}]}' \
-  '{"kind": "fact", "what": "x", "missing_evidence": "  "}' '{"kind": "hypothesis", "what": " "}'; do
+  '{"kind": "fact", "what": "x", "missing_evidence": "  "}' \
+  '{"kind": "fact", "what": "x", "evidence": [{"type": "check", "ref": "r", "transcript": "the whole session"}]}' \
+  '{"kind": "hypothesis", "what": "x", "missing_evidence": "none"}'; do
   repo="$(setup_repo "$(basename "$(mktemp -d "$tmp/blank.XXXXXX")")")"
-  in_run "$repo" 0 "mkdir -p .agents/experience; printf '%s\\n' '{\"schema\": \"experience-notes/v1\", \"observations\": [$observation]}' >.agents/experience/12.json
-    AGENT_ROLE=implementer experience_notes_written \"\$PWD\" '' call-1" 2>/dev/null
-  [[ "$(latest_record "$repo" | jq -r '.agent.errors | map(select(test("JSON object|schema"))) | length')" == "0" && "$(latest_record "$repo" | jq -r '.agent.status')" == "invalid" ]] || fail "blank evidence was accepted, or the notes were not read: $observation $(latest_record "$repo" | jq -c .agent)"
+  in_run "$repo" 0 ':'
+  file="$(ls "$repo"/.agents/run/records/*.jsonl)"
+  jq -c --argjson observation "$observation" 'select(.type == "experience") | .record.observations = [$observation] | .record.none_relevant = false' "$file" >>"$file"
+  [[ "$(show "$repo" 12 --json | jq -c '[(.valid | length), (.invalid | length)]')" == "[1,1]" ]] || fail "a stored record with this observation is valid: $observation"
 done
-file="$(ls "$repo"/.agents/run/records/*.jsonl)"
-jq -c 'select(.type == "experience") | .record.observations = [{kind: "fact", what: "x", evidence: [{type: " ", ref: ""}]}] | .record.none_relevant = false' "$file" | head -n 1 >>"$file"
-[[ "$(show "$repo" 12 --json | jq '.invalid | length')" -ge 1 ]] || fail "a stored record with blank evidence is valid"
 
 # A record that cannot even be checked, or that names another run or Issue,
 # is invalid, and hides no valid record beside it.
@@ -335,7 +315,7 @@ repo="$(setup_repo isolated)"
 in_run "$repo" 0 ':'
 file="$(ls "$repo"/.agents/run/records/*.jsonl)"
 jq -c 'select(.type == "experience") | .record.code_version = "corrupt"' "$file" >>"$file"
-jq -c 'select(.type == "experience") | .record.agent = "corrupt"' "$file" | head -n 1 >>"$file"
+jq -c 'select(.type == "experience") | .record.none_relevant = "corrupt"' "$file" | head -n 1 >>"$file"
 jq -c 'select(.type == "experience") | .record.run = "another-run"' "$file" | head -n 1 >>"$file"
 jq -c 'select(.type == "experience") | .record.issue = 13' "$file" | head -n 1 >>"$file"
 json="$(show "$repo" 12 --json)"
@@ -361,14 +341,6 @@ repo="$(setup_repo unavailable)"
   set -u
   session_test
 ) >"$tmp/unavailable.out" 2>&1 || fail "an unset RECORDS_COMMAND failed: $(cat "$tmp/unavailable.out")"
-
-# Evidence holds a type and a reference only: a transcript inside it makes
-# the notes invalid.
-repo="$(setup_repo evidence)"
-in_run "$repo" 0 'mkdir -p .agents/experience; printf "%s\n" "{\"schema\": \"experience-notes/v1\", \"observations\": [{\"kind\": \"fact\", \"what\": \"x\", \"evidence\": [{\"type\": \"check\", \"ref\": \"r\", \"transcript\": \"the whole session\"}]}]}" >.agents/experience/12.json; AGENT_ROLE=implementer experience_notes_written "$PWD" "" call-1' 2>/dev/null
-record="$(records "$repo")"
-[[ "$(jq -r '.agent.status' <<<"$record")" == "invalid" ]] || fail "a transcript inside evidence was kept"
-if grep -Fq "the whole session" <<<"$record"; then fail "the transcript inside evidence reached the record"; fi
 
 # No event of the run copies a secret: not the reasons of a gate, not a note,
 # also not in the copy of the feature.

@@ -95,6 +95,30 @@ jq -e '.evidence_ids | index(["statistics/feature/21"])' "$input" >/dev/null || 
 analyze "$repo" --last 1 --input-only || fail "--last failed"
 [[ "$(jq -c '.selection.issues' "$(latest "$repo")input.json")" == '["22"]' ]] || fail "--last did not select the last feature"
 
+# A run recorded before #500 holds an `experience-notes` event and a part
+# `agent` with notes in its record: the input keeps the record and its
+# derived observations, without the notes, and no id cites them.
+old_repo="$(setup_repo old-notes)"
+for old_file in "$old_repo"/.agents/run/records/*.jsonl; do
+  jq -e -s 'any(.type == "run-start" and (.subject | tostring) == "21")' "$old_file" >/dev/null && break
+done
+old_run="$(jq -r 'select(.type == "run-start") | .run' "$old_file")"
+{
+  grep -v '"type":"experience"' "$old_file"
+  jq -cn --arg run "$old_run" '{schema: "run-record/v1", run: $run, time: "2026-10-01T00:00:00Z", epoch: 1, type: "experience-notes", call: "call-1", hash: "abc"}'
+  jq -c 'select(.type == "experience") | .record.agent = {status: "valid", none: false, observations: [{id: "n1", kind: "hypothesis", what: "An old note"}]}' "$old_file"
+} >"$tmp/old-notes.jsonl"
+cp "$tmp/old-notes.jsonl" "$old_file"
+analyze "$old_repo" 21 22 --input-only || { cat "$old_repo.out" >&2; fail "the input of a record with old notes failed"; }
+old_input="$(latest "$old_repo")input.json"
+jq -e --arg run "$old_run" '[.experiences[].records[] | select(.run == $run)] | length == 1' "$old_input" >/dev/null ||
+  fail "the record with old notes is not in the input: $(jq -c .experiences "$old_input")"
+jq -e --arg id "$old_run/review-1-M1" '.evidence_ids | index([$id])' "$old_input" >/dev/null || fail "the derived observation of the record with old notes cannot be cited"
+if grep -Fq "An old note" "$old_input" || jq -e '[.evidence_ids[] | select(contains("/agent/"))] | length > 0' "$old_input" >/dev/null; then
+  fail "the old notes reached the input"
+fi
+grep -Fq "Experience records: 2 valid, 0 invalid" "$old_repo.out" || fail "the record with old notes was not counted as valid: $(cat "$old_repo.out")"
+
 # result <findings-runs...>: a valid result with one finding on the given runs.
 result() {
   jq -cn --arg a "$1/review-1-M1" --arg b "$2/review-1-M1" '{

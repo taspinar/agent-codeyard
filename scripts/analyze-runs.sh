@@ -124,11 +124,7 @@ jq -n --slurpfile statistics "$work/statistics.json" --slurpfile experiences "$w
   # Only the records of the selected runs: a period leaves out the others.
   | ($exp | map({issue,
       records: (.valid | map(select(.run as $r | $selected | index([$r]))) | map(.run as $run | {run, command, code_version, derived,
-        observations: (.observations | to_entries | map(.value + {id: "\($run)/\(.value.id // "observation-\(.key + 1)")"})),
-        agent: (if .agent.status == "valid"
-                then .agent + {observations: (.agent.observations | to_entries
-                  | map(.value + {id: "\($run)/agent/\(.value.id // "\(.key + 1)")"}))}
-                else .agent end)})),
+        observations: (.observations | to_entries | map(.value + {id: "\($run)/\(.value.id // "observation-\(.key + 1)")"}))})),
       invalid: (.invalid | map(select(.run == null or (.run as $r | $selected | index([$r])))) | length)})) as $experiences
   | {schema: "analysis-input/v1",
      selection: {issues: ($stats.subjects | map(.subject)) , since: (if $since == "" then null else $since end),
@@ -141,7 +137,7 @@ jq -n --slurpfile statistics "$work/statistics.json" --slurpfile experiences "$w
      already_analysed: $already}
   | .evidence_ids = ((.selection.runs)
       + ($stats.subjects | map("statistics/\(.kind)/\(.subject)"))
-      + ([$experiences[].records[] | (.observations[].id), (.agent.observations? // [] | .[].id)]) | unique)' >"$work/input.json"
+      + ([$experiences[].records[] | .observations[].id]) | unique)' >"$work/input.json"
 
 input_id="$(git hash-object "$work/input.json" | cut -c1-12)"
 # Every analysis gets a directory of its own, also when two with the same
