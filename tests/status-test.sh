@@ -77,7 +77,7 @@ repo="$tmp/repo"
 mkdir -p "$repo/scripts/lib"
 cp "$source_root/scripts/status.sh" "$repo/scripts/"
 cp "$source_root/scripts/lib/records.sh" "$source_root/scripts/lib/experience.sh" "$source_root/scripts/lib/completion.sh" \
-  "$source_root/scripts/lib/github.sh" "$source_root/scripts/lib/verify-lock.sh" "$repo/scripts/lib/"
+  "$source_root/scripts/lib/github.sh" "$repo/scripts/lib/"
 workflow_gitignore "$repo/.gitignore"
 git -C "$repo" init -q -b main
 git -C "$repo" -c user.name=t -c user.email=t@example.com add -A

@@ -106,17 +106,11 @@ A prerequisite of the machine is missing: Bash 4 or newer, Git, or `jq` 1.6 or n
 
 ### "BUSY  the slot for heavy verification of this machine is held by …"
 
-- **First fix:** wait until the run it names has ended, then run the same command again.
+- **First fix:** update the workflow from the template; `verify.sh` no longer takes the slot and never prints `BUSY`.
 - **Recovered when:** the command runs its checks instead of printing `BUSY`.
-- **Output:** the `BUSY` line of `verify.sh` names the holder's run, PID and worktree; the exit status is 75.
+- **Output:** the `BUSY` line of an older `verify.sh` names the holder's run, PID and worktree; the exit status is 75.
 
-Another session or worktree is running the checks that your project marked `heavy:` in `scripts/verify.conf`. Nothing was checked and nothing is wrong with your code.
-
-Further diagnosis, when waiting does not help:
-
-- **To stop the holder instead,** check the PID it names with `ps -p <pid> -o pid,lstart,args` and stop exactly that process, not every process with a matching name.
-- **The holder's process has ended but its check (a process group) still runs:** a check of a crashed run is still busy. The slot frees itself when it ends, or stop exactly that group with `kill -- -<group>` after checking it with `ps -o pid,pgid,args -g <group>`.
-- **The holder's process "cannot be checked from this run":** its owner is another user whose processes this run cannot see. Ask that user, or the owner of the shared `VERIFY_LOCK_DIR`, whether the run still exists before removing the lock directory by hand.
+An older version of the workflow had a machine-wide slot for the checks that a project marked `heavy:`, and a run that found it held stopped with this line. The slot is removed: a `heavy:` line is now an error of the configuration that names it. Remove the line, and lower `parallel:` on a machine that runs several features at once.
 
 See <a href="#verification-and-review/heavy-checks-on-a-shared-machine">heavy checks on a shared machine</a>.
 

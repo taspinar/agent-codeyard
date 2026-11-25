@@ -1567,6 +1567,24 @@ project="$(setup_project parallel-variable "lint: ruff check .")"
 if VERIFY_PARALLEL=many run_with "$project"; then fail "VERIFY_PARALLEL=many was accepted"; fi
 grep -Fq "VERIFY_PARALLEL needs a whole number" "$project/out.log" || fail "the refusal of VERIFY_PARALLEL did not say why"
 
+# 'heavy:' declared the machine-wide slot for heavy verification, which is
+# removed (Issue 521): in either file, in any form, the line is an error of
+# the configuration that names it and its line, and no check runs. A check
+# is not called 'heavy' either, so the line cannot pass as one.
+for line in "heavy: lint" "heavy [code]: lint" "heavy budget: lint"; do
+  project="$(setup_project heavy-refused.XXXXXX "lint: touch ran" "$line")"
+  expect_failure "$project" "'$line' must be refused"
+  grep -Fq "'heavy' is no longer a setting" "$project/out.log" || fail "the refusal of '$line' did not say why: $(cat "$project/out.log")"
+  grep -Fq "line 2 of scripts/verify.conf" "$project/out.log" || fail "the refusal of '$line' did not name its line: $(cat "$project/out.log")"
+  [[ ! -e "$project/ran" ]] || fail "a check ran although '$line' was refused"
+done
+project="$(setup_workflow_project heavy-in-workflow)"
+printf '%s\n' "paths: tools" "self-test: touch ran" "heavy framework: self-test" >"$project/scripts/verify-workflow.conf"
+if run_with "$project" --all; then fail "'heavy' in scripts/verify-workflow.conf was accepted"; fi
+grep -Fq "'heavy' is no longer a setting" "$project/out.log" || fail "the refusal of 'heavy' in the self-tests did not say why: $(cat "$project/out.log")"
+grep -Fq "line 3 of scripts/verify-workflow.conf" "$project/out.log" || fail "the refusal of 'heavy' in the self-tests did not name its line: $(cat "$project/out.log")"
+[[ ! -e "$project/ran" ]] || fail "a self-test ran although 'heavy' was refused"
+
 # The inputs of a check ('inputs:' in scripts/verify.conf, Issue 491): the
 # check runs only when an input changed since the base, and otherwise shows
 # SKIP with the reason. A file of a pathspec counts by its content; a path of

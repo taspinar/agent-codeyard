@@ -101,15 +101,10 @@ records_arguments=("$@")
 # it fails nothing. A partial run (--only) and a file whose checks did not
 # run compare with nothing.
 #
-# Each of the two files may declare one 'heavy: <check>...': checks of that
-# file that need the machine to themselves. A run that is going to start one
-# takes the machine-wide slot for heavy verification first
-# (scripts/lib/verify-lock.sh), shared by every session and worktree of the
-# machine, and holds it until it ends. When another run holds it, the run
-# reports the holder, starts no check, records nothing, and exits with status
-# 75: the machine is busy, which says nothing about the code. A run without a
-# heavy check, such as --only of the light groups, takes no slot. Without a
-# 'heavy:' line nothing is locked.
+# A line 'heavy: <check>...' is refused as an error of the configuration that
+# names it: the machine-wide slot for heavy verification that it declared was
+# never taken and is removed (Issue 521). Two verifications on one machine at
+# the same time made no check fail; 'parallel: <n>' sets the load of a run.
 #
 # Before any check, a preflight (scripts/lib/environment.sh) checks the
 # prerequisites of this machine: those of the workflow always, and those of
@@ -123,12 +118,9 @@ records_arguments=("$@")
 # group of its own with /dev/null as its standard input. They start in the
 # order of the files; the output of each is kept apart and printed as one
 # block when it ends, and the summary, the durations, the exit status, and the
-# record are those of a run of the same checks one at a time. A run that holds
-# the slot for heavy verification records the group of every check that runs.
+# record are those of a run of the same checks one at a time.
 # VERIFY_PARALLEL=<n> overrides the line for one run; a check does not inherit
-# it. Without either, the checks run one at a time. A run inside the slot of
-# another run (started by one of its checks) runs its checks one at a time,
-# in the process group that the holder recorded, whatever either says.
+# it. Without either, the checks run one at a time.
 #
 # A project that adopted the workflow records how its checks ended before any
 # change: './scripts/verify.sh --baseline', started by the owner once, runs
@@ -243,12 +235,6 @@ usage() {
   echo "total, the target, and the five slowest checks; the verification still passes"
   echo "when every check passed. A partial run compares with nothing."
   echo
-  echo "A line 'heavy: <check>...' in either file names checks that need the machine to"
-  echo "themselves. A run that starts one first takes the machine-wide slot for heavy"
-  echo "verification (\$VERIFY_LOCK_DIR, by default /tmp/agentic-verify-<uid>). When"
-  echo "another run holds it, the summary shows BUSY with that run, no check runs,"
-  echo "nothing is recorded, and the exit status is 75. Without the line nothing locks."
-  echo
   echo "Before any check, a preflight checks the prerequisites of this machine: Bash 4"
   echo "or newer, git, and jq 1.6 or newer always, and the toolchain of the workflow"
   echo "self-tests (GNU sed, GNU timeout and date) only when a self-test is going to"
@@ -288,7 +274,7 @@ usage() {
 
 config_fail() {
   echo "Error: $*" >&2
-  echo "Declare required checks as '<name>: <command>', '<name> [<group>]: <command>', '<name> [<group>] partition <file>: <command>', or '<name> [<group>] budget: <command>' (a self-test of scripts/verify-workflow.conf may add 'framework' before the colon), a target for their duration as 'budget-seconds: <n>', the number of checks at a time as 'parallel: <n>' (scripts/verify.conf only), and the checks that need the machine to themselves as 'heavy: <check>...'." >&2
+  echo "Declare required checks as '<name>: <command>', '<name> [<group>]: <command>', '<name> [<group>] partition <file>: <command>', or '<name> [<group>] budget: <command>' (a self-test of scripts/verify-workflow.conf may add 'framework' before the colon), a target for their duration as 'budget-seconds: <n>', and the number of checks at a time as 'parallel: <n>' (scripts/verify.conf only)." >&2
   exit 1
 }
 
@@ -422,10 +408,9 @@ fi
 # results and the durations of the checks (lib/verification.sh), and the
 # index of a fingerprint.
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/verify.XXXXXX")"
-# The checks of a parallel run that still run are stopped, and the slot for
-# heavy verification is given back, however the run ends; a signal ends it
-# through this trap too.
-trap '! declare -F parallel_stop >/dev/null || parallel_stop; ! declare -F verify_lock_release >/dev/null || verify_lock_release; rm -rf "$scratch"' EXIT
+# The checks of a parallel run that still run are stopped however the run
+# ends; a signal ends it through this trap too.
+trap '! declare -F parallel_stop >/dev/null || parallel_stop; rm -rf "$scratch"' EXIT
 budgets_file="$scratch/budgets"
 durations_file="$scratch/durations"
 
@@ -491,7 +476,6 @@ workflow_paths=""
 budget_seconds=""
 project_budget_seconds=""
 workflow_budget_seconds=""
-heavy=()
 parallel_value=""
 accepted_names=()
 accepted_reasons=()
@@ -519,8 +503,8 @@ completed_status() {
 # scripts/verify-workflow.conf may declare). With <paths-entry> 'yes', the reserved entry 'paths:'
 # sets workflow_paths instead of declaring a check. The reserved entry
 # 'budget-seconds:' sets budget_seconds, the target for the duration of the
-# checks of <file>. The reserved entry 'heavy:' sets heavy to 'yes' for the
-# checks of <file> that it names. In scripts/verify.conf (<paths-entry> 'no'),
+# checks of <file>. The name 'heavy' is refused (Issue 521). In
+# scripts/verify.conf (<paths-entry> 'no'),
 # the reserved entry 'parallel: <n>' sets parallel_value, the number of checks
 # that run at a time; in the other file it is refused. There,
 # the reserved entry 'accepted-failure: <check> <reason>' adds the owner's
@@ -547,12 +531,7 @@ load_checks() {
   local scope
   local statuses
   local status
-  local first="${#names[@]}"
-  local heavy_names=""
-  local heavy_line=0
-  local heavy_list=()
   local input_list=()
-  local index
 
   budget_seconds=""
   while IFS= read -r line || [[ -n "$line" ]]; do
@@ -567,11 +546,13 @@ load_checks() {
     budget="${BASH_REMATCH[6]:+yes}"
     framework="${BASH_REMATCH[7]:+yes}"
     value="${BASH_REMATCH[8]}"
+    [[ "$name" != "heavy" ]] ||
+      config_fail "'heavy' is no longer a setting: the machine-wide slot for heavy verification was removed (Issue 521). Remove line $line_number of $label; 'parallel: <n>' in scripts/verify.conf, or VERIFY_PARALLEL for one run, sets how many checks run at a time."
     if [[ -n "$framework" ]]; then
       [[ "$paths_entry" == "yes" ]] ||
         config_fail "'framework' marks a self-test of scripts/verify-workflow.conf that runs only in the template; a check of $label is the project's own and always runs, on line $line_number of $label."
       case "$name" in
-        paths | budget-seconds | accepted-failure | parallel | heavy | inputs)
+        paths | budget-seconds | accepted-failure | parallel | inputs)
           config_fail "'$name' is not a check and cannot be framework-only, on line $line_number of $label."
           ;;
       esac
@@ -670,15 +651,6 @@ load_checks() {
       parallel_value="$value"
       continue
     fi
-    if [[ "$name" == "heavy" ]]; then
-      [[ -z "$group" && -z "$budget" && -z "$partition" ]] ||
-        config_fail "'heavy' names checks, it is not a check: it takes no group or partition and is no budget check, on line $line_number of $label."
-      [[ "$heavy_line" -eq 0 ]] ||
-        config_fail "'heavy' is declared more than once in $label."
-      heavy_names="$value"
-      heavy_line="$line_number"
-      continue
-    fi
     [[ -z "$partition" || -z "$budget" ]] ||
       config_fail "the budget check $name declares the partition $partition on line $line_number of $label: a budget fails nothing, so its tests would not be required."
     for existing in ${names[@]+"${names[@]}"}; do
@@ -691,18 +663,7 @@ load_checks() {
     partitions+=("$partition")
     budgets+=("${budget:-no}")
     frameworks+=("${framework:-no}")
-    heavy+=(no)
   done <"$file"
-
-  read -r -a heavy_list <<<"$heavy_names"
-  for name in ${heavy_list[@]+"${heavy_list[@]}"}; do
-    for ((index = first; index < ${#names[@]}; index++)); do
-      [[ "${names[$index]}" != "$name" ]] || break
-    done
-    [[ "$index" -lt "${#names[@]}" ]] ||
-      config_fail "'heavy' on line $heavy_line of $label names '$name', which is not a check of $label."
-    heavy[$index]=yes
-  done
 }
 
 # in_list <value> <comma-separated-list>
@@ -1591,60 +1552,6 @@ if [[ -n "${VERIFY_PARALLEL:-}" ]]; then
   parallel_source="VERIFY_PARALLEL=$parallel_jobs"
 fi
 
-# The slot for heavy verification, taken only when a heavy check is going to
-# run. A run that finds it busy starts no check and records nothing: it is
-# not a verification, and not a failure of a check.
-heavy_run=0
-for index in "${!names[@]}"; do
-  [[ "${heavy[$index]}" == "yes" ]] || continue
-  [[ "$index" -lt "$project_count" || -z "$workflow_skipped" ]] || continue
-  ! skipped_check "$index" || continue
-  heavy_run=1
-done
-if [[ "$heavy_run" -eq 1 ]]; then
-  [[ -f "$root/scripts/lib/verify-lock.sh" ]] ||
-    config_fail "'heavy' needs scripts/lib/verify-lock.sh, which is missing."
-  source "$root/scripts/lib/verify-lock.sh"
-  lock_status=0
-  verify_lock_acquire "$root" "${RECORDS_RUN_ID:-none}" || lock_status=$?
-  if [[ "$lock_status" -ne 0 ]]; then
-    echo
-    echo "== Verification summary =="
-    if [[ "$lock_status" -eq "$VERIFY_LOCK_BUSY" ]]; then
-      echo "BUSY  the slot for heavy verification of this machine is held by $verify_lock_holder_text"
-      echo "Verification not run: the machine is busy with another heavy verification. This is not a failure of the code, no check ran, and nothing was recorded. Run again when that run has ended." >&2
-    else
-      echo "BUSY  the slot for heavy verification could not be taken: its lock $(verify_lock_path) cannot be created"
-      echo "Verification not run: set VERIFY_LOCK_DIR to a directory that every session of this machine can write. No check ran, and nothing was recorded." >&2
-    fi
-    exit "$VERIFY_LOCK_BUSY"
-  fi
-  if [[ -n "$verify_lock_acquired" ]]; then
-    trap 'exit 129' HUP
-    trap 'exit 130' INT
-    trap 'exit 143' TERM
-    echo
-    echo "Holding the slot for heavy verification of this machine (lock $(verify_lock_path), PID $$)."
-  fi
-fi
-
-# A run inside the slot of another run (a check of that run started it) runs
-# its checks one at a time and without process groups of their own: they stay
-# in the process group of the check that started this run, which the holder
-# recorded in the lock. Checks in groups of their own would escape that
-# record, and could outlive a crash of this run while the lock counts the
-# slot as free (#452). This applies whether or not this run declares a heavy
-# check: every check of the holder runs in a recorded group.
-if [[ "$parallel_jobs" -gt 1 && -n "${VERIFY_LOCK_TOKEN:-}" && -z "${verify_lock_acquired:-}" &&
-  -f "$root/scripts/lib/verify-lock.sh" ]]; then
-  declare -F verify_lock_inside >/dev/null || source "$root/scripts/lib/verify-lock.sh"
-  if verify_lock_inside; then
-    echo
-    echo "This run runs inside the slot for heavy verification of the run that started it: its checks run one at a time, in that run's process group ($parallel_source is not used)."
-    parallel_jobs=1
-  fi
-fi
-
 # record_duration <index> <ms> <result>
 # Keeps the duration of a check that ran: for the duration budgets below, and
 # with lib/verification.sh for the record and the run record. <result> is
@@ -2145,7 +2052,6 @@ run_sequential() {
   local started
   local status
   local elapsed
-  local check_pid
 
   for index in "${!names[@]}"; do
     if [[ "$index" -eq "$project_count" ]]; then
@@ -2166,31 +2072,8 @@ run_sequential() {
     check_capture_of "$index"
     started="$(now_ms)"
     set +e
-    if [[ -n "${verify_lock_acquired:-}" ]]; then
-      # The run holds the slot: the check runs in a process group of its own
-      # (job control), which the lock records before the check starts, so that
-      # the slot stays held while any process of the check lives, also after a
-      # crash of this run. Its standard input is /dev/null: a job outside the
-      # terminal's foreground group must not read from it.
-      set -m
-      (
-        verify_lock_await_group "$$" || exit 1
-        run_check "${commands[$index]}" "$check_output" "$check_capture"
-      ) </dev/null &
-      check_pid=$!
-      set +m
-      if ! verify_lock_add_group "$check_pid"; then
-        # The check waits for that record: it is stopped and fails.
-        echo "Error: the process group of check '${names[$index]}' could not be recorded in the lock $(verify_lock_path)." >&2
-        kill -TERM -- "-$check_pid" 2>/dev/null || true
-      fi
-      wait "$check_pid"
-      status=$?
-      verify_lock_remove_group "$check_pid"
-    else
-      run_check "${commands[$index]}" "$check_output" "$check_capture"
-      status=$?
-    fi
+    run_check "${commands[$index]}" "$check_output" "$check_capture"
+    status=$?
     set -e
     elapsed=$(($(now_ms) - started))
     echo "-- ${names[$index]} took $(seconds_text "$elapsed")"
@@ -2206,10 +2089,7 @@ parallel_pids=()
 # parallel_start <index>
 # Starts a check in the background, in a process group of its own (job
 # control), with its standard input /dev/null and its output, standard
-# output and error together, in a file of its own. A run that holds the slot
-# for heavy verification records the group in the lock before the check
-# begins, as run_sequential does; the slot then stays held while any process
-# of any of its checks lives.
+# output and error together, in a file of its own.
 parallel_start() {
   local index="$1"
   local pid
@@ -2218,9 +2098,6 @@ parallel_start() {
   check_started[$index]="$(now_ms)"
   set -m
   (
-    if [[ -n "${verify_lock_acquired:-}" ]]; then
-      verify_lock_await_group "$$" || exit 1
-    fi
     status=0
     run_check "${commands[$index]}" "$check_output" "$check_capture" || status=$?
     now_ms >"$scratch/check-$index.end" 2>/dev/null || true
@@ -2230,11 +2107,6 @@ parallel_start() {
   set +m
   parallel_pids[$index]="$pid"
   parallel_active+=("$index")
-  if [[ -n "${verify_lock_acquired:-}" ]] && ! verify_lock_add_group "$pid"; then
-    # The check waits for that record: it is stopped and fails.
-    echo "Error: the process group of check '${names[$index]}' could not be recorded in the lock $(verify_lock_path)." >&2
-    kill -TERM -- "-$pid" 2>/dev/null || true
-  fi
 }
 
 # parallel_finish <index>
@@ -2255,7 +2127,6 @@ parallel_finish() {
   [[ "$ended" =~ ^[0-9]+$ ]] || ended="$(now_ms)"
   check_ended[$index]="$ended"
   elapsed=$((ended - check_started[index]))
-  [[ -z "${verify_lock_acquired:-}" ]] || verify_lock_remove_group "$pid"
   for other in "${parallel_active[@]}"; do
     [[ "$other" == "$index" ]] || kept+=("$other")
   done
@@ -2283,8 +2154,7 @@ parallel_conclude() {
 
 # parallel_stop: stops the checks that still run, when the run ends before
 # them (a signal), with SIGTERM to the process group of each, and waits up to
-# ten seconds for them. A run that holds the slot for heavy verification keeps
-# it while one of them lives (verify_lock_release).
+# ten seconds for them.
 parallel_stop() {
   local index
   local tick

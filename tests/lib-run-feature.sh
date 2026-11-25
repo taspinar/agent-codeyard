@@ -408,7 +408,6 @@ unstable
 repeat-failed-only
 repeat-two-failed
 alternating
-busy
 environment
 environment-repeat
 repaired
