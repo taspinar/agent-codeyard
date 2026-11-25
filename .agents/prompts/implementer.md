@@ -276,13 +276,19 @@ work, run the single checks you need; the full run is for the end.
 An unattended session (its prompt says so) does not run the full
 verification at all. It runs `./scripts/verify.sh --changed`: every check of
 `scripts/verify.conf` and the self-tests of the workflow files it changed.
-That is a partial run, which records nothing and is no evidence in the
-completion record. `run-feature.sh` makes the full verification itself after
-the session and before the review; the review and the commit reuse that
-pass, and a failure comes back to you as a repair session. For a criterion
-that the full verification passes, the evidence is that pass of
-`run-feature.sh`, which exists before anything is reviewed; the targeted run
-is not.
+When the changed files select every self-test (a change to
+`tests/lib-fakes.sh`, say), it runs none of them and says so: the full
+verification after the session runs exactly that suite. That is a partial
+run, which records nothing and is no evidence in the completion record.
+`run-feature.sh` makes the full verification itself after the session and
+before the review; the review and the commit reuse that pass, and a failure
+comes back to you as a repair session. For a criterion that the full
+verification passes, such as "`./scripts/verify.sh --all` passes", the
+evidence is that pass of `run-feature.sh`, which exists before anything is
+reviewed: write it as "the full verification that run-feature.sh makes after
+this session", with the status `met`. Do not name the targeted run in that
+evidence: the gate refuses a record that cites `./scripts/verify.sh
+--changed` or `--only`.
 
 A manual step is something only the human can do and without which the
 feature does not work after the merge: a repository or account setting, a

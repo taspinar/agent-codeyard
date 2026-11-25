@@ -1247,7 +1247,7 @@ grep -Fq "a workflow file differs from the last trusted pass of this run" "$proj
 # that records nothing.
 project="$(setup_recorded_project changed-tests)"
 mkdir -p "$project/tests"
-for name in alpha beta gamma; do
+for name in alpha beta gamma zeta; do
   printf '#!/usr/bin/env bash\necho "%s-test" >>"$MOCK_TOOL_LOG"\n' "$name" >"$project/tests/$name-test.sh"
   chmod +x "$project/tests/$name-test.sh"
 done
@@ -1258,7 +1258,7 @@ printf 'jq -f "$(dirname "$0")/lib/delta.jq"\n' >"$project/scripts/gamma.sh"
 printf '.\n' >"$project/scripts/lib/delta.jq"
 printf '.\n' >"$project/scripts/lib/epsilon.jq"
 printf '%s\n' "paths: scripts tests" "alpha: ./tests/alpha-test.sh" "beta: ./tests/beta-test.sh" \
-  "gamma: ./tests/gamma-test.sh" "self-test: pytest" >"$project/scripts/verify-workflow.conf"
+  "gamma: ./tests/gamma-test.sh" "zeta: ./tests/zeta-test.sh" "self-test: pytest" >"$project/scripts/verify-workflow.conf"
 git -C "$project" add -A
 git -C "$project" commit -qm "Self-tests of scripts"
 git -C "$project" checkout -q -b feature/1-change
@@ -1270,13 +1270,13 @@ run_changed() {
 run_changed || fail "--changed without a change failed: $(cat "$project/out.log")"
 grep -Fqx "ruff check ." "$project/tools.log" || fail "--changed did not run the project checks"
 [[ "$(grep -c . "$project/tools.log")" -eq 1 ]] || fail "--changed ran a self-test of nothing changed: $(cat "$project/tools.log")"
-grep -Fq "SKIP  workflow self-tests (4 checks): --changed selects none" "$project/out.log" || fail "--changed did not report the skip: $(cat "$project/out.log")"
+grep -Fq "SKIP  workflow self-tests (5 checks): --changed selects none" "$project/out.log" || fail "--changed did not report the skip: $(cat "$project/out.log")"
 printf 'two\n' >>"$project/scripts/lib/beta.sh"
 printf '# two\n' >>"$project/tests/gamma-test.sh"
 VERIFY_TRUSTED_TREES="" run_changed || fail "--changed with changed files failed: $(cat "$project/out.log")"
 [[ "$(sort "$project/tools.log" | paste -sd ' ' -)" == "beta-test gamma-test ruff check ." ]] ||
   fail "--changed selected the wrong self-tests: $(cat "$project/tools.log")"
-grep -Fq -- "--changed selects 2 of 4, of the files changed since main: beta, gamma" "$project/out.log" || fail "--changed does not name what it selected: $(cat "$project/out.log")"
+grep -Fq -- "--changed selects 2 of 5, of the files changed since main: beta, gamma" "$project/out.log" || fail "--changed does not name what it selected: $(cat "$project/out.log")"
 [[ ! -e "$project$record" ]] || fail "--changed recorded a pass"
 printf 'two\n' >>"$project/scripts/alpha.sh"
 git -C "$project" add -A
@@ -1293,7 +1293,7 @@ printf '. | .x\n' >>"$project/scripts/lib/epsilon.jq"
 run_changed || fail "--changed with a changed jq program failed: $(cat "$project/out.log")"
 [[ "$(sort "$project/tools.log" | paste -sd ' ' -)" == "alpha-test beta-test gamma-test ruff check ." ]] ||
   fail "--changed did not select the self-test of the script that reads the changed jq program: $(cat "$project/tools.log")"
-grep -Fq -- "--changed selects 3 of 4, of the files changed since main: alpha, beta, gamma" "$project/out.log" || fail "--changed does not name the self-test of the jq program's reader: $(cat "$project/out.log")"
+grep -Fq -- "--changed selects 3 of 5, of the files changed since main: alpha, beta, gamma" "$project/out.log" || fail "--changed does not name the self-test of the jq program's reader: $(cat "$project/out.log")"
 git -C "$project" checkout -q -- scripts/lib/delta.jq scripts/lib/epsilon.jq
 for option in --all --reuse "--only default"; do
   # shellcheck disable=SC2086
@@ -1306,10 +1306,11 @@ done
 # selects every part; a change to one part selects that part. A shared file
 # of no script (tests/lib-fakes.sh), which every self-test sources, selects
 # every self-test, and so does tests/lib-<script>.sh that no self-test sources
-# (tests/lib-beta.sh beside scripts/beta.sh); a file in a directory under tests/ (the project's tests)
-# selects none. tests/adopted-project-test.sh is never selected, also when
-# it or tests/lib-fakes.sh changed (Issue 478): the full verification runs
-# it.
+# (tests/lib-beta.sh beside scripts/beta.sh), which the session then leaves
+# to the full verification: it runs none of them and says why (Issue 490).
+# A file in a directory under tests/ (the project's tests) selects none.
+# tests/adopted-project-test.sh is never selected, also when it or
+# tests/lib-fakes.sh changed (Issue 478): the full verification runs it.
 project="$(setup_recorded_project changed-parts)"
 mkdir -p "$project/tests"
 printf 'one\n' >"$project/scripts/alpha.sh"
@@ -1342,10 +1343,29 @@ expect_parts() {
 expect_parts scripts/alpha.sh "alpha-one-test alpha-two-test"
 expect_parts tests/lib-alpha.sh "alpha-one-test alpha-two-test"
 expect_parts tests/alpha-two-test.sh "alpha-two-test"
-expect_parts tests/lib-fakes.sh "alpha-one-test alpha-two-test other-test"
-expect_parts tests/lib-beta.sh "alpha-one-test alpha-two-test other-test"
-grep -Fq -- "--changed selects 3 of 4, of the files changed since main: alpha-one, alpha-two, other; adopted-project is left to the full verification" "$project/out.log" ||
+every_skipped="SKIP  workflow self-tests (4 checks): --changed selects every one, of the files changed since main, so it runs none: the full verification that run-feature.sh makes after the session runs them all"
+for shared in tests/lib-fakes.sh tests/lib-beta.sh; do
+  expect_parts "$shared" ""
+  grep -Fqx "$every_skipped" "$project/out.log" ||
+    fail "--changed with a changed $shared does not say that it leaves every self-test to the full verification: $(cat "$project/out.log")"
+  grep -Fqx "ruff check ." "$project/tools.log" || fail "--changed with a changed $shared did not run the project checks"
+done
+# Every self-test but one is still a smaller selection, which runs as before.
+printf '# two\n' >>"$project/tests/alpha-one-test.sh"
+printf '# two\n' >>"$project/tests/other-test.sh"
+printf '# two\n' >>"$project/tests/adopted-project-test.sh"
+run_changed || fail "--changed with all but one self-test selected failed: $(cat "$project/out.log")"
+[[ "$(grep -v '^ruff' "$project/tools.log" | sort | paste -sd ' ' -)" == "alpha-one-test other-test" ]] ||
+  fail "--changed with all but one self-test selected did not run them: $(cat "$project/out.log")"
+grep -Fq -- "--changed selects 2 of 4, of the files changed since main: alpha-one, other; adopted-project is left to the full verification" "$project/out.log" ||
   fail "--changed does not say that it left adopted-project to the full verification: $(cat "$project/out.log")"
+git -C "$project" checkout -q -- tests/alpha-one-test.sh tests/other-test.sh tests/adopted-project-test.sh
+# A change to the script of the shared part and to the other test: every self-test again.
+printf '# two\n' >>"$project/scripts/alpha.sh"
+expect_parts tests/other-test.sh ""
+grep -Fqx "$every_skipped" "$project/out.log" ||
+  fail "--changed that selects every self-test through their own files does not leave them to the full verification: $(cat "$project/out.log")"
+git -C "$project" checkout -q -- scripts/alpha.sh
 expect_parts tests/adopted-project-test.sh ""
 grep -Fq "SKIP  workflow self-tests (4 checks): --changed selects none; adopted-project, which the files changed since main select, is left to the full verification" "$project/out.log" ||
   fail "--changed with only tests/adopted-project-test.sh changed does not skip every self-test: $(cat "$project/out.log")"
