@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "f938765d6c3a6d7be2f39bbf10a079e904521d62",
+  "commit": {
+    "branch": "feature/480-finish-feature-sh-checks",
+    "parent": "a1563a1f0ea23dfa3f1864961ef85776ecc83eef",
+    "base": "a1563a1f0ea23dfa3f1864961ef85776ecc83eef"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/finish-feature.sh: the file defines or carries out the workflow and its gate",
+    "the review could not confirm: The pull request reports, from the run records, the verification time a refused finish spent before and after (one example is enough)."
+  ],
+  "explanation": "Issue #480: finish-feature.sh checks its review and triage gates before it verifies (step 1 of #469). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
