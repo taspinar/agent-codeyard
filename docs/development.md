@@ -584,7 +584,11 @@ script keeps the tree of the pass in its own memory:
    `update-feature.sh` (which publishes without a question), and the
    verification step of `run-feature.sh`. The pass such a step makes is its
    own trusted tree, which the scripts it starts get (`update-feature.sh`
-   gives it to `publish-feature.sh`).
+   gives it to `publish-feature.sh`). `update-feature.sh` runs no check
+   when nothing was merged and the content is that of the finish commit,
+   which records its pass in its message; it trusts that commit, not a
+   record file (see "Bringing a finished feature up to date with its
+   base").
 4. No agent process gets the list: `scripts/lib/agent.sh` removes
    `VERIFY_TRUSTED_TREES` (and `VERIFY_ORIGIN`, with which a script names
    itself as the origin) from the environment of every agent and sets
@@ -3211,14 +3215,32 @@ write over an untracked file, but a merge that is not a fast-forward
 replaces an ignored one without a word, even with `--no-overwrite-ignore`,
 which both scripts pass. The script names the paths; move each out of the
 worktree, or remove it once you know it is not needed, and run again. Then
-it runs the full verification, `./scripts/verify.sh --all`, since a
-review that was done before the merge covered the feature, not the merge. It
-reuses no recorded pass, which an agent session may have written, unless it
-is given the trusted passes of a run (see "Recorded verification"). Last, it publishes again
+it verifies what the merge can have changed, since a review that was done
+before the merge covered the feature, not the merge:
+
+- When nothing was merged and the content is exactly that of the finish
+  commit, no check runs, and the script says why: `finish-feature.sh` made
+  that commit only after a pass of that content, and its message records
+  the pass (`- ./scripts/verify.sh passed` under `Verification:`). The
+  commit is the record here, not `.agents/verification/passed`, which an
+  agent session may have written. Any other content, also a merge of an
+  earlier run or a repair after it, is verified.
+- Otherwise `./scripts/verify.sh` runs every check of `scripts/verify.conf`,
+  and the workflow self-tests by the trigger that decides them everywhere
+  else (`paths:` of `scripts/verify-workflow.conf`): when a workflow file of
+  the feature differs from the base. A merge that changed a workflow file
+  since the finish commit is no difference from the new base, so for it the
+  script passes `--all`, and the output names the files. So does a finish
+  commit that records no pass.
+
+It reuses no recorded pass, which an agent session may have written, unless
+it is given the trusted passes of a run (see "Recorded verification"); a
+later step reuses its pass only where that pass covers the checks the step
+requires, by the usual `--reuse` rule. Last, it publishes again
 with `publish-feature.sh`. Nothing is pushed when a step fails, and running
 the command again continues where it stopped. The same steps by hand are
-`git merge origin/main`, `./scripts/verify.sh --all`, and
-`./scripts/publish-feature.sh 12`.
+`git merge origin/main`, `./scripts/verify.sh` (with `--all` when the merge
+changed a workflow file), and `./scripts/publish-feature.sh 12`.
 
 A merge of the base can leave untracked files behind: a directory that Git
 ignored on the branch, such as the build directory of a site that the base
