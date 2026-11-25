@@ -10,6 +10,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/review-data.sh"
 source "$script_dir/lib/base.sh"
 source "$script_dir/lib/fingerprint.sh"
+source "$script_dir/lib/github.sh"
 source "$script_dir/lib/completion.sh"
 source "$script_dir/lib/verification.sh"
 source "$script_dir/lib/records.sh"
@@ -28,11 +29,17 @@ fi
 # the feature by that alone: the completion gate decides. While it does not
 # pass, the implementer is resumed, for at most this many sessions in a run.
 MAX_SESSIONS="${RUN_FEATURE_SESSIONS:-4}"
-# A step whose agent or connection fails is tried again, with a wait that
-# doubles. A verification that fails is repeated once; when it fails again,
-# the implementer repairs it, a limited number of times (AGENTS.md).
+# A step that fails on a known transient error (github_transient_error,
+# lib/github.sh) is tried again once, after RETRY_WAIT seconds; a step that
+# fails otherwise is not tried again. A usage limit that an agent reports is
+# tried again RETRIES times, with a wait that starts at four times RETRY_WAIT
+# and doubles: the run records showed a limit that ended only after the third
+# wait. RUN_FEATURE_RETRIES=0 tries nothing again. A verification that fails
+# is repeated once; when it fails again, the implementer repairs it, a limited
+# number of times (AGENTS.md).
 RETRIES="${RUN_FEATURE_RETRIES:-3}"
-RETRY_WAIT="${RUN_FEATURE_RETRY_WAIT:-120}"
+RETRY_WAIT="${RUN_FEATURE_RETRY_WAIT:-30}"
+LIMIT_WAIT=$((RETRY_WAIT * 4))
 MAX_REPAIRS="${RUN_FEATURE_REPAIRS:-3}"
 MAX_UNSTABLE=3
 repairs=0
@@ -344,20 +351,31 @@ report_budgets() {
 # retrying <title> <command>...
 # Runs a command in the feature worktree and keeps its output in
 # .agents/run/<issue>-step.log. A failure that is not a blocked session and
-# not a failed verification counts as temporary: an agent or a connection
-# failed. It is tried again RETRIES times, with a wait that doubles. Sets
-# step_status to the status of the last attempt.
+# not a failed verification is tried again only when it is temporary:
 #
-# When STEP_CONTINUE is set and the content changed since the review in
-# STEP_REVIEW, the command is repeated with --continue: the fix session had
-# started from that review, which is stale now, and apply-triage.sh takes up
-# an interrupted session of the same triage only when it is told to.
+#   - a usage limit that the agent reported (lib/agent.sh): RETRIES times,
+#     after LIMIT_WAIT seconds, a wait that doubles;
+#   - a known transient error in the last lines of the output
+#     (github_transient_error): once, after RETRY_WAIT seconds.
+#
+# Any other failure stops: the run records held no step that passed when it
+# was tried again after such a failure. Sets step_status to the status of the
+# last attempt.
+#
+# When STEP_REVIEW is set and the content changed since that review, the
+# command is repeated with --continue, whatever the failure, once and after
+# RETRY_WAIT seconds unless a usage limit sets a longer wait: the fix session
+# had started from that review, which is stale now, and apply-triage.sh takes
+# up an interrupted session of the same triage only when it is told to.
 retrying() {
   local title="$1"
-  local attempt=0
-  local wait="$RETRY_WAIT"
+  local limits=0
+  local transient=0
+  local continued
+  local wait
   local log
   local limit
+  local action
 
   shift
   # The script of the step, for a message that names what failed.
@@ -389,25 +407,47 @@ retrying() {
     # A usage limit that an agent reported is the reason, not a defect.
     limit="$(grep -m 1 -o "This is a usage limit of [a-z]*" "$log" 2>/dev/null || true)"
     limit="${limit:+; ${limit#This is }, reported by the agent}"
-    if [[ "$attempt" -ge "$RETRIES" ]]; then
-      note "$title" "failed" "the step exited with status $step_status, also after $attempt retries$limit" "Stopping"
+    continued=0
+    if [[ -n "${STEP_REVIEW:-}" ]] && ! (cd "$worktree" && ./scripts/check-review.sh "$STEP_REVIEW" >/dev/null 2>&1); then
+      continued=1
+    fi
+    if [[ -n "$limit" ]]; then
+      if [[ "$limits" -ge "$RETRIES" ]]; then
+        note "$title" "failed" "the step exited with status $step_status, also after $limits retries$limit" "Stopping"
+        return 0
+      fi
+      wait=$((LIMIT_WAIT << limits))
+      limits=$((limits + 1))
+      action="retry $limits of $RETRIES in $wait seconds"
+    elif [[ "$RETRIES" -gt 0 && "$transient" -eq 0 ]] && github_transient_error "$(tail -n 30 "$log" 2>/dev/null)"; then
+      transient=1
+      wait="$RETRY_WAIT"
+      limit="; a known transient error"
+      action="retry once in $wait seconds"
+    elif [[ "$RETRIES" -gt 0 && "$continued" -eq 1 ]]; then
+      wait="$RETRY_WAIT"
+      action="in $wait seconds"
+    else
+      if [[ "$transient" -eq 1 ]]; then
+        note "$title" "failed" "the step exited with status $step_status, also after the retry of a known transient error" "Stopping"
+      else
+        note "$title" "failed" "the step exited with status $step_status, without a known transient error or a usage limit" "Stopping; a failure that is not transient is not tried again"
+      fi
       return 0
     fi
-    attempt=$((attempt + 1))
-    if [[ -n "${STEP_REVIEW:-}" ]] && ! (cd "$worktree" && ./scripts/check-review.sh "$STEP_REVIEW" >/dev/null 2>&1); then
-      note "$title" "temporary" "the step exited with status $step_status after it had changed the content$limit" "Continuing the interrupted session with the same scope, retry $attempt of $RETRIES in $wait seconds"
+    if [[ "$continued" -eq 1 ]]; then
+      note "$title" "temporary" "the step exited with status $step_status after it had changed the content$limit" "Continuing the interrupted session with the same scope, $action"
       STEP_REVIEW=""
       title="$title, continued"
       set -- "$@" --continue
     else
-      note "$title" "temporary" "the step exited with status $step_status$limit" "Retry $attempt of $RETRIES in $wait seconds"
+      note "$title" "temporary" "the step exited with status $step_status$limit" "R${action:1}"
     fi
     wait_id="$(records_id)"
     wait_started="$(date +%s)"
     records_wait_start "$wait_id" "$title" "$wait"
     sleep "$wait"
     records_wait "$title" "$(($(date +%s) - wait_started))" "$wait_id"
-    wait=$((wait * 2))
   done
 }
 
@@ -688,7 +728,8 @@ repair_verification() {
 #   4      the verification failed: repeated once, then repaired
 #   5      an agent changed an artifact that it may only read: not tried
 #          again
-#   other  temporary: tried again, RETRIES times, with a growing wait
+#   other  tried again when temporary (retrying): once on a known transient
+#          error, RETRIES times on a usage limit; otherwise the step failed
 step() {
   local title="$1"
 
@@ -838,19 +879,18 @@ if [[ -z "$worktree" ]]; then
   step_id="$(records_id)"
   records_step_start "$step_id" "implementation"
   run_step="implementation"
-  # Status 75: reading the Issue failed for a moment, before a worktree
-  # existed. That is tried again, like any temporary failure.
+  # Status 75: reading the Issue failed on a known transient error, before a
+  # worktree existed (start-feature.sh, read_issue). That is tried again
+  # once, like any known transient error.
   first_attempt=0
-  first_wait="$RETRY_WAIT"
   first_log="$(mktemp "${TMPDIR:-/tmp}/run-feature-first.XXXXXX")"
   while true; do
     step_status=0
     (cd "$repo_root" && ./scripts/start-feature.sh "${arguments[@]}" --unattended </dev/null) 2>&1 | tee "$first_log" || step_status=$?
-    [[ "$step_status" -eq 75 && "$first_attempt" -lt "$RETRIES" ]] || break
-    first_attempt=$((first_attempt + 1))
-    note "implementation" "temporary" "start-feature.sh could not read the Issue (status 75)" "Retry $first_attempt of $RETRIES in $first_wait seconds"
-    sleep "$first_wait"
-    first_wait=$((first_wait * 2))
+    [[ "$step_status" -eq 75 && "$RETRIES" -gt 0 && "$first_attempt" -eq 0 ]] || break
+    first_attempt=1
+    note "implementation" "temporary" "start-feature.sh could not read the Issue (status 75); a known transient error" "Retry once in $RETRY_WAIT seconds"
+    sleep "$RETRY_WAIT"
   done
   limit="$(grep -m 1 -o "This is a usage limit of [a-z]*" "$first_log" 2>/dev/null || true)"
   limit="${limit:+; ${limit#This is }, reported by the agent}"
@@ -1422,7 +1462,7 @@ if uncommitted || [[ "$owner_review" -eq 1 || "$owner_changed" -eq 1 || "$owner_
           "./scripts/verify.sh    # repair what fails, for example with ./scripts/start-feature.sh $issue --resume"
       elif [[ "$step_status" -ne 0 ]]; then
         # verify_step itself returns 0 or 4: the repair session failed.
-        stop 1 "the repair of the verification before round $((round + 1)) failed ($step_command exited with status $step_status, also after the retries)." \
+        stop 1 "the repair of the verification before round $((round + 1)) failed ($step_command exited with status $step_status)." \
           "resolve what the output above reports"
       fi
       [[ "$repairs/$unstable/$base_merges" == "$attempts_before" ]] || continue
@@ -1443,7 +1483,7 @@ if uncommitted || [[ "$owner_review" -eq 1 || "$owner_changed" -eq 1 || "$owner_
           "cd \"$worktree\"" \
           "./scripts/verify.sh    # repair what fails, for example with ./scripts/start-feature.sh $issue --resume"
       elif [[ "$step_status" -ne 0 ]]; then
-        stop 1 "the review did not complete (review-feature.sh exited with status $step_status, also after the retries): the reviewer failed, or the review was refused." \
+        stop 1 "the review did not complete (review-feature.sh exited with status $step_status): the reviewer failed, or the review was refused." \
           "resolve what the output above reports"
       fi
       continue
@@ -1535,7 +1575,7 @@ if uncommitted || [[ "$owner_review" -eq 1 || "$owner_changed" -eq 1 || "$owner_
         "cd \"$worktree\"" \
         "git status    # look at what the session changed; restore the review and the triage, or review again"
     elif [[ "$step_status" -ne 0 ]]; then
-      stop 1 "the fixes for round $round failed ($step_command exited with status $step_status, also after the retries)." \
+      stop 1 "the fixes for round $round failed ($step_command exited with status $step_status)." \
         "resolve what the output above reports"
     fi
     if (cd "$worktree" && ./scripts/check-review.sh "$review" >/dev/null 2>&1); then

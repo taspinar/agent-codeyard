@@ -39,14 +39,56 @@ expect_published "$repo"
 expect_sessions "$repo" 2 1 0 0
 grep -Fq "| temporary |" <<<"$(log_of "$repo")" || fail "the failed session is not in the log of the feature"
 
+# A step that fails on a known transient error is tried again once
+# (github_transient_error, lib/github.sh).
 scenario reviewer-fails-once
 repo="$(setup_repo reviewer-fails-once)"
-printf '%s\n' 'exit 9' >"$repo.control/reviewer-1.sh"
+printf '%s\n' 'echo "Error: read tcp: connection reset by peer" >&2; exit 9' >"$repo.control/reviewer-1.sh"
 run_feature "$repo" 2 thing
 expect_published "$repo"
 expect_sessions "$repo" 1 2 0 0
-grep -Eq "\| temporary \| the step exited with status [0-9]+ \| Retry 1 of 3" <<<"$(log_of "$repo")" ||
+grep -Eq "\| temporary \| the step exited with status [0-9]+; a known transient error \| Retry once in 0 seconds" <<<"$(log_of "$repo")" ||
   fail "the retry of the review is not in the log of the feature"
+
+# Only once: a transient error that comes again stops the run.
+scenario reviewer-transient-twice
+repo="$(setup_repo reviewer-transient-twice)"
+printf '%s\n' 'echo "Error: read tcp: connection reset by peer" >&2; exit 9' >"$repo.control/reviewer.sh"
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 1 "the review did not complete"
+expect_sessions "$repo" 1 2 0 0
+grep -Fq "also after the retry of a known transient error" <<<"$(log_of "$repo")" ||
+  fail "the second transient error is not in the log of the feature"
+
+# A step that fails without a known transient error or a usage limit is not
+# tried again: the run records held no such step that passed on a retry.
+scenario reviewer-fails-plainly
+repo="$(setup_repo reviewer-fails-plainly)"
+printf '%s\n' 'echo "Error: the review was refused" >&2; exit 9' >"$repo.control/reviewer-1.sh"
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 1 "the review did not complete"
+expect_sessions "$repo" 1 1 0 0
+grep -Fq "without a known transient error or a usage limit | Stopping; a failure that is not transient is not tried again" <<<"$(log_of "$repo")" ||
+  fail "the failure that is not transient is not in the log of the feature: $(log_of "$repo")"
+if grep -Fq "| temporary |" <<<"$(log_of "$repo")"; then fail "a failure that is not transient was tried again"; fi
+
+# The waits of the script itself: 30 seconds before the retry of a transient
+# error; after a usage limit four times that, doubling. A fake sleep records
+# them instead of waiting.
+scenario retry-waits
+mkdir -p "$tmp/sleep-bin"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$1" >>"$SLEEP_LOG"' >"$tmp/sleep-bin/sleep"
+chmod +x "$tmp/sleep-bin/sleep"
+repo="$(setup_repo retry-waits)"
+printf '%s\n' 'echo "Error: read tcp: connection reset by peer" >&2; exit 9' >"$repo.control/reviewer-1.sh"
+printf '%s\n' 'echo "Error: 429 Too Many Requests: rate limit exceeded" >&2; exit 1' >"$repo.control/reviewer-2.sh"
+cp "$repo.control/reviewer-2.sh" "$repo.control/reviewer-3.sh"
+: >"$tmp/sleep.log"
+SLEEP_LOG="$tmp/sleep.log" TEST_RETRY_WAIT='' TEST_PATH_PREFIX="$tmp/sleep-bin" run_feature "$repo" 2 thing
+expect_published "$repo"
+expect_sessions "$repo" 1 4 0 0
+[[ "$(grep -Ex '[1-9][0-9]*' "$tmp/sleep.log" | tr '\n' ' ')" == "30 120 240 " ]] ||
+  fail "the retries did not wait 30, then 120 and 240 seconds: $(tr '\n' ' ' <"$tmp/sleep.log")"
 
 # The full verification is the run's own, after the session and before the
 # review (lib/verification.sh): the sessions are told to run only the checks
@@ -115,17 +157,19 @@ grep -Fq "the caller verifies the result (--caller-verifies)" "$repo.out" ||
   fail "a run with one round of fixes made $(full_verifications "$repo") full verifications instead of two"
 
 # The retries are bounded: a session that keeps failing stops the run, and
-# the next run starts where it stopped.
+# the next run starts where it stopped. A first session that failed is
+# resumed; the resumed session that fails without a transient error stops.
 scenario implementer-keeps-failing
 repo="$(setup_repo implementer-keeps-failing)"
 printf '%s\n' 'exit 9' >"$repo.control/implementer.sh"
 run_feature "$repo" 2 thing
 expect_stopped "$repo" 1 "the implementation failed"
-expect_sessions "$repo" 5 0 0 0
+expect_sessions "$repo" 2 0 0 0
 
+# A usage limit is tried again three times, as before.
 scenario reviewer-keeps-failing
 repo="$(setup_repo reviewer-keeps-failing)"
-printf '%s\n' 'exit 9' >"$repo.control/reviewer.sh"
+printf '%s\n' 'echo "Error: 429 Too Many Requests: rate limit exceeded" >&2; exit 1' >"$repo.control/reviewer.sh"
 run_feature "$repo" 2 thing
 expect_stopped "$repo" 1 "the review did not complete"
 expect_sessions "$repo" 1 4 0 0
@@ -416,12 +460,12 @@ grep -Fq "start-feature.sh exited with status 1; a usage limit of codex, reporte
 grep -Fq "the step exited with status 1; a usage limit of codex, reported by the agent" <<<"$(log_of "$repo")" ||
   fail "the usage limit of a resumed session is not in the log of the feature: $(log_of "$repo" | grep temporary)"
 
-# A repair session that fails once, for example on a usage limit, is tried
+# A repair session that fails once on a known transient error is tried
 # again like any other session.
 scenario repair-fails-once
 repo="$(setup_repo repair-fails-once)"
 printf '%s\n' 'if [[ "$count" -eq 1 ]]; then eval "$default"; printf "x\n" >broken.txt
-elif [[ "$count" -eq 2 ]]; then exit 9
+elif [[ "$count" -eq 2 ]]; then echo "Error: read tcp: connection reset by peer" >&2; exit 9
 else rm -f broken.txt; reply="Repaired."; fi' >"$repo.control/implementer.sh"
 run_feature "$repo" 2 thing
 expect_published "$repo"

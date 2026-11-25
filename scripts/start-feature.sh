@@ -11,6 +11,7 @@ source "$script_dir/lib/agent.sh"
 source "$script_dir/lib/completion.sh"
 source "$script_dir/lib/base.sh"
 source "$script_dir/lib/fingerprint.sh"
+source "$script_dir/lib/github.sh"
 source "$script_dir/lib/issue-comments.sh"
 source "$script_dir/lib/risk.sh"
 source "$script_dir/lib/skills.sh"
@@ -118,8 +119,8 @@ $ISSUE_COMMENTS_SECTION"
 # read_issue: reads the title and the labels of the Issue, into issue_title
 # and label_level, the level that the highest risk label names ('risk: high'
 # or 'risk: medium', lib/risk.sh; nothing without one). Only a connection or
-# a service that fails for a moment is tried again: a timeout, a reset or
-# refused connection, a host that cannot be resolved, or a server error.
+# a service that fails for a moment is tried again: a known transient error
+# of github_transient_error (lib/github.sh).
 # Anything else, such as an Issue that does not exist or a refusal, stops at
 # once with its reason. A failure that stays temporary returns 75, with what
 # happened in gh_error; what the caller does then depends on whether the
@@ -137,8 +138,7 @@ read_issue() {
   trap 'rm -f "$gh_errors"' EXIT
   while ! issue_view="$(gh issue view "$issue" --json title,labels --jq '.title, (.labels // [] | .[].name)' </dev/null 2>"$gh_errors")"; do
     gh_error="$(tail -n 3 "$gh_errors" 2>/dev/null || true)"
-    if ! printf '%s\n' "$gh_error" |
-      grep -Eiq 'timeout|timed out|connection (reset|refused)|could not resolve host|no such host|network is unreachable|temporary failure|EOF|HTTP 5[0-9][0-9]|50[234] |service unavailable|bad gateway'; then
+    if ! github_transient_error "$gh_error"; then
       agent_fail "could not read Issue #$issue: ${gh_error:-gh failed without a message}."
     fi
     if [[ "$gh_attempt" -ge 3 ]]; then

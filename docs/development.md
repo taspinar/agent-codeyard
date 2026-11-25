@@ -2255,7 +2255,8 @@ the connection or the service fails for a moment (a timeout, a reset or
 refused connection, a host that cannot be resolved, a server error); any other
 failure, such as an Issue that does not exist or a refusal, stops at once with
 its reason. A connection that keeps failing ends with
-status 75, which `run-feature.sh` tries again like any temporary failure. The
+status 75, which `run-feature.sh` tries again once after 30 seconds, as any
+known transient error. The
 script fetches the selected remote base (see "The base branch of a feature"),
 creates `feature/<issue>-<slug>` in a sibling worktree, and starts the agent
 of role `implementer` inside that worktree. Untracked files in the checkout do
@@ -3511,7 +3512,7 @@ only together with what it recorded:
 | Outcome | How the run establishes it | What it does |
 |---|---|---|
 | Completed | The step exits 0 | Goes on |
-| Temporary | An agent or a connection fails: a usage limit, a timeout, the network | Tries the step again, three times, with a wait that doubles from two minutes. A fix session that had already changed the content is taken up with `apply-triage.sh <triage-json> --continue`: the same findings, contract, and protections, for the session of this triage that was left unfinished, and for nothing else |
+| Temporary | A step fails on a known transient error in the last lines of its output (`github_transient_error` in `scripts/lib/github.sh`, the list `start-feature.sh` also reads the Issue with: a timeout, a reset or refused connection, a host that cannot be resolved, an unreachable network, a server error, an overloaded service), or an agent reports a usage limit | A known transient error: tries the step again once, after 30 seconds. A usage limit: tries the step again three times, with a wait of four times that, doubling each time, since a limit can last several minutes. Any other failure of a step, also a non-zero exit of an agent, is not tried again: the run stops, and a transient error that the list misses is yours to restart. A fix session that had already changed the content is taken up with `apply-triage.sh <triage-json> --continue`: the same findings, contract, and protections, for the session of this triage that was left unfinished, and for nothing else |
 | Unstable check | The verification is repeated once, only the checks that failed (`verify.sh --repeat`, see "The repeat of only the failed checks"; every check when the two runs cannot be combined), and no check failed in both runs | Records the checks, and what the repeat ran, and goes on, at most three times in a run |
 | Missing prerequisite | A step ends with status 78, or failed with an `ENVIRONMENT` line of the preflight of `verify.sh` in its output (see "Missing prerequisites") | Stops with status 78: no retry, no repeat of the verification, no repair session, and never an unstable check. Notes `environment` with what is missing |
 | Base moved | A check failed in both runs, and the base moved since the feature started and merges cleanly | Merges the base into the branch, notes `base merged`, and does the step again on the merged content, without a session of the implementer; see "Bringing a finished feature up to date with its base" |
@@ -3525,8 +3526,10 @@ worktree, one line each: the time, the step, the outcome, the reason, and
 what the run did. The output of the last step is kept next to it in
 `<issue>-step.log`, and that of a repeated verification in
 `<issue>-verify.log`. Status 4 is kept for a failed verification: the scripts
-turn an agent that happens to exit with it into an ordinary failure. `RUN_FEATURE_RETRIES`, `RUN_FEATURE_RETRY_WAIT` (seconds),
-and `RUN_FEATURE_REPAIRS` change the limits for one run;
+turn an agent that happens to exit with it into an ordinary failure. `RUN_FEATURE_RETRIES` (the retries of a usage limit; 0 tries nothing again),
+`RUN_FEATURE_RETRY_WAIT` (the wait in seconds before the retry of a transient
+error, and a quarter of the first wait after a usage limit; the self-tests set
+it to 0), and `RUN_FEATURE_REPAIRS` change the limits for one run;
 `RUN_FEATURE_ROUNDS_CEILING` can only lower the ceiling of 20 for `--rounds`
 (the self-tests use it to reach the ceiling without twenty rounds).
 
@@ -3535,7 +3538,7 @@ The run stops with a non-zero status, and keeps the worktree, when:
 | Stop | Status |
 |---|---|
 | An agent needs a decision of yours, or reports a conflict with the Issue's scope, the architecture, or an ADR. Its question is in the handoff note | 3 |
-| An agent or a connection keeps failing after the retries | 1 |
+| A step fails without a known transient error or a usage limit, or still fails after its retries | 1 |
 | The verification still fails after three repairs, or checks are unstable more than three times | 1 |
 | A prerequisite of the machine is missing (status 78 of `verify.sh`, its `ENVIRONMENT` lines); install it, then run again | 78 |
 | The verification fails, the base moved, and its merge conflicts with the branch or the uncommitted work of the feature, would write over an untracked file (also one that Git ignores), meets staged changes in the index, or leaves untracked paths behind that the branch ignored; the files are named | 1 |

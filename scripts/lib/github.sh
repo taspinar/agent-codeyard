@@ -1,8 +1,22 @@
 #!/usr/bin/env bash
 
-# Questions about the repository on GitHub.
-# Source this file; do not execute it. It uses only Bash builtins and the
-# GitHub CLI.
+# Questions about the repository on GitHub, and what counts as a failure of
+# a connection or a service for a moment.
+# Source this file; do not execute it. It uses only Bash builtins, grep, and
+# the GitHub CLI.
+
+# github_transient_error <text>
+# Succeeds when <text>, the last lines of what a command printed, names a
+# known transient error: a timeout, a reset or refused connection, a host that
+# cannot be resolved, a network that cannot be reached, a server error, or a
+# service that is overloaded for a moment. start-feature.sh reads the Issue
+# again on such an error, and run-feature.sh tries a step again once
+# (docs/development.md, "Running a feature with one command"); anything else is a failure that a retry
+# does not change.
+github_transient_error() {
+  printf '%s\n' "$1" |
+    grep -Eiq 'timeout|timed out|connection (reset|refused)|could not resolve host|no such host|network is unreachable|temporary failure|EOF|HTTP 5[0-9][0-9]|50[234] |service unavailable|bad gateway|overloaded'
+}
 
 # github_required_checks <branch>
 # Prints how many status checks a pull request into <branch> must pass before
