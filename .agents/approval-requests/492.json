@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "151ff4a8445e2cfb383cdff940a59013d6dedf2f",
+  "commit": {
+    "branch": "feature/492-the-template-s-pull",
+    "parent": "e0b28b417d68d0ce0aa3babd5f7fc7a430974531",
+    "base": "e0b28b417d68d0ce0aa3babd5f7fc7a430974531"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".github/workflows/ci.yml: the file defines or carries out the workflow and its gate",
+    "scripts/verify-workflow.conf: an existing check or line is changed or removed"
+  ],
+  "explanation": "Issue #492: The template's pull requests run the workflow self-tests only when a file under paths: changed (step 3 of #468). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

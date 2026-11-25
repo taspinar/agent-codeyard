@@ -738,7 +738,8 @@ ci_jobs() {
 # The workflow self-tests: a project runs them on a pull request and on a
 # push to main only when a workflow file changed since the base of the pull
 # request or the commit before the push, and everything when that commit
-# cannot be determined; the template runs them on every event; there is no
+# cannot be determined; the template decides its pull request in the same
+# way and runs everything on a push to main (Issue 492); there is no
 # nightly run, and a run by hand runs everything (Issues 395 and 408).
 # The template's ci.yml only: a project's own CI may run verify.sh in a
 # layout of its own.
@@ -809,11 +810,21 @@ if [[ "$in_template" -eq 1 ]]; then
       fail "ci.yml decides '$actual' for $1 on $3 of $4 since '$5', expected '$6|$7'"
   }
   all_tests=' group-fw group-tests-a group-tests-b '
-  # The template: everything, on every event.
-  for event in pull_request push workflow_dispatch; do
+  # The template: everything on a push to main and by hand, whatever
+  # changed (Issue 492).
+  for event in push workflow_dispatch; do
     expect_scope template owner/template "$event" main base all ' '
     expect_scope template owner/template "$event" workflow-change base all ' '
   done
+  # The template's pull request is decided as a project's: no self-test job
+  # starts without a change under paths:, every one with a change or an
+  # unknown base; no group is framework-only for the template.
+  expect_scope template owner/template pull_request main base changed "$all_tests"
+  expect_scope template owner/template pull_request workflow-change base all ' '
+  expect_scope template owner/template pull_request main '' all ' '
+  expect_scope template owner/template pull_request main zeros all ' '
+  expect_scope template owner/template pull_request main replaced all ' '
+  expect_scope template owner/template pull_request main missing all ' '
   # A project's pull request: no self-test job starts without a workflow
   # change; with one, and when the base is unknown, the scope decides
   # 'all', so that verify.sh does not decide again with a base of its own,
@@ -859,6 +870,9 @@ if [[ "$in_template" -eq 1 ]]; then
   expect_scope real owner/project pull_request workflow-change base all ' group-adopted-project '
   expect_scope real owner/project push workflow-change base all ' group-adopted-project '
   expect_scope real Owner/Template push main base all ' '
+  expect_scope real Owner/Template push workflow-change base all ' '
+  expect_scope real Owner/Template pull_request main base changed "$real_tests"
+  expect_scope real Owner/Template pull_request workflow-change base all ' '
   grep -Fq 'BASE: ${{ github.event_name == '"'push'"' && github.event.before || github.event.pull_request.base.sha }}' "$ci_workflow" ||
     fail "the scope step of ci.yml does not compare with the commit before a push or the base of a pull request"
   scope_job="$(ci_job_block "$ci_workflow" scope)"
@@ -962,10 +976,11 @@ if [[ "$in_template" -eq 1 ]]; then
   mkdir -p "$chain/scripts"
   cp "$source_root/scripts/verify.sh" "$source_root/scripts/check-ci-groups.sh" "$source_root/scripts/verify-workflow.conf" "$chain/scripts/"
   printf 'lint: true\n' >"$chain/scripts/verify.conf"
-  # chain_needs <event> <head>: the needs of 'verify' as GitHub gives them.
+  # chain_needs <event> <head> [<repository>]: the needs of 'verify' as
+  # GitHub gives them, in a project or, with Owner/Template, the template.
   chain_needs() {
     local decision verify skip job condition result needs
-    decision="$(ci_scope real owner/project "$1" "$2" base)"
+    decision="$(ci_scope real "${3:-owner/project}" "$1" "$2" base)"
     verify="${decision%%|*}" skip="${decision#*|}"
     needs="$(jq -cn --arg verify "$verify" --arg skip "$skip" '{scope: {result: "success", outputs: {verify: $verify, skip: $skip}}, mapping: {result: "success", outputs: {}}}')"
     for job in $group_jobs; do
@@ -997,6 +1012,20 @@ if [[ "$in_template" -eq 1 ]]; then
     fail "a project's pull request with a workflow change skips other group jobs: $needs"
   chain_verify "$needs" || fail "the aggregate fails on a project's pull request with a workflow change: $(cat "$chain.out")"
   chain_verify "$(chain_needs push main)" || fail "the aggregate fails on a project's push without a workflow change: $(cat "$chain.out")"
+  # The template: its pull request without a workflow change starts only
+  # group-default and passes 'verify'; with one, and on a push to main,
+  # every group job starts (Issue 492).
+  needs="$(chain_needs pull_request main Owner/Template)"
+  [[ "$(jq -r '[to_entries[] | select(.key | startswith("group-")) | select(.value.result == "success") | .key] | join(" ")' <<<"$needs")" == group-default ]] ||
+    fail "the template's pull request without a workflow change starts group jobs of the self-tests: $needs"
+  chain_verify "$needs" || fail "the aggregate fails on the template's pull request without a workflow change: $(cat "$chain.out")"
+  for decision in 'pull_request workflow-change' 'push main' 'push workflow-change'; do
+    read -r event head <<<"$decision"
+    needs="$(chain_needs "$event" "$head" Owner/Template)"
+    [[ -z "$(jq -r '[to_entries[] | select(.value.result == "skipped") | .key] | join(" ")' <<<"$needs")" ]] ||
+      fail "the template skips group jobs on $decision: $needs"
+    chain_verify "$needs" || fail "the aggregate fails on the template's $decision: $(cat "$chain.out")"
+  done
 
   # The token is read-only whatever the repository's default (Issue 435):
   # the top level grants contents and packages read and nothing else, and no
