@@ -26,10 +26,18 @@ printf '#!/usr/bin/env bash\necho "pytest $*" >>"$MOCK_TOOL_LOG"\nexit "${MOCK_P
 chmod +x "$tmp/bin/ruff" "$tmp/bin/pytest"
 
 # Creates an isolated project that contains only verify.sh and the given config.
+# A label is used once: a second project with it would share the first one's
+# directory, so it is refused. A label that ends in .XXXXXX gets a directory
+# of its own from mktemp, for a project made in a loop.
 setup_project() {
   local label="$1"
   local project="$tmp/$label"
 
+  if [[ "$label" == *.XXXXXX ]]; then
+    project="$(mktemp -d "$tmp/$label")"
+  elif ! mkdir "$project" 2>/dev/null; then
+    fail "setup_project: the project '$label' already exists in $tmp"
+  fi
   mkdir -p "$project/scripts"
   cp "$source_root/scripts/verify.sh" "$project/scripts/verify.sh"
   if [[ $# -gt 1 ]]; then
@@ -62,6 +70,14 @@ run_verify "$project" || {
   fail "passing checks were reported as a failure"
 }
 [[ "$(grep -c . "$project/tools.log")" -eq 2 ]] || fail "not every configured check ran"
+# A label names one project: a second one with it is refused, so two projects
+# never share a directory, and a label of mktemp gives each its own.
+if (setup_project pass "lint: pytest") >"$tmp/reused.out" 2>&1; then fail "a second project 'pass' was accepted"; fi
+grep -Fq "the project 'pass' already exists" "$tmp/reused.out" || fail "the refusal of a reused label does not name it: $(cat "$tmp/reused.out")"
+grep -Fxq "lint: ruff check ." "$project/scripts/verify.conf" || fail "a refused project changed the first one's configuration"
+first="$(setup_project twice.XXXXXX)"
+second="$(setup_project twice.XXXXXX)"
+[[ -d "$first" && -d "$second" && "$first" != "$second" ]] || fail "two projects of a mktemp label share a directory: $first $second"
 
 # A failing linter fails verification, and later checks still run.
 project="$(setup_project lint-fails "lint: ruff check ." "tests: pytest")"
@@ -1015,7 +1031,7 @@ grep -Eq "^ACCEPTED +types \(missing tool: tsc\): an accepted exception of scrip
 if MOCK_RUFF_EXIT=1 run_verify "$project"; then fail "the known failure of a check without an exception passed"; fi
 [[ ! -e "$project$record" ]] || fail "a failed verification kept the record of the earlier pass"
 for line in "accepted-failure: types" "accepted-failure: nothing because" "accepted-failure [default]: types reason"; do
-  project="$(setup_project "$(basename "$(mktemp -d "$tmp/exception.XXXXXX")")" "types: tsc" "$line")"
+  project="$(setup_project exception.XXXXXX "types: tsc" "$line")"
   expect_failure "$project" "a malformed exception must be refused: $line"
   grep -Fq "accepted-failure" "$project/out.log" || fail "the refusal of '$line' does not say why"
 done
@@ -1211,7 +1227,7 @@ for line in "accepted-failure: format changed-files" "accepted-failure: format c
   "accepted-failure: format recorded exit 0" "accepted-failure: format recorded exit 1,127" \
   "accepted-failure: format recorded exit 124" "accepted-failure: format recorded exit 143" \
   "accepted-failure: format recorded exit 1,,2" "accepted-failure: size changed-files exit 1 fmt"; do
-  project="$(setup_project "scoped-$RANDOM" "format: fmt" "size budget: fmt" "$line")"
+  project="$(setup_project scoped.XXXXXX "format: fmt" "size budget: fmt" "$line")"
   expect_failure "$project" "a malformed scoped exception must be refused: $line"
   grep -Fq "accepted-failure" "$project/out.log" || fail "the refusal of '$line' does not say why"
 done
@@ -1422,7 +1438,7 @@ done
 expect_overlap() {
   local project
 
-  project="$(setup_project "overlap-$RANDOM" ${3:+"$3"} "${overlap_checks[@]}")"
+  project="$(setup_project overlap.XXXXXX ${3:+"$3"} "${overlap_checks[@]}")"
   run_with "$project" || fail "a run of checks that pass failed ($2): $(cat "$project/out.log")"
   [[ "$(max_overlap "$project/overlap.log")" -eq "$1" ]] ||
     fail "$2: $(max_overlap "$project/overlap.log") checks ran at the same time, not $1: $(cat "$project/overlap.log")"
@@ -1536,7 +1552,7 @@ done <"$project/pids"
 # The line is exact: a whole number above 0, once, no group, no budget, and
 # only in scripts/verify.conf; VERIFY_PARALLEL is a whole number above 0.
 for line in "parallel: 0" "parallel: two" "parallel: 1.5" "parallel [code]: 2" "parallel budget: 2"; do
-  project="$(setup_project "parallel-refused-$RANDOM" "$line" "lint: ruff check .")"
+  project="$(setup_project parallel-refused.XXXXXX "$line" "lint: ruff check .")"
   expect_failure "$project" "'$line' must be refused"
   grep -Fq "'parallel'" "$project/out.log" || fail "the refusal of '$line' did not say why: $(cat "$project/out.log")"
 done
@@ -1635,7 +1651,7 @@ git -C "$project" checkout -q -- site
 for lines in "inputs: none site|site: pytest" "inputs: site site|inputs: site docs|site: pytest" "inputs [code]: site site|site: pytest" \
   "inputs: site|site: pytest" "inputs: site @../outside|site: pytest" "inputs: site @/etc/list|site: pytest"; do
   IFS='|' read -r -a config_lines <<<"$lines"
-  project="$(setup_project "inputs-refused-$RANDOM" "${config_lines[@]}")"
+  project="$(setup_project inputs-refused.XXXXXX "${config_lines[@]}")"
   expect_failure "$project" "'$lines' must be refused"
   grep -Fq "'inputs'" "$project/out.log" || fail "the refusal of '$lines' did not say why: $(cat "$project/out.log")"
   [[ ! -e "$project/tools.log" ]] || fail "checks ran despite '$lines'"
