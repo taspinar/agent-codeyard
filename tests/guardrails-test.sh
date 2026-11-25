@@ -468,6 +468,20 @@ check "$repo"
 [[ "$status" -eq 4 ]] || fail "a file with two JSON values was accepted ($status)"
 grep -Fq "not exactly one JSON value" "$repo.out" || fail "the malformed request was not explained"
 
+# The requests are checked against the schema of the base; a base without
+# one is an error that names the file, not a check against the feature's own.
+repo="$(setup_repo request-base-without-schema)"
+git -C "$repo" rm -q .agents/schemas/approval-request.schema.json
+git -C "$repo" commit -qm "Remove the schema"
+git -C "$repo" branch -f main HEAD
+git -C "$repo" show HEAD~1:.agents/schemas/approval-request.schema.json >"$repo/.agents/schemas/approval-request.schema.json"
+printf '# ADR 002: Other\n\nStatus: Proposed\n' >"$repo/docs/decisions/002-other.md"
+write_request "$repo" "$(fingerprint_worktree "$repo" "$scratch")"
+check "$repo"
+[[ "$status" -eq 2 ]] || { cat "$repo.out" >&2; fail "a base without the request schema was not an error ($status)"; }
+grep -Fq "could not read .agents/schemas/approval-request.schema.json from" "$repo.out" ||
+  fail "the error does not name the missing schema: $(cat "$repo.out")"
+
 # The exclusion list is read from the base: a feature that extends the list
 # in its own fingerprint.sh and names the tree computed with it is refused,
 # and the changed library is reported as protected. The tree computed with

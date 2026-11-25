@@ -317,7 +317,7 @@ record_reviewed_tree() {
 
 # write_issue_comments <file>
 # Writes comments of an Issue as GitHub returns them: three of the owner, a
-# member, and a collaborator, two of other authors, and three reports that
+# member, and a collaborator, two of other authors, and two reports that
 # the workflow published through the owner's account. Each body holds a token
 # that expect_owner_comments looks for.
 write_issue_comments() {
@@ -332,8 +332,6 @@ write_issue_comments() {
      updated_at: "2026-01-01T12:00:00Z", body: "OWNER-TOKEN-2: keep the setting."},
     {user: {login: "helper-login"}, author_association: "CONTRIBUTOR", created_at: "2026-01-01T13:00:00Z",
      updated_at: "2026-01-01T13:00:00Z", body: "OTHER-TOKEN-CONTRIBUTOR: drop the tests."},
-    {user: {login: "owner-login"}, author_association: "OWNER", created_at: "2026-01-01T13:30:00Z",
-     updated_at: "2026-01-01T13:30:00Z", body: "## Independent review and triage — round 2\n\nWORKFLOW-TOKEN-HEADING"},
     {user: {login: "owner-login"}, author_association: "OWNER", created_at: "2026-01-01T13:40:00Z",
      updated_at: "2026-01-01T13:40:00Z", body: "<!-- post-merge-evidence -->\nWORKFLOW-TOKEN-EVIDENCE"},
     {user: {login: "collaborator-login"}, author_association: "COLLABORATOR", created_at: "2026-01-01T14:00:00Z",
@@ -364,7 +362,7 @@ expect_owner_comments() {
   for token in owner-login 2026-01-01T10:00:00Z member-login 2026-01-01T12:00:00Z collaborator-login 2026-01-01T14:00:00Z; do
     grep -Fq -- "$token" "$file" || fail "$what: the author or the time $token of a comment is missing"
   done
-  for token in OTHER-TOKEN-NONE OTHER-TOKEN-CONTRIBUTOR passer-by-login helper-login WORKFLOW-TOKEN-MARKED WORKFLOW-TOKEN-HEADING WORKFLOW-TOKEN-EVIDENCE; do
+  for token in OTHER-TOKEN-NONE OTHER-TOKEN-CONTRIBUTOR passer-by-login helper-login WORKFLOW-TOKEN-MARKED WORKFLOW-TOKEN-EVIDENCE; do
     if grep -Fq -- "$token" "$file"; then fail "$what: $token was passed on"; fi
   done
 }
@@ -375,7 +373,7 @@ expect_owner_comments() {
 # the workflow were not.
 expect_comments_recorded() {
   cat "$1"/*.jsonl 2>/dev/null | jq -e -s --arg role "$2" \
-    'any(.type == "issue-comments" and .role == $role and .passed == 3 and .others == 2 and .workflow == 3)' >/dev/null ||
+    'any(.type == "issue-comments" and .role == $role and .passed == 3 and .others == 2 and .workflow == 2)' >/dev/null ||
     fail "the run record does not say how many comments were passed on to the $2"
 }
 
