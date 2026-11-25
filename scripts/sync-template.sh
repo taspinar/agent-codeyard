@@ -59,6 +59,18 @@ config_value() {
   sed -n "s/^$2:[[:space:]]*//p" "$1" | head -n 1
 }
 
+# local_location <location>: succeeds when Git reads <location> as a local
+# path, not as the URL of a remote repository: a file:// URL, or a value
+# without '<scheme>://' and without a ':' before its first '/' (the form
+# 'host:path' or 'user@host:path' is a remote one, as for Git).
+local_location() {
+  local location="$1"
+
+  [[ "$location" != file://* ]] || return 0
+  [[ "$location" != *://* ]] || return 1
+  [[ "${location%%/*}" != *:* ]]
+}
+
 # plain_path <path>: succeeds when neither <path> nor a directory above it,
 # inside the project, is a symbolic link. Writing through a link would change
 # a file that is not the template's.
@@ -79,6 +91,20 @@ plain_path "$config_relative" && [[ ! -e "$config" || -f "$config" ]] ||
 [[ -n "$template" ]] || template="$(config_value "$config" repository)"
 [[ -n "$template" ]] ||
   fail "no template is recorded in $config_relative. Pass --template <url-or-path>."
+
+# The location the sync records under 'repository:', so that a sync from
+# another location, such as a fork, is continued from there. A local path,
+# such as a clone of the template on this machine, does not replace a URL:
+# the URL is what tells the template from a project
+# (scripts/lib/template-repository.sh), and a path there would make the
+# framework-only self-tests run in the project.
+previous_template="$(config_value "$config" repository | sed 's/[[:space:]]*$//')"
+recorded_template="$template"
+kept_note=""
+if local_location "$template" && [[ -n "$previous_template" ]] && ! local_location "$previous_template"; then
+  recorded_template="$previous_template"
+  kept_note="$config_relative: kept 'repository: $previous_template'; the sync came from the local path $template, which is not recorded"
+fi
 
 [[ -z "$(git -C "$root" status --porcelain --untracked-files=no)" ]] ||
   fail "there are uncommitted changes to tracked files. Commit or stash them first, so the sync can be reviewed and undone on its own."
@@ -167,7 +193,7 @@ template_git merge-base --is-ancestor "$base" "$target" ||
   fail "template commit ${base:0:7} is not part of version ${target:0:7}. Pass --to or --from."
 
 if [[ "$base" == "$target" && "$recorded" == "$target" &&
-  "$(config_value "$config" repository)" == "$template" ]]; then
+  "$previous_template" == "$recorded_template" ]]; then
   echo "Already up to date with template commit ${target:0:7}."
   exit 0
 fi
@@ -194,6 +220,7 @@ merged=()
 added=()
 conflicts=()
 notes=()
+[[ -z "$kept_note" ]] || notes+=("$kept_note")
 
 # mode_of <commit> <path>: prints the Git file mode, or nothing when absent.
 mode_of() {
@@ -364,9 +391,8 @@ if [[ "$base_ownership_known" -eq 1 ]]; then
   done < <(LC_ALL=C comm -13 "$work/owned.base" "$work/owned.target" | LC_ALL=C comm -23 - "$work/changed")
 fi
 
-# Record the template the project now follows and the version it has. The
-# repository is recorded too, so a sync from another location, such as a
-# fork, is continued from there.
+# Record the template the project now follows and the version it has, and
+# the location chosen above.
 mkdir -p "$(dirname "$config")"
 [[ -f "$config" ]] || printf 'paths: %s\n' "$paths_value" >"$config"
 {
@@ -375,7 +401,7 @@ mkdir -p "$(dirname "$config")"
   while IFS= read -r line || [[ -n "$line" ]]; do
     case "$line" in
       repository:*)
-        printf 'repository: %s\n' "$template"
+        printf 'repository: %s\n' "$recorded_template"
         has_repository=1
         ;;
       commit:*)
@@ -385,7 +411,7 @@ mkdir -p "$(dirname "$config")"
       *) printf '%s\n' "$line" ;;
     esac
   done <"$config"
-  [[ "$has_repository" -eq 1 ]] || printf '\nrepository: %s\n' "$template"
+  [[ "$has_repository" -eq 1 ]] || printf '\nrepository: %s\n' "$recorded_template"
   [[ "$has_commit" -eq 1 ]] || printf '\ncommit: %s\n' "$target"
 } >"$work/config"
 cp "$work/config" "$config$staged_suffix"

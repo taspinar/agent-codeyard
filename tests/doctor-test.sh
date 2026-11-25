@@ -8,7 +8,6 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
 source_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 source "$source_root/tests/lib-fakes.sh"
-script="$source_root/scripts/doctor.sh"
 bash_path="$(command -v bash)"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/doctor-test.XXXXXX")"
 
@@ -16,6 +15,15 @@ cleanup() {
   rm -rf "$tmp"
 }
 trap cleanup EXIT
+
+# doctor.sh runs from a copy of the scripts with a .agents/template.conf of
+# the test, so what it reports about the repository's role does not depend
+# on the file of the repository that hosts the test.
+fixture="$tmp/repository"
+mkdir -p "$fixture/.agents"
+cp -R "$source_root/scripts" "$fixture/scripts"
+printf 'repository: https://github.com/owner/template\n' >"$fixture/.agents/template.conf"
+script="$fixture/scripts/doctor.sh"
 
 fail() {
   echo "doctor test failed: $*" >&2
@@ -32,7 +40,8 @@ make_bin() {
   # The prerequisites of the workflow self-tests that doctor.sh checks
   # (lib/environment.sh), from the isolated toolchain, apart from git and
   # jq, which are listed like any tool; MAKE_BIN_WITHOUT leaves one out.
-  for tool in bash sed timeout date; do
+  # head reads .agents/template.conf (lib/template-repository.sh).
+  for tool in bash sed timeout date head; do
     [[ " ${MAKE_BIN_WITHOUT:-} " == *" $tool "* ]] || ln -sf "$TEST_TOOLCHAIN_BIN/$tool" "$bin/$tool"
   done
   # The sandbox check needs mkdir, rm and sleep whatever else is present.
@@ -44,6 +53,11 @@ make_bin() {
 case "\$*" in
   "rev-parse --show-toplevel") exit "\${MOCK_REPO_EXIT:-0}" ;;
   "remote get-url origin") exit "\${MOCK_ORIGIN_EXIT:-0}" ;;
+  "-C "*" remote get-url origin")
+    [[ "\${MOCK_ORIGIN_EXIT:-0}" -eq 0 ]] || exit "\$MOCK_ORIGIN_EXIT"
+    echo "\${MOCK_ORIGIN_URL:-https://github.com/owner/project}"
+    exit 0
+    ;;
   "ls-remote --exit-code --heads origin main") exit "\${MOCK_MAIN_EXIT:-0}" ;;
   "push --dry-run --quiet origin HEAD:refs/heads/doctor-push-check") exit "\${MOCK_PUSH_EXIT:-0}" ;;
   "config user.name") [[ -z "\${MOCK_GIT_NO_IDENTITY:-}" ]] || exit 1; echo "Test User"; exit 0 ;;
@@ -367,5 +381,34 @@ bin="$(make_bin attribution git gh jq codex claude)"
 printf 'agent-attribution: maybe\n' >"$attribution"
 expect_failure "$bin" "attribution configuration is invalid"
 printf 'agent-attribution: allowed\n' >"$attribution"
+
+# The role of the repository for the framework-only self-tests, as
+# ./scripts/verify.sh decides it (lib/template-repository.sh), is printed
+# with its reason, and nothing of the repository changes (Issue 470).
+bin="$(make_bin role git gh jq codex claude)"
+fixture_state() {
+  (cd "$fixture" && find . -print0 | LC_ALL=C sort -z | xargs -0 ls -ld --time-style=+%s.%N && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum)
+}
+fixture_before="$(fixture_state)"
+run_doctor "$bin" || { cat "$tmp/out.log" >&2; fail "a project was reported as a failure"; }
+grep -Eq '^NOTE +this repository is a project made from the template: ./scripts/verify.sh skips the framework-only self-tests' "$tmp/out.log" ||
+  fail "the role of a project was not printed: $(cat "$tmp/out.log")"
+grep -Fq "this repository (github.com/owner/project) is not the template that .agents/template.conf names (github.com/owner/template)" "$tmp/out.log" ||
+  fail "the reason of the role was not printed: $(cat "$tmp/out.log")"
+
+MOCK_ORIGIN_URL="git@github.com:Owner/template.git" run_doctor "$bin" || { cat "$tmp/out.log" >&2; fail "the template was reported as a failure"; }
+grep -Eq '^NOTE +this repository is the template: ./scripts/verify.sh runs the framework-only self-tests' "$tmp/out.log" ||
+  fail "the role of the template was not printed: $(cat "$tmp/out.log")"
+grep -Fq "the origin is the template that .agents/template.conf names (github.com/owner/template)" "$tmp/out.log" ||
+  fail "the reason of the template's role was not printed: $(cat "$tmp/out.log")"
+[[ "$(fixture_state)" == "$fixture_before" ]] || fail "doctor.sh changed the repository"
+
+# A path in 'repository:', as a sync from a local clone wrote it before
+# Issue 470, is a doubt: a warning that says why the self-tests run.
+printf 'repository: /home/someone/agent-codeyard\n' >"$fixture/.agents/template.conf"
+fixture_before="$(fixture_state)"
+expect_warning "whether this repository is the template cannot be told, so ./scripts/verify.sh runs the framework-only self-tests here: .agents/template.conf names the template by a path, not by a URL: /home/someone/agent-codeyard"
+[[ "$(fixture_state)" == "$fixture_before" ]] || fail "doctor.sh changed the repository"
+printf 'repository: https://github.com/owner/template\n' >"$fixture/.agents/template.conf"
 
 echo "doctor tests passed"

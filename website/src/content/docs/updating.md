@@ -39,7 +39,7 @@ What each file in the repository is for is in the [project map](https://github.c
 
 ## Versions and conflicts
 
-Work on a branch and inspect the listed template commits. `--from <commit>` chooses a known starting version, `--to <ref>` a target, and `--template <url-or-path>` another source. Without a recorded version, the script compares files to historical template versions; an ambiguous match stops for your `--from` choice, with the oldest the safe choice. It records the new version in `.agents/template.conf`.
+Work on a branch and inspect the listed template commits. `--from <commit>` chooses a known starting version, `--to <ref>` a target, and `--template <url-or-path>` another source: a URL, such as a fork, is recorded for the next sync, while a local clone is only read from, and the URL already recorded stays. Without a recorded version, the script compares files to historical template versions; an ambiguous match stops for your `--from` choice, with the oldest the safe choice. It records the new version in `.agents/template.conf`.
 
 A conflict exits with status 1 and leaves the conflict for you to resolve. Review the result, resolve conflicts, run `./scripts/verify.sh --all`, commit and open a pull request.
 

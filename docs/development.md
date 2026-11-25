@@ -1225,6 +1225,20 @@ template": `template.conf` names a URL, the origin is a URL, and they
 differ. With no `template.conf`, no `repository:`, a local path on either
 side, or no or an unreadable origin, it runs.
 
+`./scripts/doctor.sh` prints the role and its reason without changing
+anything: a `NOTE` for the template and for a project, a `WARNING` when the
+role cannot be told, so a wrong role shows before a verification runs or
+skips these self-tests.
+
+**After a rename of the template, update the origin of its clones.** The
+template was renamed from `agentic-coding-template` to `agent-codeyard`.
+GitHub redirects the old name, so a clone whose origin still has it keeps
+working, but its origin is then not the repository that `repository:` names:
+the clone counts as a project, and its framework-only self-tests are skipped
+with a `SKIP` line. Set the origin to the current name
+(`git remote set-url origin https://github.com/taspinar/agent-codeyard.git`,
+or the SSH form); nothing detects a rename.
+
 **A skip is explicit.** The summary shows one line per skipped check, with
 the reason:
 
@@ -4675,7 +4689,12 @@ template change to a file the project changed too: it lists them and asks for
 already up to date only gets its version recorded. `--to <ref>` selects
 another template version than its default branch, and
 `--template <url-or-path>` another location, for example a fork; that location
-is recorded, so the next sync continues from it.
+is recorded, so the next sync continues from it. A local path, such as a
+clone of the template on your machine, does not replace a `repository:` that
+is a URL: the sync keeps the URL and says so under "Needs your attention",
+because the URL is what tells the template from a project ("Framework-only
+self-tests"). A sync from another URL records that URL. To follow a local
+path from then on, write it into `repository:` yourself.
 
 A template change can need a decision in the project, such as a new check or
 a changed step. Read the listed commits before merging the result; the sync
