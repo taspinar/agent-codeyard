@@ -222,12 +222,27 @@ grep -Fqx "half done" "$worktree/work.txt" || fail "resuming lost the work in pr
 grep -Fq "The Issue is not complete (missing)" "$repo.out" || fail "a session without a completion record was not reported as not complete"
 grep -Fq "./scripts/start-feature.sh 10 --resume" "$repo.out" || fail "resuming was not offered for work that is not complete"
 if grep -Fq "./scripts/review-feature.sh 10" "$repo.out"; then fail "the review was offered for work that is not complete"; fi
+# A Claude session gets no hint about Codex's sandbox.
+if grep -Fq "writable_roots" "$repo.out"; then fail "a claude session without a record was given the hint about Codex's sandbox"; fi
+# A Codex session that leaves no completion record, as one does whose sandbox
+# refuses the runtime directories under .agents/: the report names the
+# likely cause, the directories that agent.sh opens, and what to do.
+run_start "$repo" 10 --resume || { cat "$repo.out" >&2; fail "resuming with codex failed"; }
+grep -Fq -- "--sandbox workspace-write" "$repo.log" || fail "the resumed session did not run codex"
+grep -Fq "The Issue is not complete (missing)" "$repo.out" || fail "a codex session without a completion record was not reported as not complete"
+grep -Fq "Codex left no completion record" "$repo.out" ||
+  fail "a codex session without a completion record did not name the sandbox as a cause: $(cat "$repo.out")"
+grep -Fq ".agents/completion, .agents/handoffs, .agents/summaries, .agents/manual-steps" "$repo.out" ||
+  fail "the hint does not name the runtime directories: $(cat "$repo.out")"
+grep -Fq "sandbox_workspace_write.writable_roots" "$repo.out" || fail "the hint does not name the writable roots"
+grep -Fq "update Codex, or give the role to Claude in .agents/agents.conf" "$repo.out" || fail "the hint does not say what to do"
 
 # The same for a record that says partial, with what remains, and for a
 # record that says complete while the handoff note lists remaining work.
 MOCK_WRITE_ACTION="$(record partial 10)" run_start "$repo" 10 --resume || fail "resuming with a partial record failed"
 grep -Fq "The Issue is not complete (partial)" "$repo.out" || fail "a partial record was not reported"
 grep -Fq "remaining: Plan steps 3 to 9" "$repo.out" || fail "the remaining work of the record was not shown"
+if grep -Fq "Codex left no completion record" "$repo.out"; then fail "a codex session that wrote its record was given the hint about the sandbox"; fi
 if grep -Fq "./scripts/review-feature.sh 10" "$repo.out"; then fail "the review was offered for partial work"; fi
 
 mkdir -p "$worktree/.agents/handoffs"
