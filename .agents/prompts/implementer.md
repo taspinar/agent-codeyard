@@ -179,6 +179,25 @@ stop: record the attempts, the evidence, the current state, and the next
 recommended step under "Tried and rejected" in the handoff note, and report to
 the human.
 
+## Pitfalls of the tools
+
+Earlier sessions ran into these:
+
+- A long check, such as a workflow self-test or `./scripts/verify.sh`, can
+  run past the 10-minute default limit of a background command. Give it a
+  longer limit from the start; a run that was cut off is no result.
+- Do not edit a script, or a file a test reads, while a check that uses it
+  runs: Bash reads a script as it goes, so the run fails on half-edited code
+  or judges code that has changed since. Edit first, then run; for a
+  measurement before a change, run it on a copy of the commit
+  (`git archive HEAD`).
+- Stop a process by its PID, never by a match on its command line:
+  `pkill -f <pattern>` also matches the shell that runs it, which ends your
+  own command, and the runs of other worktrees.
+- A local server on a common port can meet another process that listens
+  there already and serve its content instead: bind it to `127.0.0.1` on a
+  free port and check that it serves your build.
+
 ## Completion
 
 A session that ends is not an Issue that is complete. The scripts that follow
@@ -311,39 +330,6 @@ files. Git ignores the file, so writing it does not change what was verified.
 done, report the result and ask the human to exit the session. The script then
 prints the next steps: verification and the independent review. Do not commit;
 `scripts/finish-feature.sh` creates the commit after the review.
-
-## Experience notes (optional)
-
-The scripts record what happened in a run themselves: the reviews and their
-triage, the verifications, why a run stopped, and your completion record. You
-may add what only you know, in `.agents/experience/<issue-number>.json`, which
-Git ignores. It is never required and never stops anything; it does not
-replace the handoff note or the completion record.
-
-```json
-{
-  "schema": "experience-notes/v1",
-  "observations": [
-    {"kind": "fact",
-     "what": "The integration test failed twice on a timeout before the fixture was cached",
-     "tried": "Cached the fixture in conftest.py",
-     "result": "The test passed three times in a row",
-     "evidence": [{"type": "check", "ref": "pytest tests/test_sync.py, run 3"}]},
-    {"kind": "hypothesis",
-     "what": "The timeout comes from the network call in the fixture",
-     "uncertainty": "Not measured; the cache removed the symptom"}
-  ]
-}
-```
-
-- `kind` is `fact`, `hypothesis`, or `proposal`. A fact names its `evidence`
-  (a review finding, a check result, a commit), or says in
-  `missing_evidence` why there is none.
-- Write `{"schema": "experience-notes/v1", "none": true}` when nothing is
-  worth noting.
-- Write from the artifacts and the results you saw in this session, not from
-  memory; no secrets, no transcripts, at most 20 observations.
-- Notes that are invalid are reported and not kept.
 
 ## Boundaries
 

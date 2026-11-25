@@ -39,12 +39,12 @@ AGENT_WRITE_ROLES="project-grill project-planner implementer triage-implementer"
 # to the work directory. Codex 0.164 mounts .agents/, .git/, and .codex/
 # read-only in its workspace-write sandbox, also inside the worktree it may
 # write otherwise. The implementer and the triage-implementer have to write
-# these five (.agents/prompts/implementer.md, triage-implementer.md): the
-# completion record, the handoff note, the summary, the manual steps, and the
-# experience notes, all of which Git ignores. Nothing else under .agents/ is
+# these four (.agents/prompts/implementer.md, triage-implementer.md): the
+# completion record, the handoff note, the summary, and the manual steps, all
+# of which Git ignores. Nothing else under .agents/ is
 # opened: the policies, the prompts, the schemas, the plans, the reviews, the
 # triage, the run files, and agents.conf stay as the sandbox leaves them.
-AGENT_CODEX_WRITABLE_DIRS=".agents/completion .agents/handoffs .agents/summaries .agents/manual-steps .agents/experience"
+AGENT_CODEX_WRITABLE_DIRS=".agents/completion .agents/handoffs .agents/summaries .agents/manual-steps"
 
 agent_fail() {
   echo "Error: $*" >&2
@@ -509,21 +509,12 @@ agent_run() {
     call="$(records_id)"
     records_agent_start "$call" "${AGENT_ROLE:-unknown}" "$1" "$2" "$3" "${AGENT_LEVEL:-}" "${AGENT_SELECTION:-}"
   fi
-  # The experience notes that an implementing session writes belong to its
-  # run (lib/experience.sh); only their hash is recorded here.
-  local notes_before=""
-  if declare -F experience_notes_hash >/dev/null; then
-    notes_before="$(experience_notes_hash "$4")"
-  fi
   AGENT_ARTIFACTS_CHANGED=""
   manifest_before="$(fingerprint_manifest "$4")"
   agent_run_session "$@" || status=$?
   agent_artifacts_check "$4" "$manifest_before" || status=5
   if declare -F records_agent_call >/dev/null; then
     records_agent_call "${AGENT_ROLE:-unknown}" "$1" "$2" "$3" "$(($(date +%s) - started))" "$status" "${6:-}" "$call" "${AGENT_LEVEL:-}" "${AGENT_SELECTION:-}"
-  fi
-  if declare -F experience_notes_written >/dev/null; then
-    experience_notes_written "$4" "$notes_before" "$call" 2>/dev/null || true
   fi
   return "$status"
 }

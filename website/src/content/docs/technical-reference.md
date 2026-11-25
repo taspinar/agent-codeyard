@@ -19,7 +19,7 @@ Sections: <a href="#by-function">files by function</a> · <a href="#records">wha
 - **Risk and the owner's approval.** Scripts: `check-risk.sh`, `check-guardrails.sh`, `gate-pull-request.sh`. Files: `.agents/policies/risk.conf`, `.agents/policies/guardrails.conf`, `.github/CODEOWNERS`, `.agents/approval-requests/`; `scripts/lib/risk.sh`, `scripts/lib/guardrails.sh`, `scripts/lib/fingerprint.sh`. Listed under <a href="#rules-and-configuration">Rules and configuration</a>, <a href="#script-libraries">Script libraries</a>.
 - **Commit and publish.** Scripts: `finish-feature.sh`, `publish-feature.sh`, `update-feature.sh`, `record-post-merge.sh`, `cleanup-worktree.sh`. Files: `.agents/attribution.conf`; `scripts/lib/attribution.sh`, `scripts/lib/github.sh`. Listed under <a href="#workflow-scripts">Workflow scripts</a>.
 - **Agents and their permissions.** Files: `.agents/agents.conf`, `.agents/policies/`; `scripts/lib/agent.sh`. Listed under <a href="#rules-and-configuration">Rules and configuration</a>.
-- **Records and learning.** Scripts: `report-runs.sh`, `show-experience.sh`, `analyze-runs.sh`. Files: `.agents/run/`, `.agents/records/`, `.agents/experience/`, `.agents/analysis/`; `analyst.md`; `scripts/lib/records.sh`, `scripts/lib/experience.sh`, `scripts/lib/report.jq`. Listed under <a href="#records">What is recorded on your machine</a>.
+- **Records and learning.** Scripts: `report-runs.sh`, `show-experience.sh`, `analyze-runs.sh`. Files: `.agents/run/`, `.agents/records/`, `.agents/analysis/`; `analyst.md`; `scripts/lib/records.sh`, `scripts/lib/experience.sh`, `scripts/lib/report.jq`. Listed under <a href="#records">What is recorded on your machine</a>.
 - **Setup and template updates.** Scripts: `doctor.sh`, `sync-template.sh`. Files: `.agents/template.conf`, `docs/repository-setup.md`, `.github/`. Listed under <a href="#rules-and-configuration">Rules and configuration</a>.
 - **Adopt an existing repository.** Scripts: `assess-repository.sh`, `adopt-repository.sh`. Files: `assessor.md`, the assessment schema, `.agents/assessments/`. Listed under <a href="#workflow-scripts">Workflow scripts</a>; the steps are in <a href="#adopting">Adopting</a>.
 
@@ -33,7 +33,6 @@ The workflow keeps a record of every run, so that you can see what a feature cos
 | --- | --- |
 | One file per run: how long each step took, the tokens each agent call used, the verifications, and what you did that a script saw | `.agents/run/records/` in your main checkout, also for a feature in a worktree |
 | The runs of a feature or a planning together, copied when the pull request is opened and before its worktree is removed | `.agents/records/feature-<issue>.jsonl` or `planning-<name>.jsonl` in your main checkout, format `run-record/v1` |
-| The notes of the implementer on a run, optional | `.agents/experience/` in the feature worktree, kept in the record of the run once they are valid |
 | The input, the result, and the report of an analysis | `.agents/analysis/` in your main checkout |
 
 - Git ignores all of these: they are never committed, and a new clone or `git clean -fdx` does not keep them. Copy the directories when you want to keep them.
@@ -54,7 +53,7 @@ Every run leaves a record of what it took, so that you can see where the time an
 | What | How you see it | What it tells you |
 | --- | --- | --- |
 | **Run records**: per run the duration of every step, the tokens of every agent call per role and model, the verifications, and your approvals | `./scripts/report-runs.sh <issue>`, several features side by side, a period, or `--split <date>` for before and after a change; `--json` for your own tools | What a feature cost, how many review and repair rounds it needed, and which steps take the longest |
-| **Experience records**: per run what happened, derived by a script from the reviews, the triage, the verifications, and why a run stopped; the implementer may add notes of its own | `./scripts/show-experience.sh <issue>` | The findings and stops of a feature, each with a reference to its evidence |
+| **Experience records**: per run what happened, derived by a script from the reviews, the triage, the verifications, and why a run stopped | `./scripts/show-experience.sh <issue>` | The findings and stops of a feature, each with a reference to its evidence |
 | **An analysis** of several features by a read-only agent, the `analyst` | `./scripts/analyze-runs.sh <issue>...`, `--since <date>`, or `--last <n>` | Recurring problems and what worked, with proposals in order of priority |
 
 Some care is built in, so that the numbers do not mislead:
@@ -166,7 +165,7 @@ An analysis changes nothing in your repository. Each proposal says where it belo
 | [`scripts/lib/environment.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/environment.sh) | The prerequisites of the machine: the preflight of `verify.sh`, its status 78 and `ENVIRONMENT` lines, which `doctor.sh` reports too, and the isolated toolchain of the workflow self-tests |
 | [`scripts/lib/verify-lock.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/verify-lock.sh) | The machine-wide slot for heavy verification: a lock directory outside every worktree, taken by a run of `verify.sh` that starts a check named under `heavy:`, released when it ends, recovered after a crash, and shared with a verification nested in it |
 | [`scripts/lib/records.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/records.sh) | The run records: duration and token usage per run, step, and agent call, and the copy per feature or planning |
-| [`scripts/lib/experience.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/experience.sh) | The experience record of a feature run: what a script derives from the run, and the agent's optional notes once they are valid |
+| [`scripts/lib/experience.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/experience.sh) | The experience record of a feature run: what a script derives from the run |
 | [`scripts/lib/report.jq`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/report.jq) | The report of `report-runs.sh`: totals, comparisons, and the summary for GitHub, from numeric fields only |
 | [`scripts/lib/exceptions.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/exceptions.sh) | The owner's exceptions to blocking review findings: the record in `.agents/exceptions/`, bound to the review it names and to the reviewed content, and its validity |
 | [`scripts/lib/completion.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/completion.sh) | The completion gate: validation of the implementer's completion record, the remaining work a handoff note lists, and the decision the scripts act on |
@@ -225,7 +224,6 @@ An analysis changes nothing in your repository. Each proposal says where it belo
 | [`.agents/approval-requests/`](https://github.com/taspinar/agent-codeyard/tree/main/.agents/approval-requests/) | Per Issue, what the owner is asked to approve and why, written by `finish-feature.sh` when only the owner may merge: references and an explanation, never part of the content fingerprint, never an instruction, grants nothing | Yes |
 | [`.agents/handoffs/`](https://github.com/taspinar/agent-codeyard/tree/main/.agents/handoffs/) | Per Issue, the implementer's continuation note for a session that resumes the work (`start-feature.sh <issue> --resume`) | No |
 | `.agents/exceptions/` | Per finding, the owner's exception to a blocking finding, written by `record-exception.sh` and published on the Issue | No |
-| `.agents/experience/` | Per Issue, the implementer's optional experience notes | No |
 | `.agents/analysis/` | The input, the result, and the report of each analysis of runs | No |
 | `.agents/assessments/` | Per assessment of a repository to adopt: its facts, the report and the proposal | No |
 | `.agents/accepted-failures/` | Per check with a scoped exception `recorded`, the list of failures it may still print; it may only shrink, and a change needs the owner's approval | Yes |
@@ -234,8 +232,7 @@ An analysis changes nothing in your repository. Each proposal says where it belo
 
 A Codex session with write access (the `write` and the `unattended` profile)
 may write only `.agents/completion/`, [`.agents/handoffs/`](https://github.com/taspinar/agent-codeyard/tree/main/.agents/handoffs/),
-`.agents/summaries/`, `.agents/manual-steps/`, and `.agents/experience/` of
-these: Codex 0.164 and later mount [`.agents/`](https://github.com/taspinar/agent-codeyard/tree/main/.agents/) read-only in the sandbox, and
+`.agents/summaries/`, and `.agents/manual-steps/` of these: Codex 0.164 and later mount [`.agents/`](https://github.com/taspinar/agent-codeyard/tree/main/.agents/) read-only in the sandbox, and
 [`scripts/lib/agent.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/agent.sh) opens exactly the directories that the implementer and
 the triage-implementer have to write, all ignored by Git. The policies, the
 prompts, the schemas, the plans, the reviews, the triage, `.agents/run/`,

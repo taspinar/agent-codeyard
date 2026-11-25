@@ -5,35 +5,30 @@
 # stored and copied with the run records and never published.
 # Source this file; do not execute it.
 #
-# A record has two parts. A script derives the first, always and without an
-# agent, from what the workflow already wrote during the run: the reviews and
-# their triage, the verifications, why the run stopped, and the completion
-# record. The second is the agent's, and optional: the notes it wrote in
-# .agents/experience/<issue>.json during the run, which are checked and kept
-# only when they are valid. A record is never a gate: when it cannot be made,
-# that is reported and the work goes on with its own outcome.
+# A script derives the record, always and without an agent, from what the
+# workflow already wrote during the run: the reviews and their triage, the
+# verifications, why the run stopped, and the completion record. A record is
+# never a gate: when it cannot be made, that is reported and the work goes on
+# with its own outcome.
 
-# The jq definitions of a record: the validation of the agent's notes and of a
-# record, and the removal of what looks like a secret.
+# The jq definitions of a record: its validation.
 # Read without a subshell and without cat: a caller may run with a minimal
 # PATH.
 EXPERIENCE_JQ=""
 IFS= read -r -d '' EXPERIENCE_JQ <<'JQ' || true
 
-def experience_kinds: ["fact", "hypothesis", "proposal"];
-def observation_keys: ["id", "kind", "what", "circumstances", "tried", "result", "evidence",
-                       "missing_evidence", "uncertainty", "corrects"];
+def observation_keys: ["id", "kind", "what", "circumstances", "result", "evidence", "missing_evidence"];
 
-
-# observation_errors($where): what is wrong with one observation. A fact
-# names its evidence, or says that evidence is missing.
+# observation_errors($where): what is wrong with one observation. Every
+# observation is a fact that names its evidence, or says that evidence is
+# missing.
 def observation_errors($where):
   if type != "object" then ["\($where) is not an object"] else
     [ (keys - observation_keys | .[] | "\($where) has an unknown field: \(.)"),
-      (if (.kind as $k | experience_kinds | index([$k])) == null then "\($where) has no kind of \(experience_kinds | join(", "))" else empty end),
+      (if .kind != "fact" then "\($where) is not of the kind fact" else empty end),
       (if (.what | type) != "string" or (.what | test("\\S") | not) then "\($where) says nothing in what" else empty end),
       (to_entries[] | select((.value | type) == "string" and (.value | length) > 1000) | "\($where): \(.key) is longer than 1000 characters"),
-      ((["circumstances", "tried", "result", "missing_evidence", "uncertainty", "corrects", "id"])[] as $field
+      ((["circumstances", "result", "missing_evidence", "id"])[] as $field
         | select(has($field) and (.[$field] | type) != "string") | "\($where): \($field) is not text"),
       (if has("evidence") and ((.evidence | type) != "array"
             or (.evidence | any(type != "object" or (keys - ["type", "ref"] | length) > 0
@@ -41,32 +36,21 @@ def observation_errors($where):
                                 or (.type | test("\\S") | not) or (.ref | test("\\S") | not)
                                 or (.type | length) > 40 or (.ref | length) > 300)))
        then "\($where): every evidence has only a type and a ref, not blank, of at most 40 and 300 characters" else empty end),
-      (if .kind == "fact" and ((.evidence // []) | length) == 0
+      (if ((.evidence // []) | length) == 0
           and ((.missing_evidence // "") | if type == "string" then test("\\S") | not else true end)
        then "\($where) is a fact without evidence and without saying that evidence is missing" else empty end) ]
   end;
 
-# observations_errors($where; $limit): the limit applies to the notes of an
-# agent; what a script derives is as long as the run was.
-def observations_errors($where; $limit):
+# observations_errors($where): what is wrong with a list of observations.
+def observations_errors($where):
   if type != "array" then ["\($where) is not a list"]
-  elif $limit != null and length > $limit then ["\($where) has more than \($limit) observations"]
   else [to_entries[] | .key as $i | .value | observation_errors("\($where)[\($i)]")] | flatten
   end;
 
-# notes_errors: what is wrong with the agent's notes,
-# .agents/experience/<issue>.json.
-def notes_errors:
-  if type != "object" then ["the notes are not a JSON object"] else
-    [ (if .schema != "experience-notes/v1" then "the notes do not say schema experience-notes/v1" else empty end),
-      (if (.none | type) != "boolean" and has("none") then "none is not true or false" else empty end),
-      (if .none == true and ((.observations // []) | length) > 0 then "the notes say none and hold observations" else empty end),
-      (if .none != true and (has("observations") | not) then "the notes hold no observations and do not say none" else empty end),
-      (if has("observations") then (.observations | observations_errors("observations"; 20)) else [] end)[] ]
-  end;
-
 # record_errors: what is wrong with an experience record. An invalid record
-# is reported, never used as a source.
+# is reported, never used as a source. A field that the record does not
+# define is not judged, so a record of an older version of the workflow stays
+# valid.
 def record_errors:
   if type != "object" then ["the record is not a JSON object"] else
     [ (if .schema != "experience/v1" then "the record does not say schema experience/v1" else empty end),
@@ -90,10 +74,7 @@ def record_errors:
             (if $d.completion != null and (($d.completion | type) != "object" or ($d.completion.status | type) != "string") then "derived.completion has no status" else empty end))
          end),
       (if .none_relevant == true and ((.observations // []) | type) == "array" and ((.observations // []) | length) > 0 then "the record says none relevant and holds observations" else empty end),
-      ((.observations // null) | observations_errors("observations"; null)[]),
-      (if (.agent | type) != "object" or ((.agent.status as $s | ["absent", "valid", "invalid"] | index([$s])) == null)
-       then "the agent part has no status" else empty end),
-      (if (.agent | type) == "object" and .agent.status == "valid" then ((.agent.observations // []) | observations_errors("agent.observations"; 20)[]) else empty end) ]
+      ((.observations // null) | observations_errors("observations")[]) ]
   end;
 JQ
 
@@ -111,28 +92,6 @@ experience_artifacts() {
     done | jq -cs '.'
 }
 
-# experience_notes_hash <worktree>: the hash of the agent's notes of the
-# current feature, or nothing when there are none.
-experience_notes_hash() {
-  local file="$1/.agents/experience/${RECORDS_SUBJECT:-}.json"
-
-  [[ "${RECORDS_KIND:-}" == "feature" && -f "$file" ]] || return 0
-  git hash-object -- "$file" 2>/dev/null || true
-}
-
-# experience_notes_written <worktree> <hash-before> <call>: after a session of
-# the implementer or the triage implementer, records that it changed the
-# notes, by their hash only, so that the notes count for this run and for no
-# other.
-experience_notes_written() {
-  local after
-
-  [[ "${AGENT_ROLE:-}" == "implementer" || "${AGENT_ROLE:-}" == "triage-implementer" ]] || return 0
-  after="$(experience_notes_hash "$1")"
-  [[ -n "$after" && "$after" != "$2" ]] || return 0
-  records_emit experience-notes --arg call "$3" --arg hash "$after" '{call: $call, hash: $hash}'
-}
-
 # experience_record <status>: derives the record of the current feature run,
 # which ends with the status, and appends it to the file of the run.
 experience_record() {
@@ -140,8 +99,6 @@ experience_record() {
   local issue="${RECORDS_SUBJECT:-}"
   local start
   local commit
-  local notes_file
-  local notes="null"
   local completion="null"
 
   [[ -n "${RECORDS_FILE:-}" && -f "$RECORDS_FILE" && "$issue" =~ ^[0-9]+$ ]] || return 0
@@ -160,18 +117,6 @@ experience_record() {
     rm -rf "$scratch"
   fi
 
-  # The notes of the agent count for this run when a session of the run wrote
-  # them, and only while the file still holds what that session left.
-  notes_file="$EXPERIENCE_ROOT/.agents/experience/$issue.json"
-  local notes_hash
-  notes_hash="$(jq -r -s 'map(select(.type == "experience-notes")) | last | .hash // empty' "$RECORDS_FILE")" || notes_hash=""
-  if [[ -n "$notes_hash" ]]; then
-    if [[ -f "$notes_file" && "$(git hash-object -- "$notes_file" 2>/dev/null)" == "$notes_hash" ]]; then
-      notes="$(jq -c '.' "$notes_file" 2>/dev/null)" || notes='"not JSON"'
-    else
-      notes='"changed"'
-    fi
-  fi
   if [[ -f "$EXPERIENCE_ROOT/.agents/completion/$issue.json" ]]; then
     completion="$(jq -c '.' "$EXPERIENCE_ROOT/.agents/completion/$issue.json" 2>/dev/null)" || completion='"not JSON"'
   fi
@@ -181,7 +126,7 @@ experience_record() {
     --slurpfile events "$RECORDS_FILE" \
     --argjson reviews "$(experience_artifacts review)" \
     --argjson triage "$(experience_artifacts triage)" \
-    --argjson notes "$notes" --argjson completion "$completion" \
+    --argjson completion "$completion" \
     --arg run "$RECORDS_RUN_ID" --argjson issue "$issue" --arg commit "$commit" --arg content "$content" \
     --argjson status "$status" --argjson start "$start" \
     --arg handoff "$([[ -f "$EXPERIENCE_ROOT/.agents/handoffs/$issue.md" ]] && echo ".agents/handoffs/$issue.md")" \
@@ -256,19 +201,9 @@ experience_record() {
             remaining: (($completion.remaining // []) | length)}
            elif $completion == null then null else {status: "invalid"} end)},
        observations: $observations,
-       none_relevant: ($observations | length == 0),
-       agent: (if $notes == null then {status: "absent"}
-               elif $notes == "changed" then {status: "invalid", errors: ["the notes changed after the session of this run that wrote them; they are not attributed to it"]}
-               else ($notes | notes_errors) as $errors
-                 | if ($errors | length) > 0 then {status: "invalid", errors: $errors}
-                   else {status: "valid", none: ($notes.none == true), observations: ($notes.observations // [])} end
-               end)}
+       none_relevant: ($observations | length == 0)}
     | redact_all')" || return 1
   records_emit experience --argjson record "$record" '{record: $record}'
-  if [[ "$(jq -r '.agent.status' <<<"$record")" == "invalid" ]]; then
-    echo "Warning: the experience notes in .agents/experience/$issue.json are invalid and were not kept:" >&2
-    jq -r '.agent.errors[] | "  - " + .' <<<"$record" >&2
-  fi
 }
 
 # The content version of a record needs the fingerprint of the worktree.

@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "7ca4a7f38826bb2bff8ef5b7930e0fcc720fd0b3",
+  "commit": {
+    "branch": "feature/500-agent-written-experience-notes",
+    "parent": "a423e33960721a99abfd059d1d9857080f8413a2",
+    "base": "a423e33960721a99abfd059d1d9857080f8413a2"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/lib/agent.sh: the file defines or carries out the workflow and its gate"
+  ],
+  "explanation": "Issue #500: Agent-written experience notes are removed; the run record keeps what the scripts derive (item 1 of #426). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
