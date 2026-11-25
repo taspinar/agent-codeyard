@@ -17,13 +17,14 @@ permissions:
   packages: read
 
 # The workflow self-tests (scripts/verify-workflow.conf) take far longer than
-# most projects' own checks. The template runs them on every pull request and
-# every push. A project runs them on a pull request, and on a push to main,
-# only when a workflow file changed since the base of the pull request or the
-# commit before the push (a sync of the template changes them), and runs
-# everything when that commit cannot be determined (a first or a forced
-# push). There is no nightly run: a run started by hand (workflow_dispatch)
-# runs everything, in the template and in a project. The template is the
+# most projects' own checks. A pull request runs them, in the template and in
+# a project, only when a file under 'paths:' of scripts/verify-workflow.conf
+# changed since its base; a project's push to main likewise only when one
+# changed since the commit before the push (a sync of the template changes
+# them). The template runs them on every push to main. Both run everything
+# when that commit cannot be determined (a first or a forced push). There
+# is no nightly run: a run started by hand (workflow_dispatch) runs
+# everything, in the template and in a project. The template is the
 # repository that .agents/template.conf names under 'repository:'. The job
 # 'scope' tells them apart with scripts/lib/template-repository.sh, the
 # predicate with which ./scripts/verify.sh skips the framework-only
@@ -103,8 +104,10 @@ jobs:
               if [[ -n "$changed" ]]; then workflow=yes; else workflow=no; fi
             fi
           fi
-          # self_tests: whether the self-tests can run at all.
-          if [[ "$role" == template ]]; then
+          # self_tests: whether the self-tests can run at all. The
+          # template's push to main runs everything; its pull request is
+          # decided as a project's.
+          if [[ "$role" == template && "$EVENT" != pull_request ]]; then
             verify=all self_tests=run
           elif [[ ( "$EVENT" == pull_request || "$EVENT" == push ) && "$workflow" == no ]]; then
             verify=changed self_tests=skip

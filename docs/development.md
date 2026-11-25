@@ -1022,7 +1022,7 @@ framework-only self-tests run, as `verify.sh` runs them there.
 
 | Event | The template | A project |
 |---|---|---|
-| Pull request | `--all` | compared with the base of the pull request: no job of the self-tests without a workflow change; `--all` with one, as in a sync of the template, and when the base cannot be determined |
+| Pull request | as in a project: no job of the self-tests without a workflow change; `--all` with one, and when the base cannot be determined | compared with the base of the pull request: no job of the self-tests without a workflow change; `--all` with one, as in a sync of the template, and when the base cannot be determined |
 | Push to `main` | `--all` | as a pull request, compared with the commit before the push: no job of the self-tests without a workflow change, `--all` with one; `--all` when that commit cannot be determined |
 | Run by hand (`workflow_dispatch`) | `--all` | `--all` |
 
@@ -1032,10 +1032,15 @@ them, so a project's pull request and its push to `main` report in
 minutes. A sync of the template changes workflow files, so its pull request
 and its push run them. A self-test that fails for another reason, such as
 a new runner image, is the framework's to find, in the template's own CI,
-which runs everything on every event; a project that wants a full run
-starts `ci.yml` by hand ("Run workflow" on the Actions tab), which runs
-`--all`. The template runs them on every pull request and push, since nearly
-every change there is a workflow change.
+which runs everything on every push to `main`; a project that wants a full
+run starts `ci.yml` by hand ("Run workflow" on the Actions tab), which runs
+`--all`. The template's pull request follows the rule of a project: one
+that changes no file under `paths:`, such as a change of the documentation
+or the website alone, starts no job of the self-tests, and one that changes
+such a file runs them all. `paths:` names every file a self-test reads, so
+a pull request that can break a self-test runs it. The template's push to
+`main` keeps `--all` (an owner decision, to reconsider after the other
+reductions of the CI time).
 
 `scope` compares the commit checked out with the base of the pull request
 (`github.event.pull_request.base.sha`) or with the commit before the push
@@ -1047,7 +1052,8 @@ the repository does not have it, and when it is no ancestor of the pushed
 commit, as after a forced push: then everything runs, as `verify.sh` runs
 every self-test when it cannot tell. Its outputs are `verify` (`all` or
 `changed`) and `skip`, the group jobs that do not start: on a pull request
-or a push of a project without a workflow change, every group of
+without a workflow change, in the template or a project, or on a push of a
+project without one, every group of
 `scripts/verify-workflow.conf` that has no check of `scripts/verify.conf`;
 in a project, also a group whose self-tests are all framework-only. A
 skipped job starts no runner, clones nothing, and runs no setup action,
@@ -1129,8 +1135,9 @@ show the cron line `tests/status-test.sh` runs; that its `agents.conf` and
 `risk.conf` match what the tests ship. The template is the repository whose
 origin is the `repository:` of its `.agents/template.conf`; a project, and
 any doubt, such as an origin that is a local path, is not. CI runs every
-self-test of the template on every pull request and push, so a change of one
-of those files there runs its contract checks; in a project they never run.
+self-test of the template on every push to `main` and on every pull request
+that changes a file under `paths:`, which names those files, so a change of
+one of them there runs its contract checks; in a project they never run.
 Whether a project's own CI matches its groups is the project's question, and
 a check of its own: the line `ci-groups` of `scripts/verify.conf` runs
 `./scripts/check-ci-groups.sh --workflow .github/workflows/ci.yml` when its
