@@ -4879,18 +4879,6 @@ confirmation dialog, and reported it as a minor finding that names the rule.
 The completion record cites the test that checks the labels of the form, not
 the skill.
 
-## Linking a feature plan
-
-To add or update the plan reference in an existing Issue:
-
-```bash
-./scripts/update-issue-with-plan.sh 12 .agents/plans/12-player-movement.md
-```
-
-The helper manages one delimited plan block in the Issue body. Re-running it
-updates that block instead of appending duplicates. It stores only the
-repository-relative plan path; the detailed plan remains in `.agents/plans/`.
-
 ## Taking over template changes
 
 A project is created as a copy of the template and does not receive later

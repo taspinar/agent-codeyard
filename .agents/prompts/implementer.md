@@ -6,7 +6,10 @@ Before making changes, read:
 
 - `AGENTS.md`
 - the assigned GitHub Issue
-- the active feature plan, if one exists
+- the active feature plan, if one exists: `.agents/plans/<issue>-<slug>.md`,
+  found by the Issue number in its name. The Issue owns the scope and the
+  acceptance criteria; the plan holds the implementation steps, and it may
+  select project skills (see "Project skills")
 - `docs/architecture.md`
 - relevant ADRs under `docs/decisions/`
 - the current Git state
