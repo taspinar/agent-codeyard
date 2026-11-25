@@ -138,11 +138,11 @@ guardrails_classify() {
     else
       removed="$(git -C "$root" diff -U0 --no-renames "$from" -- "$list")"
     fi
-    if printf '%s\n' "$removed" | grep -Eq '^-[^-]' || { [[ -z "$to" ]] && [[ ! -e "$root/$list" ]]; }; then
+    if grep -Eq '^-[^-]' <<<"$removed" || { [[ -z "$to" ]] && [[ ! -e "$root/$list" ]]; }; then
       printf 'protected\t%s\t%s\n' "$list" "an existing check or line is changed or removed"
-    elif printf '%s\n' "$removed" | grep -Eq '^\+[[:space:]]*accepted-failure[[:space:]]*:'; then
+    elif grep -Eq '^\+[[:space:]]*accepted-failure[[:space:]]*:' <<<"$removed"; then
       printf 'protected\t%s\t%s\n' "$list" "the failure of a check is accepted as an exception"
-    elif printf '%s\n' "$removed" | grep -Eq '^\+[[:space:]]*inputs[[:space:]]*:'; then
+    elif grep -Eq '^\+[[:space:]]*inputs[[:space:]]*:' <<<"$removed"; then
       printf 'protected\t%s\t%s\n' "$list" "a check is limited to the changes of its inputs"
     else
       printf 'sensitive\t%s\t%s\n' "$list" "a check is added"
@@ -459,7 +459,7 @@ guardrails_finish_after_fixes() {
   commit="$head"
   while :; do
     commit="$(guardrails_finish_commit "$root" "$commit" "$@")"
-    if git -C "$root" log -1 --format=%B "$commit" | grep -q '^Completion: '; then
+    if grep -q '^Completion: ' <<<"$(git -C "$root" log -1 --format=%B "$commit")"; then
       finish="$commit"
       break
     fi

@@ -2,11 +2,12 @@
 
 set -euo pipefail
 
-# The self-tests run under 'set -o pipefail' and pipe no output into a quiet
-# grep ('-q', '--quiet', '--silent'). Such a grep exits at its first match and
-# closes the pipe; a producer still writing then fails on the broken pipe, and
-# with pipefail the assertion fails although the line was found, depending on
-# timing (Issue 456). The safe form reads the output first:
+# The self-tests and the workflow scripts (Issue 509) run under
+# 'set -o pipefail' and pipe no output into a quiet grep ('-q', '--quiet',
+# '--silent'). Such a grep exits at its first match and closes the pipe; a
+# producer still writing then fails on the broken pipe, and with pipefail the
+# assertion fails although the line was found, depending on timing (Issue
+# 456). The safe form reads the output first:
 # grep -q <pattern> <<<"$(<producer>)". Redirecting the output of grep to
 # /dev/null instead of -q is not safe either: GNU grep and ugrep then also stop
 # at the first match.
@@ -93,6 +94,39 @@ found="$(pipe_grep_quiet_lines "${tests[@]}")"
 [[ -z "$found" ]] || fail "a test pipes into a quiet grep, use grep -q ... <<<\"\$(producer)\" instead:
 $found"
 
+# workflow_scripts <root>: prints the workflow scripts of <root>, every *.sh
+# under scripts/ that the 'paths:' entry of scripts/verify-workflow.conf does
+# not exclude with ':(exclude)<path>' (a file or a directory). The scripts run
+# under pipefail as well, and there a wrong result is a wrong decision of the
+# workflow, not only a red check (Issue 509). A project excludes its own
+# scripts there, and they follow its own rules.
+workflow_scripts() {
+  local root="$1"
+  local path excluded
+  local -a exclusions=()
+
+  read -ra exclusions <<<"$(sed -nE 's/^paths:[[:space:]]*//p' "$root/scripts/verify-workflow.conf")"
+  while IFS= read -r path; do
+    path="${path#"$root"/}"
+    for excluded in "${exclusions[@]}"; do
+      [[ "$excluded" == ":(exclude)"* ]] || continue
+      excluded="${excluded#:(exclude)}"
+      excluded="${excluded%/}"
+      [[ "$path" == "$excluded" || "$path" == "$excluded"/* ]] && continue 2
+    done
+    printf '%s\n' "$root/$path"
+  done < <(find "$root/scripts" -type f -name '*.sh' | LC_ALL=C sort)
+}
+
+scripts=()
+while IFS= read -r path; do
+  scripts+=("$path")
+done < <(workflow_scripts "$source_root")
+[[ "${#scripts[@]}" -gt 1 ]] || fail "no workflow script found under scripts/"
+found="$(pipe_grep_quiet_lines "${scripts[@]}")"
+[[ -z "$found" ]] || fail "a workflow script pipes into a quiet grep, use grep -q ... <<<\"\$(producer)\" instead:
+$found"
+
 # Seeded cases: each unsafe form is found, each safe one is not. The pipe is
 # written as $bar so that this file does not hold the form it looks for.
 bar='|'
@@ -126,6 +160,39 @@ cp "${tests[0]}" "$tmp/seeded-test.sh"
 printf 'producer %s grep -Fq "seeded" || fail "seeded"\n' "$bar" >>"$tmp/seeded-test.sh"
 [[ "$(pipe_grep_quiet_lines "$tmp/seeded-test.sh")" == "$tmp/seeded-test.sh:$(wc -l <"$tmp/seeded-test.sh"):"* ]] ||
   fail "a seeded unsafe line in a test file was not found"
+
+# The workflow scripts are every *.sh under scripts/, also in scripts/lib/,
+# less the ones that 'paths:' excludes, a file or a directory.
+mkdir -p "$tmp/project/scripts/lib" "$tmp/project/scripts/own"
+printf 'paths: scripts .agents/prompts :(exclude)scripts/verify.conf :(exclude)scripts/own.sh :(exclude)scripts/own/\n' \
+  >"$tmp/project/scripts/verify-workflow.conf"
+for path in clean.sh lib/seeded.sh own.sh own/tool.sh; do
+  printf 'grep -Fqx "line" <<<"$(producer)"\n' >"$tmp/project/scripts/$path"
+done
+for path in lib/seeded.sh own.sh own/tool.sh; do
+  printf 'producer %s grep -Fqx "seeded" || fail "seeded"\n' "$bar" >>"$tmp/project/scripts/$path"
+done
+[[ "$(workflow_scripts "$tmp/project" | paste -sd, -)" == "$tmp/project/scripts/clean.sh,$tmp/project/scripts/lib/seeded.sh" ]] ||
+  fail "the workflow scripts are not every script that paths: does not exclude: $(workflow_scripts "$tmp/project" | paste -sd, -)"
+mapfile -t fixture_scripts < <(workflow_scripts "$tmp/project")
+[[ "$(pipe_grep_quiet_lines "${fixture_scripts[@]}")" == "$tmp/project/scripts/lib/seeded.sh:2: "* ]] ||
+  fail "a seeded unsafe line in a workflow script was not found, or one in an excluded script was: $(pipe_grep_quiet_lines "${fixture_scripts[@]}")"
+
+# The check itself fails on a workflow script with such a pipe: a copy of
+# this test in a copy of the scripts and the tests, with one unsafe line
+# added to scripts/lib/github.sh. The copy skips this part.
+if [[ -z "${PIPE_GREP_SEEDED_COPY:-}" ]]; then
+  mkdir -p "$tmp/copy"
+  cp -R "$source_root/scripts" "$source_root/tests" "$tmp/copy/"
+  printf 'producer %s grep -Fq "seeded" || true\n' "$bar" >>"$tmp/copy/scripts/lib/github.sh"
+  if output="$(PIPE_GREP_SEEDED_COPY=1 "$tmp/copy/tests/pipe-grep-test.sh" 2>&1)"; then
+    fail "the check passed with an unsafe line in scripts/lib/github.sh: $output"
+  fi
+  grep -Fq "a workflow script pipes into a quiet grep" <<<"$output" ||
+    fail "the check failed for another reason than the seeded line: $output"
+  grep -Fq "$tmp/copy/scripts/lib/github.sh:" <<<"$output" ||
+    fail "the check did not name the seeded file: $output"
+fi
 
 # The reproduction: a producer that writes more than a pipe buffer after the
 # matching line. The old form fails under pipefail although the line is

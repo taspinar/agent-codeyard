@@ -42,7 +42,7 @@ create_from_file() {
   require_gh
 
   if [[ -n "$label" ]]; then
-    if gh label list --limit 100 --json name --jq '.[].name' | grep -Fxq "$label"; then
+    if grep -Fxq -- "$label" <<<"$(gh label list --limit 100 --json name --jq '.[].name')"; then
       args+=(--label "$label")
     else
       echo "Warning: label '$label' does not exist."

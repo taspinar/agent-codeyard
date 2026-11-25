@@ -63,7 +63,7 @@ while IFS= read -r line; do
 done <<<"$criteria_lines"
 pending="${pending%$'\n'}"
 
-if ! printf '%s\n' "$pending" | grep -Fqx -- "$criterion"; then
+if ! grep -Fqx -- "$criterion" <<<"$pending"; then
   echo "Error: that is not a pending post_merge criterion of the merged pull request. They are:" >&2
   printf '%s\n' "$pending" | sed 's/^/  /' >&2
   exit 1
@@ -71,7 +71,7 @@ fi
 
 recorded="$(github_post_merge_recorded "$issue")" ||
   fail "could not read the comments of Issue #$issue."
-if printf '%s\n' "$recorded" | grep -Fqx -- "$criterion"; then
+if grep -Fqx -- "$criterion" <<<"$recorded"; then
   fail "the evidence of this criterion is recorded already on Issue #$issue."
 fi
 
@@ -94,7 +94,7 @@ echo "Recorded the evidence on Issue #$issue."
 open_criteria=""
 while IFS= read -r line; do
   [[ "$line" != "$criterion" ]] || continue
-  if ! printf '%s\n' "$recorded" | grep -Fqx -- "$line"; then
+  if ! grep -Fqx -- "$line" <<<"$recorded"; then
     open_criteria+="$line"$'\n'
   fi
 done <<<"$pending"

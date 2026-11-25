@@ -414,7 +414,7 @@ if [[ -n "$branch_tip" ]]; then
 elif [[ "$head" == "$assessed_head" ]]; then
   mode=fresh
 elif [[ -n "$head" ]] && tgit merge-base --is-ancestor "$assessed_head" "$head" 2>/dev/null &&
-  tgit show "$head:.agents/template.conf" 2>/dev/null | grep -q '^commit:'; then
+  grep -q '^commit:' <<<"$(tgit show "$head:.agents/template.conf" 2>/dev/null)"; then
   mode=adopted
 else
   fail "$target changed since the assessment: HEAD is ${head:0:7}, the assessment saw ${assessed_head:0:7}. Assess it again: ./scripts/assess-repository.sh $target"

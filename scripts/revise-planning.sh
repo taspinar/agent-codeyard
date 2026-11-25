@@ -126,7 +126,7 @@ amendment_apply() {
     echo "it must not create, delete, rename, or change the mode of a file"
     return 1
   }
-  ! amendment_lines "$diff" | grep -Eq '^[-+](Status|Approved at):' || {
+  ! grep -Eq '^[-+](Status|Approved at):' <<<"$(amendment_lines "$diff")" || {
     echo "it must not change the Status or Approved at line; the script updates Approved at"
     return 1
   }

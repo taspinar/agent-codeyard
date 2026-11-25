@@ -276,7 +276,7 @@ elif [[ "$committed_completion" == "awaiting_evidence" && "$gate_status" == "awa
 elif [[ "$committed_completion" == "awaiting_evidence" && "$gate_status" == "awaiting_evidence" ]]; then
   ready=1
   pending_gates="$(completion_pending_gates "$root" "$issue" | paste -sd, - | sed 's/,/, /g')"
-  if completion_pending_gates "$root" "$issue" | grep -qx "post_merge"; then
+  if grep -qx "post_merge" <<<"$(completion_pending_gates "$root" "$issue")"; then
     not_closing="evidence of the post_merge gate is pending; record it with ./scripts/record-post-merge.sh after the merge (pending: $pending_gates)"
   else
     closes=1
@@ -423,7 +423,7 @@ closing_allowed() {
   fi
   # The decision of the merge approval gate was made for this commit; a
   # later commit on the branch needs a new decision by finish-feature.sh.
-  if git -C "$root" log -1 --format=%b "$finish_commit" | grep -Fqx "Merge approval:"; then
+  if grep -Fqx "Merge approval:" <<<"$(git -C "$root" log -1 --format=%b "$finish_commit")"; then
     echo "The merge approval above was decided for commit \`$finish_commit\`."
     echo "Content tree of that commit: \`$content_tree\` (its content without the workflow's metadata under \`.agents/\`, by \`scripts/lib/fingerprint.sh\`; what the verification and the review are recorded for, and what \`check-guardrails.sh\` recomputes)."
     if [[ "$request_committed" -eq 1 ]]; then
@@ -609,7 +609,7 @@ fi
 # leaves its Issue open; say what closes it.
 print_post_merge_hint() {
   [[ "$ready" -eq 1 && "$closes" -eq 0 ]] || return 0
-  completion_pending_gates "$root" "$issue" | grep -qx "post_merge" || return 0
+  grep -qx "post_merge" <<<"$(completion_pending_gates "$root" "$issue")" || return 0
   echo
   echo "After the merge, record the post_merge evidence with"
   echo "  ./scripts/record-post-merge.sh $issue \"<criterion>\" \"<evidence>\""

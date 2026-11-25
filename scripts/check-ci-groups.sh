@@ -111,7 +111,7 @@ fi
 
 # is_group <name>
 is_group() {
-  printf '%s\n' "$groups" | grep -Fqx -- "$1"
+  grep -Fqx -- "$1" <<<"$groups"
 }
 
 if [[ -n "$workflow" ]]; then
@@ -191,7 +191,7 @@ if [[ -n "$workflow" ]]; then
   done <<<"$declarations"
   while read -r job line; do
     [[ -n "$job" ]] || continue
-    printf '%s' "$declaring_jobs" | grep -Fqx -- "$job" ||
+    grep -Fqx -- "$job" <<<"$declaring_jobs" ||
       problem "$workflow:$line (job $job) declares no group; declare it as 'env: VERIFY_GROUP: ${job#group-}' of the job."
   done <<<"$group_jobs"
   while IFS= read -r group; do
@@ -231,7 +231,7 @@ if [[ -n "$tests" ]]; then
     }
     while IFS= read -r entry || [[ -n "$entry" ]]; do
       [[ "$entry" =~ ^[[:space:]]*(#.*)?$ ]] && continue
-      printf '%s\n' "$files" | grep -Fqx -- "$entry" ||
+      grep -Fqx -- "$entry" <<<"$files" ||
         problem "$partition lists $entry, which is not a file of the tests $tests."
       listed+="$entry"$'\t'"$partition"$'\n'
     done <"$root/$partition"
