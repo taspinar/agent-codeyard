@@ -71,10 +71,8 @@ summary_wanted=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --wait) wait_for_checks=1 ;;
-    # Accepted for commands written before waiting became optional.
-    --no-wait) ;;
     --summary) summary_wanted=1 ;;
-    *) usage ;;
+    *) echo "Error: unknown option: $1" >&2; usage ;;
   esac
   shift
 done

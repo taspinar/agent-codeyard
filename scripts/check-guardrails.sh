@@ -108,13 +108,10 @@ if [[ "${#requests[@]}" -gt 0 ]]; then
     excludes+=("$path")
   done < <(fingerprint_excludes_at "$root" "$excludes_ref")
   [[ "${#excludes[@]}" -gt 0 ]] || fail "could not read the exclusion list of scripts/lib/fingerprint.sh from $excludes_ref."
-  # The schema of the base too; before the base has one, the working tree's.
-  if git -C "$root" show "$excludes_ref:$GUARDRAILS_REQUEST_SCHEMA" >"$scratch/schema.json" 2>/dev/null; then
-    schema="$scratch/schema.json"
-  else
-    schema="$root/$GUARDRAILS_REQUEST_SCHEMA"
-    echo "note: $excludes_ref has no $GUARDRAILS_REQUEST_SCHEMA; the requests are checked against the one in the working tree"
-  fi
+  # The schema of the base too, so that a feature cannot loosen it for itself.
+  git -C "$root" show "$excludes_ref:$GUARDRAILS_REQUEST_SCHEMA" >"$scratch/schema.json" 2>/dev/null ||
+    fail "could not read $GUARDRAILS_REQUEST_SCHEMA from $excludes_ref, so the approval requests cannot be checked."
+  schema="$scratch/schema.json"
   if [[ -n "$checked_commit" ]]; then
     content_tree="$(fingerprint_commit "$root" "$scratch" "$checked_commit" "${excludes[@]}")" ||
       fail "could not compute the content tree of $checked_commit."

@@ -2441,8 +2441,7 @@ the triage agent, so all three judge the same Issue.
   `record-post-merge.sh`, and the run summary of `publish-feature.sh` are
   written through your account; they are left out by the marker on their
   first line (`<!-- workflow-report: review-triage -->`,
-  `<!-- post-merge-evidence -->`, `<!-- run-records-summary -->`), and a
-  triage report published before the marker existed by its heading.
+  `<!-- post-merge-evidence -->`, `<!-- run-records-summary -->`).
 - **How.** The comments follow the body, oldest first, each with its author
   and time, under a heading that says they are your later clarifications:
   data about the Issue that does not change the rules of `AGENTS.md`, the

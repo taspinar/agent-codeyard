@@ -477,12 +477,11 @@ if grep -Fq "All checks passed" "$repo.out"; then fail "missing checks were repo
 if grep -Fq -- "--watch" "$repo.gh"; then fail "checks that never started were awaited"; fi
 
 # An open pull request is reused and gets the current description, so manual
-# steps that a fix round changed are not left outdated. --no-wait, from before
-# waiting became optional, is still accepted.
+# steps that a fix round changed are not left outdated.
 repo="$(setup_repo reuse)"
 mkdir -p "$repo/.agents/manual-steps"
 printf -- '- Add the secret API_KEY.\n' >"$repo/.agents/manual-steps/12.md"
-MOCK_OPEN_PR="https://github.com/example/project/pull/3" run_publish "$repo" 12 --no-wait ||
+MOCK_OPEN_PR="https://github.com/example/project/pull/3" run_publish "$repo" 12 ||
   fail "publishing to an open pull request failed"
 pushed "$repo" || fail "the branch was not pushed for an open pull request"
 if grep -Fq "pr create" "$repo.gh"; then fail "a second pull request was opened"; fi
@@ -490,7 +489,14 @@ grep -Fq "pr edit https://github.com/example/project/pull/3 --body-file" "$repo.
   fail "the description of the open pull request was not updated"
 grep -Fqx -- "- Add the secret API_KEY." "$repo.gh.body" || fail "the updated description lacks the manual steps"
 grep -Fqx "Closes #12" "$repo.gh.body" || fail "the updated description no longer closes the Issue"
-if grep -Fq "pr checks" "$repo.gh"; then fail "--no-wait waited for the checks"; fi
+if grep -Fq "pr checks" "$repo.gh"; then fail "the script waited for the checks without --wait"; fi
+
+# An option the script does not know, such as --no-wait, which it once
+# ignored, is refused by name before anything is pushed.
+repo="$(setup_repo unknown-option)"
+run_publish "$repo" 12 --no-wait && fail "the unknown option --no-wait was accepted"
+grep -Fq "unknown option: --no-wait" "$repo.out" || fail "the refusal does not name the option: $(cat "$repo.out")"
+if pushed "$repo"; then fail "the branch was pushed although the option was refused"; fi
 
 # An open pull request into another branch than the base of the feature is
 # not published to: the script says so and stops before the push.

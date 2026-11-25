@@ -169,27 +169,12 @@ records_repository() {
   fi
 }
 
-# records_previous <kind> <subject>: prints "<sequence>\t<id>" of the latest
-# run of the same subject, or nothing. Runs are ordered by the sequence number
-# of their start; a run from before sequence numbers counts as 0 and is
-# ordered by its start time.
-records_previous() {
-  local dir
-
-  dir="$(records_run_dir)" || return 0
-  compgen -G "$dir/*.jsonl" >/dev/null || return 0
-  { cat "$dir"/*.jsonl 2>/dev/null |
-    jq -r -s --arg kind "$1" --arg subject "$2" \
-      '[.[] | select(.type == "run-start" and .kind == $kind and (.subject | tostring) == $subject)]
-       | sort_by([(.seq // 0), .epoch]) | last // empty | "\(.seq // 0)\t\(.run)"' 2>/dev/null; } || true
-}
-
 # records_sequence <kind> <subject> <run>: gives the run the next number of
 # its subject and prints "<number>\t<previous run>". A number is claimed by a
 # symbolic link from the number to the run, which only one run can create:
 # two runs that start at once get different numbers, and each finds the run
 # just before it by its link, without a lock that a killed run could leave
-# behind. The first number falls back to the latest run without one.
+# behind. The first number has no run before it.
 records_sequence() {
   local links
   local n=0
@@ -211,9 +196,6 @@ records_sequence() {
   done
   if [[ "$n" -gt 1 ]]; then
     previous="$(readlink "$links/$((n - 1))" 2>/dev/null)" || previous=""
-  else
-    previous="$(records_previous "$1" "$2" 2>/dev/null)" || previous=""
-    previous="${previous#*$'\t'}"
   fi
   printf '%s\t%s' "$n" "$previous"
 }

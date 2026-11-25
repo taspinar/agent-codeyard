@@ -209,15 +209,15 @@ review_number=1
 previous_review=""
 while true; do
   candidate="$reviews_dir/${slug}-review-$(printf "%02d" "$review_number")"
-  if [[ ! -e "$candidate.json" && ! -e "$candidate.md" ]]; then
+  if [[ ! -e "$candidate.json" ]]; then
+    # A round stores its JSON before its report (lib/review-run.sh), so a
+    # report alone is not a round of this workflow.
+    [[ ! -e "$candidate.md" ]] ||
+      fail "round $review_number has a report but no JSON artifact: .agents/reviews/$(basename "$candidate").md. Each round stores its JSON first; remove the report or restore its JSON, then run the review again."
     out="$candidate"
     break
   fi
-  # A round without JSON, such as a review from before JSON artifacts, is not
-  # an input for the re-review.
-  if [[ -f "$candidate.json" ]]; then
-    previous_review="$candidate.json"
-  fi
+  previous_review="$candidate.json"
   review_number=$((review_number + 1))
 done
 review_relative=".agents/reviews/$(basename "$out")"

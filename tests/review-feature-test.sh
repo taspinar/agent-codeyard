@@ -309,6 +309,17 @@ verification_runs() {
   grep -c . "$1/verify-count.log" 2>/dev/null || true
 }
 
+# A report without its JSON is no round of this workflow: each round stores
+# its JSON first. The review stops and names the file instead of numbering
+# past it.
+repo="$(setup_repo report-without-json)"
+mkdir -p "$repo/.agents/reviews"
+printf '# report\n' >"$repo/.agents/reviews/feature-7-marker-review-01.md"
+expect_no_review_round "$repo" 2 "a round has a report but no JSON"
+expect_no_review_round "$repo" 1 "a round has a report but no JSON"
+grep -Fq "round 1 has a report but no JSON artifact: .agents/reviews/feature-7-marker-review-01.md" "$repo.out" ||
+  fail "the refusal does not name the report without JSON: $(cat "$repo.out")"
+
 repo="$(setup_repo verified)"
 run_review "$repo" 7 || {
   cat "$repo.out" >&2

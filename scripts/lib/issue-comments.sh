@@ -8,8 +8,7 @@
 # is untrusted input. Only a comment whose author is the OWNER, a MEMBER, or a
 # COLLABORATOR of the repository is passed on, and none of the reports that the
 # workflow publishes on the Issue itself, which are written through the
-# owner's account. They carry a marker as their first line; the triage reports
-# published before the marker existed are known by their heading.
+# owner's account. They carry a marker as their first line.
 #
 # The comments are read when an agent session starts, so a comment that is
 # edited or added later applies to the next session only.
@@ -26,7 +25,7 @@ ISSUE_COMMENTS_TRIAGE_MARKER="<!-- workflow-report: review-triage -->"
 # workflow published itself, 'trusted' for an author whose comments are
 # passed on. Shared by issue_comments and issue_comments_newest.
 ISSUE_COMMENTS_JQ_DEFS='
-    def own: (.body // "") | test("\\A\\s*(<!-- (workflow-report|post-merge-evidence|run-records-summary)\\b|## Independent review and triage — round )");
+    def own: (.body // "") | test("\\A\\s*<!-- (workflow-report|post-merge-evidence|run-records-summary)\\b");
     def trusted: .association as $a | ["OWNER", "MEMBER", "COLLABORATOR"] | index($a) != null;'
 
 # issue_comments <issue> <role>
