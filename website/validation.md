@@ -71,7 +71,10 @@ picker is on the first screen and a choice by keyboard closes it, names the
 topic and moves the focus to its heading; that every redirect page lands on
 its topic with and without JavaScript, and on the heading of a sample of its
 old anchors with it; and that without JavaScript every topic is on the page
-and a deep link scrolls natively. `search-test.mjs` walks the whole table of
+and a deep link scrolls natively below the sticky header; it follows that
+link once the page has its fonts and keeps its height, and fails when the
+page has not settled within 5 s, so a late font swap does not decide the
+result (#512). `search-test.mjs` walks the whole table of
 old addresses (`src/lib/redirects.ts`) on the built site and compares the
 headings and code blocks of the old docs pages (`docs-before.json`) with the
 one page.
