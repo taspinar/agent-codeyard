@@ -317,36 +317,6 @@ expect_no_commit "$repo" "a check changed the reviewed content" 12 "Add the mark
 grep -Fq "Checking repository verification" "$repo.out" || fail "the verification did not run for current gates"
 grep -Fq "is stale: the code changed after it" "$repo.out" || fail "content changed by a check was not refused as stale"
 
-# A latest round made on a partial check (verification.status: partial) is
-# an intermediate round too, also when it reviewed the complete feature
-# after a further change; a later round on the full verification is
-# accepted. The hand-run path after an interrupted run of a high-risk
-# feature ends here.
-# add_partial_review <repo>: makes round 2 a passed review of the complete
-# feature on a partial check, after a further change, and prints its path.
-add_partial_review() {
-  local repo="$1"
-  local second="$repo/.agents/reviews/feature-12-marker-review-02.json"
-
-  jq '.round = 2 | .verdict = "PASS" | .findings = []
-      | .verification = {status: "partial", groups: ["fast"], verified_at: "2026-01-01T00:00:00Z"}' "$repo/$review" >"$second"
-  printf 'the fix\n' >>"$repo/feature.txt"
-  record_reviewed_tree "$repo" "$second"
-  printf '%s\n' "$second"
-}
-
-repo="$(setup_repo partial-latest PASS "[]")"
-second="$(add_partial_review "$repo")"
-expect_no_commit "$repo" "the latest review was made on a partial check" 12 "Add the marker"
-grep -Fq "partially checked content" "$repo.out" || fail "the partial check was not given as the reason"
-jq '.round = 3 | del(.verification)' "$second" >"$repo/.agents/reviews/feature-12-marker-review-03.json"
-run_finish "$repo" 12 "Add the marker" || {
-  cat "$repo.out" >&2
-  fail "finishing on a review on the full verification after a review on a partial check failed"
-}
-grep -Fqx "Review: round 3, PASS, by claude (model-r)" <<<"$(message "$repo")" ||
-  fail "the commit message does not name the review on the full verification"
-
 # Minor findings that were triaged without FIX_NOW and published are fine.
 repo="$(setup_repo minor PASS_WITH_MINOR_FINDINGS "$minor")"
 add_triage "$repo" DEFER
@@ -1133,16 +1103,16 @@ run_finish "$repo" 12 "Add the marker" || {
 grep -Fqx "Risk: high" <<<"$(risk_of "$repo")" || fail "the level of a feature with an earlier record was not derived and recorded"
 grep -Fq -- "- scripts/publish-feature.sh: " <<<"$(risk_of "$repo")" || fail "the reason for the derived level was not recorded"
 
-# A review made on a partial check (review-feature.sh --checks) is an
-# intermediate round: a feature is committed on a review of content that
-# passed the full verification.
+# A review made on a partial check (verification.status: partial, written by
+# review-feature.sh --checks before #519) is refused, with a message that
+# names the status.
 repo="$(setup_repo partial-check PASS "[]")"
 set_impact "$repo" minor
 jq '.verification = {status: "partial", groups: ["fast"], verified_at: "2026-01-01T00:00:00Z"}' "$repo/$review" >"$repo/$review.tmp" &&
   mv "$repo/$review.tmp" "$repo/$review"
 expect_no_commit "$repo" "the latest review was made on a partial check" 12 "Add the marker"
-grep -Fq "was made on partially checked content: only the groups fast" "$repo.out" || fail "the partial check was not given as the reason"
-grep -Fq "without --checks" "$repo.out" || fail "the refusal does not say how to review again"
+grep -Fq 'the latest review is invalid: verification.status "partial" is not accepted any more' "$repo.out" ||
+  fail "the refusal does not name the partial status: $(cat "$repo.out")"
 
 # The review compared the feature against its base: one whose merge base is
 # not the one the feature has now judged another diff.

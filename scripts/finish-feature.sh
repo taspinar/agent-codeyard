@@ -291,10 +291,6 @@ else
   # judged on the whole diff against the Issue.
   [[ "$(jq -r '.scope.kind // "full"' "$latest")" != "changes" ]] ||
     fail "the latest review (round $(jq -r '.round' "$latest")) covers only the changes since round $(jq -r '.scope.since_round' "$latest"). A feature is committed on a review of the complete feature: run ./scripts/review-feature.sh $issue (without --changes)."
-  # And on content that passed the full verification: a round on a partial
-  # check (review-feature.sh --checks, by hand) is an intermediate round.
-  [[ "$(jq -r '.verification.status // "passed"' "$latest")" != "partial" ]] ||
-    fail "the latest review (round $(jq -r '.round' "$latest")) was made on partially checked content: only the groups $(jq -r '.verification.groups | join(", ")' "$latest") of the verification ran before it. A feature is committed on a review of content that passed the full verification: run ./scripts/review-feature.sh $issue (without --checks)."
 
   round="$(jq -r '.round' "$latest")"
   verdict="$(jq -r '.verdict | gsub("_"; " ")' "$latest")"

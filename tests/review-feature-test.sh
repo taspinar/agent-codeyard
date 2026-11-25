@@ -379,43 +379,17 @@ run_review "$repo" 7 || {
 }
 [[ "$(verification_runs "$repo")" -eq 2 ]] || fail "the review took a partial run for a verification"
 
-# --checks runs only the named groups before the review: a partial check,
-# not a verification. The review records it, the reviewer is told, no pass
-# is recorded, and a later review runs the full verification.
-repo="$(setup_repo partial-checks)"
+# --checks, the partial check of named groups before a review, is gone
+# (#519): it is refused as an unknown option, before any check runs or a
+# review is stored.
+repo="$(setup_repo no-checks)"
 printf 'count: echo run >>verify-count.log\nfast [fast]: echo fast >>verify-fast.log\n' >"$repo/scripts/verify.conf"
-run_review "$repo" 7 --checks fast || {
-  cat "$repo.out" >&2
-  fail "a review on a partial check failed"
-}
-[[ "$(verification_runs "$repo")" -eq 0 ]] || fail "a partial check ran a check outside its groups"
-[[ "$(grep -c . "$repo/verify-fast.log")" -eq 1 ]] || fail "the partial check did not run its group"
-[[ ! -e "$repo/.agents/verification/passed" ]] || fail "a partial check recorded a passed verification"
-review="$repo/.agents/reviews/feature-7-marker-review-01.json"
-[[ "$(jq -c '[.verification.status, .verification.groups]' "$review")" == '["partial",["fast"]]' ]] ||
-  fail "the review does not record the partial check and its groups"
-grep -Fq "Verification: PARTIAL, not a verification" "${review%.json}.md" || fail "the report does not show the partial check"
-grep -Fq "## Verification of the content under review" "$repo.log.stdin" || fail "the reviewer was not told about the partial check"
-grep -Fq "PARTIALLY CHECKED" "$repo.log.stdin" || fail "the reviewer was not told that the content is partially checked"
-grep -Fq "only the groups fast ran" "$repo.log.stdin" || fail "the reviewer was not told which groups ran"
-grep -Fq "partially checked" "$repo.log" || fail "the reviewer's prompt does not say that the content is partially checked"
-run_review "$repo" 7 || fail "a review after a partial check failed"
-[[ "$(verification_runs "$repo")" -eq 1 ]] || fail "the review after a partial check did not run the full verification"
-[[ "$(jq -r '.verification.status' "$repo/.agents/reviews/feature-7-marker-review-02.json")" == "passed" ]] ||
-  fail "the review after a partial check does not record the passed verification"
-# A failing check of the groups is a failed verification (status 4), an
-# unknown group too, and --checks does not go with --unverified.
-printf 'count: echo run >>verify-count.log\nfast [fast]: false\n' >"$repo/scripts/verify.conf"
 status=0
 run_review "$repo" 7 --checks fast || status=$?
-[[ "$status" -eq 4 ]] || fail "a failing partial check did not exit with the status of a failed verification ($status)"
-[[ ! -e "$repo/.agents/reviews/feature-7-marker-review-03.json" ]] || fail "a review was stored although the partial check failed"
-status=0
-run_review "$repo" 7 --checks nope || status=$?
-[[ "$status" -eq 4 ]] || fail "an unknown group did not exit with the status of a failed verification ($status)"
-if run_review "$repo" 7 --checks fast --unverified "no"; then fail "--checks with --unverified was accepted"; fi
-if run_review "$repo" 7 --checks "Fast"; then fail "a group name with a capital was accepted"; fi
-if run_review "$repo" 7 --checks; then fail "--checks without a group was accepted"; fi
+[[ "$status" -eq 1 ]] || fail "--checks was not refused ($status)"
+grep -Fq "unknown option: --checks" "$repo.out" || fail "the refusal of --checks does not name it as an unknown option: $(cat "$repo.out")"
+[[ "$(verification_runs "$repo")" -eq 0 && ! -e "$repo/verify-fast.log" ]] || fail "a check ran although --checks was refused"
+[[ ! -e "$repo/.agents/reviews/feature-7-marker-review-01.json" ]] || fail "a review was stored although --checks was refused"
 
 # The reviewed content includes the implementer's claims about the Issue:
 # a completion record written after the review makes it stale, while the

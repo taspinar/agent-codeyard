@@ -190,10 +190,10 @@ groups that the jobs of the workflow file declare; see "A parallel CI".
 A partial run is never a verification. With `--only` nothing is recorded as
 passed, nothing is written into the record of a run it was started in, and
 `--reuse` is refused, so `review-feature.sh` and `finish-feature.sh` still run
-every check. The workflow itself starts no partial run before a review: a
-round that you review by hand on a partial check (`review-feature.sh
---checks`) records the content as partially checked, and the commit still
-needs the full verification (the risk policy's `verification: groups`, which
+every check. No review is made on a partial run: `review-feature.sh` runs
+the full verification before every round, or none with `--unverified`, and a
+review artifact that records `verification.status: partial` (written before
+#519) is refused as invalid (the risk policy's `verification: groups`, which
 asked for such rounds, is refused since #443, see "What each level
 requires"). A failing partial run removes an
 existing record, like any failing run. The workflow self-tests keep their own
@@ -2699,7 +2699,7 @@ failure reviewed, for example when its cause is unclear, pass
 The full interface is:
 
 ```text
-./scripts/review-feature.sh <issue> [base-branch] [--agent <agent>] [--model <model>] [--changes] [--checks <group>[,<group>...]] [--unverified "<reason>"]
+./scripts/review-feature.sh <issue> [base-branch] [--agent <agent>] [--model <model>] [--changes] [--unverified "<reason>"]
 ```
 
 It uses role `reviewer` with the `read-only` profile, and refuses to start
@@ -3619,7 +3619,7 @@ The run stops with a non-zero status, and keeps the worktree, when:
 | A prerequisite of the machine is missing (status 78 of `verify.sh`, its `ENVIRONMENT` lines); install it, then run again | 78 |
 | The verification fails, the base moved, and its merge conflicts with the branch or the uncommitted work of the feature, would write over an untracked file (also one that Git ignores), meets staged changes in the index, or leaves untracked paths behind that the branch ignored; the files are named | 1 |
 | The proposed triage is invalid, for example because it defers a critical or major finding | 1 |
-| Five rounds (or the limit of `--rounds`) are used and the last one still has a finding that must be fixed, or was an intermediate round (only the changes, or partially checked content); the stop proposes `--rounds` with two rounds more, or, at the ceiling of 20, says that it is reached and proposes only the steps by hand | 1 |
+| Five rounds (or the limit of `--rounds`) are used and the last one still has a finding that must be fixed, or was an intermediate round (only the changes); the stop proposes `--rounds` with two rounds more, or, at the ceiling of 20, says that it is reached and proposes only the steps by hand | 1 |
 | The implementer ended four sessions without completing the Issue | 1 |
 | The completion record says `blocked` | 3 |
 | The implementer refuted every finding left to fix, one of them critical or major, with evidence, and the review of the complete feature still reports it; the findings and the ways on are named | 3 |
@@ -4196,11 +4196,12 @@ let a partial-check round skip the full verification again would bring back
 a review of content that no complete run checked, and a fix round that a
 failing check outside the groups reaches only at the commit. A policy that
 still has the line gets the full verification; `check-risk.sh` prints the
-refusal, and `run-feature.sh` notes it in the log of the run. A round on a
-partial check that you run by hand (`review-feature.sh --checks`) stays an
-intermediate round: its review records `verification.status: partial`, and
-`finish-feature.sh` does not commit on it. A `high` feature keeps needing
-your approval through the merge approval gate, which this does not touch.
+refusal, and `run-feature.sh` notes it in the log of the run. A review by
+hand cannot make a partial-check round either: since #519
+`review-feature.sh` has no option for a partial check, and a review artifact
+with `verification.status: partial` is refused as invalid. A `high` feature
+keeps needing your approval through the merge approval gate, which this does
+not touch.
 
 **Baseline and delta.** The first review is complete. A later round reviews
 only the changes (`--changes`) when the policy allows it for the level, the
