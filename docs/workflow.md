@@ -209,6 +209,12 @@ flowchart TD
   used (`--rounds <m>` raises the limit, at a terminal only). It stops, and
   says how to continue, when a step fails or an agent needs your decision. `docs/development.md` describes what you hand over
   with it.
+- `run-feature.sh <issue> --owner-finding` takes a finding you posted on the
+  Issue of a finished feature, whose pull request is open, through the same
+  steps in one process: the merge of a moved base, a review of the complete
+  feature with your comment, the triage, the fixes, the verification, a
+  review of the complete feature, a new finish commit on top of the
+  published one, and its publication, without a reset or a forced push.
 
 ## Artifacts
 

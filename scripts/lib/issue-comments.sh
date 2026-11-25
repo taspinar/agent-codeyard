@@ -22,6 +22,13 @@ ISSUE_COMMENTS_MAX_CHARS="${ISSUE_COMMENTS_MAX_CHARS:-20000}"
 # The first line of a triage report that triage-review.sh publishes.
 ISSUE_COMMENTS_TRIAGE_MARKER="<!-- workflow-report: review-triage -->"
 
+# What a comment is to the workflow, in jq: 'own' for a report that the
+# workflow published itself, 'trusted' for an author whose comments are
+# passed on. Shared by issue_comments and issue_comments_newest.
+ISSUE_COMMENTS_JQ_DEFS='
+    def own: (.body // "") | test("\\A\\s*(<!-- (workflow-report|post-merge-evidence|run-records-summary)\\b|## Independent review and triage — round )");
+    def trusted: .association as $a | ["OWNER", "MEMBER", "COLLABORATOR"] | index($a) != null;'
+
 # issue_comments <issue> <role>
 # Reads the comments of Issue <issue> and sets ISSUE_COMMENTS_SECTION to the
 # section for the agent of <role>, or to nothing when no comment is passed on;
@@ -55,8 +62,7 @@ issue_comments() {
   if ! result="$(printf '%s\n' "$raw" | jq -Rn \
     --arg issue "$issue" --arg marker "$ISSUE_COMMENTS_TRIAGE_MARKER" \
     --argjson max_count "$ISSUE_COMMENTS_MAX_COUNT" --argjson max_chars "$ISSUE_COMMENTS_MAX_CHARS" '
-    def own: (.body // "") | test("\\A\\s*(<!-- (workflow-report|post-merge-evidence|run-records-summary)\\b|## Independent review and triage — round )");
-    def trusted: .association as $a | ["OWNER", "MEMBER", "COLLABORATOR"] | index($a) != null;
+'"$ISSUE_COMMENTS_JQ_DEFS"'
     def cut: if (.body | length) > $max_chars
       then .body = .body[:$max_chars] + "\n\n[The rest of this comment, \((.body | length) - $max_chars) characters, was left out.]"
       else . end;
@@ -123,4 +129,41 @@ issue_comments() {
     '{issue: ($issue | tonumber), role: $role, passed: $result.passed, authors: $result.authors,
       left_out: $result.left_out, others: $result.others, workflow: $result.workflow}'
   return 0
+}
+
+# issue_comments_newest <issue>
+# Prints when the newest comment of the owner on Issue <issue> was written or
+# last edited, in seconds since the epoch, of the comments that
+# issue_comments passes on (the owner, a member, or a collaborator, and not a
+# report of the workflow); 0 when there is none. run-feature.sh --owner-finding
+# compares it with its latest review. Returns 1, with the reason in
+# ISSUE_COMMENTS_ERROR, when the comments cannot be read.
+issue_comments_newest() {
+  local issue="$1"
+  local raw
+  local errors
+  local newest
+
+  ISSUE_COMMENTS_ERROR=""
+  errors="$(mktemp "${TMPDIR:-/tmp}/issue-comments.XXXXXX")" || {
+    ISSUE_COMMENTS_ERROR="could not create a temporary file"
+    return 1
+  }
+  if ! raw="$(gh api "repos/{owner}/{repo}/issues/$issue/comments" --paginate \
+    --jq '.[] | {login: .user.login, association: .author_association, created_at, updated_at, body} | tojson' \
+    </dev/null 2>"$errors")"; then
+    ISSUE_COMMENTS_ERROR="$(tail -n 3 "$errors" 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')"
+    ISSUE_COMMENTS_ERROR="${ISSUE_COMMENTS_ERROR:-gh failed without a message}"
+    rm -f "$errors"
+    return 1
+  fi
+  rm -f "$errors"
+  if ! newest="$(printf '%s\n' "$raw" | jq -Rn "$ISSUE_COMMENTS_JQ_DEFS"'
+    [inputs | select(length > 0) | fromjson | .body //= "" | select((own | not) and trusted)
+      | [.created_at, .updated_at][] | select(type == "string") | fromdateiso8601]
+    | max // 0' 2>/dev/null)"; then
+    ISSUE_COMMENTS_ERROR="the comments that gh returned could not be read as JSON, or a time in them could not be read"
+    return 1
+  fi
+  printf '%s\n' "$newest"
 }

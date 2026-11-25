@@ -15,6 +15,7 @@ source "$script_dir/lib/verification.sh"
 source "$script_dir/lib/records.sh"
 source "$script_dir/lib/guardrails.sh"
 source "$script_dir/lib/exceptions.sh"
+source "$script_dir/lib/issue-comments.sh"
 
 MAX_ROUNDS=5
 # The most review rounds that --rounds may allow. RUN_FEATURE_ROUNDS_CEILING
@@ -39,6 +40,7 @@ unstable=0
 
 usage() {
   echo "Usage: $0 <issue-number> [slug] [base-branch] [--implemented] [--risk <level>] [--rounds <m>]"
+  echo "       $0 <issue-number> --owner-finding [--risk <level>] [--rounds <m>]"
   echo
   echo "Runs a feature from its Issue to an open pull request, without questions:"
   echo "start-feature.sh, then review-feature.sh, triage-review.sh, and"
@@ -98,11 +100,23 @@ usage() {
   echo "refused in an agent session and without a terminal on standard input, so it"
   echo "never runs unattended, and the run record notes it as an intervention."
   echo
+  echo "--owner-finding takes a finding of yours on a finished feature, whose pull"
+  echo "request is open, through the same steps in this one process: post the finding"
+  echo "as a comment on the Issue first. The run merges the base when it moved, reviews"
+  echo "the complete feature when a comment of yours is newer than its latest review"
+  echo "and its finish commit, and then triages, fixes, verifies, and reviews the"
+  echo "complete feature again, commits the fixes with finish-feature.sh on top of the"
+  echo "published commit, and publishes them: the approval request of the new commit"
+  echo "covers what is pushed, and the push needs no reset and no force. Every round of"
+  echo "it reviews the complete feature, and its round limit counts the rounds after"
+  echo "the round the finish commit was made on. It stops where a run stops."
+  echo
   echo "Examples:"
   echo "  $0 3"
   echo "  $0 3 site-skeleton develop"
   echo "  $0 3 --risk high"
   echo "  $0 3 --rounds 7"
+  echo "  $0 3 --owner-finding"
   exit 1
 }
 
@@ -113,11 +127,13 @@ fail() {
 }
 
 implemented=0
+owner_finding=0
 rounds=""
 arguments=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --implemented) implemented=1 ;;
+    --owner-finding) owner_finding=1 ;;
     --rounds)
       [[ $# -ge 2 && "$2" =~ ^[1-9][0-9]*$ ]] || usage
       rounds="$2"
@@ -137,6 +153,10 @@ done
 [[ "${#arguments[@]}" -ge 1 && "${#arguments[@]}" -le 3 ]] || usage
 issue="${arguments[0]}"
 [[ "$issue" =~ ^[0-9]+$ ]] || fail "issue number must be numeric: $issue"
+# What a stop proposes to run again: the same mode.
+mode_option=""
+[[ "$owner_finding" -eq 0 ]] || mode_option=" --owner-finding"
+rerun="$0 $issue$mode_option"
 records_wrap feature "$issue" "$0" ${records_arguments[@]+"${records_arguments[@]}"}
 [[ "$implemented" -eq 0 ]] || records_intervention "said with --implemented that the implementation is complete"
 # --rounds is the owner's decision at a terminal: never an agent's, and never
@@ -190,7 +210,7 @@ stop() {
       echo "To continue:"
       printf '  %s\n' "$@"
     fi
-    echo "Then run again: $0 $issue"
+    echo "Then run again: $rerun"
   } >&2
   exit "$status"
 }
@@ -437,8 +457,14 @@ blocked_or_ignored() {
 # it would write over an untracked file, ignored or not, and when the index
 # holds staged changes, naming the files, before anything is merged; and when
 # the merge leaves behind untracked paths that the branch ignored before it
-# (lib/base.sh); nothing is deleted.
+# (lib/base.sh); nothing is deleted. The texts of its notes and stops are
+# those of a failed verification; --owner-finding sets them for the update
+# with the base that starts its chain.
 base_merges=0
+merge_context="the verification fails, and the base moved since the feature started"
+merge_cause="checks failed in two verification runs, and the base moved since the feature started"
+merge_action="Verifying again; only a check that still fails goes to the implementer"
+merge_fallback="Going on with the repair by the implementer"
 merge_moved_base() {
   local title="$1"
   local base_ref=""
@@ -469,12 +495,12 @@ merge_moved_base() {
   # that differs from the file on disk. The run stops and leaves the index as
   # it is.
   staged="$(git -C "$worktree" -c core.quotePath=false diff --cached --name-only)" || {
-    note "$title" "base not merged" "the base moved since the feature started, but Git could not read the index" "Going on with the repair by the implementer"
+    note "$title" "base not merged" "the base moved since the feature started, but Git could not read the index" "$merge_fallback"
     return 1
   }
   if [[ -n "$staged" ]]; then
     note "$title" "staged changes" "the base moved since the feature started, but the index holds staged changes in: $(printf '%s' "$staged" | tr '\n' ' ')" "Stopping"
-    stop 1 "the verification fails, and the base moved since the feature started; the index holds staged changes, which a merge of $base_ref refuses, in: $(printf '%s' "$staged" | tr '\n' ' ')- nothing was merged, and the index is unchanged." \
+    stop 1 "$merge_context; the index holds staged changes, which a merge of $base_ref refuses, in: $(printf '%s' "$staged" | tr '\n' ' ')- nothing was merged, and the index is unchanged." \
       "cd \"$worktree\"" \
       "git diff --cached    # the staged changes; unstage them with 'git restore --staged <path>' when the file on disk holds what you want, then run the feature again"
   fi
@@ -489,12 +515,12 @@ merge_moved_base() {
   elif [[ "$status" -eq 1 ]]; then
     conflicts="$tree"
   else
-    note "$title" "base not merged" "the base moved since the feature started, but Git could not compute the merge with $base_ref" "Going on with the repair by the implementer"
+    note "$title" "base not merged" "the base moved since the feature started, but Git could not compute the merge with $base_ref" "$merge_fallback"
     return 1
   fi
   if [[ -n "$conflicts" ]]; then
     note "$title" "conflict" "the base moved since the feature started, and its merge conflicts in: $(printf '%s' "$conflicts" | tr '\n' ' ')" "Stopping"
-    stop 1 "the verification fails, and the base moved since the feature started; merging $base_ref conflicts with the feature in: $(printf '%s' "$conflicts" | tr '\n' ' ')" \
+    stop 1 "$merge_context; merging $base_ref conflicts with the feature in: $(printf '%s' "$conflicts" | tr '\n' ' ')" \
       "cd \"$worktree\"" \
       "git stash push --include-untracked -m \"feature $issue before the merge of $base\"    # the uncommitted work of the feature" \
       "git merge $base_ref    # resolve the conflicts, then commit the merge" \
@@ -504,23 +530,23 @@ merge_moved_base() {
   # Untracked files where the merge writes, ignored ones included: Git would
   # replace an ignored file without a word (lib/base.sh).
   overwrites="$(base_merge_overwrites "$worktree" "$tree")" || {
-    note "$title" "base not merged" "the base moved since the feature started, but Git could not tell what its merge writes over" "Going on with the repair by the implementer"
+    note "$title" "base not merged" "the base moved since the feature started, but Git could not tell what its merge writes over" "$merge_fallback"
     return 1
   }
   if [[ -n "$overwrites" ]]; then
     note "$title" "conflict" "the base moved since the feature started, and its merge would write over untracked files of the worktree: $(printf '%s' "$overwrites" | tr '\n' ' ')" "Stopping"
-    stop 1 "the verification fails, and the base moved since the feature started; merging $base_ref would write over untracked files of the worktree, which Git may ignore: $(printf '%s' "$overwrites" | tr '\n' ' ')- nothing was merged or changed." \
+    stop 1 "$merge_context; merging $base_ref would write over untracked files of the worktree, which Git may ignore: $(printf '%s' "$overwrites" | tr '\n' ' ')- nothing was merged or changed." \
       "cd \"$worktree\"" \
       "# move each path above out of the worktree, or remove it after checking that it is not needed"
   fi
   if ! git -C "$worktree" merge -q --no-edit --no-overwrite-ignore "$base_ref" </dev/null >"$worktree/.agents/run/$issue-merge.log" 2>&1; then
     note "$title" "conflict" "the base moved since the feature started, and Git refused its merge: $(grep -m 1 . "$worktree/.agents/run/$issue-merge.log" || true)" "Stopping"
-    stop 1 "the verification fails, and the base moved since the feature started; Git refused the merge of $base_ref (.agents/run/$issue-merge.log)." \
+    stop 1 "$merge_context; Git refused the merge of $base_ref (.agents/run/$issue-merge.log)." \
       "cd \"$worktree\"" \
       "git merge $base_ref    # resolve what Git reports, then commit the merge"
   fi
   base_merges=$((base_merges + 1))
-  note "$title" "base merged" "checks failed in two verification runs, and the base moved since the feature started: $base_ref merged cleanly ($(git -C "$worktree" rev-parse --short "$before")..$(git -C "$worktree" rev-parse --short HEAD))" "Verifying again; only a check that still fails goes to the implementer"
+  note "$title" "base merged" "$merge_cause: $base_ref merged cleanly ($(git -C "$worktree" rev-parse --short "$before")..$(git -C "$worktree" rev-parse --short HEAD))" "$merge_action"
 
   if scratch="$(mktemp -d "${TMPDIR:-/tmp}/run-feature-leftovers.XXXXXX" 2>/dev/null)"; then
     leftovers="$(base_leftovers "$worktree" "$before" "$scratch")" || leftovers=""
@@ -760,7 +786,7 @@ more_rounds() {
     return
   fi
   [[ "$more" -le "$ROUNDS_CEILING" ]] || more="$ROUNDS_CEILING"
-  echo "./scripts/run-feature.sh $issue --rounds $more    # your decision, at a terminal: continue with a higher limit"
+  echo "./scripts/run-feature.sh $issue$mode_option --rounds $more    # your decision, at a terminal: continue with a higher limit"
 }
 
 # level_rank <level>: 0 for low, 1 for medium, 2 for high; 3 otherwise, so
@@ -794,6 +820,13 @@ verify_step() {
 worktree="$(find_worktree)"
 [[ "$(printf '%s\n' "$worktree" | grep -c .)" -le 1 ]] ||
   fail "more than one worktree is on a branch feature/${issue}-*: $(printf '%s' "$worktree" | tr '\n' ' ')"
+
+if [[ "$owner_finding" -eq 1 ]]; then
+  [[ -n "$worktree" ]] ||
+    fail "--owner-finding takes a finding on a finished feature, but no worktree is on a branch feature/${issue}-*."
+  [[ "${#arguments[@]}" -eq 1 ]] ||
+    fail "--owner-finding continues the feature in its worktree ($worktree); run it without a slug or base branch."
+fi
 
 if [[ -z "$worktree" ]]; then
   [[ "$implemented" -eq 0 ]] || fail "no worktree is on a branch feature/${issue}-*, so nothing is implemented yet."
@@ -859,6 +892,23 @@ state_file="$worktree/.agents/run/$issue-state"
 git -C "$worktree" check-ignore -q ".agents/run/$issue-state" ||
   fail "Git does not ignore .agents/run/ in $worktree. Add '.agents/run/' to .gitignore, or take over the template's .gitignore with ./scripts/sync-template.sh."
 mkdir -p "$(dirname "$state_file")"
+
+# --owner-finding takes a finished feature: its latest finish commit, before
+# any session of this run. The round limit of its chain counts the rounds
+# after the round that commit was made on.
+round_offset=0
+if [[ "$owner_finding" -eq 1 ]]; then
+  finish_refs=()
+  for candidate in "origin/$base" "$base"; do
+    git -C "$worktree" rev-parse --verify --quiet "$candidate^{commit}" >/dev/null && finish_refs+=("^$candidate")
+  done
+  finish_commit="$(git -C "$worktree" log -1 --format=%H --grep='^Completion: ' HEAD ${finish_refs[@]+"${finish_refs[@]}"})"
+  [[ -n "$finish_commit" ]] ||
+    stop 1 "--owner-finding takes a finding on a finished feature, but no commit of the branch was made by finish-feature.sh." \
+      "./scripts/run-feature.sh $issue    # the feature is not finished yet: run it without --owner-finding"
+  round_offset="$(git -C "$worktree" log -1 --format=%B "$finish_commit" | sed -n 's/^Review: round \([0-9][0-9]*\),.*/\1/p' | sed -n 1p)"
+  round_offset="${round_offset:-0}"
+fi
 report_risk "at the start"
 
 # The completion gate. The state 'implemented' is written only when it
@@ -1170,12 +1220,105 @@ intermediate() {
   changes_only "$1" || partially_checked "$1"
 }
 
+# ------------------------------------------------- the owner's finding
+# --owner-finding: the owner posted a finding on the Issue of a finished
+# feature whose pull request is open. The chain runs in this process, so
+# the pass of the fixed content is reused by the commit (VERIFY_TRUSTED_TREES,
+# never given to an agent):
+#
+# 1. the base is merged when it moved since the finish, as merge_moved_base
+#    does for a failed verification, and stops on a conflict;
+# 2. a review of the complete feature is due when a comment of the owner on
+#    the Issue (lib/issue-comments.sh: the comments an agent is given) is
+#    newer than the latest review and the finish commit; the reviewer gets
+#    the comment with the Issue. Without one nothing is reviewed again
+#    unless the content changed, so running the command again continues
+#    where it stopped: also on a review of the chain (a round after the
+#    finish commit's) that a stop left before its triage or fixes;
+# 3. the loop below then triages, fixes, verifies, and reviews the complete
+#    feature again, every round on the complete feature, and finish-feature.sh
+#    commits the fixes on top of the published commit: the approval request
+#    of that commit covers what publish-feature.sh pushes, without a reset or
+#    a forced push.
+#
+# The round limit counts the rounds of the chain: those after the round the
+# finish commit was made on ('Review: round <n>' in its message).
+owner_review=0
+owner_changed=0
+owner_pending=0
+if [[ "$owner_finding" -eq 1 ]]; then
+  run_step="owner finding"
+  echo
+  echo "run-feature.sh: the owner's finding on the finished feature (finish commit $(git -C "$worktree" rev-parse --short "$finish_commit"), review round ${round_offset/#0/none}); at most $MAX_ROUNDS review rounds after it."
+
+  # 1. The update with the base.
+  git -C "$worktree" remote get-url origin >/dev/null 2>&1 &&
+    git -C "$worktree" fetch -q origin "$base" </dev/null >/dev/null 2>&1 || true
+  base_ref="origin/$base"
+  git -C "$worktree" rev-parse --verify --quiet "$base_ref^{commit}" >/dev/null || base_ref="$base"
+  if git -C "$worktree" rev-parse --verify --quiet "$base_ref^{commit}" >/dev/null &&
+    ! git -C "$worktree" merge-base --is-ancestor "$base_ref" HEAD; then
+    merge_context="the base moved since the feature was finished"
+    merge_cause="the base moved since the feature was finished"
+    merge_action="Going on with the review; the run verifies the merged content before it"
+    merge_fallback="Stopping"
+    merge_moved_base "update with the base" ||
+      stop 1 "the base moved since the feature was finished, and Git could not merge $base_ref; see the log of the run, .agents/run/$issue-log." \
+        "cd \"$worktree\"" \
+        "./scripts/update-feature.sh $issue    # merges the base by hand, or names what stands in the way"
+  else
+    echo "run-feature.sh: the branch contains its base ($base_ref); nothing to merge."
+  fi
+
+  # 2. A comment of the owner that the latest review has not seen.
+  newest="$(issue_comments_newest "$issue")" ||
+    stop 1 "could not read the comments of Issue #$issue ($ISSUE_COMMENTS_ERROR), so whether the owner posted a finding is unknown." \
+      "gh api \"repos/{owner}/{repo}/issues/$issue/comments\"    # check access to the Issue"
+  seen="$(git -C "$worktree" log -1 --format=%ct "$finish_commit")"
+  review="$(latest_review)"
+  if [[ -n "$review" ]]; then
+    reviewed="$(jq -r '.created_at // empty | fromdateiso8601' "$review" 2>/dev/null)" || reviewed=""
+    [[ ! "$reviewed" =~ ^[0-9]+$ || "$reviewed" -le "$seen" ]] || seen="$reviewed"
+  fi
+  if [[ "$newest" =~ ^[0-9]+$ && "$newest" -gt "$seen" ]]; then
+    owner_review=1
+    note "owner finding" "owner finding" "a comment of the owner on Issue #$issue is newer than the latest review and the finish commit" "Reviewing the complete feature with it"
+  else
+    note "owner finding" "no new comment" "no comment of the owner on Issue #$issue is newer than the latest review and the finish commit" "Reviewing again only what changed since; post the finding on the Issue first"
+  fi
+  # A review of the chain, after the round of the finish commit, that a
+  # stop left before its triage or fixes: the chain continues on it, also
+  # when the comment is older than it and the content is unchanged. The
+  # loop ends at once when that review leaves nothing to fix.
+  if [[ -n "$review" ]]; then
+    review_round="$(jq -r '.round // 0' "$review" 2>/dev/null)" || review_round=0
+    [[ ! "$review_round" =~ ^[0-9]+$ || "$review_round" -le "$round_offset" ]] || owner_pending=1
+  fi
+  # What changed since the finish: the merge of the base, or the work of a
+  # chain that stopped.
+  if uncommitted; then
+    owner_changed=1
+  elif fingerprint_scratch="$(mktemp -d "${TMPDIR:-/tmp}/run-feature-owner.XXXXXX")"; then
+    if ! head_tree="$(fingerprint_commit "$worktree" "$fingerprint_scratch" HEAD)" ||
+      ! finish_tree="$(fingerprint_commit "$worktree" "$fingerprint_scratch" "$finish_commit")" ||
+      [[ "$head_tree" != "$finish_tree" ]]; then
+      owner_changed=1
+    fi
+    rm -rf "$fingerprint_scratch"
+  else
+    owner_changed=1
+  fi
+fi
+
 # The round that ends the run reviews the complete feature against the Issue,
 # on content that passed the full verification, also when the rounds before
 # it reviewed only changes or ran on partial checks: such a round confirms
 # fixes, it does not establish that the Issue is done.
 complete_review=0
-if uncommitted; then
+# The owner's finding is reviewed on the complete feature, also when the
+# latest review is current for the content.
+complete_review="$owner_review"
+if uncommitted || [[ "$owner_review" -eq 1 || "$owner_changed" -eq 1 || "$owner_pending" -eq 1 ]]; then
   while true; do
     # A repair session may have left the work partial or blocked.
     await_completion 0
@@ -1194,13 +1337,13 @@ if uncommitted; then
     if [[ "$current" -ne 0 || "$complete_review" -eq 1 ]]; then
       # No review yet, the content changed since the latest one, or the
       # latest one was an intermediate round and nothing is left to fix.
-      if [[ "$round" -ge "$MAX_ROUNDS" && "$complete_review" -eq 1 ]]; then
+      if [[ "$((round - round_offset))" -ge "$MAX_ROUNDS" && "$complete_review" -eq 1 ]]; then
         stop 1 "$MAX_ROUNDS review rounds are used, and round $round reviewed only changes or partially checked content, so no review of the complete feature confirms that the Issue is done." \
           "$(more_rounds)" \
           "cd \"$worktree\"" \
           "./scripts/review-feature.sh $issue $base    # or continue by hand: triage-review.sh, apply-triage.sh, finish-feature.sh, publish-feature.sh"
       fi
-      if [[ "$round" -ge "$MAX_ROUNDS" ]]; then
+      if [[ "$((round - round_offset))" -ge "$MAX_ROUNDS" ]]; then
         stop 1 "$MAX_ROUNDS review rounds are used, and the content changed after round $round, so it is not confirmed by a review." \
           "$(more_rounds)" \
           "cd \"$worktree\"" \
@@ -1215,7 +1358,8 @@ if uncommitted; then
       # a step of its own then, repaired like one that a review would have
       # run. The gate and the level are asked again after a repair, since a
       # repair session can change both.
-      if [[ -z "$review" && "$risk_level" == "low" && "$risk_review" == "none" ]]; then
+      # The owner's finding is always reviewed.
+      if [[ -z "$review" && "$risk_level" == "low" && "$risk_review" == "none" && "$owner_finding" -eq 0 ]]; then
         attempts_before="$repairs/$unstable/$base_merges"
         step "verification of the low-risk feature, which the project policy does not review" verify_step
         if [[ "$step_status" -eq 3 ]]; then
@@ -1248,7 +1392,9 @@ if uncommitted; then
       # and deferred again. Otherwise the round reviews the complete feature.
       review_options=()
       review_title="review"
-      if [[ "$complete_review" -eq 1 ]]; then
+      if [[ "$complete_review" -eq 1 || ( "$owner_finding" -eq 1 && -n "$review" ) ]]; then
+        # The chain of an owner's finding reviews the complete feature in
+        # every round: the fix is committed on that review.
         review_title="review of the complete feature"
       elif [[ -n "$review" ]]; then
         if delta_allowed "$review"; then
@@ -1286,7 +1432,7 @@ if uncommitted; then
       # A budget that the verification measured, before the review covers
       # the handoff note.
       report_budgets "review, round $((round + 1))"
-      step "$review_title, round $((round + 1)) of at most $MAX_ROUNDS" \
+      step "$review_title, round $((round + 1)) of at most $((MAX_ROUNDS + round_offset))" \
         ./scripts/review-feature.sh "$issue" "$base" ${review_options[@]+"${review_options[@]}"}
       if [[ "$step_status" -eq 3 ]]; then
         rm -f "$state_file"
@@ -1354,13 +1500,13 @@ if uncommitted; then
     if refuted_findings "$review" "$triage"; then
       if ! intermediate "$review"; then
         refuted_stop
-      elif [[ "$round" -lt "$MAX_ROUNDS" ]]; then
+      elif [[ "$((round - round_offset))" -lt "$MAX_ROUNDS" ]]; then
         note "triage of round $round" "refuted" "the implementer refuted every finding left to fix with evidence, and this review of changes only still reports them" "Reviewing the complete feature, for the owner's decision"
         complete_review=1
         continue
       fi
     fi
-    if [[ "$round" -ge "$MAX_ROUNDS" ]]; then
+    if [[ "$((round - round_offset))" -ge "$MAX_ROUNDS" ]]; then
       stop 1 "$MAX_ROUNDS review rounds are used and round $round still has findings that must be fixed; see $review_relative. Where the owner disagrees with a critical or major finding, the owner may record an exception to it at a terminal (docs/development.md, 'Owner exceptions to a blocking finding')." \
         "$(more_rounds)" \
         "cd \"$worktree\"" \
@@ -1403,18 +1549,26 @@ if uncommitted; then
   done
 
   # ---------------------------------------------------------------- finish
-  run_step="commit"
-  title="$(gh issue view "$issue" --json title --jq '.title' </dev/null)" ||
-    stop 1 "could not read the title of Issue #$issue for the commit message." \
-      "cd \"$worktree\"" "./scripts/finish-feature.sh $issue \"<commit summary>\""
-  step_once "commit" ./scripts/finish-feature.sh "$issue" "$title" --unattended
-  [[ "$step_status" -eq 0 ]] ||
-    stop 1 "the feature could not be committed (finish-feature.sh exited with status $step_status)." \
-      "cd \"$worktree\"" "./scripts/finish-feature.sh $issue \"$title\""
-  # A budget first measured by the verification of a review round, which no
-  # later round followed: the commit carries it; the note gets it now, when
-  # no review has to stay current.
-  report_budgets "commit"
+  if uncommitted; then
+    run_step="commit"
+    title="$(gh issue view "$issue" --json title --jq '.title' </dev/null)" ||
+      stop 1 "could not read the title of Issue #$issue for the commit message." \
+        "cd \"$worktree\"" "./scripts/finish-feature.sh $issue \"<commit summary>\""
+    step_once "commit" ./scripts/finish-feature.sh "$issue" "$title" --unattended
+    [[ "$step_status" -eq 0 ]] ||
+      stop 1 "the feature could not be committed (finish-feature.sh exited with status $step_status)." \
+        "cd \"$worktree\"" "./scripts/finish-feature.sh $issue \"$title\""
+    # A budget first measured by the verification of a review round, which no
+    # later round followed: the commit carries it; the note gets it now, when
+    # no review has to stay current.
+    report_budgets "commit"
+  else
+    # Only the chain of an owner's finding gets here without work: its review
+    # of the complete feature left nothing to fix (no finding, or only
+    # findings that were deferred or accepted, published on the Issue). The
+    # merge of the base, when there was one, is published.
+    note "owner finding" "nothing to fix" "the review of the complete feature, round $(jq -r '.round' "$(latest_review)"), leaves nothing to fix; the triage decisions are on the Issue" "Publishing what is committed"
+  fi
 else
   base_ref="$base"
   git -C "$worktree" rev-parse --verify --quiet "$base_ref^{commit}" >/dev/null || base_ref="origin/$base"

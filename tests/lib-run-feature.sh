@@ -436,6 +436,11 @@ fixes-mixed
 fixes-refuted-other-title
 fixes-inconclusive
 base-changed
+owner-finding
+owner-finding-blocked
+owner-finding-resumed
+owner-finding-failed
+owner-finding-rounds
 high-groups-refused
 level-rises
 medium-full-reviews
