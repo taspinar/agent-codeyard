@@ -27,6 +27,21 @@ records_arguments=("$@")
 # (scripts/lib/verification.sh). With --reuse, a second run on identical
 # content is skipped.
 #
+# A run that failed is recorded too, apart from a pass and never as one: the
+# content, the checks that ran, those that failed, and the budget results and
+# durations of the run. --repeat <check>,... is the repeat of run-feature.sh
+# after a failed verification, which tells a flaky check from a real failure:
+# it runs only the named checks, the ones that failed, when that record is
+# for exactly this content, was written by a run of a workflow script
+# (VERIFY_ORIGIN 'orchestrator' or 'script'), names the same failed checks,
+# and ran the checks that this run would run; and this run is the
+# orchestrator's own (VERIFY_ORIGIN=orchestrator). When they all pass and the
+# content did not change, the checks that passed in the failed run and the
+# repeated ones together are the pass of that content: recorded as a pass,
+# with the budget results and durations of both runs and a line 'repeated:
+# <check>...'. When anything of that does not hold, every check runs, as in a
+# run without the option, and the output says why.
+#
 # A check may name a group: '<name> [<group>]: <command>'. A check without one
 # belongs to the group 'default'. --only runs the checks of the named groups,
 # for a CI that spreads the same checks over parallel jobs. Such a partial
@@ -146,6 +161,7 @@ usage() {
   echo "Usage: $0 [--all] [--reuse] [--framework-checks]"
   echo "       $0 [--all] [--framework-checks] --only <group>[,<group>...]"
   echo "       $0 [--framework-checks] --changed"
+  echo "       $0 --repeat <check>[,<check>...]"
   echo "       $0 --baseline"
   echo "       $0 --groups"
   echo "       $0 --partitions"
@@ -166,6 +182,13 @@ usage() {
   echo
   echo "--reuse skips the run when verification already passed for exactly the"
   echo "current content, as recorded by an earlier run."
+  echo
+  echo "--repeat runs only the named checks, which failed in the last run, when that"
+  echo "run is recorded for exactly this content, a workflow script started both, and"
+  echo "it ran the checks this run would run; when they pass, the two runs together"
+  echo "are recorded as the pass of the content, with the repeated checks named."
+  echo "Otherwise every check runs. It is the repeat of run-feature.sh after a failed"
+  echo "verification (VERIFY_ORIGIN=orchestrator) and takes no other option."
   echo
   echo "--only runs the checks of the named groups only. A check names its group"
   echo "as '<name> [<group>]: <command>'; one without a group is in 'default'."
@@ -253,6 +276,7 @@ partial=0
 changed_mode=0
 baseline_mode=0
 force_framework=0
+repeat_names=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --all) run_all=1 ;;
@@ -268,6 +292,11 @@ while [[ $# -gt 0 ]]; do
       changed_mode=1
       partial=1
       ;;
+    --repeat)
+      [[ $# -ge 2 && "$2" =~ ^[a-z0-9][a-z0-9-]*(,[a-z0-9][a-z0-9-]*)*$ ]] || usage
+      repeat_names="$2"
+      shift
+      ;;
     --only)
       [[ $# -ge 2 && "$2" =~ ^[a-z0-9][a-z0-9-]*(,[a-z0-9][a-z0-9-]*)*$ ]] || usage
       only="$2"
@@ -278,6 +307,10 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+if [[ -n "$repeat_names" && ( "$partial" -eq 1 || "$reuse" -eq 1 || "$run_all" -eq 1 || "$list_groups" -eq 1 || "$baseline_mode" -eq 1 || "$force_framework" -eq 1 ) ]]; then
+  echo "Error: --repeat repeats the checks that failed in the last run, with the selection of that run; it takes no other option." >&2
+  exit 1
+fi
 if [[ "$changed_mode" -eq 1 && ( -n "$only" || "$run_all" -eq 1 ) ]]; then
   echo "Error: --changed selects the checks itself; it takes neither --only nor --all." >&2
   exit 1
@@ -916,9 +949,53 @@ partial_skipped() {
 # that runs the framework-only ones alone (framework_alone).
 framework_skipped=()
 framework_alone=0
+repeat_active=0
+repeat_only=()
 skipped_check() {
   partial_skipped "$1" || [[ "${framework_skipped[$1]:-}" == "yes" ]] ||
-    [[ "$framework_alone" -eq 1 && "$1" -ge "$project_count" && "${frameworks[$1]}" != "yes" ]]
+    [[ "$framework_alone" -eq 1 && "$1" -ge "$project_count" && "${frameworks[$1]}" != "yes" ]] ||
+    [[ "$repeat_active" -eq 1 && "${repeat_only[$1]:-}" != "yes" ]]
+}
+
+# selected_checks: the names of the checks that this run runs, separated by
+# spaces, in the order of the files.
+selected_checks() {
+  local index
+  local list=""
+
+  for index in "${!names[@]}"; do
+    [[ "$index" -lt "$project_count" || -z "$workflow_skipped" ]] || break
+    skipped_check "$index" && continue
+    list="${list:+$list }${names[$index]}"
+  done
+  echo "$list"
+}
+
+# workflow_record_state: what the record of this run says of the workflow
+# self-tests: 'ran', 'skipped', or 'none' (lib/verification.sh).
+workflow_record_state() {
+  if [[ ! -f "$workflow_config" ]]; then
+    echo none
+  elif [[ -n "$workflow_skipped" || "$framework_alone" -eq 1 ]]; then
+    echo skipped
+  else
+    echo ran
+  fi
+}
+
+# framework_record_state <workflow-state>: what the record says of the
+# framework-only self-tests.
+framework_record_state() {
+  if [[ "$1" == "ran" || "$framework_alone" -eq 1 ]]; then
+    echo "$framework_state"
+  else
+    echo none
+  fi
+}
+
+# sorted_words <word>...: the words, sorted and unique, on one line.
+sorted_words() {
+  printf '%s\n' "$@" | grep . | sort -u | tr '\n' ' ' || true
 }
 
 [[ "$list_groups" -eq 1 ]] || echo "== Agentic project verification =="
@@ -1129,6 +1206,46 @@ elif [[ "$partial" -eq 1 ]]; then
       config_fail "no check is in the group '$group'. The groups are: ${known_groups//,/, }."
   done
   echo "Only the groups: ${only//,/, }. A partial run is not a verification and records nothing."
+fi
+
+# --repeat: only the checks that failed in the recorded failed run of this
+# content run, when that run and this one may be combined into one pass
+# (lib/verification.sh); otherwise every check runs.
+if [[ -n "$repeat_names" ]]; then
+  repeat_reason=""
+  IFS=, read -r -a repeat_wanted <<<"$repeat_names"
+  repeat_recorded=()
+  if [[ "$recordable" -eq 1 ]]; then
+    read -r -a repeat_recorded <<<"$(verification_failed_field "$root" failed)"
+  fi
+  repeat_workflow="$(workflow_record_state)"
+  if [[ "$recordable" -ne 1 || -z "$tree_before" ]]; then
+    repeat_reason="no record of a verification can be kept here"
+  elif [[ ! -f "$root/$VERIFICATION_FAILED" ]]; then
+    repeat_reason="no failed run is recorded"
+  elif [[ "$(verification_failed_field "$root" tree)" != "$tree_before" ]]; then
+    repeat_reason="the content changed since the failed run"
+  elif [[ ! "$(verification_failed_field "$root" origin)" =~ ^(orchestrator|script)$ ]]; then
+    repeat_reason="the failed run was not started by a workflow script"
+  elif [[ "$(verification_origin)" != "orchestrator" ]]; then
+    repeat_reason="this run is not the orchestrator's own (VERIFY_ORIGIN=orchestrator)"
+  elif [[ "$(sorted_words "${repeat_wanted[@]}")" != "$(sorted_words ${repeat_recorded[@]+"${repeat_recorded[@]}"})" ]]; then
+    repeat_reason="the failed run recorded other failed checks ($(verification_failed_field "$root" failed)) than the repeat names (${repeat_names//,/ })"
+  elif [[ "$(verification_failed_field "$root" ran)" != "$(selected_checks)" ||
+    "$(verification_failed_field "$root" workflow-tests)" != "$repeat_workflow" ||
+    "$(verification_failed_field "$root" framework-checks)" != "$(framework_record_state "$repeat_workflow")" ]]; then
+    repeat_reason="the failed run ran other checks than this run would"
+  fi
+  echo
+  if [[ -n "$repeat_reason" ]]; then
+    echo "Every check runs; the failed checks cannot be repeated alone: $repeat_reason."
+  else
+    for index in "${!names[@]}"; do
+      ! in_list "${names[$index]}" "$repeat_names" || repeat_only[$index]=yes
+    done
+    repeat_active=1
+    echo "Only the checks that failed in the run of $(verification_failed_field "$root" failed-at) on this content run again: ${repeat_names//,/, }. When they pass, the two runs together are the pass of this content."
+  fi
 fi
 
 # Whether --reuse finds a recorded pass for exactly this content, and what
@@ -1429,6 +1546,7 @@ failure_result() {
     detail=": beyond the scope of its exception in scripts/verify.conf"
   fi
   failed=1
+  failed_checks[$1]=yes
   state="$(baseline_state "$name")"
   case "$state" in
     fail | unavailable)
@@ -1627,9 +1745,11 @@ pass_result() {
     scoped_list "$root/$accepted_lists_relative/$name" >"$scratch/recorded-$name.list"
     if ! scoped_added "$1"; then
       failed=1
+      failed_checks[$1]=yes
       results+=("FAIL  $name (it passes, but $accepted_lists_relative/$name cannot be compared with its version at the feature's base, so its scope cannot be checked)")
     elif [[ -s "$scratch/recorded-$name.added" ]]; then
       failed=1
+      failed_checks[$1]=yes
       results+=("FAIL  $name (it passes, but $(wc -l <"$scratch/recorded-$name.added" | tr -d ' ') failure(s) were added to $accepted_lists_relative/$name since $base_ref, where it may only shrink)")
       scope_entries "$scratch/recorded-$name.added"
       results+=("${scope_lines[@]}")
@@ -1652,6 +1772,8 @@ results=()
 scope_lines=()
 fixed_lines=()
 failed=0
+# The indexes of the checks that failed the verification.
+failed_checks=()
 known=0
 accepted_count=0
 scoped_count=0
@@ -1754,6 +1876,7 @@ check_conclude() {
     fi
     if [[ "$budget" == "yes" ]]; then
       failed=1
+      failed_checks[$index]=yes
     elif [[ "$status" -eq 127 ]]; then
       # The shell found no command to run: the check is unavailable here.
       failure_result "$index" "exit 127, a command was not found" "$status"
@@ -2014,8 +2137,9 @@ else
 fi
 
 # The targets for the duration of each file's checks, compared only in a
-# complete run of that file.
-if [[ "$partial" -eq 0 ]]; then
+# complete run of that file. A repeat keeps the results of the failed run,
+# whose checks it completes.
+if [[ "$partial" -eq 0 && "$repeat_active" -eq 0 ]]; then
   duration_budget "scripts/verify.conf" "$project_budget_seconds" 0 "$project_count"
   [[ -n "$workflow_skipped" || "$framework_alone" -eq 1 ]] ||
     duration_budget "scripts/verify-workflow.conf" "$workflow_budget_seconds" "$project_count" "${#names[@]}"
@@ -2073,6 +2197,34 @@ if [[ "$baseline_mode" -eq 1 ]]; then
   exit 0
 fi
 
+# A repeat that passed completes the failed run: the budget results and the
+# durations of the checks that passed there, and those of the repeated checks
+# from this run.
+if [[ "$repeat_active" -eq 1 && "$failed" -eq 0 ]]; then
+  repeat_budgets="$scratch/repeat-budgets"
+  repeat_durations="$scratch/repeat-durations"
+  if [[ -f "$root/$VERIFICATION_FAILED_BUDGETS" ]]; then
+    awk -v repeated=",$repeat_names," '
+      /^budget: / { keep = (index(repeated, "," substr($0, 9) ",") == 0) }
+      keep' "$root/$VERIFICATION_FAILED_BUDGETS" >"$repeat_budgets"
+  else
+    : >"$repeat_budgets"
+  fi
+  [[ ! -s "$budgets_file" ]] || cat "$budgets_file" >>"$repeat_budgets"
+  : >"$repeat_durations"
+  [[ ! -s "$durations_file" ]] || cp "$durations_file" "$repeat_durations"
+  if [[ -f "$root/$VERIFICATION_FAILED_DURATIONS" ]]; then
+    awk -F '\t' -v repeated=",$repeat_names," -v current="$durations_file" '
+      BEGIN { while ((getline line < current) > 0) { split(line, field, "\t"); now[field[1]] = line } }
+      index(repeated, "," $1 ",") == 0 { print; next }
+      $1 in now { print now[$1] }' "$root/$VERIFICATION_FAILED_DURATIONS" >"$repeat_durations" 2>/dev/null ||
+      cp "$durations_file" "$repeat_durations"
+  fi
+  budgets_file="$repeat_budgets"
+  durations_file="$repeat_durations"
+  echo "The checks that failed in the run of $(verification_failed_field "$root" failed-at) passed on the repeat (${repeat_names//,/, }); the other checks passed in that run of the same content."
+fi
+
 if [[ "$partial" -eq 0 ]]; then
   hand_budgets_to_run
   hand_durations_to_run
@@ -2080,6 +2232,21 @@ fi
 
 if [[ "$failed" -ne 0 ]]; then
   [[ "$recordable" -eq 0 ]] || verification_forget "$root"
+  # The failed run of a content that no check changed, for a repeat of only
+  # its failed checks (--repeat). A repeat that failed again is not one: its
+  # checks are not those of the content.
+  if [[ "$recordable" -eq 1 && "$partial" -eq 0 && "$repeat_active" -eq 0 && -n "$tree_before" ]] &&
+    declare -F verification_failed_write >/dev/null &&
+    [[ "$(fingerprint_worktree "$root" "$scratch")" == "$tree_before" ]]; then
+    failed_names=""
+    for index in "${!names[@]}"; do
+      [[ "${failed_checks[$index]:-}" != "yes" ]] || failed_names="${failed_names:+$failed_names }${names[$index]}"
+    done
+    failed_workflow="$(workflow_record_state)"
+    verification_failed_write "$root" "$tree_before" "$failed_workflow" "$(framework_record_state "$failed_workflow")" \
+      "$(selected_checks)" "$failed_names" "$budgets_file" "$durations_file" ||
+      echo "Warning: could not record the failed verification." >&2
+  fi
   echo "Verification failed." >&2
   exit 1
 fi
@@ -2099,15 +2266,11 @@ fi
 # file, no single content was verified, so nothing is recorded.
 if [[ "$recordable" -eq 1 ]]; then
   if [[ -n "$tree_before" && "$(fingerprint_worktree "$root" "$scratch")" == "$tree_before" ]]; then
-    if [[ ! -f "$workflow_config" ]]; then
-      workflow_state="none"
-    elif [[ -n "$workflow_skipped" || "$framework_alone" -eq 1 ]]; then
-      workflow_state="skipped"
-    else
-      workflow_state="ran"
-    fi
-    [[ "$workflow_state" == "ran" || "$framework_alone" -eq 1 ]] || framework_state="none"
-    verification_write "$root" "$tree_before" "$workflow_state" "$budgets_file" "$durations_file" "$framework_state" ||
+    workflow_state="$(workflow_record_state)"
+    framework_state="$(framework_record_state "$workflow_state")"
+    repeated=""
+    [[ "$repeat_active" -eq 0 ]] || repeated="${repeat_names//,/ }"
+    verification_write "$root" "$tree_before" "$workflow_state" "$budgets_file" "$durations_file" "$framework_state" "$repeated" ||
       echo "Warning: could not record the passed verification." >&2
   else
     verification_forget "$root"

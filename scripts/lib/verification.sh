@@ -26,6 +26,16 @@
 # of that file; a run over it keeps a budget result named
 # 'duration of <file>', with the total, the target, and the slowest checks.
 #
+# A run that failed leaves a record of its own (VERIFICATION_FAILED), for
+# the content it ran on: which checks ran, which of them failed, and the
+# budget results and durations of the run. It lets run-feature.sh repeat only
+# the failed checks ('verify.sh --repeat <check>,...'): when the content, the
+# selection of checks, and the failed checks are the same, the checks that
+# passed in that run and the failed checks that pass on the repeat together
+# are the pass of that content, recorded as a pass with the line
+# 'repeated: <check>...'. A pass or a forgotten record removes it; it is
+# never evidence by itself.
+#
 # The record is a working file that Git ignores. Without that ignore rule no
 # record is written, because the file would become part of the fingerprint.
 #
@@ -43,6 +53,9 @@
 VERIFICATION_RECORD=".agents/verification/passed"
 VERIFICATION_BUDGETS=".agents/verification/budgets"
 VERIFICATION_DURATIONS=".agents/verification/durations"
+VERIFICATION_FAILED=".agents/verification/failed"
+VERIFICATION_FAILED_BUDGETS=".agents/verification/failed-budgets"
+VERIFICATION_FAILED_DURATIONS=".agents/verification/failed-durations"
 
 # verification_origin
 # Prints who started this verification: 'agent-session' inside an agent
@@ -119,7 +132,7 @@ verification_field() {
   sed -n "s/^$2: //p" "$1/$VERIFICATION_RECORD" | head -n 1
 }
 
-# verification_write <root> <tree> <workflow-tests> [<budgets-file>] [<durations-file>] [<framework-checks>]
+# verification_write <root> <tree> <workflow-tests> [<budgets-file>] [<durations-file>] [<framework-checks>] [<repeated>]
 # <workflow-tests> is 'ran', 'skipped', or 'none'. <framework-checks>, the
 # framework-only self-tests (scripts/verify-workflow.conf), is 'ran',
 # 'skipped' (outside the template, scripts/lib/template-repository.sh), or
@@ -127,8 +140,11 @@ verification_field() {
 # budget results of the run in the format of verification_budget_add; it is
 # kept with the record, and without one, or with an empty one, no budget
 # record is kept. <durations-file> holds the durations of the checks in the
-# format of verification_duration_add, kept the same way. The record says
-# who started the run (verification_origin).
+# format of verification_duration_add, kept the same way. <repeated> names
+# the checks, separated by spaces, that a repeat ran after a failed run of
+# the same content (verify.sh --repeat); the record then says so in a line
+# 'repeated: <check>...'. The record says who started the run
+# (verification_origin). The record of a failed run is removed.
 verification_write() {
   mkdir -p "$(dirname "$1/$VERIFICATION_RECORD")" &&
     printf 'tree: %s\nworkflow-tests: %s\nverified-at: %s\norigin: %s\n' \
@@ -136,6 +152,10 @@ verification_write() {
   if [[ -n "${6:-}" ]]; then
     printf 'framework-checks: %s\n' "$6" >>"$1/$VERIFICATION_RECORD" || return 1
   fi
+  if [[ -n "${7:-}" ]]; then
+    printf 'repeated: %s\n' "$7" >>"$1/$VERIFICATION_RECORD" || return 1
+  fi
+  verification_failed_forget "$1"
   if [[ -n "${4:-}" && -s "$4" ]]; then
     cp "$4" "$1/$VERIFICATION_BUDGETS"
   else
@@ -148,9 +168,40 @@ verification_write() {
   fi
 }
 
-# verification_forget <root>
+# verification_forget <root>: removes the record of a pass and that of a
+# failed run.
 verification_forget() {
   rm -f "$1/$VERIFICATION_RECORD" "$1/$VERIFICATION_BUDGETS" "$1/$VERIFICATION_DURATIONS"
+  verification_failed_forget "$1"
+}
+
+# verification_failed_forget <root>
+verification_failed_forget() {
+  rm -f "$1/$VERIFICATION_FAILED" "$1/$VERIFICATION_FAILED_BUDGETS" "$1/$VERIFICATION_FAILED_DURATIONS"
+}
+
+# verification_failed_write <root> <tree> <workflow-tests> <framework-checks> <ran> <failed> <budgets-file> <durations-file>
+# The record of a failed run of the content <tree>: <workflow-tests> and
+# <framework-checks> as for verification_write, <ran> the checks that ran
+# and <failed> those that failed the verification, each separated by spaces
+# in the order of the files, and the budget results and durations of the
+# run. The record says who started the run (verification_origin).
+verification_failed_write() {
+  mkdir -p "$(dirname "$1/$VERIFICATION_FAILED")" &&
+    printf 'tree: %s\nworkflow-tests: %s\nframework-checks: %s\nfailed-at: %s\norigin: %s\nran: %s\nfailed: %s\n' \
+      "$2" "$3" "$4" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$(verification_origin)" "$5" "$6" >"$1/$VERIFICATION_FAILED" || return 1
+  rm -f "$1/$VERIFICATION_FAILED_BUDGETS" "$1/$VERIFICATION_FAILED_DURATIONS"
+  [[ ! -s "$7" ]] || cp "$7" "$1/$VERIFICATION_FAILED_BUDGETS" || return 1
+  [[ ! -s "$8" ]] || cp "$8" "$1/$VERIFICATION_FAILED_DURATIONS" || return 1
+}
+
+# verification_failed_field <root> <field>
+# Prints the value of 'tree', 'workflow-tests', 'framework-checks',
+# 'failed-at', 'origin', 'ran', or 'failed' in the record of a failed run,
+# or nothing when there is none.
+verification_failed_field() {
+  [[ -f "$1/$VERIFICATION_FAILED" ]] || return 0
+  sed -n "s/^$2: //p" "$1/$VERIFICATION_FAILED" | head -n 1
 }
 
 # verification_duration_add <durations-file> <name> <config> <ms> <result>

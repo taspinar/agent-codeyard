@@ -622,6 +622,25 @@ Two limits:
 A record made without the workflow self-tests does not stand in for a run that
 needs them, such as `--reuse --all`.
 
+**The repeat of only the failed checks.** A run that fails keeps a record of
+its own, never a pass: `.agents/verification/failed`, with the fingerprint of
+the content, the checks that ran, the checks that failed, and who started it,
+and next to it the budget results and durations of that run. After a failed
+verification, `run-feature.sh` repeats only the checks that failed, to tell a
+flaky check from a real failure: `./scripts/verify.sh --repeat
+<check>,<check>`. The repeat runs only the named checks when the record of the
+failed run is for exactly the current content, a workflow script started that
+run (`origin` `orchestrator` or `script`), it names the same failed checks, it
+ran the checks this run would run, and the repeat is `run-feature.sh`'s own
+(`VERIFY_ORIGIN=orchestrator`, no agent in between). When the repeated checks
+pass and no check changed the content, the checks that passed in the failed
+run and the repeated ones together are the pass of that content: recorded as
+any pass, with the budget results and durations of both runs and a line
+`repeated: <check>...`, so the step done again reuses it under the rules
+above. When any condition does not hold, for one a changed content, every
+check runs, as without the option, and the output says why. A pass or a
+forgotten record removes the record of the failed run.
+
 ### The baseline of an adopted project
 
 A project that adopted the workflow around an existing product
@@ -3370,7 +3389,7 @@ only together with what it recorded:
 |---|---|---|
 | Completed | The step exits 0 | Goes on |
 | Temporary | An agent or a connection fails: a usage limit, a timeout, the network | Tries the step again, three times, with a wait that doubles from two minutes. A fix session that had already changed the content is taken up with `apply-triage.sh <triage-json> --continue`: the same findings, contract, and protections, for the session of this triage that was left unfinished, and for nothing else |
-| Unstable check | The verification is repeated once, and no check failed in both runs | Records the checks and goes on, at most three times in a run |
+| Unstable check | The verification is repeated once, only the checks that failed (`verify.sh --repeat`, see "The repeat of only the failed checks"; every check when the two runs cannot be combined), and no check failed in both runs | Records the checks, and what the repeat ran, and goes on, at most three times in a run |
 | Missing prerequisite | A step ends with status 78, or failed with an `ENVIRONMENT` line of the preflight of `verify.sh` in its output (see "Missing prerequisites") | Stops with status 78: no retry, no repeat of the verification, no repair session, and never an unstable check. Notes `environment` with what is missing |
 | Base moved | A check failed in both runs, and the base moved since the feature started and merges cleanly | Merges the base into the branch, notes `base merged`, and does the step again on the merged content, without a session of the implementer; see "Bringing a finished feature up to date with its base" |
 | Failed verification | A check failed in both runs, and the base did not move | Resumes the implementer with those checks in the handoff note, at most three times (`AGENTS.md`); a review follows. A repair session is retried like any other |
