@@ -276,7 +276,7 @@ else
 
   errors="$(review_artifact_errors "$latest")"
   [[ -z "$errors" ]] || fail "the latest review is invalid: ${errors//$'\n'/; }"
-  [[ "$(jq -r '.kind // "feature"' "$latest")" == "feature" && "$(jq -r '.issue' "$latest")" == "$issue" ]] ||
+  [[ "$(jq -r '.kind' "$latest")" == "feature" && "$(jq -r '.issue' "$latest")" == "$issue" ]] ||
     fail "$latest_relative is not a review of Issue #$issue."
   # The review compared the feature against its base. That base is checked:
   # the merge base the review names must be the one the feature has now, or
@@ -289,7 +289,7 @@ else
   # The review that a commit rests on covers the complete feature. A round
   # that reviewed only changes confirms fixes; whether the Issue is done is
   # judged on the whole diff against the Issue.
-  [[ "$(jq -r '.scope.kind // "full"' "$latest")" != "changes" ]] ||
+  [[ "$(jq -r '.scope.kind' "$latest")" != "changes" ]] ||
     fail "the latest review (round $(jq -r '.round' "$latest")) covers only the changes since round $(jq -r '.scope.since_round' "$latest"). A feature is committed on a review of the complete feature: run ./scripts/review-feature.sh $issue (without --changes)."
 
   round="$(jq -r '.round' "$latest")"
@@ -357,7 +357,7 @@ else
       # artifact says: the level is decided here from the diff, the record,
       # and the review, and a light triage of a feature that is high now is
       # not the triage the commit may rest on.
-      [[ "$(jq -r '.triage.mode // "full"' "$triage")" != "light" || "$committed_level" != "high" ]] ||
+      [[ "$(jq -r '.triage.mode' "$triage")" != "light" || "$committed_level" != "high" ]] ||
         fail "the triage of round $review_round is a light triage, but the feature is high risk: 'triage: light' is refused for a high-risk feature, which keeps the full triage. Triage the round again: ./scripts/triage-review.sh ${review#"$root"/}. Nothing was committed."
     fi
     triage_note="; triage published on #$issue"

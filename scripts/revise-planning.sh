@@ -73,7 +73,7 @@ if [[ -n "$review_errors" ]]; then
   printf '%s\n' "$review_errors" | sed 's/^/  - /' >&2
   exit 1
 fi
-[[ "$(jq -r '.kind // "feature"' "$review_path")" == "planning" ]] ||
+[[ "$(jq -r '.kind' "$review_path")" == "planning" ]] ||
   fail "this is a feature review; use triage-review.sh."
 [[ "$(jq -r '.branch' "$review_path")" == "$branch" ]] ||
   fail "the review belongs to $(jq -r '.branch' "$review_path"), not to $branch."

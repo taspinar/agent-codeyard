@@ -238,7 +238,8 @@ rm "$repo/docs/link"
 # check-review.sh reports current and stale reviews for both kinds of review.
 review="$repo/.agents/reviews/feature-1-x-review-01.json"
 jq -n '{
-  schema: "review/v1", issue: 1, round: 1, branch: "feature/1-x", base: "main",
+  schema: "review/v1", kind: "feature", issue: 1, round: 1, verification: {status: "passed", verified_at: "2026-01-01T00:00:00Z"}, scope: {kind: "full"},
+  branch: "feature/1-x", base: "main",
   merge_base: "aaaa", head: "bbbb", reviewed_tree: "", reviewed_paths: null,
   reviewer: {agent: "codex", model: "m"}, created_at: "2026-01-01T00:00:00Z",
   verdict: "PASS", limitations: "", findings: []

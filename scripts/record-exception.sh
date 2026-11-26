@@ -114,7 +114,7 @@ review_sha256="$(exception_sha256 "$tmp_work/review.json")"
 # predecessor continues are next to the original.
 errors="$(review_artifact_errors "$tmp_work/review.json" "$review_path")"
 [[ -z "$errors" ]] || fail "invalid review artifact: ${errors//$'\n'/; }"
-[[ "$(jq -r '.kind // "feature"' "$tmp_work/review.json")" == "feature" ]] ||
+[[ "$(jq -r '.kind' "$tmp_work/review.json")" == "feature" ]] ||
   fail "only a finding of a feature review can be excepted."
 errors="$(exception_review_errors "$root" "$tmp_work" "$review_path")"
 [[ -z "$errors" ]] || fail "no exception can be recorded: ${errors//$'\n'/; }. An exception applies to the latest, current review only."

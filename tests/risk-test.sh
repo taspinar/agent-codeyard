@@ -120,6 +120,7 @@ set_record() {
 set_review() {
   mkdir -p "$1/.agents/reviews"
   jq -n --arg level "$2" '{schema: "review/v1", kind: "feature", issue: 5, round: 1,
+    verification: {status: "passed", verified_at: "2026-01-01T00:00:00Z"}, scope: {kind: "full"},
     branch: "feature/5-thing", base: "main", merge_base: "aaaa", head: "bbbb", reviewed_tree: "cccc",
     reviewed_paths: null, reviewer: {agent: "claude", model: "m"}, created_at: "2026-01-01T00:00:00Z",
     verdict: "PASS", limitations: "", findings: [],

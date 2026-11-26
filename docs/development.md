@@ -2721,7 +2721,12 @@ no triage agent. The triage mode of the project policy for the risk level of
 the feature, `full` or `light` (see "What each level requires" and "Light
 triage"), is derived by the script itself from the diff and the rules of the
 base, shown before the proposal, told to the agent when it is `light`, and
-recorded in the artifact; a `high` feature always gets the full triage.
+recorded in the artifact (`triage.mode`); a `high` feature always gets the full triage.
+A triage artifact without `triage.mode` is invalid, and so is a feature review
+without `kind`, `verification`, or `scope`: the scripts write these fields into
+every artifact, so a missing one is a broken or hand-made artifact, and the
+gates refuse it with a message that names the field instead of reading it as a
+full triage, a verified review, or a review of the complete feature (#520).
 
 The script displays the complete proposal before side effects. Only after
 interactive approval does it create one GitHub Issue per `DEFER` finding and

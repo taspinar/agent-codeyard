@@ -1,0 +1,23 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "4935f6b325c4af0f93602dcc8c679ee181bf35f3",
+  "commit": {
+    "branch": "feature/520-a-missing-field-of",
+    "parent": "1e444a3c6b89e567ea90caf4b885cba9ce510873",
+    "base": "1e444a3c6b89e567ea90caf4b885cba9ce510873"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/finish-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/fingerprint.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/review-data.sh: the file defines or carries out the workflow and its gate",
+    "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The change tightens shared workflow gates and the review and triage artifact contract in protected scripts, including scripts/finish-feature.sh, scripts/run-feature.sh, scripts/lib/review-data.sh, and scripts/lib/fingerprint.sh. It adds no new workflow abstraction or CI trigger. ",
+    "the review could not confirm: ./scripts/verify.sh --all passes."
+  ],
+  "explanation": "Issue #520: A missing field of a review or triage artifact no longer counts as passed at the commit gate (item 7 of #426). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

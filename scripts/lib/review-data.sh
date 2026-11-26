@@ -292,7 +292,7 @@ review_earlier_decisions() {
     review_data_is_json "$candidate" || continue
     triage="$(review_approved_triage "$root" "$candidate")"
     jq -c --argjson issue "$2" --argjson before "$3" --slurpfile triage "${triage:-/dev/null}" '
-      select(type == "object" and .schema == "review/v1" and (.kind // "feature") == "feature"
+      select(type == "object" and .schema == "review/v1" and .kind == "feature"
              and .issue == $issue and (.round | type) == "number" and .round < $before
              and (.findings | type) == "array")
       | .round as $round
@@ -340,11 +340,19 @@ review_artifact_errors() {
        elif (.merge_approval | type) == "object" and (.merge_approval.required | type) == "boolean"
             and (.merge_approval.reasons | type) == "array" then empty
        else "merge_approval must hold whether the owner must approve and the reasons" end),
-      (if .scope == null or ((.scope | type) == "object" and .scope.kind == "full")
+      # A feature review records its scope and its verification (Issue 520):
+      # review-feature.sh writes both into every review, so a missing one is
+      # a broken or hand-made artifact, never the passing answer. A planning
+      # review has neither.
+      (if .kind == "feature" and .scope == null then
+         "scope is missing: a feature review records whether it covered the complete feature or only the changes since an earlier round"
+       elif .scope == null or ((.scope | type) == "object" and .scope.kind == "full")
           or ((.scope | type) == "object" and .scope.kind == "changes" and (.scope.since_round | positive_integer)
               and (.scope.since_round < .round) and (.scope.base_tree | nonempty)) then empty
        else "scope must be full, or changes since an earlier round with its reviewed tree" end),
-      (if .verification == null
+      (if .kind == "feature" and .verification == null then
+         "verification is missing: a feature review records the verification it was made on (passed, or not-verified with its reason)"
+       elif .verification == null
           or (.verification.status == "passed" and (.verification.verified_at | nonempty))
           or (.verification.status == "not-verified" and (.verification.reason | nonempty)) then empty
        elif (.verification | type) == "object" and .verification.status == "partial" then
@@ -355,8 +363,10 @@ review_artifact_errors() {
       (if .reviewed_paths == null
           or ((.reviewed_paths | type) == "array" and (.reviewed_paths | length) > 0 and (.reviewed_paths | all(nonempty))) then empty
        else "reviewed_paths must be null or a non-empty list of paths" end),
-      (if (.kind // "feature" | IN("feature", "planning")) then empty else "kind must be feature or planning" end),
-      (if (.kind // "feature") == "planning" then
+      (if (.kind | IN("feature", "planning")) then empty
+       elif .kind == null then "kind is missing: a review is a feature or a planning review"
+       else "kind must be feature or planning" end),
+      (if .kind == "planning" then
          (if .issue == null then empty else "a planning review has no issue" end),
          (if (.branch | type) == "string" and (.branch | startswith("planning/")) then empty
           else "a planning review must name its planning branch" end),
@@ -435,7 +445,7 @@ review_render_markdown() {
     (if .issue != null then "Issue: #\(.issue)\n\n" else "" end) +
     (if (.reviewed_paths | type) == "array" then "Reviewed files: \(.reviewed_paths | map("`\(.)`") | join(", "))\n\n" else "" end) +
     "Round: \(.round)\n\n" +
-    (if (.scope.kind // "full") == "changes"
+    (if .scope.kind == "changes"
      then "Scope: ONLY the changes since round \(.scope.since_round); the rest of the feature was reviewed in earlier rounds\n\n"
      else "" end) +
     "Base: \(.base) (\(.merge_base))\n\n" +
@@ -525,7 +535,10 @@ triage_artifact_errors() {
        else "triage and review reference different source Issues" end),
       (if (.triage | type) == "object" and (.triage.agent | nonempty) and (.triage.model | nonempty) then empty
        else "triage must name its agent and model" end),
-      (if (.triage | type) != "object" or .triage.mode == null or (.triage.mode | IN("full", "light")) then empty
+      # triage-review.sh writes the mode into every triage (Issue 520): a
+      # missing one is refused, never read as full.
+      (if (.triage | type) != "object" or (.triage.mode | IN("full", "light")) then empty
+       elif .triage.mode == null then "triage.mode is missing: a triage records the mode it was made in (full or light)"
        else "triage.mode must be full or light" end),
       (if .review_verdict == $review[0].verdict and .reviewed_tree == $review[0].reviewed_tree then empty
        else "the triage does not describe the stored state of its source review" end),

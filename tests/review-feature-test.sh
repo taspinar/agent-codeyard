@@ -470,7 +470,7 @@ add_first_triage() {
   mkdir -p "$1/.agents/triage"
   jq '{
     schema: "triage/v1", source_review: ".agents/reviews/feature-7-marker-review-01.json", issue,
-    reviewed_tree, review_verdict: .verdict, triage: {agent: "codex", model: "model-t"},
+    reviewed_tree, review_verdict: .verdict, triage: {agent: "codex", model: "model-t", mode: "full"},
     approved_at: "2026-01-02T00:00:00Z",
     decisions: [.findings[] | {finding_id: .id, severity, title,
       decision: (if .severity == "major" then "FIX_NOW" else "ACCEPT" end),
