@@ -152,6 +152,26 @@ fi
 grep -Fq "the planning review is stale" "$repo.triage.out" && grep -Fq "review-planning.sh" "$repo.triage.out" ||
   { cat "$repo.triage.out" >&2; fail "triage-review.sh did not point to a new planning review"; }
 
+# The base comes from lib/base.sh: the one that start-planning.sh recorded
+# for the planning branch. The diff is against origin/develop, not main.
+repo="$(setup_repo develop-base)"
+git clone -q "$tmp/develop-base-remote.git" "$tmp/develop-base-other"
+printf '# Architecture\n\nDevelop only.\n' >"$tmp/develop-base-other/docs/architecture.md"
+git -C "$tmp/develop-base-other" -c user.name=Other -c user.email=other@example.com commit -qam "Work on develop"
+git -C "$tmp/develop-base-other" push -q origin HEAD:develop
+git -C "$repo" fetch -q origin
+git -C "$repo" reset -q --soft origin/develop
+git -C "$repo" config branch.planning/project-bootstrap.workflow-base develop
+run_review "$repo" || {
+  cat "$repo.out" >&2
+  fail "a planning review against the recorded base develop failed"
+}
+[[ "$(jq -r '.base' "$repo/.agents/reviews/planning-project-bootstrap-review-01.json")" == origin/develop ]] ||
+  fail "the planning review does not record the base origin/develop"
+grep -Fq -- "-Develop only." "$repo.log.stdin" || fail "the diff is not against origin/develop"
+grep -Fq "Diff of the planning documents against origin/develop" "$repo.log.stdin" ||
+  fail "the reviewer was not told the diff is against origin/develop"
+
 # A planning document deleted relative to the base appears in the reviewer's diff.
 repo="$(setup_repo deleted-adr)"
 git -C "$repo" add -A

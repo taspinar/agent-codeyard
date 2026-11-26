@@ -188,6 +188,27 @@ grep -Fq "Round 2: PASS" "$approval" || fail "the approval lacks the final round
 grep -Fq "Vague name" "$repo.out" || fail "a rejected finding was not shown before approval"
 grep -Fq "git add docs/PROJECT_REQUIREMENTS.md docs/architecture.md docs/roadmap.md docs/decisions docs/PLANNING_APPROVAL.md" "$repo.out" ||
   fail "the commit step does not list the existing planning documents"
+grep -Fq "Open the planning PR into main;" "$repo.out" || fail "the next steps do not name the base main"
+
+# The base comes from lib/base.sh, as for a feature: the default of the
+# project in .agents/template.conf, and the base that start-planning.sh
+# recorded for the branch before that.
+base_repo="$(setup_repo other-base)"
+printf 'base: develop\n' >>"$base_repo/.agents/template.conf"
+add_review "$base_repo" 1 PASS "[]"
+run_finish "$base_repo" y || { cat "$base_repo.out" >&2; fail "approving a planning of a project with the base develop failed"; }
+grep -Fq "Open the planning PR into develop;" "$base_repo.out" || fail "the next steps do not name the default base develop: $(cat "$base_repo.out")"
+base_repo="$(setup_repo recorded-base)"
+printf 'base: develop\n' >>"$base_repo/.agents/template.conf"
+git -C "$base_repo" config branch.planning/project-bootstrap.workflow-base release
+add_review "$base_repo" 1 PASS "[]"
+run_finish "$base_repo" y || { cat "$base_repo.out" >&2; fail "approving a planning with a recorded base failed"; }
+grep -Fq "Open the planning PR into release;" "$base_repo.out" || fail "the next steps do not name the recorded base release"
+base_repo="$(setup_repo invalid-base)"
+printf 'base: not..valid\n' >>"$base_repo/.agents/template.conf"
+add_review "$base_repo" 1 PASS "[]"
+expect_refused "$base_repo" "the default base of the project is not a valid branch name"
+grep -Fq "not a valid branch name" "$base_repo.out" || fail "an invalid default base was not reported"
 
 # --check reports a current approval, and a stale one after any planning change.
 [[ "$(check_status "$repo")" -eq 0 ]] || fail "a fresh approval is not current"
@@ -348,10 +369,22 @@ grep -Eq '^- [0-9a-f]+ F04: describe the order of the list \(Issue #4\)$' "$late
 printf 'More.\n' >>"$repo/docs/changes/project-bootstrap.md"
 [[ "$(check_status "$repo")" -eq 1 ]] || fail "changing the change request did not invalidate the approval"
 
-# --- Amendment ---------------------------------------------------------------
+# An approval that an earlier version of the workflow amended lists the
+# updates by merged work under "Amendments after the approval"; the next
+# approval keeps them, under "Updates by merged work".
+legacy="$(setup_repo legacy-amendment)"
+printf '# Planning Approval\n\nStatus: Approved\nPlanning fingerprint: %s\n\n## Amendments after the approval\n\n- 2026-01-05T00:00:00Z: before the amendment below, merged work had updated the architecture or the ADRs since the approval, each change under its own review:\n  - abc1234 F07: add a cache (Issue #7)\n- 2026-01-05T00:00:00Z, planning/cache: Bound the cache.\n' \
+  "$(printf '0%.0s' {1..40})" >"$legacy/docs/PLANNING_APPROVAL.md"
+add_review "$legacy" 1 PASS "[]"
+run_finish "$legacy" y || { cat "$legacy.out" >&2; fail "approving after an amended approval failed"; }
+grep -Fqx -- "- abc1234 F07: add a cache (Issue #7)" "$legacy/docs/PLANNING_APPROVAL.md" ||
+  fail "the approval dropped an update by merged work that an amended approval recorded"
+
+# --- An approved planning ----------------------------------------------------
 #
-# A small technical change to a planning that was approved before: only the
-# architecture and the ADRs, approved without a review round.
+# A change to an approved planning is a change cycle; features keep the
+# architecture and the ADRs up to date under their own review. There is no
+# amendment without a review (finish-planning.sh --amend is gone, #539).
 
 # Creates a repository whose main holds an approved planning, on a new
 # planning branch.
@@ -372,157 +405,34 @@ setup_approved() {
   printf '%s\n' "$repo"
 }
 
-run_amend() {
-  local repo="$1"
-  local answer="$2"
-
-  shift 2
-  (
-    cd "$repo"
-    printf '%s\n' "$answer" | PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/finish-planning.sh "$@"
-  ) >"$repo.out" 2>&1
-}
-
-amend_adr() {
+update_adr() {
   printf '\n## Status\n\nAmended by ADR 002.\n' >>"$1/docs/decisions/001-local-storage.md"
   printf '# ADR 002: Cache\n\nAmends ADR 001.\n' >"$1/docs/decisions/002-cache.md"
   printf '\nA cache sits in front of the storage.\n' >>"$1/docs/architecture.md"
 }
 
-# An amendment of the architecture and the ADRs is shown, approved, and added
-# to the existing approval, which is current again. No review is needed.
-repo="$(setup_approved amend)"
-approval="$repo/docs/PLANNING_APPROVAL.md"
-fingerprint_before="$(grep '^Planning fingerprint: ' "$approval")"
-amend_adr "$repo"
-# Before it is recorded, the change does not make the approval stale: the
-# architecture and the ADRs may be updated without a planning cycle.
-[[ "$(check_status "$repo")" -eq 0 ]] || fail "a changed ADR made the approval stale"
-run_amend "$repo" y --amend "Add a cache in front of the storage." || {
-  cat "$repo.out" >&2
-  fail "approving an amendment failed"
-}
-[[ "$(check_status "$repo")" -eq 0 ]] || fail "the approval is not current after an amendment"
-[[ "$(grep '^Planning fingerprint: ' "$approval")" != "$fingerprint_before" ]] || fail "the amendment kept the old fingerprint"
-[[ "$(grep -c '^Planning fingerprint: ' "$approval")" -eq 1 ]] || fail "the approval has more than one fingerprint"
-grep -Fq "Final review: round 2, PASS, by codex (model-p)" "$approval" || fail "the amendment dropped the earlier approval record"
-grep -Fqx "## Amendments after the approval" "$approval" || fail "the amendment was not listed"
-grep -Eq '^- [0-9T:Z-]+, planning/amend: Add a cache in front of the storage\. \(changed: docs/architecture\.md, docs/decisions/001-local-storage\.md, docs/decisions/002-cache\.md\)\. .*without an independent planning review\.$' "$approval" ||
-  fail "the amendment entry lacks the reason, the changed files, or the missing review"
-grep -Fq "+A cache sits in front of the storage." "$repo.out" || fail "the amendment was not shown before the approval"
-grep -Fq 'git commit -m "Amend planning: amend"' "$repo.out" || fail "the commit step was not printed"
-[[ ! -e "$repo.log" ]] || fail "an agent ran for an amendment"
-
-# A second amendment, after the first was merged, adds a second entry.
-git -C "$repo" add -A
-git -C "$repo" commit -qm "Amend planning"
-git -C "$repo" switch -q main
-git -C "$repo" merge -q --ff-only planning/amend
-git -C "$repo" switch -q -c planning/amend-again
-printf '\nThe cache is bounded.\n' >>"$repo/docs/architecture.md"
-run_amend "$repo" y --amend "Bound the cache." || fail "a second amendment failed"
-[[ "$(grep -c '^- .*without an independent planning review\.$' "$approval")" -eq 2 ]] || fail "the second amendment is not a second entry"
-[[ "$(grep -c '^## Amendments after the approval$' "$approval")" -eq 1 ]] || fail "the amendments heading was repeated"
-[[ "$(check_status "$repo")" -eq 0 ]] || fail "the approval is not current after a second amendment"
-
-# Declining leaves the approval as it was.
-repo="$(setup_approved amend-declined)"
-amend_adr "$repo"
+# --amend is no option: it prints the usage and changes nothing.
+repo="$(setup_approved no-amend)"
+update_adr "$repo"
 before="$(cat "$repo/docs/PLANNING_APPROVAL.md")"
-run_amend "$repo" n --amend "Add a cache." || fail "declining an amendment failed"
-[[ "$(cat "$repo/docs/PLANNING_APPROVAL.md")" == "$before" ]] || fail "a declined amendment changed the approval"
-if grep -Fq "## Amendments after the approval" "$repo/docs/PLANNING_APPROVAL.md"; then
-  fail "a declined amendment was recorded"
-fi
-
-# Anything beyond the architecture and the ADRs needs a review, and so does
-# deleting an ADR. The approval is not changed.
-expect_amend_refused() {
-  local label="$1"
-  local action="$2"
-  local message="$3"
-  local repo
-  local before
-
-  repo="$(setup_approved "refused-$label")"
-  (cd "$repo" && eval "$action")
-  before="$(cat "$repo/docs/PLANNING_APPROVAL.md" 2>/dev/null || true)"
-  if run_amend "$repo" y --amend "A reason."; then
-    cat "$repo.out" >&2
-    fail "an amendment was approved although: $label"
-  fi
-  grep -Fq "$message" "$repo.out" || {
-    cat "$repo.out" >&2
-    fail "the refusal of '$label' did not say: $message"
-  }
-  [[ "$(cat "$repo/docs/PLANNING_APPROVAL.md" 2>/dev/null || true)" == "$before" ]] ||
-    fail "the approval changed although: $label"
-}
-
-expect_amend_refused roadmap 'printf "\n## F02 — More\n" >>docs/roadmap.md' "start-planning.sh <name> --change <file>"
-expect_amend_refused requirements 'printf "\nMore.\n" >>docs/PROJECT_REQUIREMENTS.md' "M docs/PROJECT_REQUIREMENTS.md"
-expect_amend_refused change-request 'mkdir -p docs/changes; printf "More.\n" >docs/changes/more.md; printf "\nMore.\n" >>docs/architecture.md' "A docs/changes/more.md"
-expect_amend_refused adr-deleted 'rm docs/decisions/001-local-storage.md' "D docs/decisions/001-local-storage.md"
-expect_amend_refused nested-adr 'mkdir -p docs/decisions/more; printf "# ADR\n" >docs/decisions/more/003.md' "A docs/decisions/more/003.md"
-expect_amend_refused nothing ':' "there is nothing to amend"
-expect_amend_refused approval-edited 'printf "\nMore.\n" >>docs/architecture.md; printf "edited\n" >>docs/PLANNING_APPROVAL.md' "restore it first"
-
-# The required planning documents must still be there after an amendment.
-expect_amend_refused architecture-deleted 'rm docs/architecture.md' "required planning document is missing or empty: docs/architecture.md"
-expect_amend_refused architecture-empty ': >docs/architecture.md' "required planning document is missing or empty: docs/architecture.md"
-expect_amend_refused architecture-linked 'mv docs/architecture.md elsewhere.md; ln -s ../elsewhere.md docs/architecture.md' \
-  "required planning document is missing or empty: docs/architecture.md"
-
-# The amendment is judged against the base branch as it is now: a branch
-# that lacks later commits of main is refused, whatever those commits hold.
-repo="$(setup_approved amend-behind)"
-amend_adr "$repo"
-git -C "$repo" stash -q -u
-git -C "$repo" switch -q main
-git -C "$repo" rm -q docs/PLANNING_APPROVAL.md
-git -C "$repo" commit -qm "Main loses its approval after the branch was created"
-git -C "$repo" switch -q planning/amend-behind
-git -C "$repo" stash pop -q
-if run_amend "$repo" y --amend "A reason."; then fail "an amendment was approved on a branch behind main"; fi
-grep -Fq "does not contain the latest main" "$repo.out" || fail "the outdated branch was not reported"
-if grep -Fq "## Amendments after the approval" "$repo/docs/PLANNING_APPROVAL.md"; then
-  fail "an amendment on an outdated branch was recorded"
-fi
+status=0
+(cd "$repo" && printf 'y\n' | PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/finish-planning.sh --amend "A reason.") >"$repo.out" 2>&1 || status=$?
+[[ "$status" -eq 2 ]] || { cat "$repo.out" >&2; fail "--amend was not refused with the usage (status $status)"; }
+grep -Fq "Usage:" "$repo.out" || fail "--amend did not print the usage"
+! grep -Fq -- "--amend" "$repo.out" || fail "the usage still names --amend"
+grep -Fq "start-planning.sh <name> --change <file>" "$repo.out" || fail "the usage does not name the change cycle"
+[[ "$(cat "$repo/docs/PLANNING_APPROVAL.md")" == "$before" ]] || fail "--amend changed the approval"
 
 # Features keep the architecture and the ADRs up to date. After such a change
 # is merged the approval is still current, and the check names the commits.
 repo="$(setup_approved feature-updates)"
 git -C "$repo" switch -q main
-amend_adr "$repo"
+update_adr "$repo"
 git -C "$repo" add -A
 git -C "$repo" commit -qm "F07: add a cache, with ADR 002" -m "Issue: #7" -m "Review: round 2, PASS, by codex (model-r)"
 [[ "$(check_status "$repo")" -eq 0 ]] || fail "a feature that updated the architecture made the approval stale"
 (cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/finish-planning.sh --check) >"$repo.out" 2>&1
 grep -Fq "F07: add a cache, with ADR 002" "$repo.out" || fail "the check did not name the commit that updated the architecture"
-
-# An amendment can start from that state: the base is still approved.
-git -C "$repo" switch -q -c planning/feature-updates-amend
-printf '\nThe cache is bounded.\n' >>"$repo/docs/architecture.md"
-run_amend "$repo" y --amend "Bound the cache." || {
-  cat "$repo.out" >&2
-  fail "an amendment after a feature updated the architecture failed"
-}
-[[ "$(check_status "$repo")" -eq 0 ]] || fail "the approval is not current after that amendment"
-# The amended record names the commit of the feature, and keeps it when a
-# later amendment follows.
-approval="$repo/docs/PLANNING_APPROVAL.md"
-grep -Eq '^  - [0-9a-f]+ F07: add a cache, with ADR 002 \(Issue #7; review: round 2, PASS, by codex \(model-r\)\)$' "$approval" ||
-  fail "the amended approval does not name the feature that updated the architecture"
-git -C "$repo" add -A
-git -C "$repo" commit -qm "Amend planning: bound the cache"
-git -C "$repo" switch -q main
-git -C "$repo" merge -q planning/feature-updates-amend
-git -C "$repo" switch -q -c planning/feature-updates-second
-printf '\nThe cache is cleared at start.\n' >>"$repo/docs/architecture.md"
-run_amend "$repo" y --amend "Clear the cache at start." || fail "a later amendment failed"
-grep -Eq '^  - [0-9a-f]+ F07: add a cache, with ADR 002 \(Issue #7; review: round 2, PASS, by codex \(model-r\)\)$' "$approval" ||
-  fail "a later amendment dropped the record of the feature"
-[[ "$(grep -c 'Approved by the project owner' "$approval")" -eq 2 ]] || fail "the two amendments are not both recorded"
 
 # What the product is and which features it gets is changed by a planning
 # cycle only: a change to the roadmap or the requirements, by a feature or by
@@ -530,7 +440,7 @@ grep -Eq '^  - [0-9a-f]+ F07: add a cache, with ADR 002 \(Issue #7; review: roun
 for document in docs/roadmap.md docs/PROJECT_REQUIREMENTS.md; do
   repo="$(setup_approved "stale-$(basename "$document" .md)")"
   git -C "$repo" switch -q main
-  amend_adr "$repo"
+  update_adr "$repo"
   printf '\nA change outside a planning cycle.\n' >>"$repo/$document"
   git -C "$repo" add -A
   git -C "$repo" commit -qm "F08: change $document"
@@ -546,39 +456,11 @@ done
 repo="$(setup_approved unrecorded)"
 git -C "$repo" switch -q main
 printf '\nA note.\n' >>"$repo/docs/PLANNING_APPROVAL.md"
-amend_adr "$repo"
+update_adr "$repo"
 git -C "$repo" add -A
 git -C "$repo" commit -qm "Change the approval file and the architecture without recording it"
 [[ "$(check_status "$repo")" -eq 1 ]] || fail "an approval that does not match its own commit was trusted"
 
-# An amendment does not repair a missing or stale approval of the base.
-repo="$(setup_approved amend-no-approval)"
-git -C "$repo" switch -q main
-git -C "$repo" rm -q docs/PLANNING_APPROVAL.md
-git -C "$repo" commit -qm "Drop the approval"
-git -C "$repo" switch -q -c planning/amend-no-approval-2
-printf '\nMore.\n' >>"$repo/docs/architecture.md"
-if run_amend "$repo" y --amend "A reason."; then fail "an amendment created an approval that did not exist"; fi
-grep -Fq "has no planning approval to amend" "$repo.out" || fail "the missing approval was not reported"
-[[ ! -e "$repo/docs/PLANNING_APPROVAL.md" ]] || fail "an amendment created an approval file"
-
-repo="$(setup_approved amend-stale-approval)"
-git -C "$repo" switch -q main
-printf '\n## F02 — Unapproved\n' >>"$repo/docs/roadmap.md"
-git -C "$repo" commit -qam "Change the roadmap without approval"
-git -C "$repo" switch -q -c planning/amend-stale-approval-2
-printf '\nMore.\n' >>"$repo/docs/architecture.md"
-if run_amend "$repo" y --amend "A reason."; then fail "an amendment renewed a stale approval"; fi
-grep -Fq "changed after its approval" "$repo.out" || fail "the stale approval was not reported"
-
-# A reason is required, and an amendment runs on a planning branch.
-repo="$(setup_approved amend-arguments)"
-amend_adr "$repo"
-if run_amend "$repo" y --amend " "; then fail "an amendment without a reason was accepted"; fi
-if run_amend "$repo" y --amend; then fail "--amend without a value was accepted"; fi
-git -C "$repo" stash -q -u
-git -C "$repo" switch -q main
-if run_amend "$repo" y --amend "A reason."; then fail "an amendment on main was accepted"; fi
 
 # --- Decisions on escalated findings ----------------------------------------
 #

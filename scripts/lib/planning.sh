@@ -97,7 +97,9 @@ planning_feature_updates() {
 
 # planning_recorded_updates <approval-file>
 # Prints the updates by merged work that an approval file already records, as
-# list items, so that a later approval keeps them.
+# list items, so that a later approval keeps them. An approval that
+# 'finish-planning.sh --amend' of an earlier version of the workflow amended
+# lists them, indented, under "Amendments after the approval".
 planning_recorded_updates() {
   [[ -f "$1" ]] || return 0
   awk '

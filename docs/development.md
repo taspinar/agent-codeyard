@@ -1791,8 +1791,10 @@ defaults to `project-bootstrap`. A custom planning cycle such as:
 creates `planning/architecture-refresh` in a sibling worktree named
 `../<repository>-planning-architecture-refresh`.
 
-The script fetches `origin/main` and creates the planning branch from that
-remote ref without switching or modifying the primary checkout. It refuses a
+The script fetches the default base of the project (`origin/<base>`: `base:`
+in `.agents/template.conf`, `main` without it; see "The base of a
+planning" below), records it for the branch, and creates the planning branch
+from that remote ref without switching or modifying the primary checkout. It refuses a
 dirty checkout, unsafe name, missing agent or prompt, unavailable base,
 duplicate branch, or existing target path.
 
@@ -1906,7 +1908,8 @@ different provider than for `project-planner`. The reviewed file set is the
 planning documents: `docs/PROJECT_DESCRIPTION.md` when present,
 `docs/PROJECT_REQUIREMENTS.md`, `docs/architecture.md`, `docs/roadmap.md`, and
 the ADRs in `docs/decisions/`. The script supplies their contents and their
-diff against `origin/main`. The requirements must be approved first.
+diff against the recorded base of the planning branch (`origin/<base>`), or
+the default base of the project when none is recorded. The requirements must be approved first.
 
 Each round is stored as `.agents/reviews/planning-<name>-review-NN.json` with
 a generated report, in the same format as feature reviews but without an Issue.
@@ -2074,10 +2077,10 @@ What makes the approval stale depends on the document:
 So a feature that describes what it built in the architecture, or records a
 decision in an ADR, does not stop the next feature. The approval file itself
 is not touched by a feature, so features that run side by side cannot conflict
-in it. The next approval or amendment covers those updates and names their
-commits in the record, with the Issue and the review of each, under "Updates
-by merged work" or with the amendment. A later approval keeps the entries of
-the earlier ones. Until then `--check` lists them. A feature that changes the
+in it. The next approval covers those updates and names their commits in the
+record, with the Issue and the review of each, under "Updates by merged work".
+A later approval keeps the entries of the earlier ones, also those of an
+approval that an earlier version of the workflow amended. Until then `--check` lists them. A feature that changes the
 roadmap or the requirements is refused by `finish-feature.sh` before its
 commit, with the command of the change cycle.
 
@@ -2154,7 +2157,6 @@ Which route a change needs:
 | New feature within the approved requirements | A shopping list the requirements already allow | Roadmap | `--change` |
 | New or changed requirement | Sharing between households when one household was agreed | Requirements, and usually architecture, roadmap, and ADRs | `--change --grill` |
 | Technical change only | From local storage to a server database | Architecture and an ADR that supersedes the old one | `--change` |
-| Small technical amendment | One ADR gets an addition | Architecture and ADRs only | `finish-planning.sh --amend`, without a review |
 | Correction of the requirements that a planning review finds | A closed list of APIs misses one the requirements need | Requirements, by a diff you confirm, and the planning aligned with it | `revise-planning.sh`, decision `AMEND` of the planning triage ("Amending the approved requirements") |
 
 Write the change down in a short file, in your own words, and start the cycle
@@ -2167,7 +2169,7 @@ from a clean primary checkout:
 The name is required. It names the branch `planning/shopping-list` and the
 change request, which the script copies to `docs/changes/shopping-list.md`.
 The original `docs/PROJECT_DESCRIPTION.md` stays as it is. The script requires
-that the planning on `origin/main` has a current approval
+that the planning on the base has a current approval
 (`./scripts/finish-planning.sh --check`).
 
 Without `--grill` the requirements keep their approval and only the planner
@@ -2205,7 +2207,7 @@ triage, `.agents/triage/<review>-triage.json`, "Planning revision"), which
 you approve before any planning document changes.
 
 The reviewer receives the change request and the complete planning with the
-difference against `main`, and checks the rules above. The approval records
+difference against the base, and checks the rules above. The approval records
 the change request and covers it. Commit, push, and merge the planning pull
 request; `cleanup-worktree.sh planning/shopping-list` then removes the
 worktree and an untracked original of the change request.
@@ -2215,37 +2217,27 @@ request makes the planning approval stale until the new one is merged. In
 between, `create-feature-issue.sh` creates no new Issue. A feature that is
 already in progress is not affected.
 
-### A small technical amendment
+### The base of a planning
 
-A change that touches only `docs/architecture.md` and the ADRs in
-`docs/decisions/`, such as amending one decision, can be approved without an
-agent and without a review round. Make the change by hand on a branch
-`planning/<name>` and run:
+A planning branches from the default base of the project, as a feature does
+("The base branch of a feature"): `base: <branch>` in
+`.agents/template.conf`, and `main` without that line. `start-planning.sh`
+fetches `origin/<base>`, creates the planning branch from it, reads the
+approved planning of a change cycle there, and records the base for the
+branch (`branch.<branch>.workflow-base`). `review-planning.sh` shows the
+difference against that base, and `finish-planning.sh` names it in the next
+steps as the branch the planning pull request merges into.
 
-```bash
-git switch -c planning/cache-adr
-# edit docs/architecture.md, add or edit an ADR
-./scripts/finish-planning.sh --amend "Add a cache in front of the storage."
-```
+### A technical change between plannings
 
-The script shows the difference against `main` and asks for your approval. It
-then adds the amendment to the existing `docs/PLANNING_APPROVAL.md`, with the
-date, the branch, your reason, and the changed files, and updates the
-fingerprint, so the approval is current again. The earlier review rounds stay
-in the record, and the entry says that no independent review took place.
-Commit, push, and merge as the script prints.
-
-Your approval is the only check here, so the route is narrow. The script
-refuses, and points to the change cycle, when:
-
-- the requirements, the roadmap, the project description, or a change request
-  changed;
-- an ADR was deleted, since a decision is superseded, not removed;
-- the planning on `main` has no current approval. An amendment does not repair
-  a missing or stale approval;
-- the branch does not contain the latest `main`, because the amendment is
-  shown and approved against the planning as it is now;
-- a required planning document is missing or empty afterwards.
+There is one route for each kind of change, and none without a review. A
+change to the architecture or an ADR alone is a feature: a feature may update
+`docs/architecture.md` and the ADRs under its own review, and the approval
+stays current (`finish-planning.sh --check` names the commits). Under
+`profile: light` a small one is a low-risk feature. A correction of the
+requirements that a planning review finds is an `AMEND` of the planning
+triage ("Amending the approved requirements"); anything else is a change
+cycle.
 
 ## Creating a feature Issue from the roadmap
 

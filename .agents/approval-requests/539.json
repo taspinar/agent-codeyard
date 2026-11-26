@@ -1,0 +1,18 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "0e9e3b195db4a93bf8191fdc7fd7e1fd4ee9c45c",
+  "commit": {
+    "branch": "feature/539-one-amendment-route-remove",
+    "parent": "986c02a92e893e3a7ef14bd49bb3705e202975ca",
+    "base": "986c02a92e893e3a7ef14bd49bb3705e202975ca"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS WITH MINOR FINDINGS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the independent review classified the impact on the architecture as major: The feature removes an approval route without independent review and changes the shared planning workflow to use the project base, recorded per branch, for branch creation, planning review diffs, and merge guidance. This changes workflow behavior used by planning cycles, so the impact is major. No new architectural decision contradicts the architecture document or ADR index. "
+  ],
+  "explanation": "Issue #539: One amendment route: remove finish-planning --amend; the planning scripts take their base from lib/base.sh (part 3 of #427). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

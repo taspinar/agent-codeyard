@@ -123,7 +123,6 @@ flowchart TD
 | New feature within the approved requirements | Roadmap | No |
 | New or changed requirement | Requirements, and usually architecture, roadmap, and ADRs | Yes: `--grill`, about the change only |
 | Technical change only | Architecture and an ADR that supersedes the old one | No |
-| Small technical amendment | Architecture and ADRs only | No change cycle: `finish-planning.sh --amend`, your approval without a review |
 
 - The change request is kept as `docs/changes/<name>.md`; the original
   description is not touched.
@@ -132,6 +131,10 @@ flowchart TD
   removed feature ID and a deleted ADR; the reviewer checks the rest.
 - Between the change and its merged approval no new feature Issue can be
   created. Features in progress continue.
+- A change to the architecture or the ADRs alone needs no change cycle: a
+  feature makes it under its own review, and the approval stays current.
+- The planning branches from the default base of the project (`base:` in
+  `.agents/template.conf`, `main` without it), as a feature does.
 
 ### Feature phase
 
@@ -346,12 +349,11 @@ exits with status 3.
 | Step | Refuses when |
 |---|---|
 | `start-planning.sh` | The checkout is dirty (except an uncommitted description or change request), the planning branch or worktree exists, an agent leaves its file scope or commits, or the Draft reviewer changes a file or returns an invalid result twice |
-| `start-planning.sh --change` | Also: `origin/main` has no approved planning, the change request name is taken, the planner changed nothing, removed or renumbered a feature ID, or deleted an ADR |
+| `start-planning.sh --change` | Also: the base (`origin/<base>`) has no approved planning, the change request name is taken, the planner changed nothing, removed or renumbered a feature ID, or deleted an ADR |
 | `review-planning.sh` | Not on a planning branch, a planning document is missing, or the requirements are not approved |
 | `revise-planning.sh` | The planning review is stale, or the planner leaves its file scope, commits, or changes nothing for the FIX_NOW findings of the triage |
 | `finish-planning.sh` | No current review, a critical or major finding in the latest round (escalated or not), an undecided or unapplied finding, or an escalation without your decision (`--resolve`) or confirmation |
 | `finish-planning.sh --resolve` | No terminal, a finding that is not escalated in the latest round or that the review rates major or critical, a stale review, a decision on that finding exists, or the review or the planning changed while you decided |
-| `finish-planning.sh --amend` | Anything but the architecture and the ADRs changed, an ADR was deleted, the planning on `main` has no current approval, the branch lacks the latest `main`, or a required planning document is missing |
 | `create-feature-issue.sh` | The planning approval is missing or stale, the feature ID is unknown, duplicated, or empty, or the feature already has an Issue |
 | `start-feature.sh` | Tracked files in the checkout are modified, or the feature branch or worktree exists. With `--resume`: no worktree, or more than one, is on a branch of the Issue |
 | `review-feature.sh` | Not on `feature/<issue>-*`, nothing to review, or verification fails (unless `--unverified "<reason>"` is given), or an unknown option is given |
@@ -374,7 +376,6 @@ exits with status 3.
 | `check-review.sh <review-json>` | To see whether a review still matches the content it covers |
 | `check-risk.sh [<base>]` | To see the risk level of the feature in the worktree, every reason for it, and what the level requires of the review rounds; exits 0, 1, or 2 for `low`, `medium`, or `high`, for a CI step |
 | `finish-planning.sh --check` | To see whether the planning approval still matches the planning documents |
-| `finish-planning.sh --amend "<reason>"` | To approve a change to the architecture and the ADRs only, on a `planning/<name>` branch, without a review round. Refuses any other planning change and a planning without a current approval |
 | `finish-planning.sh --resolve <finding-id> --type not-applicable\|accepted --reason "<why>"` | Only the owner, at a terminal: when an escalated minor finding of the latest planning round does not apply, or you accept the planning as it is with it. It writes the owner's exception record with `kind: planning`; `finish-planning.sh` then accepts that round, the approval lists the decision, and later planning reviewers receive it |
 | `triage-review.sh --publish <triage-json>` | To repeat a failed publication of the review and triage reports; the comment is the record of the publication, so there is no `--mark-only` |
 | `triage-review.sh <review-json> --decisions <file> --reason <text>` | When the agent's proposal is disproportionate and you decide yourself; recorded as owner-directed. Accepting or deferring a critical or major finding writes the owner's exception record, at a terminal, published on the Issue; see docs/development.md |

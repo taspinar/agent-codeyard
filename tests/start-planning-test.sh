@@ -334,6 +334,8 @@ codex_worktree="$tmp/codex-repo-planning-project-bootstrap"
   fail "Codex planning branch is incorrect"
 [[ "$(git -C "$codex_worktree" rev-parse HEAD)" == "$(git -C "$codex_repo" rev-parse origin/main)" ]] ||
   fail "planning branch did not start at origin/main"
+[[ "$(git -C "$codex_worktree" config --get branch.planning/project-bootstrap.workflow-base)" == main ]] ||
+  fail "the planning branch does not record its base main"
 [[ "$(grep -c '^PHASE=' "$codex_log")" -eq 2 ]] ||
   fail "Codex did not run exactly two phases"
 [[ "$(awk -F= '/^PHASE=/ { print $2 }' "$codex_log" | paste -sd, -)" == "grill,planner" ]] ||
@@ -611,6 +613,59 @@ template_worktree="$tmp/template-repo-planning-project-bootstrap"
   fail "the planning in the template changed its approval requests or plans"
 [[ "$template_output" != *"of the template's own Issues"* ]] ||
   fail "the planning in the template reported inherited files"
+
+# The base comes from lib/base.sh, as for a feature: a project whose
+# .agents/template.conf names 'base: develop' plans from origin/develop, and
+# the branch records that base for review-planning.sh and finish-planning.sh.
+develop_seed() {
+  if [[ "${2:-}" == "later" ]]; then
+    printf 'base: develop\n' >>"$1/.agents/template.conf"
+    return 0
+  fi
+  mkdir -p "$1/.agents"
+  printf 'repository: %s\n' "$tmp/upstream-template.git" >"$1/.agents/template.conf"
+}
+develop_repo="$(setup_repo develop develop_seed)"
+git -C "$develop_repo" switch -q -c develop
+printf '# Architecture\n\nOn develop.\n' >"$develop_repo/docs/architecture.md"
+git -C "$develop_repo" commit -qam "Work on develop"
+git -C "$develop_repo" push -q origin develop
+git -C "$develop_repo" switch -q main
+develop_output="$(
+  cd "$develop_repo"
+  printf 'y\n' |
+    PATH="$tmp/bin:$ISOLATED_PATH" \
+    MOCK_AGENT_LOG="$tmp/develop.log" \
+    ./scripts/start-planning.sh --agent codex --model astra 2>"$tmp/develop.err"
+)" || {
+  cat "$tmp/develop.err" >&2
+  fail "the planning of a project with the base develop failed"
+}
+develop_worktree="$tmp/develop-repo-planning-project-bootstrap"
+[[ "$(git -C "$develop_worktree" merge-base HEAD origin/develop)" == "$(git -C "$develop_repo" rev-parse origin/develop)" ]] ||
+  fail "the planning of a project with the base develop did not start at origin/develop"
+[[ "$(git -C "$develop_worktree" config --get branch.planning/project-bootstrap.workflow-base)" == develop ]] ||
+  fail "the planning branch does not record its base develop"
+[[ "$develop_output" == *"Base:     develop"* ]] || fail "start-planning.sh did not name the base develop"
+
+# A change cycle reads the approved planning of that base: origin/main has
+# approved requirements, origin/develop has none.
+printf '# Project Requirements\n\nStatus: Approved\nApproved at: 2026-01-01T00:00:00Z\n' >"$develop_repo/docs/PROJECT_REQUIREMENTS.md"
+git -C "$develop_repo" commit -qam "Approved requirements on main only"
+git -C "$develop_repo" push -q origin main
+develop_change="$tmp/develop-change.md"
+printf 'A change.\n' >"$develop_change"
+if (
+  cd "$develop_repo"
+  PATH="$tmp/bin:$ISOLATED_PATH" \
+    ./scripts/start-planning.sh develop-change --change "$develop_change" --agent codex --model astra
+) >"$tmp/develop-change.out" 2>&1; then
+  fail "a change cycle without an approved planning on origin/develop returned success"
+fi
+grep -Fq "origin/develop has no approved docs/PROJECT_REQUIREMENTS.md" "$tmp/develop-change.out" || {
+  cat "$tmp/develop-change.out" >&2
+  fail "the change cycle did not check the requirements on origin/develop"
+}
 
 decline_repo="$(setup_repo decline)"
 decline_log="$tmp/decline.log"

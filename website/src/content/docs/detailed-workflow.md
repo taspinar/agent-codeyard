@@ -64,11 +64,11 @@ A scheduler starts with a short `PATH`: `gh` and `jq` must be on it, and `gh` mu
 
 ### When the plan changes
 
-You do not edit the approved requirements or roadmap by hand. Write the change down in a short file, and start the change process: `./scripts/start-planning.sh <name> --change <file>`, with `--grill` when the requirements change. The planning agent updates what the change touches, the change is reviewed, and you approve it again. A small change to the architecture or a decision record has a lighter route, `./scripts/finish-planning.sh --amend`. Feature Issues that you create afterwards follow the new plan; <a href="#step-change">Update an approved plan</a> says more.
+You do not edit the approved requirements or roadmap by hand. Write the change down in a short file, and start the change process: `./scripts/start-planning.sh <name> --change <file>`, with `--grill` when the requirements change. The planning agent updates what the change touches, the change is reviewed, and you approve it again. A change to the architecture or a decision record alone needs no change process: a feature makes it, under its own review. Feature Issues that you create afterwards follow the new plan; <a href="#step-change">Update an approved plan</a> says more.
 
 ### A base branch other than main
 
-A feature branches from its base and merges back into it. Name the base as the third argument of `start-feature.sh` or `run-feature.sh`, or set it once for the project with a line `base: develop` in `.agents/template.conf`; without either it is `main`. The base is recorded with the feature, and every later step uses it: the review and the risk compare with it, and the pull request merges into it. A pull request of the branch that is already open into another branch stops the publication before the push. Details in [the base branch of a feature](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#the-base-branch-of-a-feature) of the development guide.
+A feature branches from its base and merges back into it. Name the base as the third argument of `start-feature.sh` or `run-feature.sh`, or set it once for the project with a line `base: develop` in `.agents/template.conf`; without either it is `main`. The base is recorded with the feature, and every later step uses it: the review and the risk compare with it, and the pull request merges into it. A planning uses the same default base. A pull request of the branch that is already open into another branch stops the publication before the push. Details in [the base branch of a feature](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#the-base-branch-of-a-feature) of the development guide.
 
 ### Features side by side
 
@@ -124,7 +124,7 @@ An Issue that adds work that runs again and again, such as a new trigger, a sche
 <a id="step-planning-merge"></a>
 <a id="merge-the-planning-pull-request"></a>
 
-**Merge the planning pull request.** The approved plan is merged into `main`, and every feature starts from that version. <a href="#workflow-reference/merge-the-plan">Reference</a>.
+**Merge the planning pull request.** The approved plan is merged into its base (`main` unless the project names another), and every feature starts from that version. <a href="#workflow-reference/merge-the-plan">Reference</a>.
 
 <a id="step-change"></a>
 <a id="update-an-approved-plan"></a>
