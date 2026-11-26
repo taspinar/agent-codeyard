@@ -91,14 +91,14 @@ self_list="tests/adopted-project-list-test.sh"
 # repository these tests run in.
 project="$tmp/project"
 mkdir -p "$project"
-(cd "$source_root" && git ls-files -co --exclude-standard -z -- . ':(exclude)website' ':(exclude).github/workflows' \
+git -C "$source_root" ls-files -co --exclude-standard -z -- . ':(exclude)website' ':(exclude).github/workflows' \
   ':(exclude)README.md' ':(exclude)LICENSE' ':(exclude).agents/approval-requests' ':(exclude).agents/verification-baseline' \
   ':(exclude).agents/template.conf' ':(exclude).gitignore' |
   while IFS= read -r -d '' path; do
     [[ "$path" != docs/decisions/* || "$path" == docs/decisions/README.md ]] || continue
-    [[ -f "$path" ]] && printf '%s\0' "$path"
+    printf '%s\0' "$path"
   done |
-  tar --null -T - -cf -) | tar -C "$project" -xf -
+  copy_files "$source_root" "$project"
 [[ -x "$project/$self" ]] || fail "the fixture project does not have the self-tests"
 # A project without the template's site: no self-test may need it.
 [[ ! -e "$project/website" ]] || fail "the fixture project has files under website/: $(cd "$project" && find website -type f | head -n 3)"

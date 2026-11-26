@@ -31,12 +31,7 @@ fail() {
 
 # A copy of the repository's files, as a repository of its own.
 copy="$tmp/copy"
-mkdir -p "$copy"
-(cd "$source_root" && git ls-files -co --exclude-standard -z) |
-  while IFS= read -r -d '' path; do
-    [[ -f "$source_root/$path" ]] && printf '%s\0' "$path"
-  done |
-  (cd "$source_root" && tar --null -T - -cf -) | tar -C "$copy" -xf -
+git -C "$source_root" ls-files -co --exclude-standard -z | copy_files "$source_root" "$copy"
 git -C "$copy" init -q -b main
 git -C "$copy" add -A
 git -C "$copy" -c user.name=Test -c user.email=test@example.com commit -qm "The copy"
