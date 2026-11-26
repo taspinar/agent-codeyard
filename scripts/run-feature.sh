@@ -1162,20 +1162,12 @@ changes_only() {
   [[ "$(jq -r '.scope.kind // "full"' "$1")" == "changes" ]]
 }
 
-# partially_checked <review>
-# Succeeds when a review was made on a partial check of the content
-# (review-feature.sh --checks, run by hand; this run never asks for one): an
-# intermediate round, never the one a feature is committed on.
-partially_checked() {
-  [[ "$(jq -r '.verification.status // "passed"' "$1")" == "partial" ]]
-}
-
 # intermediate <review>
 # Succeeds when a review is one of an intermediate round: it covered only the
-# changes, or it was made on partially checked content. A round that ends the
-# run reviews the complete feature on the full verification.
+# changes. A round that ends the run reviews the complete feature on the full
+# verification.
 intermediate() {
-  changes_only "$1" || partially_checked "$1"
+  changes_only "$1"
 }
 
 # ------------------------------------------------- the owner's finding
@@ -1270,8 +1262,8 @@ fi
 
 # The round that ends the run reviews the complete feature against the Issue,
 # on content that passed the full verification, also when the rounds before
-# it reviewed only changes or ran on partial checks: such a round confirms
-# fixes, it does not establish that the Issue is done.
+# it reviewed only changes: such a round confirms fixes, it does not establish
+# that the Issue is done.
 complete_review=0
 # The owner's finding is reviewed on the complete feature, also when the
 # latest review is current for the content.
@@ -1296,7 +1288,7 @@ if uncommitted || [[ "$owner_review" -eq 1 || "$owner_changed" -eq 1 || "$owner_
       # No review yet, the content changed since the latest one, or the
       # latest one was an intermediate round and nothing is left to fix.
       if [[ "$((round - round_offset))" -ge "$MAX_ROUNDS" && "$complete_review" -eq 1 ]]; then
-        stop 1 "$MAX_ROUNDS review rounds are used, and round $round reviewed only changes or partially checked content, so no review of the complete feature confirms that the Issue is done." \
+        stop 1 "$MAX_ROUNDS review rounds are used, and round $round reviewed only changes, so no review of the complete feature confirms that the Issue is done." \
           "$(more_rounds)" \
           "cd \"$worktree\"" \
           "./scripts/review-feature.sh $issue $base    # or continue by hand: triage-review.sh, apply-triage.sh, finish-feature.sh, publish-feature.sh"
