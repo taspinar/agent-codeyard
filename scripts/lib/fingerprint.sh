@@ -314,7 +314,7 @@ fingerprint_review() {
     done < <(jq -r '.reviewed_paths[]' "$review")
     fingerprint_files "$root" "$scratch" ${paths[@]+"${paths[@]}"}
   else
-    issue="$(jq -r 'if (.kind // "feature") == "feature" and (.issue | type) == "number" then (.issue | tostring) else "" end' "$review")"
+    issue="$(jq -r 'if .kind == "feature" and (.issue | type) == "number" then (.issue | tostring) else "" end' "$review")"
     if [[ "$issue" =~ ^[0-9]+$ ]]; then
       while IFS= read -r path; do
         paths+=("$path")
@@ -351,7 +351,7 @@ fingerprint_review_at() {
     fi
   else
     GIT_INDEX_FILE="$index" git -C "$root" read-tree "$commit^{tree}" || return 1
-    issue="$(jq -r 'if (.kind // "feature") == "feature" and (.issue | type) == "number" then (.issue | tostring) else "" end' "$review")"
+    issue="$(jq -r 'if .kind == "feature" and (.issue | type) == "number" then (.issue | tostring) else "" end' "$review")"
     if [[ "$issue" =~ ^[0-9]+$ ]]; then
       while IFS= read -r path; do
         if [[ -e "$root/$path" || -L "$root/$path" ]]; then

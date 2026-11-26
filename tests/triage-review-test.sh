@@ -123,7 +123,8 @@ setup_repo() {
     ]'
   fi
   jq -n --argjson round "$round" --argjson findings "$findings" --arg verdict "$verdict" '{
-    schema: "review/v1", issue: 5, round: $round, branch: "feature/5-test", base: "main",
+    schema: "review/v1", kind: "feature", issue: 5, round: $round, verification: {status: "passed", verified_at: "2026-01-01T00:00:00Z"}, scope: {kind: "full"},
+    branch: "feature/5-test", base: "main",
     merge_base: "aaaa", head: "bbbb", reviewed_tree: "cccc",
     reviewer: {agent: "codex", model: "model-r"}, created_at: "2026-01-01T00:00:00Z",
     verdict: $verdict, limitations: "", findings: $findings
@@ -667,7 +668,7 @@ for edit in '.owner_directed.reason = ""' 'del(.owner_directed.account)' '.owner
   [[ -n "$(source "$source_root/scripts/lib/review-data.sh"; triage_artifact_errors "$tmp/audit.json" "$repo/$review")" ]] ||
     fail "an invalid owner_directed was accepted: $edit"
 done
-jq 'del(.owner_directed) | .triage = {agent: "claude", model: "model-t"}' "$artifact" >"$tmp/old.json"
+jq 'del(.owner_directed) | .triage = {agent: "claude", model: "model-t", mode: .triage.mode}' "$artifact" >"$tmp/old.json"
 [[ -z "$(source "$source_root/scripts/lib/review-data.sh"; triage_artifact_errors "$tmp/old.json" "$repo/$review")" ]] ||
   fail "an artifact without the new fields is no longer valid"
 

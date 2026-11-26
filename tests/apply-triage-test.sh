@@ -55,7 +55,8 @@ setup_repo() {
     >"$repo/.agents/completion/13.json"
 
   jq -n '{
-    schema: "review/v1", issue: 13, round: 1, branch: "feature/13-apply-test", base: "main",
+    schema: "review/v1", kind: "feature", issue: 13, round: 1, verification: {status: "passed", verified_at: "2026-01-01T00:00:00Z"}, scope: {kind: "full"},
+    branch: "feature/13-apply-test", base: "main",
     merge_base: "aaaa", head: "bbbb", reviewed_tree: "cccc",
     reviewer: {agent: "claude", model: "model-r"}, created_at: "2026-01-01T00:00:00Z",
     verdict: "CHANGES_REQUIRED", limitations: "",
@@ -68,7 +69,7 @@ setup_repo() {
 
   jq -n --arg review "$review" '{
     schema: "triage/v1", source_review: $review, issue: 13, reviewed_tree: "cccc",
-    review_verdict: "CHANGES_REQUIRED", triage: {agent: "claude", model: "model-t"},
+    review_verdict: "CHANGES_REQUIRED", triage: {agent: "claude", model: "model-t", mode: "full"},
     approved_at: "2026-01-01T10:00:00Z",
     decisions: [
       {finding_id: "C1", severity: "critical", title: "Correctness regression", decision: "FIX_NOW", rationale: "Correctness blocks the feature.", followup: null},

@@ -239,7 +239,7 @@ fi
 [[ -f "$schema_file" ]] || fail "triage schema not found: $schema_file"
 review_data_require_jq
 
-if [[ "$(jq -r '.kind // "feature"' "$review_path" 2>/dev/null)" == "planning" ]]; then
+if [[ "$(jq -r '.kind' "$review_path" 2>/dev/null)" == "planning" ]]; then
   fail "this is a planning review; it is not triaged. Handle it with ./scripts/revise-planning.sh and review again with ./scripts/review-planning.sh."
 fi
 
@@ -331,7 +331,7 @@ find_later_review() {
   for candidate in "$prefix"-[0-9][0-9].json; do
     [[ -f "$candidate" ]] || continue
     [[ -z "$(review_artifact_errors "$candidate")" ]] || continue
-    [[ "$(jq -r '.kind // "feature"' "$candidate")" == "feature" && "$(jq -r '.issue' "$candidate")" == "$source_issue" ]] || continue
+    [[ "$(jq -r '.kind' "$candidate")" == "feature" && "$(jq -r '.issue' "$candidate")" == "$source_issue" ]] || continue
     if [[ "$(jq -r '.round' "$candidate")" -gt "$round" ]]; then
       later_review="$candidate"
       return 0

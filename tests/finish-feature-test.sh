@@ -72,6 +72,7 @@ setup_repo() {
   # the feature has, which finish-feature.sh checks.
   jq -n --arg verdict "$2" --argjson findings "$3" --arg merge_base "$(git -C "$repo" rev-parse main)" '{
     schema: "review/v1", kind: "feature", issue: 12, round: 1,
+    verification: {status: "passed", verified_at: "2026-01-01T00:00:00Z"}, scope: {kind: "full"},
     branch: "feature/12-marker", base: "main", merge_base: $merge_base, head: "bbbb",
     reviewed_tree: "", reviewed_paths: null,
     reviewer: {agent: "claude", model: "model-r"}, created_at: "2026-01-01T00:00:00Z",
@@ -88,7 +89,7 @@ add_triage() {
 
   jq --arg decision "$2" --arg published "${3:-yes}" '{
     schema: "triage/v1", source_review: ".agents/reviews/feature-12-marker-review-01.json", issue,
-    reviewed_tree, review_verdict: .verdict, triage: {agent: "codex", model: "model-t"},
+    reviewed_tree, review_verdict: .verdict, triage: {agent: "codex", model: "model-t", mode: "full"},
     approved_at: "2026-01-02T00:00:00Z",
     decisions: [.findings[] | {finding_id: .id, severity, title, decision: $decision, rationale: "Considered.",
       followup: (if $decision == "DEFER" then {title: "[#12][R01][\(.id)] Later", recommended_action: "Later.",
@@ -258,7 +259,7 @@ grep -Fq "covers only the changes since round 1" "$repo.out" || fail "the review
 grep -Fq "./scripts/review-feature.sh 12 (without --changes)" "$repo.out" ||
   fail "the review of the complete feature was not asked for"
 # A third round that reviews the complete feature again is accepted.
-jq '.round = 3 | del(.scope)' "$second" >"$repo/.agents/reviews/feature-12-marker-review-03.json"
+jq '.round = 3 | .scope = {kind: "full"}' "$second" >"$repo/.agents/reviews/feature-12-marker-review-03.json"
 run_finish "$repo" 12 "Add the marker" || {
   cat "$repo.out" >&2
   fail "finishing on a review of the complete feature after a review of changes failed"
@@ -330,7 +331,7 @@ grep -Fq "triage published on #12" <<<"$(message "$repo")" || fail "the commit m
 # agent recorded, is accepted like any other published triage.
 repo="$(setup_repo owner-directed PASS_WITH_MINOR_FINDINGS "$minor")"
 add_triage "$repo" ACCEPT
-jq '.triage = {agent: "owner", model: "owner-directed"}
+jq '.triage = {agent: "owner", model: "owner-directed", mode: "full"}
     | .owner_directed = {account: "owner-login", directed_at: "2026-01-02T00:00:00Z",
         reason: "Not worth another cycle.",
         original_proposal: {decisions: [{finding_id: "MIN1", decision: "FIX_NOW", rationale: "Rename.", followup: null}]}}' \
@@ -1114,6 +1115,20 @@ expect_no_commit "$repo" "the latest review was made on a partial check" 12 "Add
 grep -Fq 'the latest review is invalid: verification.status "partial" is not accepted any more' "$repo.out" ||
   fail "the refusal does not name the partial status: $(cat "$repo.out")"
 
+# A feature review records its verification, its scope, and its kind, which
+# review-feature.sh writes into every review: one without them is a broken or
+# hand-made artifact and is refused with a message that names the field,
+# never read as verified, as a review of the complete feature, or as a
+# feature review (Issue 520).
+for field in verification scope kind; do
+  repo="$(setup_repo "missing-$field" PASS "[]")"
+  set_impact "$repo" minor
+  jq --arg field "$field" 'del(.[$field])' "$repo/$review" >"$repo/$review.tmp" && mv "$repo/$review.tmp" "$repo/$review"
+  expect_no_commit "$repo" "the latest review has no $field" 12 "Add the marker"
+  grep -Fq "the latest review is invalid: $field is missing" "$repo.out" ||
+    fail "the refusal of a review without $field does not name the field: $(cat "$repo.out")"
+done
+
 # The review compared the feature against its base: one whose merge base is
 # not the one the feature has now judged another diff.
 repo="$(setup_repo other-base PASS "[]")"
@@ -1263,6 +1278,15 @@ set_triage_mode "$repo" maybe
 claims_changed "$repo"
 expect_no_commit "$repo" "the triage records a mode that does not exist" 12 "Add the marker"
 grep -Fq "triage.mode must be full or light" "$repo.out" || fail "the invalid mode was not given as the reason"
+# A triage without its mode is refused with a message that names the field,
+# never read as a full triage (Issue 520).
+repo="$(setup_repo mode-missing PASS_WITH_MINOR_FINDINGS "$minor")"
+add_triage "$repo" ACCEPT
+jq 'del(.triage.mode)' "$repo/$triage" >"$repo/triage.tmp" && mv "$repo/triage.tmp" "$repo/$triage"
+claims_changed "$repo"
+expect_no_commit "$repo" "the triage records no mode" 12 "Add the marker"
+grep -Fq "the triage of round 1 is invalid: triage.mode is missing" "$repo.out" ||
+  fail "the refusal of a triage without its mode does not name the field: $(cat "$repo.out")"
 
 # An emptied commit message creates no commit.
 repo="$(setup_repo abort PASS "[]")"

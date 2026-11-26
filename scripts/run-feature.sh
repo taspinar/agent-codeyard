@@ -1159,7 +1159,7 @@ uncommitted() {
 # changes_only <review>
 # Succeeds when a review covered only the changes since an earlier round.
 changes_only() {
-  [[ "$(jq -r '.scope.kind // "full"' "$1")" == "changes" ]]
+  [[ "$(jq -r '.scope.kind' "$1")" == "changes" ]]
 }
 
 # intermediate <review>
@@ -1425,7 +1425,7 @@ if uncommitted || [[ "$owner_review" -eq 1 || "$owner_changed" -eq 1 || "$owner_
       # (the mode the policy set when the round was triaged) says so in the
       # log; every finding is then a suggestion or minor, deferred or
       # accepted, since a critical or major finding is always FIX_NOW.
-      if [[ "$(jq -r '.triage.mode // "full"' "$triage")" == "light" ]]; then
+      if [[ "$(jq -r '.triage.mode' "$triage")" == "light" ]]; then
         if intermediate "$review"; then
           next_step="Reviewing the complete feature"
         else

@@ -40,7 +40,7 @@ write_review() {
     {schema: "review/v1", kind: "feature", issue: 7, round: $round, branch: "feature/7-marker",
      base: "main", merge_base: "abc", head: "def", reviewed_tree: "tree-\($round)",
      created_at: "2026-01-01T00:00:00Z", reviewer: {agent: "codex", model: "model-r"},
-     scope: {kind: "full"}, limitations: "",
+     scope: {kind: "full"}, verification: {status: "passed", verified_at: "2026-01-01T00:00:00Z"}, limitations: "",
      verdict: (if any($findings[]; .severity == "critical" or .severity == "major") then "CHANGES_REQUIRED"
                elif ($findings | length) > 0 then "PASS_WITH_MINOR_FINDINGS" else "PASS" end),
      findings: (reduce $findings[] as $f ({count: {}, out: []};
@@ -54,7 +54,7 @@ write_review() {
 write_triage() {
   jq --argjson decided "$2" '{
     schema: "triage/v1", source_review: ".agents/reviews/\(input_filename | split("/") | last)", issue,
-    reviewed_tree, review_verdict: .verdict, triage: {agent: "claude", model: "model-t"},
+    reviewed_tree, review_verdict: .verdict, triage: {agent: "claude", model: "model-t", mode: "full"},
     approved_at: "2026-01-02T00:00:00Z",
     decisions: [.findings[] | {finding_id: .id, severity, title, decision: $decided[.id],
       rationale: "Decided \($decided[.id]).",

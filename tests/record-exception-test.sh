@@ -108,6 +108,7 @@ set_completion() {
 write_review() {
   jq -n --argjson findings "$findings" --argjson round "$3" --arg merge_base "$(git -C "$1" rev-parse main)" '{
     schema: "review/v1", kind: "feature", issue: 12, round: $round,
+    verification: {status: "passed", verified_at: "2026-01-01T00:00:00Z"}, scope: {kind: "full"},
     branch: "feature/12-marker", base: "main", merge_base: $merge_base, head: "bbbb",
     reviewed_tree: "", reviewed_paths: null,
     reviewer: {agent: "claude", model: "model-r"}, created_at: "2026-01-01T00:00:00Z",
@@ -122,7 +123,7 @@ write_review() {
 write_triage() {
   jq --arg source "$2" '{
     schema: "triage/v1", source_review: $source, issue,
-    reviewed_tree, review_verdict: .verdict, triage: {agent: "codex", model: "model-t"},
+    reviewed_tree, review_verdict: .verdict, triage: {agent: "codex", model: "model-t", mode: "full"},
     approved_at: "2026-01-02T00:00:00Z", published_at: "2026-01-02T00:01:00Z",
     decisions: [.findings[] | {finding_id: .id, severity, title,
       decision: (if .severity == "minor" then "ACCEPT" else "FIX_NOW" end), rationale: "Considered.", followup: null}]
