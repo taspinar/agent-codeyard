@@ -92,9 +92,8 @@ done
 
 primary="$(records_primary)" || fail "not inside a Git repository."
 run_dir="$primary/.agents/run/records"
-copy_dir="$primary/.agents/records"
 
-# The events of every record, one array per source. A line that is not JSON
+# The events of every run file, as one array. A line that is not JSON
 # is left out: one damaged line does not hide a report.
 work="$(mktemp -d "${TMPDIR:-/tmp}/report-runs.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
@@ -106,13 +105,12 @@ events() {
   fi
 }
 events "$run_dir" >"$work/active.json"
-events "$copy_dir" >"$work/copies.json"
 
 if [[ "$all" -eq 1 ]]; then
   while IFS= read -r subject; do
     [[ -n "$subject" ]] && subjects+=("$subject")
   done < <(jq -rs '[.[][] | select(.type == "run-start") | "\(.kind):\(.subject)"] | unique | .[]' \
-    "$work/active.json" "$work/copies.json")
+    "$work/active.json")
 fi
 if [[ ${#subjects[@]} -eq 0 ]]; then
   issue="$(records_branch_issue)"
@@ -146,10 +144,10 @@ fi
 selection="$(printf '%s\n' "${subjects[@]}" | jq -R '{kind: (split(":")[0]), subject: (split(":")[1:] | join(":"))}' | jq -cs 'unique')"
 
 result="$(jq -n -r \
-  --slurpfile active "$work/active.json" --slurpfile copies "$work/copies.json" \
+  --slurpfile active "$work/active.json" \
   --argjson selection "$selection" --argjson since "$since" --argjson until "$until" \
   --argjson split "$split" --argjson declared "$declared" --arg mode "$mode" --argjson period "$([[ "$since$until" == nullnull ]] && echo false || echo true)" \
-  '$active[0] as $active | $copies[0] as $copies | '"$(cat "$script_dir/lib/report.jq")")"
+  '$active[0] as $active | '"$(cat "$script_dir/lib/report.jq")")"
 
 if [[ ( "$mode" == "summary" || "$mode" == "figures" ) && "$result" == "null" ]]; then
   echo "Error: Issue #${subjects[0]#feature:} has no run record." >&2

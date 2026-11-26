@@ -55,21 +55,18 @@ events() {
   done | jq -cs '.'
 }
 
-# A run is read from its own file while it exists, and from the copy of the
-# feature otherwise.
+# Every run is read from its own file.
 work="$(mktemp -d "${TMPDIR:-/tmp}/show-experience.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 events "$primary"/.agents/run/records/*.jsonl >"$work/active.json"
-events "$primary/.agents/records/feature-$issue.jsonl" >"$work/copies.json"
 result="$(jq -n -r \
-  --slurpfile active "$work/active.json" --slurpfile copies "$work/copies.json" \
+  --slurpfile active "$work/active.json" \
   --arg issue "$issue" --arg mode "$mode" \
   "$EXPERIENCE_JQ"'
-  $active[0] as $active | $copies[0] as $copies |
+  $active[0] as $active |
   def runs_of($events): $events | map(select(.type == "run-start" and .kind == "feature" and ((.subject | tostring) == $issue)) | .run);
-  runs_of($active) as $from_active
-  | (runs_of($copies) - $from_active) as $from_copy
-  | (($active | map(select(.run as $r | $from_active | index([$r])))) + ($copies | map(select(.run as $r | $from_copy | index([$r]))))) as $events
+  runs_of($active) as $runs
+  | ($active | map(select(.run as $r | $runs | index([$r])))) as $events
   | ($events | map(select(.type == "run-start")) | map({key: .run, value: .command}) | from_entries) as $commands
   # Every record is checked on its own: one that cannot be checked is invalid
   # and hides no other. A record must name the run it is in and this Issue.
@@ -78,13 +75,11 @@ result="$(jq -n -r \
          + (if ($record | type) == "object" and ($record.run | type) == "string" and $record.run != $event_run then ["the record names another run than the one it is in"] else [] end)
          + (if ($record | type) == "object" and ($record.issue | type) == "number" and ($record.issue | tostring) != $issue then ["the record names another Issue"] else [] end)) as $errors
       | {run, time, command: $commands[.run], valid: ($errors | length == 0), errors: $errors, record: $record})) as $records
-  # Lines that are not JSON in a file of this feature: the file of one of its
-  # runs, or its copy.
-  | ([$active[], $copies[]]
+  # Lines that are not JSON in the file of one of the runs of this feature.
+  | ($active
      | map(select(._unparsed == true))
-     | map(select((._file | rtrimstr(".jsonl")) as $f
-                  | ((($from_active + $from_copy) | index([$f])) != null) or ($f == "feature-\($issue)")))
-     | map({run: (._file | rtrimstr(".jsonl") | if startswith("feature-") then null else . end),
+     | map(select((._file | rtrimstr(".jsonl")) as $f | ($runs | index([$f])) != null))
+     | map({run: (._file | rtrimstr(".jsonl")),
             time: null, command: null, errors: ["line \(._line) of \(._file) is not JSON"]})) as $unparsed
   # A record of a workflow before #500 also holds a part `agent`, which is not
   # shown and is no source.
@@ -108,6 +103,6 @@ result="$(jq -n -r \
           + "\n") | add // "")
       + (if (.invalid | length) == 0 then "" else
           "## Invalid records\n\nThese are not a source for an analysis.\n\n"
-          + (.invalid | map("- \(if .run then "run \(.run)" else "the copy of the feature" end): \(.errors | join("; "))\n") | add) end)
+          + (.invalid | map("- run \(.run): \(.errors | join("; "))\n") | add) end)
     end')"
 printf '%s\n' "$result"

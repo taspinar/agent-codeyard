@@ -315,8 +315,9 @@ grep -q '^issue create ' "$repo.control/gh.log" || fail "the deferred finding go
 grep -q "^Review: round 3, PASS" <<<"$(git -C "$repo-2-thing" log -1 --format=%B)" || fail "the commit does not name the review of the complete feature"
 
 # The run is recorded in the primary checkout: one run, its steps, the
-# verifications, and an agent call per session with its role, and the runs of
-# the feature together in .agents/records/ after the publication.
+# verifications, and an agent call per session with its role. The
+# publication copies nothing to .agents/records/: after it, report-runs.sh and
+# the reader of status.sh (records_feature_events) count the run once.
 records="$(cat "$repo"/.agents/run/records/*.jsonl)"
 [[ "$(jq -r -s '[.[] | select(.type == "run-start")] | length' <<<"$records")" -eq 1 ]] ||
   fail "the run of the feature is not one run: the commands it started made runs of their own"
@@ -327,12 +328,14 @@ records="$(cat "$repo"/.agents/run/records/*.jsonl)"
 jq -e -s 'any(.type == "verification" and .status == 0)' <<<"$records" >/dev/null || fail "the verifications are not recorded"
 jq -e -s 'any(.type == "step" and .name == "review, round 1 of at most 5")' <<<"$records" >/dev/null || fail "the steps are not recorded"
 jq -e -s 'any(.type == "run-end" and .status == 0)' <<<"$records" >/dev/null || fail "the end of the run is not recorded"
-[[ -s "$repo/.agents/records/feature-2.jsonl" ]] || fail "the runs of the feature were not copied to .agents/records/ by the publication"
-# The copy holds the run to its end: the publication and the status.
-jq -e -s 'any(.type == "step" and .name == "pull request" and .status == 0)' "$repo/.agents/records/feature-2.jsonl" >/dev/null ||
-  fail "the copy lacks the publication"
-[[ "$(jq -r -s '.[-1] | "\(.type) \(.status)"' "$repo/.agents/records/feature-2.jsonl")" == "run-end 0" ]] ||
-  fail "the copy does not end with the end of the run"
+jq -e -s 'any(.type == "step" and .name == "pull request" and .status == 0)' <<<"$records" >/dev/null ||
+  fail "the run file lacks the publication"
+[[ ! -e "$repo/.agents/records" ]] || fail "the publication copied the run records to .agents/records/"
+runs="$(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/report-runs.sh 2 --json | jq '.subjects[0].runs.total')"
+[[ "$runs" == "1" ]] || fail "report-runs.sh does not count the run once after the publication: $runs"
+runs="$(cd "$repo" && unset RECORDS_RUN_ID RECORDS_FILE && source scripts/lib/records.sh &&
+  records_feature_events 2 '[.[] | select(.type == "run-start")] | length')"
+[[ "$runs" == "1" ]] || fail "the reader of status.sh does not count the run once after the publication: $runs"
 jq -e -s '[.[] | select(.type == "agent-start") | .id] == [.[] | select(.type == "agent-call") | .id]' <<<"$records" >/dev/null ||
   fail "an agent call does not close its start"
 [[ ! -d "$repo-2-thing/.agents/run/records" ]] || fail "the run wrote records into the feature worktree"

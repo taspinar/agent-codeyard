@@ -127,7 +127,8 @@ expect_rejected "an unsupported provider on the plain line of another role" "uns
 
 # records_highest_level joins the events to the runs whose start names the
 # feature: the levels of another feature, of a planning, or of a run without
-# a start never count, and the copy of the feature counts like a run file.
+# a start never count, and a copy that an earlier workflow left in
+# .agents/records/ is not read: every run has its own file.
 records_repo="$tmp/records"
 mkdir -p "$records_repo/.agents/run/records" "$records_repo/.agents/records"
 git -C "$records_repo" init -q -b main
@@ -168,7 +169,7 @@ highest_level() {
 }
 [[ "$(highest_level 3)" == "medium" ]] || fail "the highest level of feature 3 is not its own medium: '$(highest_level 3)' (the high of another feature, a planning, or a run without a start counted)"
 [[ "$(highest_level 4)" == "high" ]] || fail "the high of feature 4 was not found: '$(highest_level 4)'"
-[[ "$(highest_level 6)" == "high" ]] || fail "the copy of feature 6 was not read: '$(highest_level 6)'"
+[[ -z "$(highest_level 6)" ]] || fail "the old copy of feature 6 was read: '$(highest_level 6)'"
 [[ -z "$(highest_level 5)" ]] || fail "a feature without a record has a level: '$(highest_level 5)'"
 {
   event run-f run-start feature 3
@@ -176,11 +177,10 @@ highest_level() {
 } >"$records_repo/.agents/run/records/run-f.jsonl"
 [[ "$(highest_level 3)" == "high" ]] || fail "the high of a later run of feature 3 was not found: '$(highest_level 3)'"
 
-# A run that its file and the copy of the feature both hold (the copy made
-# by a consolidation while the run file stays) counts once: one session of
-# the implementer, each event once, the highest level unchanged. A run that
-# only the copy holds counts from the copy; a run that both hold is read
-# from its file, which is the complete one.
+# A run that its file and an old copy of the feature both hold (the copy of a
+# consolidation of an earlier workflow) counts once: one session of the
+# implementer, each event once, the highest level unchanged. A run that only
+# the old copy holds is not read.
 call() {
   printf '{"schema": "run-record/v1", "run": "%s", "type": "%s", "id": "%s-call", "role": "implementer", "agent": "claude", "model": "model-x", "level": "%s", "selection": "level-line"}\n' "$1" "$2" "$1" "$3"
 }
@@ -209,9 +209,9 @@ cp "$records_repo/.agents/run/records/run-g.jsonl" "$records_repo/.agents/record
   call run-h agent-start medium
   call run-h agent-call medium
 } >"$records_repo/.agents/records/feature-9.jsonl"
-[[ "$(feature_records records_role_providers 9 implementer)" == $'claude\t2' ]] ||
-  fail "a run that only the copy holds did not count once: '$(feature_records records_role_providers 9 implementer)'"
-[[ "$(feature_records records_feature_events 9 length)" == "6" ]] ||
+[[ "$(feature_records records_role_providers 9 implementer)" == $'claude\t1' ]] ||
+  fail "a run that only the old copy holds was read: '$(feature_records records_role_providers 9 implementer)'"
+[[ "$(feature_records records_feature_events 9 length)" == "3" ]] ||
   fail "a run that both hold was not read from its file alone: $(feature_records records_feature_events 9 length) events"
 [[ "$(highest_level 9)" == "high" ]] || fail "the highest level is not the one of the run file: '$(highest_level 9)'"
 
@@ -515,7 +515,7 @@ grep -Fq "Level:    high (an earlier session of the feature ran at high (the run
 recorded "$repo" implementer high level-line "a session after an earlier one at high"
 
 # A feature whose first session finds a high run record of an earlier one
-# (the records of a previous checkout, consolidated) starts at high although
+# (the run records of a previous checkout) starts at high although
 # it computes as medium, and says so.
 repo_prior="$(setup_repo prior)"
 mkdir -p "$repo_prior/.agents/run/records"

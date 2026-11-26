@@ -342,14 +342,12 @@ repo="$(setup_repo unavailable)"
   session_test
 ) >"$tmp/unavailable.out" 2>&1 || fail "an unset RECORDS_COMMAND failed: $(cat "$tmp/unavailable.out")"
 
-# No event of the run copies a secret: not the reasons of a gate, not a note,
-# also not in the copy of the feature.
+# No event of the run copies a secret: not the reasons of a gate, not a note.
 repo="$(setup_repo secrets)"
 in_run "$repo" 3 'records_note "implementation" "blocked" "the token ghp_abcdefghijklmnopqrstuvwxyz0123 expired" "stopped"
-  records_gate "$PWD" partial "remaining: rotate sk-live1234567890abcdef"
-  records_consolidate feature 12'
-if grep -Eq "ghp_abcdefghij|sk-live1234567890" "$repo"/.agents/run/records/*.jsonl "$repo"/.agents/records/feature-12.jsonl; then
-  fail "a secret reached the run file or the copy"
+  records_gate "$PWD" partial "remaining: rotate sk-live1234567890abcdef"'
+if grep -Eq "ghp_abcdefghij|sk-live1234567890" "$repo"/.agents/run/records/*.jsonl; then
+  fail "a secret reached the run file"
 fi
 grep -Fq "the token [redacted] expired" "$repo"/.agents/run/records/*.jsonl || fail "the note lost more than the secret"
 

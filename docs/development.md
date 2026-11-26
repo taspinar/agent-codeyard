@@ -1506,8 +1506,7 @@ where the reviewer starts: `review-feature.sh` takes the implementer's
 provider from the run records of the feature ("Run records"), which hold
 every session of the implementer with the provider it ran with, also a
 session that `--agent` on the command line gave another provider than the
-configuration (each run counted once: from its run file while it exists,
-from the copy of the feature otherwise), and refuses, before it calls any
+configuration (each run counted once, from its run file), and refuses, before it calls any
 agent, a reviewer that resolves to a provider the implementer ran with.
 Without a recorded session
 (a project that keeps no run records, or work done by hand) it resolves the
@@ -4237,7 +4236,8 @@ verification is recorded for, and that decides whether a review is stale,
 leaves out what the workflow writes about the content: the review and triage
 artifacts, the record of the last passed verification
 (`.agents/verification/`), the run records and the state, logs, and risk
-notes of a run (`.agents/run/`, `.agents/records/`), and the approval
+notes of a run (`.agents/run/`, and `.agents/records/` that an earlier
+workflow wrote), and the approval
 requests (`.agents/approval-requests/`). A review therefore cannot be made
 stale by the metadata it produces, also in a project whose `.gitignore` does
 not name those paths, and an edited explanation of an approval request keeps
@@ -4464,15 +4464,19 @@ run that names the run before it.
 | Path | What |
 |---|---|
 | `.agents/run/records/<run-id>.jsonl` | One file per run, written while it runs, never rewritten. All worktrees write here, so a record survives the removal of a worktree, and two runs never share a file |
-| `.agents/records/feature-<issue>.jsonl` | The runs of a feature together, written by `publish-feature.sh` and again by `cleanup-worktree.sh` before it removes the worktree; at the end of a run an existing copy is brought up to date, so that it holds the end and the status of the run. A run whose file is gone stays in the copy |
-| `.agents/records/planning-<name>.jsonl` | The runs of a planning together, written by `finish-planning.sh` and by `cleanup-worktree.sh` |
+
+No script removes a run file, and every reader takes the runs of a feature or
+a planning by the subject of their start, so the run files are all there is:
+nothing copies them together. An earlier workflow also copied the runs of a
+feature or a planning to `.agents/records/` when it published or cleaned up;
+no script reads or writes those copies any more, since every run they hold
+still has its own file. Git still ignores the directory, and you can delete
+it.
 
 The records live on one machine: a new clone and `git clean -fdx` do not keep
-them. Copy the two directories when you want to keep them. `cleanup-worktree.sh`
-keeps a worktree whose records it could not copy. In a project whose
-`.gitignore` does not ignore `.agents/run/` and `.agents/records/`, nothing is
-recorded, since a record would otherwise be committed; `sync-template.sh`
-brings the rules.
+them. Copy `.agents/run/records/` when you want to keep them. In a project
+whose `.gitignore` does not ignore `.agents/run/`, nothing is recorded, since
+a record would otherwise be committed; `sync-template.sh` brings the rules.
 
 **What a line holds.** Every line is one JSON object with `schema`
 (`run-record/v1`), `run`, `time` (UTC), `epoch`, and `type`:
@@ -4558,8 +4562,7 @@ durations of all of them; a reused pass ran none, and a verification
 recorded before the durations has none), the steps of `run-feature.sh`, the
 recorded interventions, and the versions the runs used.
 It reads the run files
-and the copies of the primary checkout; a run is read from its own file while
-that exists and from the copy of its subject otherwise, so nothing is counted
+of the primary checkout, each run from its own file, so nothing is counted
 twice and a feature whose worktree is gone gives the same totals. It needs no
 network.
 

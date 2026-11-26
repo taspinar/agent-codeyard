@@ -559,12 +559,6 @@ elif [[ -n "$not_default_note" ]]; then
 fi
 echo
 
-# The runs of the feature together in the primary checkout
-# (.agents/records/), also those of this publication, which is still running.
-if ! records_consolidate feature "$issue"; then
-  echo "Warning: the run records of Issue #$issue could not be copied to .agents/records/; cleanup-worktree.sh tries again." >&2
-fi
-
 # post_summary: the totals of the run records as one comment on the Issue,
 # replacing the one of an earlier publication. Only report-runs.sh
 # --github-summary writes its text, from numeric fields. A failure warns and

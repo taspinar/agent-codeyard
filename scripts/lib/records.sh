@@ -14,12 +14,10 @@
 #   in .agents/run/records/ of the primary checkout. All worktrees of the
 #   repository write there, so a record survives the removal of a worktree,
 #   and two runs never write to the same file;
-# - when a feature is published or cleaned up, and when a planning is
-#   finished or cleaned up: the runs of the feature or the planning together,
-#   in .agents/records/feature-<issue>.jsonl or planning-<name>.jsonl of the
-#   primary checkout.
-# Both directories are ignored by Git and nothing is sent to GitHub. They live
-# on one machine: a new clone or `git clean -fdx` does not keep them.
+#   No script removes a run file, so a run is read from its file alone, and
+#   every reader takes the runs of a subject by the subject of their start.
+# The directory is ignored by Git and nothing is sent to GitHub. It lives on
+# one machine: a new clone or `git clean -fdx` does not keep it.
 #
 # Every line is one JSON object with the fields "schema", "run", "time"
 # (UTC), "epoch" (seconds), and "type":
@@ -333,11 +331,8 @@ records_resumption() {
     '{after: $after, previous_status: $status, handoff_changed: $changed}'
 }
 
-# records_end <status>: ends the current run. A copy of its subject in
-# .agents/records/ that a step of the run made is brought up to date, so that
-# it holds the end and the status of the run.
+# records_end <status>: ends the current run.
 records_end() {
-  local primary
   local stop="null"
 
   # Why the run stopped: the last stop that a script of the run recorded. A
@@ -362,12 +357,6 @@ records_end() {
   fi
   records_emit run-end --argjson status "${1:-0}" --argjson stop "$stop" \
     '{status: $status} + (if $stop == null then {} else {step: $stop.step, reason: $stop.reason} end)'
-  [[ -n "${RECORDS_KIND:-}" && -n "${RECORDS_SUBJECT:-}" ]] || return 0
-  primary="$(records_primary)" || return 0
-  if [[ -f "$primary/.agents/records/$RECORDS_KIND-$RECORDS_SUBJECT.jsonl" ]]; then
-    records_consolidate "$RECORDS_KIND" "$RECORDS_SUBJECT" 2>/dev/null ||
-      records_warn "the copy in .agents/records/ was not brought up to date"
-  fi
   return 0
 }
 
@@ -536,16 +525,12 @@ records_agent_call() {
 # Runs <jq-program> over the array of the events of feature <issue>, with
 # the --arg options given before it, and prints its raw output: the events
 # of the runs whose start names the feature; the runs of another feature or
-# of a planning never count. Every run counts once: it is read from its own
-# file while that exists, and from the copy of the feature
-# (.agents/records/feature-<issue>.jsonl) only when its file is gone, as
-# report.jq does, so that a run that both hold after a consolidation is not
-# counted twice. Nothing when there is no record or no jq.
+# of a planning never count. Every run is read once, from its own file.
+# Nothing when there is no record or no jq.
 records_feature_events() {
   local issue="$1"
   local program
   local dir
-  local copy
   local files=()
   local file
 
@@ -554,23 +539,14 @@ records_feature_events() {
   set -- "${@:1:$#-1}"
   command -v jq >/dev/null 2>&1 || return 0
   dir="$(records_run_dir)" || return 0
-  copy="$(records_primary)/.agents/records/feature-$issue.jsonl"
   for file in "$dir"/*.jsonl; do
     [[ -f "$file" ]] && files+=("$file")
   done
-  [[ "${#files[@]}" -gt 0 || -f "$copy" ]] || return 0
-  # Every event with its source before it: 0 for a run file, 1 for the copy.
-  {
-    [[ "${#files[@]}" -eq 0 ]] || cat "${files[@]}" 2>/dev/null | jq -c -R 'fromjson? | objects | [0, .]' 2>/dev/null
-    [[ ! -f "$copy" ]] || jq -c -R 'fromjson? | objects | [1, .]' <"$copy" 2>/dev/null
-  } | jq -rs --arg subject "$issue" "$@" '
-      def starts($events): [$events[] | select(.type == "run-start" and .kind == "feature" and (.subject | tostring) == $subject) | .run] | unique;
-      map(select(.[0] == 0) | .[1]) as $from_files
-      | map(select(.[0] == 1) | .[1]) as $from_copy
-      | starts($from_files) as $runs_in_files
-      | [starts($from_copy)[] | select(. as $run | any($runs_in_files[]; . == $run) | not)] as $runs_in_copy_only
-      | [$from_files[] | select(.run as $run | any($runs_in_files[]; . == $run))]
-        + [$from_copy[] | select(.run as $run | any($runs_in_copy_only[]; . == $run))]
+  [[ "${#files[@]}" -gt 0 ]] || return 0
+  cat "${files[@]}" 2>/dev/null | jq -c -R 'fromjson? | objects' 2>/dev/null |
+    jq -rs --arg subject "$issue" "$@" '
+      [.[] | select(.type == "run-start" and .kind == "feature" and (.subject | tostring) == $subject) | .run] as $runs
+      | [.[] | select(.run as $run | any($runs[]; . == $run))]
       | '"$program" 2>/dev/null || true
 }
 
@@ -602,102 +578,6 @@ records_role_providers() {
     | $calls + [.[] | select(.type == "agent-start" and .role == $role and (.agent | type) == "string"
                             and (.id as $id | any($ids[]; . == $id) | not))]
     | group_by(.agent) | .[] | "\(.[0].agent)\t\(length)"'
-}
-
-# records_consolidate <kind> <subject>
-# Writes the runs of a feature or a planning together to
-# .agents/records/<kind>-<subject>.jsonl in the primary checkout, in the
-# order in which they were written. The run files stay, so a later copy holds
-# every run of an earlier one. Fails when the copy cannot be written.
-records_consolidate() {
-  local kind="$1"
-  local subject="$2"
-  local primary
-  local dir
-  local target
-  local runs
-
-  primary="$(records_primary)" || return 1
-  [[ -n "$primary" ]] || return 1
-  dir="$primary/.agents/run/records"
-  target="$primary/.agents/records/$kind-$subject.jsonl"
-  # Without the ignore rule the copy would be committed: it is not made, and
-  # that is no failure.
-  if ! git -C "$primary" check-ignore -q ".agents/records/$kind-$subject.jsonl" 2>/dev/null; then
-    # Nothing to lose when the subject has no run; otherwise the copy is
-    # needed and cannot be made safely, which is a failure. grep -q reads the
-    # files itself: a pipe into a second grep -q would let the first one die of
-    # SIGPIPE under pipefail and hide a match among many files.
-    if ! compgen -G "$dir/*.jsonl" >/dev/null ||
-      ! grep -qF "\"subject\":\"$subject\"" "$dir"/*.jsonl 2>/dev/null; then
-      return 0
-    fi
-    echo "Error: the run records of $kind $subject cannot be copied to .agents/records/, because Git does not ignore that directory in $primary. Take over the template's .gitignore with ./scripts/sync-template.sh." >&2
-    return 1
-  fi
-  mkdir -p "$primary/.agents/records" || return 1
-  # One copy of a subject at a time: a directory is made atomically, and a
-  # copy waits up to thirty seconds for another to finish. Each copy writes
-  # a temporary file of its own and replaces the target in one step.
-  local lock="$primary/.agents/records/.$kind-$subject.lock"
-  local waited=0
-  local tmp
-  local status=0
-  until mkdir "$lock" 2>/dev/null; do
-    if [[ "$waited" -ge 300 ]]; then
-      records_warn "another copy of $kind $subject holds $lock"
-      return 1
-    fi
-    sleep 0.1
-    waited=$((waited + 1))
-  done
-  tmp="$(mktemp "$primary/.agents/records/.$kind-$subject.XXXXXX")" || { rmdir "$lock"; return 1; }
-  # Read inside the lock, so that a later copy never holds less than an
-  # earlier one. A run file that cannot be read keeps the copy as it was: it
-  # could belong to this subject, and a copy without it would lose a run.
-  runs=""
-  local file
-  local found
-  for file in "$dir"/*.jsonl; do
-    [[ -e "$file" ]] || continue
-    if ! found="$(jq -r --arg kind "$kind" --arg subject "$subject" \
-      'select(.type == "run-start" and .kind == $kind and (.subject | tostring) == $subject) | .run' "$file" 2>/dev/null)"; then
-      records_warn "$file cannot be read; the copy of $kind $subject was left as it was"
-      rm -f "$tmp"
-      rmdir "$lock" 2>/dev/null || true
-      return 1
-    fi
-    [[ -z "$found" ]] || runs+="$found"$'\n'
-  done
-  runs="${runs%$'\n'}"
-  # A run whose file is gone stays in the copy: the copy is all that is left
-  # of it. A run that has its file is taken from the file, which is newer.
-  # A copy that cannot be read is kept as it is.
-  local known
-  local kept=""
-  known="$(printf '%s\n' "$runs" | jq -R 'select(length > 0)' | jq -cs '.')" || status=1
-  if [[ "$status" -eq 0 && -f "$target" ]]; then
-    if ! kept="$(jq -c --argjson known "$known" 'select(.run as $run | $known | index([$run]) | not)' "$target")"; then
-      records_warn "$target cannot be read; it was left as it was"
-      status=1
-    fi
-  fi
-  if [[ "$status" -eq 0 ]]; then
-    {
-      if [[ -n "$runs" ]]; then
-        while IFS= read -r run; do
-          cat "$dir/$run.jsonl"
-        done <<<"$runs"
-      fi
-      [[ -z "$kept" ]] || printf '%s\n' "$kept"
-    } | jq -c -s 'to_entries | sort_by(.value.epoch, .value.run, .key) | .[].value' >"$tmp" || status=1
-  fi
-  if [[ "$status" -eq 0 ]]; then
-    mv "$tmp" "$target" || status=1
-  fi
-  rm -f "$tmp"
-  rmdir "$lock" 2>/dev/null || true
-  return "$status"
 }
 
 # records_id: prints an identifier for a pair of start and end events.
