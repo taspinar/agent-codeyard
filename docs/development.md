@@ -1244,6 +1244,16 @@ reads every `*.sh` under `scripts/`, less the files and directories that the
 `paths:` entry of `scripts/verify-workflow.conf` excludes with
 `:(exclude)<path>`, where a project leaves out its own scripts.
 
+For the same reason a self-test does not pipe a tar that creates an archive
+into another tar (Issue #466): the tar of macOS may stop reading at the
+end-of-archive marker while the writer still pads its last record, and the
+writer fails with `tar: Write error`. A test copies files with `copy_files
+<from> <to>` of `tests/lib-fakes.sh`, which reads the paths NUL-separated on
+its input, keeps the regular files, and passes the archive through a file.
+`tests/pipe-grep-test.sh` fails on a `tar -c… | tar` pipe in the same files;
+a pipe from another producer into tar, such as `git archive | tar -x`, is not
+this form and the check leaves it alone.
+
 A few more traps of the tools, each met in a feature of the template:
 
 - `jq -r` prints a newline after a string that already ends with one. Text

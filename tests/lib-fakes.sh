@@ -253,6 +253,31 @@ copy_workflow() {
   cp "$source_root"/.agents/schemas/*.json "$repo/.agents/schemas/"
 }
 
+# copy_files <from> <to>
+# Copies the regular files among the NUL-separated paths on stdin, relative
+# to <from>, into the directory <to>, with their paths and modes. The archive
+# goes through a file beside <to>, never through a pipe into a second tar:
+# the reading tar of macOS may stop at the end-of-archive marker and exit
+# while the writing one still pads its last record, which then fails with
+# 'tar: Write error' and, under pipefail, the copy (Issue 466).
+copy_files() {
+  local from="$1"
+  local to="$2"
+  local scratch path status=0
+
+  mkdir -p "$to"
+  scratch="$(mktemp -d "$(dirname "$to")/.copy-files.XXXXXX")"
+  while IFS= read -r -d '' path; do
+    if [[ -f "$from/$path" ]]; then
+      printf '%s\0' "$path"
+    fi
+  done >"$scratch/list"
+  (cd "$from" && tar --null -T "$scratch/list" -cf "$scratch/archive") &&
+    tar -C "$to" -xf "$scratch/archive" || status=$?
+  rm -rf "$scratch"
+  return "$status"
+}
+
 # workflow_gitignore <file>
 # Writes the ignore rules of the workflow, the lines for .agents/, without
 # the rules of the project around them: in an adopted project, its own
