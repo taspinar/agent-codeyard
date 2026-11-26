@@ -67,8 +67,9 @@ usage() {
   echo
   echo "The review starts only when the completion gate passes: the implementer's"
   echo "completion record says complete (or awaiting_evidence, when only evidence of"
-  echo "a later gate is pending), its handoff note lists no remaining work,"
-  echo "and it wrote the summary of the changes. Until then the implementer is"
+  echo "a later gate is pending), its remaining[] is empty, and it wrote the"
+  echo "summary of the changes. The handoff note is context for people and the"
+  echo "next session; the gate does not read it. Until then the implementer is"
   echo "resumed, for at most $MAX_SESSIONS sessions in a run."
   echo
   echo "The agent sessions run only the checks of what they changed (verify.sh"
@@ -933,13 +934,12 @@ await_completion() {
         echo
         echo "The session ended, but the completion gate does not pass ($gate_status):"
         echo
-        # Not as a list under a 'Remaining' label: the gate reads the note.
         printf '%s\n' "$gate_reasons" | sed 's/^/- gate: /'
         echo
         echo "Continue the work on the Issue. Nothing is reviewed or committed before"
         echo "$COMPLETION_DIR/$issue.json says complete, or awaiting_evidence for evidence of a"
         echo "later gate, with evidence for every acceptance criterion that can have it now,"
-        echo "the list of what is left in this note is empty, and"
+        echo "its remaining[] is empty, and"
         echo ".agents/summaries/$issue.md exists (.agents/prompts/implementer.md,"
         echo "'Completion'). When the Issue cannot be completed without a decision of the"
         echo "human, record the status 'blocked'."
@@ -1006,9 +1006,10 @@ excepted_findings() {
 
 # finding_refutation <round> <id>
 # Prints the implementer's refutation of finding <id> of review round
-# <round>: '<round> TAB <id> TAB <evidence>' of the line that refuted it in
-# the handoff note (lib/completion.sh, triage_check_outcomes). A finding with
-# no check in the section of its own triage (no fix session ran for it yet)
+# <round>: '<round> TAB <id> TAB <evidence>' of the entry that refuted it in
+# checks[] of the completion record (lib/completion.sh,
+# triage_check_outcomes). A finding with no check of its own triage (no fix
+# session ran for it yet)
 # is refuted when the finding it continues as unresolved (previous) is, and
 # only when that earlier finding has the same title (finding_title): the IDs
 # of two rounds are given anew, so a finding with another title is a new
@@ -1027,7 +1028,7 @@ finding_refutation() {
   [[ -f "$review_file" ]] || return 1
   triage_file="$(review_latest_triage "$worktree" "$review_file")"
   if [[ -n "$triage_file" ]]; then
-    outcome="$(triage_check_outcomes "$worktree/.agents/handoffs/$issue.md" "$triage_file" | awk -F '\t' -v id="$id" '$1 == id')"
+    outcome="$(triage_check_outcomes "$(completion_record "$worktree" "$issue")" "$triage_file" | awk -F '\t' -v id="$id" '$1 == id')"
   fi
   case "$(cut -f2 <<<"$outcome")" in
     refuted)
@@ -1097,7 +1098,7 @@ refuted_stop() {
   while IFS=$'\t' read -r id severity _; do
     [[ -n "$id" ]] || continue
     if [[ "$severity" == "critical" || "$severity" == "major" ]]; then
-      next+=("./scripts/record-exception.sh $review_relative --finding $id --type not-applicable --evidence \".agents/handoffs/$issue.md\" --reason \"<why>\"    # you agree that $id does not hold")
+      next+=("./scripts/record-exception.sh $review_relative --finding $id --type not-applicable --evidence \"$COMPLETION_DIR/$issue.json\" --reason \"<why>\"    # you agree that $id does not hold")
     else
       next+=("./scripts/triage-review.sh $review_relative --decisions <file> --reason \"<why>\"    # an owner-directed triage that accepts $id")
     fi
@@ -1105,7 +1106,7 @@ refuted_stop() {
   next+=("./scripts/start-feature.sh $issue --resume    # or the fix after all: write your instruction into the handoff note first")
   stop 3 "the implementer refuted every finding left to fix in round $round with evidence and changed no code for it, and the review still reports it; only you can accept a critical or major finding:
 $(awk -F '\t' 'NF { printf "  - %s (%s): %s — refuted in round %s (%s): %s\n", $1, $2, $3, $4, $5, $6 }' <<<"$refuted")
-The evidence is in the handoff note (.agents/handoffs/$issue.md), under '## Triage <triage file>'." "${next[@]}"
+The evidence is in checks[] of the completion record ($COMPLETION_DIR/$issue.json)." "${next[@]}"
 }
 
 # changes_reviewable <review>

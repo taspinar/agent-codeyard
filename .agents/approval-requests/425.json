@@ -1,0 +1,25 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "a1753ca34b53889ff20de68eb546ecb0f2f2756b",
+  "commit": {
+    "branch": "feature/425-a-completion-schema-json",
+    "parent": "4e99f6da92a4c600e03cba7b8b8a39a7020d3ad4",
+    "base": "4e99f6da92a4c600e03cba7b8b8a39a7020d3ad4"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    ".agents/prompts/reviewer.md: the file defines or carries out the workflow and its gate",
+    ".agents/schemas/completion.schema.json: the file defines or carries out the workflow and its gate",
+    "scripts/finish-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/guardrails.sh: the file defines or carries out the workflow and its gate",
+    "scripts/review-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The change adds a shared completion-record schema and changes the workflow’s completion and triage-check data contracts across scripts, prompts, and tests. That changes infrastructure other feature runs depend on. The architecture document is a placeholder and the repository has no ADRs to compare against. ",
+    "the review could not confirm: `./scripts/verify.sh --all` passes."
+  ],
+  "explanation": "Issue #425: A completion.schema.json with checks[]: the completion record as the only source of remaining work. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

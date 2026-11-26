@@ -137,12 +137,19 @@ run_feature "$repo" 2 thing
 expect_stopped "$repo" 1 "the fixes for round 1 changed nothing"
 expect_sessions "$repo" 1 1 1 1
 
+# check <id> <value> <evidence>: a fixing agent that records its check of a
+# finding in checks[] of the completion record (#425), with the name of the
+# latest triage.
+check() {
+  printf '%s\n' 't="$(basename "$(ls .agents/triage/*.json | tail -1)")"; r=".agents/completion/$RUN_ISSUE.json"'
+  printf 'jq --arg t "$t" --arg id %q --arg v %q --arg e %q %q "$r" >"$r.tmp" && mv "$r.tmp" "$r"\n' \
+    "$1" "$2" "$3" '.checks += [{triage: $t, finding: $id, value: $v, evidence: $e}]'
+}
 # refuted <id> <value>: a fixing agent that changes no code and records its
-# check of a finding under the heading of the triage, with its evidence.
+# check of a finding, with its evidence.
 refuted() {
-  printf '%s\n' 't="$(ls .agents/triage/*.json | tail -1)"; mkdir -p .agents/handoffs
-printf "\n## Triage %s\n\n- '"$1"': '"$2"' — \`grep -c feature feature.txt\` prints 1: the content is right\n" "$(basename "$t")" >>".agents/handoffs/$RUN_ISSUE.md"
-reply="'"$1"' is '"$2"'."'
+  check "$1" "$2" '`grep -c feature feature.txt` prints 1: the content is right'
+  printf 'reply=%q\n' "$1 is $2."
 }
 # A reviewer that reports M1 of the round before again, as unresolved, with
 # its title and the mark that it is unresolved.
@@ -181,7 +188,7 @@ expect_stopped "$repo" 3 "the implementer refuted every finding left to fix in r
 expect_sessions "$repo" 1 3 3 1
 (
   cd "$repo-2-thing"
-  command="PATH=$(printf '%q' "$tmp/bin:$ISOLATED_PATH") RUN_CONTROL=$(printf '%q' "$repo.control") ./scripts/record-exception.sh .agents/reviews/feature-2-thing-review-03.json --finding M1 --type not-applicable --evidence .agents/handoffs/2.md --reason 'The content is right.'"
+  command="PATH=$(printf '%q' "$tmp/bin:$ISOLATED_PATH") RUN_CONTROL=$(printf '%q' "$repo.control") ./scripts/record-exception.sh .agents/reviews/feature-2-thing-review-03.json --finding M1 --type not-applicable --evidence .agents/completion/2.json --reason 'The content is right.'"
   pty_run $'y\n' "$command"
 ) >"$repo.exception" 2>&1 || {
   cat "$repo.exception" >&2
@@ -209,7 +216,7 @@ printf '%s\n' "$fix_major" >"$repo.control/triage.sh"
 {
   printf '%s\n' 'printf "line\n" >>feature.txt'
   refuted M1 refuted
-  printf '%s\n' 'printf -- "- M2: fixed — feature.txt has the line\n" >>".agents/handoffs/$RUN_ISSUE.md"'
+  check M2 fixed "feature.txt has the line"
 } >"$repo.control/fixes-1.sh"
 run_feature "$repo" 2 thing
 expect_stopped "$repo" 3 "the implementer refuted every finding left to fix in round 3"

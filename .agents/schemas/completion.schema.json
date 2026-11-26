@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Completion record",
+  "description": "Where the work on a feature stands, as the implementer states it: .agents/completion/<issue>.json, which Git ignores. It is the only source the completion gate (scripts/lib/completion.sh, completion_gate) reads for remaining work, and the only source of the triage implementer's check of each finding to fix; the handoff note is for people and the next session, and no script parses its sections for either. The generic validator of scripts/lib/guardrails.sh checks a record against this schema; the rules across fields that a schema cannot express (the status follows from the criteria and from what remains, pending only at a later gate, owner_approval never met, no partial run of the checks or budget check as evidence) stay in completion_errors. The record is a claim of the implementer, which the independent review checks against the code and the tests.",
+  "type": "object",
+  "required": ["schema", "status", "criteria", "remaining"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "enum": ["completion/v1"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "awaiting_evidence", "partial", "blocked"],
+      "description": "complete: every criterion met or not applicable, nothing remaining. awaiting_evidence: the same, with at least one criterion pending at a later gate. partial: work remains. blocked: the implementer cannot go on without a decision of the human."
+    },
+    "criteria": {
+      "type": "array",
+      "minItems": 1,
+      "description": "One entry for every acceptance criterion of the Issue, in its words, and for every step of the feature plan that no criterion covers.",
+      "items": {
+        "type": "object",
+        "required": ["criterion", "status", "evidence"],
+        "properties": {
+          "criterion": { "type": "string", "pattern": "[^[:space:]]" },
+          "gate": {
+            "type": "string",
+            "enum": ["implementation", "pr_ci", "owner_approval", "post_merge"],
+            "description": "Where the evidence of the criterion can exist; implementation when it is left out."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["met", "not_met", "not_applicable", "pending"]
+          },
+          "evidence": {
+            "type": "string",
+            "pattern": "[^[:space:]]",
+            "description": "The test, file, or command that shows the criterion; for not_applicable the reason, for not_met where the work stands, for pending the gate at which the evidence appears."
+          }
+        }
+      }
+    },
+    "remaining": {
+      "type": "array",
+      "description": "What is left, one text per item: empty for complete and awaiting_evidence, not empty for partial and blocked. The completion gate reads remaining work from here and from nowhere else.",
+      "items": { "type": "string", "pattern": "[^[:space:]]" }
+    },
+    "checks": {
+      "type": "array",
+      "description": "The triage implementer's check of each FIX_NOW finding it was given (.agents/prompts/triage-implementer.md): one entry per finding and triage, kept across the rounds. Only fixed, with its evidence, resolves a finding; two entries for one finding of one triage that differ in value or evidence conflict and leave it open. The entries are the implementer's statement: the next review and its triage receive them as data.",
+      "items": {
+        "type": "object",
+        "required": ["triage", "finding", "value", "evidence"],
+        "properties": {
+          "triage": {
+            "type": "string",
+            "pattern": "^[^/[:space:]]+-triage\\.json$",
+            "description": "The file name of the approved triage that named the finding, as apply-triage.sh gives it, such as feature-12-recipes-review-01-triage.json."
+          },
+          "finding": {
+            "type": "string",
+            "pattern": "^[A-Z]+[0-9]+$",
+            "description": "The finding's id as the review gives it, such as M1 or MIN2."
+          },
+          "value": {
+            "type": "string",
+            "enum": ["fixed", "refuted", "not_reproduced", "not_executable"]
+          },
+          "evidence": {
+            "type": "string",
+            "pattern": "^(?![[:space:]]*(?i:none|nothing|n/a|tbd)[.]?[[:space:]]*$)[\\s\\S]*[[:alnum:]]",
+            "description": "The test or command that shows the value, and its result. A none-word, or delimiters and punctuation alone, are no evidence."
+          }
+        }
+      }
+    },
+    "risk": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "The implementer's own classification of the feature (scripts/lib/risk.sh). It can raise the level the scripts compute from the diff, never lower it."
+    }
+  }
+}

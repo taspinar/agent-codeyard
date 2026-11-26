@@ -275,25 +275,29 @@ guardrails_request_name_errors() {
     echo "only <issue>.json may be under $GUARDRAILS_APPROVAL_REQUESTS/"
 }
 
-# guardrails_request_errors <request-json> <schema-json>
+# guardrails_request_errors <request-json> <schema-json> [<name>]
 # Prints one line per way the request does not follow its schema: a field
 # the schema does not name, a missing field, a wrong type, or a value that
 # does not match. Prints nothing for a valid request. The schema is read as
-# data: type, enum, pattern, minLength, minimum, required, properties,
-# additionalProperties, and items.
+# data: type, enum, pattern, minLength, minimum, minItems, required,
+# properties, additionalProperties, and items. Every line names the field by
+# its path from <name>, 'request' by default: the same validator checks the
+# other records that have a schema, such as the completion record
+# (lib/completion.sh).
 guardrails_request_errors() {
   local request="$1"
   local schema="$2"
+  local name="${3:-request}"
 
   [[ -f "$schema" ]] || {
     echo "the schema $schema is missing"
     return 0
   }
   jq -e . "$request" >/dev/null 2>&1 && [[ "$(jq -s 'length' "$request")" == "1" ]] || {
-    echo "the request is not exactly one JSON value"
+    echo "the $name is not exactly one JSON value"
     return 0
   }
-  jq -r --slurpfile schemas "$schema" '
+  jq -r --slurpfile schemas "$schema" --arg name "$name" '
     def jtype: if type == "number" and . == floor then "integer" else type end;
     def type_ok($t):
       if $t == null then true
@@ -323,11 +327,15 @@ guardrails_request_errors() {
                elif $schema.additionalProperties == false then
                  "\($path).\($key) is not a field of the schema"
                else empty end)
-         elif type == "array" and $schema.items != null then
-           (to_entries[] as $entry | $entry.value | check($schema.items; "\($path)[\($entry.key)]"))
+         elif type == "array" then
+           (if $schema.minItems != null and length < $schema.minItems then
+              "\($path) must have at least \($schema.minItems) item\(if $schema.minItems == 1 then "" else "s" end)" else empty end),
+           (if $schema.items != null then
+              (to_entries[] as $entry | $entry.value | check($schema.items; "\($path)[\($entry.key)]"))
+            else empty end)
          else empty end)
       end;
-    check($schemas[0]; "request")
+    check($schemas[0]; $name)
   ' "$request"
 }
 

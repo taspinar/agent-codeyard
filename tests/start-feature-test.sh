@@ -237,8 +237,9 @@ grep -Fq ".agents/completion, .agents/handoffs, .agents/summaries, .agents/manua
 grep -Fq "sandbox_workspace_write.writable_roots" "$repo.out" || fail "the hint does not name the writable roots"
 grep -Fq "update Codex, or give the role to Claude in .agents/agents.conf" "$repo.out" || fail "the hint does not say what to do"
 
-# The same for a record that says partial, with what remains, and for a
-# record that says complete while the handoff note lists remaining work.
+# The same for a record that says partial, with what remains. A record that
+# says complete is believed whatever the handoff note lists: the record is
+# the only source of remaining work (#425).
 MOCK_WRITE_ACTION="$(record partial 10)" run_start "$repo" 10 --resume || fail "resuming with a partial record failed"
 grep -Fq "The Issue is not complete (partial)" "$repo.out" || fail "a partial record was not reported"
 grep -Fq "remaining: Plan steps 3 to 9" "$repo.out" || fail "the remaining work of the record was not shown"
@@ -247,13 +248,14 @@ if grep -Fq "./scripts/review-feature.sh 10" "$repo.out"; then fail "the review 
 
 mkdir -p "$worktree/.agents/handoffs"
 printf '**Done:** steps 1 and 2.\n**Remaining:** steps 3 to 9.\n' >"$worktree/.agents/handoffs/10.md"
-MOCK_WRITE_ACTION="$(record complete 10)" run_start "$repo" 10 --resume || fail "resuming with a contradicted record failed"
-grep -Fq "The Issue is not complete (partial)" "$repo.out" ||
-  fail "a record that says complete was believed although the handoff note lists remaining work"
-grep -Fq "remaining: steps 3 to 9." "$repo.out" || fail "the remaining work of the handoff note was not shown"
-printf 'Issue 10 is complete.\n' >"$worktree/.agents/handoffs/10.md"
-MOCK_WRITE_ACTION="$(record complete 10)" run_start "$repo" 10 --resume || fail "resuming with a complete record failed"
+MOCK_WRITE_ACTION="$(record complete 10)" run_start "$repo" 10 --resume || fail "resuming with a complete record beside a note that lists work failed"
+if grep -Fq "The Issue is not complete" "$repo.out"; then
+  fail "the handoff note outweighed a record that says complete"
+fi
 grep -Fq "./scripts/review-feature.sh 10" "$repo.out" || fail "the next steps were not printed after resuming"
+# The resumed session is told that the record is the only source, and to
+# carry the work and the checks of an older note into it once.
+grep -Fq "is the only source of" "$repo.log" || fail "the resumed session was not told that the completion record is the only source"
 
 # With a handoff note, the session is pointed at it. Changed files that are
 # newer than the note are named as not described by it; older ones are not.

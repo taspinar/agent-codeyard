@@ -386,7 +386,7 @@ hinted
 stopped-partway
 stopped-partway-note
 no-record
-record-contradicted
+record-beside-note
 no-summary
 awaiting-pr-ci
 awaiting-post-merge

@@ -37,7 +37,7 @@ The evidence names the file, what it holds, and the command that produced it.
 
 ## Completion is recorded per criterion
 
-Before ending each session, the implementer writes `.agents/completion/<issue>.json`, with schema `completion/v1`, a status, evidence for every acceptance criterion and uncovered plan step, and a `remaining` list. Its handoff note must agree: remaining work listed there counts as not done.
+Before ending each session, the implementer writes `.agents/completion/<issue>.json`, with schema `completion/v1`, a status, evidence for every acceptance criterion and uncovered plan step, a `remaining` list, and, after a fix round, a `checks` list with its check of each finding it was given. The record follows `.agents/schemas/completion.schema.json`, and a record that does not is refused with the field named. It is the only source of remaining work: the handoff note is for you and the next session, and no script reads it for what remains.
 
 The record has one of four statuses:
 
@@ -55,7 +55,7 @@ Criterion statuses are `met`, `not_met`, `not_applicable`, or `pending`. Each cr
 
 Only a criterion of the last three gates may be `pending`, and its evidence says when it will exist. A budget measurement or a partial check cannot be evidence of a met criterion.
 
-The complete-feature reviewer checks those claims against the diff and tests. Finish proceeds only on `complete` or `awaiting_evidence`, with no remaining work in the handoff.
+The complete-feature reviewer checks those claims against the diff and tests. Finish proceeds only on `complete` or `awaiting_evidence`, with an empty `remaining` list in the record.
 
 A criterion the reviewer could not check at all, such as one that needs a service it cannot reach, is not confirmed by the review. The reviewer names it apart from its findings, and the commit message and the pull request list it under **Not confirmed by the review**, next to the merge approval. When the completion record calls such a criterion `met`, the merge needs your approval, with the reason "the review could not confirm: …". See [the reference](https://github.com/taspinar/agent-codeyard/blob/main/docs/development.md#review-and-triage-data).
 

@@ -131,8 +131,8 @@ run_feature "$repo_hint" 3 --risk
 
 # The completion gate. A session of the implementer that ends without an
 # error has not completed the feature by that alone: the run goes on to the
-# review only when the completion record says complete, the handoff note
-# lists nothing that remains, and the summary of the changes exists.
+# review only when the completion record says complete, with nothing
+# remaining, and the summary of the changes exists.
 # Otherwise the implementer is resumed with the reason in its handoff note.
 #
 # The case of the bug this guards against: the implementer stopped after two
@@ -186,18 +186,19 @@ expect_sessions "$repo" 2 1 0 0
 grep -Fq "| not complete | missing: the implementer wrote no completion record" <<<"$(log_of "$repo")" ||
   fail "the missing completion record is not in the log of the feature"
 
-# A record that says complete is not believed against the handoff note.
-scenario record-contradicted
-repo="$(setup_repo record-contradicted)"
+# The completion record is the only source of remaining work (#425): a
+# handoff note that lists work does not change the outcome of the gate, so a
+# complete record goes on to the review in one session.
+scenario record-beside-note
+repo="$(setup_repo record-beside-note)"
 printf '%s\n' 'eval "$default"; mkdir -p .agents/handoffs
 printf "## Done\nsteps 1 and 2\n\n## Remaining\n- step 3\n- step 4\n" >".agents/handoffs/$RUN_ISSUE.md"' >"$repo.control/implementer-1.sh"
-printf '%s\n' 'eval "$default"; printf "Issue %s is complete.\n" "$RUN_ISSUE" >".agents/handoffs/$RUN_ISSUE.md"' \
-  >"$repo.control/implementer-2.sh"
 run_feature "$repo" 2 thing
 expect_published "$repo"
-expect_sessions "$repo" 2 1 0 0
-grep -Fq "the completion record says complete, but the handoff note" <<<"$(log_of "$repo")" ||
-  fail "the contradiction between the record and the handoff note is not in the log of the feature"
+expect_sessions "$repo" 1 1 0 0
+if grep -Fq "not complete" <<<"$(log_of "$repo")"; then
+  fail "a handoff note that lists work made a complete record not complete: $(log_of "$repo")"
+fi
 
 # A complete record without the summary of the changes: the commit message
 # of an unattended run would say nothing, so the implementer is resumed.

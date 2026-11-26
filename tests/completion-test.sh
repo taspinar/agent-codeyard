@@ -2,8 +2,9 @@
 
 set -euo pipefail
 
-# The completion gate of a feature: what counts as a valid completion record,
-# what a handoff note lists as remaining work, and how the two decide.
+# The completion gate of a feature: what counts as a valid completion record
+# (its schema and the rules across its fields), the checks of findings it
+# holds, and how the gate decides from the record alone.
 
 source_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 source "$source_root/tests/lib-fakes.sh"
@@ -53,11 +54,15 @@ expect_errors "a complete record" "$complete"
 expect_errors "a partial record" "$partial"
 expect_errors "a blocked record" "$(printf '%s' "$partial" | sed 's/"partial"/"blocked"/')"
 expect_errors "not JSON" "status: complete" "it is not valid JSON"
-expect_errors "not an object" '["complete"]' "it is not a JSON object"
-expect_errors "an empty object" '{}' 'schema must be "completion/v1"' "status must be complete, awaiting_evidence, partial, or blocked" \
-  "criteria must list at least one acceptance criterion" "remaining must be a list of texts; an empty list when nothing remains"
+# The schema (.agents/schemas/completion.schema.json) is checked by the
+# generic validator, and each error names the field.
+expect_errors "not an object" '["complete"]' "record must be object, not array"
+expect_errors "an empty object" '{}' "record.schema is missing" "record.status is missing" \
+  "record.criteria is missing" "record.remaining is missing"
+expect_errors "an unknown schema" "$(printf '%s' "$complete" | sed 's#completion/v1#completion/v2#')" \
+  "record.schema must be one of completion/v1"
 expect_errors "an unknown status" "$(printf '%s' "$complete" | sed 's/"complete"/"done"/')" \
-  "status must be complete, awaiting_evidence, partial, or blocked"
+  "record.status must be one of complete, awaiting_evidence, partial, blocked"
 # A partial run of the checks is not a verification, so it is no evidence.
 expect_errors "evidence that cites a partial run" "$(printf '%s' "$complete" | sed 's#tests/test_search.py#./scripts/verify.sh --only unit passed#')" \
   "criterion 1 cites a partial run of the checks (verify.sh --only or --changed) as evidence, which is not a verification"
@@ -79,13 +84,18 @@ expect_errors "a targeted run for the full verification" \
   "${all_passes/EVIDENCE/./scripts/verify.sh --changed passed in this session}" \
   "criterion 1 cites a partial run of the checks (verify.sh --only or --changed) as evidence, which is not a verification"
 expect_errors "no criteria" '{"schema": "completion/v1", "status": "complete", "criteria": [], "remaining": []}' \
-  "criteria must list at least one acceptance criterion"
+  "record.criteria must have at least 1 item"
 expect_errors "a criterion without evidence" \
   '{"schema": "completion/v1", "status": "complete", "criteria": [{"criterion": "It works", "status": "met", "evidence": " "}], "remaining": []}' \
-  "criterion 1 has no evidence"
+  "record.criteria[0].evidence does not match [^[:space:]]"
 expect_errors "a criterion without text or a known status" \
   '{"schema": "completion/v1", "status": "partial", "criteria": [{"criterion": "It works", "status": "met", "evidence": "a test"}, {"status": "yes", "evidence": "x"}], "remaining": ["more"]}' \
-  "criterion 2 has no text" "criterion 2: status must be met, not_met, not_applicable, or pending"
+  "record.criteria[1].criterion is missing" "record.criteria[1].status must be one of met, not_met, not_applicable, pending"
+expect_errors "a criterion that is not an object" \
+  '{"schema": "completion/v1", "status": "partial", "criteria": ["It works"], "remaining": ["more"]}' \
+  "record.criteria[0] must be object, not string"
+expect_errors "an unknown risk" "$(printf '%s' "$complete" | sed 's/"remaining": \[\]/"remaining": [], "risk": "none"/')" \
+  "record.risk must be one of low, medium, high"
 # The status has to follow from the criteria and from what remains.
 expect_errors "complete with a criterion that is not met" \
   '{"schema": "completion/v1", "status": "complete", "criteria": [{"criterion": "It works", "status": "not_met", "evidence": "not started"}], "remaining": []}' \
@@ -96,9 +106,12 @@ expect_errors "complete with work that remains" \
 expect_errors "partial without saying what is left" \
   '{"schema": "completion/v1", "status": "partial", "criteria": [{"criterion": "It works", "status": "met", "evidence": "a test"}], "remaining": []}' \
   "status is partial, but remaining does not say what is left"
-expect_errors "remaining that is not a list of texts" \
+expect_errors "remaining that is not a list" \
   '{"schema": "completion/v1", "status": "partial", "criteria": [{"criterion": "It works", "status": "met", "evidence": "a test"}], "remaining": "steps 3 to 9"}' \
-  "remaining must be a list of texts; an empty list when nothing remains"
+  "record.remaining must be array, not string"
+expect_errors "remaining that holds an empty text" \
+  '{"schema": "completion/v1", "status": "partial", "criteria": [{"criterion": "It works", "status": "met", "evidence": "a test"}], "remaining": ["step 3", " "]}' \
+  "record.remaining[1] does not match [^[:space:]]"
 
 # Evidence that appears at a later gate: pending is allowed there only, and
 # the status is awaiting_evidence until it exists.
@@ -119,7 +132,7 @@ expect_errors "owner_approval pending" \
   '{"schema": "completion/v1", "status": "awaiting_evidence", "criteria": [{"criterion": "The owner approves", "gate": "owner_approval", "status": "pending", "evidence": "approval of the final commit"}], "remaining": []}'
 expect_errors "an unknown gate" \
   '{"schema": "completion/v1", "status": "partial", "criteria": [{"criterion": "It works", "gate": "later", "status": "met", "evidence": "x"}], "remaining": ["more"]}' \
-  "criterion 1: gate must be implementation, pr_ci, owner_approval, or post_merge"
+  "record.criteria[0].gate must be one of implementation, pr_ci, owner_approval, post_merge"
 expect_errors "pending without a gate" \
   '{"schema": "completion/v1", "status": "partial", "criteria": [{"criterion": "It works", "status": "pending", "evidence": "x"}], "remaining": ["more"]}' \
   "criterion 1: pending is only for evidence of a later gate (pr_ci, owner_approval, or post_merge)"
@@ -139,93 +152,67 @@ expect_errors "awaiting_evidence with work that remains" \
   "$(printf '%s' "$awaiting" | sed 's/"remaining": \[\]/"remaining": ["the documentation"]/')" \
   "status is awaiting_evidence, but work remains"
 
-# What a handoff note lists as remaining, in the shapes implementers write.
-# expect_remaining <description> <note> <expected, lines joined by '|'>
-expect_remaining() {
-  local found
-
-  printf '%b' "$2" >"$note"
-  found="$(handoff_remaining "$note" | tr '\n' '|')"
-  [[ "$found" == "$3" ]] || fail "$1: found '$found' instead of '$3'"
+# The triage implementer's check of each finding (#292, #425): one entry of
+# checks[] per finding and triage, in the completion record.
+with_checks() {
+  jq --argjson checks "$1" '.checks = $checks' <<<"$complete" >"$record"
 }
+expect_errors "a record with checks" "$(jq -c '.checks = [
+  {triage: "feature-7-x-review-01-triage.json", finding: "C1", value: "fixed", evidence: "tests/a-test.sh: the CRLF case passes"},
+  {triage: "feature-7-x-review-01-triage.json", finding: "MIN2", value: "not_executable", evidence: "needs a browser"}]' <<<"$complete")"
+# A check that does not follow the schema is refused with its field named:
+# another value, no evidence, a none-word or only punctuation for evidence,
+# an id that is not one, a triage that is not a triage file.
+expect_errors "checks that do not follow the schema" "$(jq -c '.checks = [
+  {triage: "feature-7-x-review-01-triage.json", finding: "C1", value: "resolved", evidence: "it is fine"},
+  {triage: "feature-7-x-review-01-triage.json", finding: "C2", value: "fixed", evidence: "none"},
+  {triage: "feature-7-x-review-01-triage.json", finding: "C3", value: "fixed", evidence: "— — ."},
+  {triage: "feature-7-x-review-01-triage.json", finding: "Class", value: "fixed", evidence: "a label"},
+  {triage: "notes.md", finding: "C5", value: "fixed", evidence: "tests/a-test.sh"},
+  {triage: "feature-7-x-review-01-triage.json", finding: "C6", value: "fixed"}]' <<<"$complete")" \
+  "record.checks[0].value must be one of fixed, refuted, not_reproduced, not_executable" \
+  "record.checks[1].evidence does not match $(jq -r '.properties.checks.items.properties.evidence.pattern' "$source_root/.agents/schemas/completion.schema.json")" \
+  "record.checks[2].evidence does not match $(jq -r '.properties.checks.items.properties.evidence.pattern' "$source_root/.agents/schemas/completion.schema.json")" \
+  "record.checks[3].finding does not match ^[A-Z]+[0-9]+\$" \
+  "record.checks[4].triage does not match ^[^/[:space:]]+-triage\\.json\$" \
+  "record.checks[5].evidence is missing"
+# The gate refuses such a record, with the field named.
+expect_gate_first() {
+  [[ "$(completion_gate "$root" 7 | sed -n 1p)" == "$1" ]] || fail "$2: the gate says $(completion_gate "$root" 7 | tr '\n' ' ')"
+}
+with_checks '[{"triage": "feature-7-x-review-01-triage.json", "finding": "C1", "value": "resolved", "evidence": "x"}]'
+expect_gate_first invalid "a record with a check of an unknown value"
+grep -Fq "the completion record (.agents/completion/7.json): record.checks[0].value must be one of" <<<"$(completion_gate "$root" 7)" ||
+  fail "the gate does not name the field of the check: $(completion_gate "$root" 7)"
 
-expect_remaining "bold labels on one line each" \
-  '**Done:** steps 1 and 2.\n**Remaining:** steps 3 to 9.\n**Open questions:** none\n' "steps 3 to 9.|"
-expect_remaining "headings with a list" \
-  '## Done\nsteps 1 and 2\n\n## Remaining\n- step 3\n- step 4\n\n## Open questions\nnone\n' "step 3|step 4|"
-expect_remaining "a list of labels" \
-  '- **Done:** a\n- **In progress:** b\n- **Remaining:** the documentation\n- **Tried and rejected:** c\n' "the documentation|"
-expect_remaining "plain labels" 'Done: all\nRemaining work:\n  - docs\nIn progress: none\n' "docs|"
-expect_remaining "text on the lines after the label" '**Remaining:**\nstep 3\nstep 4\n' "step 3|step 4|"
-for nothing in 'Remaining: none.' '**Remaining:** nothing' '- **Remaining:** n/a' '## Remaining\n\nNone\n' \
-  '**Remaining:** -' 'Remaining: nothing remains.'; do
-  expect_remaining "nothing remains: $nothing" "$nothing\n" ""
-done
-# A labelled line that says a category has nothing left is not work (#218);
-# a label followed by anything else still is.
-for nothing in 'FIX_NOW findings: none.' 'Open findings: nothing' '- Manual steps: n/a' \
-  '- **FIX_NOW findings:** none' 'Follow-ups: no.' 'Deferred: -'; do
-  expect_remaining "a labelled none line: $nothing" "**Remaining:**\n$nothing\n" ""
-done
-expect_remaining "a labelled none line after the label" '**Remaining:** FIX_NOW findings: none.\n' ""
-expect_remaining "labelled work" \
-  'Remaining: Plan steps 3 to 9\n' "Plan steps 3 to 9|"
-expect_remaining "labelled work in a list" \
-  '## Remaining\n- Tests: the integration test\n- Plan steps: 3 to 9\n- the documentation\n- Findings: none of them fixed yet\n- Docs: no section yet\n' \
-  "Tests: the integration test|Plan steps: 3 to 9|the documentation|Findings: none of them fixed yet|Docs: no section yet|"
-expect_remaining "labelled none lines beside work" \
-  '**Remaining:**\n- FIX_NOW findings: none.\n- step 3\n' "step 3|"
-# A none-word that ends a sentence, with an explanation after it, says that
-# nothing is left too (#285); a sentence that goes on from it is work.
-for nothing in "None. The owner's approval stays pending on GitHub (gate owner_approval)." \
-  '**None.** CI runs on the pull request.' 'None (the owner approves on GitHub)' \
-  'None; the pending gate is in the completion record.' 'None — pending CI' 'Nothing - see the record' \
-  'No remaining work. The owner approves the merge.' 'FIX_NOW findings: none. Deferred: #300.'; do
-  expect_remaining "none with an explanation: $nothing" "**Remaining:** $nothing\n" ""
-done
-expect_remaining "none with an explanation in a list beside work" \
-  '## Remaining\n- None. The owner approves on GitHub.\n- step 3\n' "step 3|"
-expect_remaining "a sentence that goes on from the none-word" \
-  '## Remaining\n- None of the tests pass yet\n- None, except the documentation\n- Nothing-specific cleanup\n- Docs: none-existent so far\n' \
-  "None of the tests pass yet|None, except the documentation|Nothing-specific cleanup|Docs: none-existent so far|"
-expect_remaining "an explanation on its own line after the none-word" \
-  '**Remaining:** None.\nThe documentation still needs a page.\n' "The documentation still needs a page.|"
-# The clarification line of the implementer is a part of its own, not work
-# that remains.
-expect_remaining "the clarification line after the list" \
-  '**Remaining:** none\n\n**Clarification:** clear, the Issue settles every decision.\n' ""
-expect_remaining "the clarification line ends the list" \
-  '## Remaining\n- step 3\n- **Clarification:** clear\n' "step 3|"
-expect_remaining "a note reduced to one line" 'Issue 7 is complete.\n' ""
-expect_remaining "the word in a sentence" 'The remaining tests pass, and remaining: is not a label here.\n' ""
-expect_remaining "an empty note" '' ""
-rm "$note"
-[[ -z "$(handoff_remaining "$note")" ]] || fail "a missing note lists remaining work"
+with_checks '[
+  {"triage": "feature-7-x-review-01-triage.json", "finding": "C1", "value": "fixed", "evidence": "tests/a-test.sh: the CRLF case passes"},
+  {"triage": "feature-7-x-review-01-triage.json", "finding": "M2", "value": "refuted", "evidence": "printf x | ./a.sh\texits 0\nas expected"},
+  {"triage": "feature-7-x-review-01-triage.json", "finding": "M3", "value": "not_reproduced", "evidence": "the command ran and printed nothing wrong"},
+  {"triage": "feature-7-x-review-01-triage.json", "finding": "S4", "value": "not_executable", "evidence": "needs a browser; settled by reading, unverified"}]'
+[[ "$(completion_finding_checks "$record" | cut -f 2,3 | tr '\t\n' ':|')" == "C1:fixed|M2:refuted|M3:not_reproduced|S4:not_executable|" ]] ||
+  fail "the checks were not read: $(completion_finding_checks "$record")"
+[[ "$(completion_finding_checks "$record" | sed -n 1p)" == "$(printf 'feature-7-x-review-01-triage.json\tC1\tfixed\ttests/a-test.sh: the CRLF case passes')" ]] ||
+  fail "a check does not give its triage and its evidence: $(completion_finding_checks "$record" | sed -n 1p)"
+[[ "$(completion_finding_checks "$record" | sed -n 2p | cut -f 4)" == "printf x | ./a.sh exits 0 as expected" ]] ||
+  fail "the tabs and line breaks of the evidence were kept: $(completion_finding_checks "$record" | sed -n 2p)"
+# The checks do not change the outcome of the gate: they are not remaining work.
+expect_gate_first complete "a complete record with checks"
+# An entry that does not follow the schema is no check, and a record that is
+# missing or not JSON has none.
+with_checks '[{"triage": "feature-7-x-review-01-triage.json", "finding": "C1", "value": "resolved", "evidence": "it is fine"},
+  {"triage": "feature-7-x-review-01-triage.json", "finding": "C2", "value": "fixed", "evidence": "n/a"},
+  {"triage": "feature-7-x-review-01-triage.json", "finding": "C8", "value": "fixed", "evidence": "— — —"},
+  {"triage": "feature-7-x-review-01-triage.json", "finding": "Class", "value": "fixed", "evidence": "a label"},
+  {"triage": "feature-7-x-review-01-triage.json", "finding": "C4", "value": "refuted"}, "C5: fixed — a text"]'
+[[ -z "$(completion_finding_checks "$record")" ]] ||
+  fail "an entry that is not a check was read as one: $(completion_finding_checks "$record")"
+printf 'broken\n' >"$record"
+[[ -z "$(completion_finding_checks "$record")" ]] || fail "a record that is not JSON has checks"
+rm "$record"
+[[ -z "$(completion_finding_checks "$record")" ]] || fail "a missing record has checks"
 
-# The triage implementer's check of each finding (#292): one line per finding
-# under the heading of its triage. The lines do not change what the note lists
-# as remaining work.
-checks_note='**Done:** C1 fixed.\n**Remaining:** step 3\n\n## Triage feature-7-x-review-01-triage.json\n\n- C1: fixed — tests/a-test.sh: the CRLF case passes\n  Class: input split on LF only; checked scripts/b.sh (does not have it).\n- `M2`: `refuted` -- printf x | ./a.sh exits 0\n- M3: not_reproduced – the command ran and printed nothing wrong\n- S4: not_executable — needs a browser; settled by reading, unverified\n'
-expect_remaining "the check lines under a triage heading" "$checks_note" "step 3|"
-expect_remaining "the check lines after a list of labels" \
-  '- **Remaining:** none\n\n## Triage feature-7-x-review-01-triage.json\n- C1: not_reproduced — ran it\n' ""
-# A check line that is put under Remaining is still remaining work: the gate
-# never reads a check as completion.
-expect_remaining "a check line under Remaining" '**Remaining:**\n- C1: fixed — tests/a-test.sh\n' "C1: fixed — tests/a-test.sh|"
-
-printf '%b' "$checks_note" >"$note"
-[[ "$(handoff_finding_checks "$note" | cut -f 2,3 | tr '\t\n' ':|')" == "C1:fixed|M2:refuted|M3:not_reproduced|S4:not_executable|" ]] ||
-  fail "the checks were not read: $(handoff_finding_checks "$note")"
-[[ "$(handoff_finding_checks "$note" | sed -n 1p)" == "$(printf 'feature-7-x-review-01-triage.json\tC1\tfixed\ttests/a-test.sh: the CRLF case passes')" ]] ||
-  fail "a check does not give its triage and its evidence: $(handoff_finding_checks "$note" | sed -n 1p)"
-# Not a check: a line outside a triage heading, another value, no evidence,
-# a none-word or only delimiters and punctuation for evidence, free text under the heading, or a label that is
-# not a finding id.
-printf '%b' '- C1: fixed — before any heading\n## Triage feature-7-x-review-01-triage.json\n- C1: resolved — it is fine\n- C2: fixed —\n- C3: fixed — none\n- C8: fixed — — —\n- C9: fixed -- .\n- C4: refuted\nC5: fixed — not a list line\n- Class: fixed — a label\n## Notes\n- C6: fixed — under another heading\n## Triage\n- C7: fixed — a heading without a name\n' >"$note"
-[[ -z "$(handoff_finding_checks "$note")" ]] ||
-  fail "a line that is not a check was read as one: $(handoff_finding_checks "$note")"
-
-# The outcome per FIX_NOW finding of one triage: only its own section counts,
+# The outcome per FIX_NOW finding of one triage: only its own entries count,
 # and only fixed is resolved.
 triage_file="$tmp/feature-7-x-review-02-triage.json"
 jq -n '{decisions: [
@@ -233,18 +220,38 @@ jq -n '{decisions: [
   {finding_id: "M3", decision: "FIX_NOW"}, {finding_id: "S4", decision: "FIX_NOW"},
   {finding_id: "M5", decision: "FIX_NOW"}, {finding_id: "M6", decision: "FIX_NOW"},
   {finding_id: "S7", decision: "ACCEPT"}]}' >"$triage_file"
-printf '%b' '## Triage feature-7-x-review-01-triage.json\n- C1: fixed — an earlier round\n- M5: fixed — an earlier round\n## Triage `feature-7-x-review-02-triage.json`\n- C1: not_reproduced — ran tests/a-test.sh, it passes\n- M2: refuted — printf x | ./a.sh exits 0\n- M3: not_executable — needs GitHub\n- S4: fixed — tests/s-test.sh\n- M6: fixed — tests/m-test.sh\n- M6: refuted — the claim does not hold\n- S7: fixed — tests/s7-test.sh\n' >"$note"
-[[ "$(triage_check_outcomes "$note" "$triage_file" | cut -f 1,2 | tr '\t\n' ':|')" == "C1:not_reproduced|M2:refuted|M3:not_executable|S4:fixed|M5:missing|M6:conflicting|" ]] ||
-  fail "the outcomes of the checks are not as recorded: $(triage_check_outcomes "$note" "$triage_file")"
-# Duplicate lines: identical ones count once, and the same value with other
-# evidence conflicts. A line with delimiter-only evidence is no check, so it
-# neither conflicts nor resolves.
-printf '%b' '## Triage feature-7-x-review-02-triage.json\n- C1: fixed — tests/a-test.sh\n- C1: fixed — tests/a-test.sh\n- M2: fixed — tests/a-test.sh\n- M2: fixed — tests/b-test.sh\n- M3: fixed — tests/c-test.sh\n- M3: fixed — — —\n' >"$note"
-[[ "$(triage_check_outcomes "$note" "$triage_file" | sed -n 1,3p | tr '\t\n' ':|')" == "C1:fixed:tests/a-test.sh|M2:conflicting:fixed, with differing evidence|M3:fixed:tests/c-test.sh|" ]] ||
-  fail "duplicate checks are not read as identical or conflicting: $(triage_check_outcomes "$note" "$triage_file")"
+one="feature-7-x-review-01-triage.json"
+two="feature-7-x-review-02-triage.json"
+with_checks "$(jq -n --arg one "$one" --arg two "$two" '[
+  {triage: $one, finding: "C1", value: "fixed", evidence: "an earlier round"},
+  {triage: $one, finding: "M5", value: "fixed", evidence: "an earlier round"},
+  {triage: $two, finding: "C1", value: "not_reproduced", evidence: "ran tests/a-test.sh, it passes"},
+  {triage: $two, finding: "M2", value: "refuted", evidence: "printf x | ./a.sh exits 0"},
+  {triage: $two, finding: "M3", value: "not_executable", evidence: "needs GitHub"},
+  {triage: $two, finding: "S4", value: "fixed", evidence: "tests/s-test.sh"},
+  {triage: $two, finding: "M6", value: "fixed", evidence: "tests/m-test.sh"},
+  {triage: $two, finding: "M6", value: "refuted", evidence: "the claim does not hold"},
+  {triage: $two, finding: "S7", value: "fixed", evidence: "tests/s7-test.sh"}]')"
+[[ "$(triage_check_outcomes "$record" "$triage_file" | cut -f 1,2 | tr '\t\n' ':|')" == "C1:not_reproduced|M2:refuted|M3:not_executable|S4:fixed|M5:missing|M6:conflicting|" ]] ||
+  fail "the outcomes of the checks are not as recorded: $(triage_check_outcomes "$record" "$triage_file")"
+[[ "$(completion_finding_checks "$record" "$one" | cut -f 2 | tr '\n' '|')" == "C1|M5|" ]] ||
+  fail "the checks of one triage were not selected: $(completion_finding_checks "$record" "$one")"
+# Duplicate entries: identical ones count once, and the same value with other
+# evidence conflicts.
+with_checks "$(jq -n --arg two "$two" '[
+  {triage: $two, finding: "C1", value: "fixed", evidence: "tests/a-test.sh"},
+  {triage: $two, finding: "C1", value: "fixed", evidence: "tests/a-test.sh"},
+  {triage: $two, finding: "M2", value: "fixed", evidence: "tests/a-test.sh"},
+  {triage: $two, finding: "M2", value: "fixed", evidence: "tests/b-test.sh"},
+  {triage: $two, finding: "M3", value: "fixed", evidence: "tests/c-test.sh"}]')"
+[[ "$(triage_check_outcomes "$record" "$triage_file" | sed -n 1,3p | tr '\t\n' ':|')" == "C1:fixed:tests/a-test.sh|M2:conflicting:fixed, with differing evidence|M3:fixed:tests/c-test.sh|" ]] ||
+  fail "duplicate checks are not read as identical or conflicting: $(triage_check_outcomes "$record" "$triage_file")"
+# A handoff note in the old form is not read: its lines check nothing.
+printf '%b' "## Triage $two\n- C1: fixed — tests/a-test.sh\n" >"$note"
+rm "$record"
+[[ "$(triage_check_outcomes "$record" "$triage_file" | cut -f 2 | sort -u)" == "missing" ]] ||
+  fail "without a record, a finding is not missing its check"
 rm "$note"
-[[ "$(triage_check_outcomes "$note" "$triage_file" | cut -f 2 | sort -u)" == "missing" ]] ||
-  fail "without a note, a finding is not missing its check"
 
 # The gate: the outcome on the first line, the reasons after it.
 # expect_gate <description> <outcome> [reason-fragment...]
@@ -291,7 +298,7 @@ printf '%s\n' "$awaiting" | sed 's/"gate": "pr_ci", //' >"$record"
 expect_gate "pending without a gate" invalid "criterion 2: pending is only for evidence of a later gate"
 printf '%s\n' "$awaiting" >"$record"
 printf '**Remaining:** step 3.\n' >"$note"
-expect_gate "pending evidence and remaining work in the handoff note" partial "remaining: step 3."
+expect_gate "pending evidence and remaining work in the handoff note" awaiting_evidence "pending at pr_ci: CI passes on the pull request"
 rm "$note"
 
 # A budget check of the verification configuration ('<name> [<group>]
@@ -351,24 +358,19 @@ grep -Fqx 'Post-merge criterion: "main verifies \"fast\" (production)"' <<<"$(co
 printf '%s\n' "$awaiting" >"$record"
 printf '%s\n' "$complete" >"$record"
 
-# The handoff note outweighs a record that says complete.
-printf '**Remaining:** steps 3 to 9.\n' >"$note"
-expect_gate "a complete record against a note with remaining work" partial \
-  "the completion record says complete, but the handoff note (.agents/handoffs/7.md) lists remaining work" \
-  "remaining: steps 3 to 9."
+# The record is the only source of remaining work (#425): a handoff note
+# that lists work does not change the outcome of the gate, and a record that
+# says complete while work remains never reaches the review.
+for listed in '**Remaining:** steps 3 to 9.\n' '## Remaining\n- step 3\n- step 4\n' '**Remaining:** None of the tests pass yet.\n'; do
+  printf '%b' "$listed" >"$note"
+  expect_gate "a complete record beside a note that lists work: $listed" complete
+done
+printf '%s\n' "$partial" >"$record"
 printf 'Issue 7 is complete.\n' >"$note"
-expect_gate "a complete record with a note that agrees" complete
-# A labelled none line under Remaining says that a category has nothing left,
-# so the gate agrees with the record (#218).
-printf '**Remaining:**\nFIX_NOW findings: none.\n' >"$note"
-expect_gate "a complete record with a labelled none line under Remaining" complete
-# So does a none-word with an explanation (#285); work after it still names
-# the line in the reason.
-printf "**Remaining:** None. The owner's approval stays pending on GitHub (gate owner_approval).\n" >"$note"
-expect_gate "a complete record with a none line and an explanation under Remaining" complete
-printf '**Remaining:** None of the tests pass yet.\n' >"$note"
-expect_gate "a complete record against a note whose none-word starts work" partial \
-  "lists remaining work" "remaining: None of the tests pass yet."
+expect_gate "a partial record beside a note that says it is complete" partial "remaining: Plan steps 4 to 6"
+printf '%s\n' "$complete" | jq '.remaining = ["the documentation"]' >"$record"
+expect_gate "a complete record with work that remains" invalid "status is complete, but work remains"
+printf '%s\n' "$complete" >"$record"
 printf 'Issue 7 is complete.\n' >"$note"
 
 # The statement that finish-feature.sh puts in the commit message.

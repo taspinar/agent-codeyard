@@ -411,9 +411,13 @@ printf '%s\n' 'case "$count" in
 esac' >"$repo.control/implementer.sh"
 run_feature "$repo" 2 thing
 expect_published "$repo"
-expect_sessions "$repo" 3 1 0 0
-grep -Fq "the completion record says complete, but the handoff note" <<<"$(log_of "$repo")" ||
-  fail "the repair session that left remaining work in the note is not in the log of the feature"
+# The completion record is the only source of remaining work (#425): what
+# the repair session left in the handoff note does not resume the
+# implementer.
+expect_sessions "$repo" 2 1 0 0
+if grep -Fq "| not complete |" <<<"$(log_of "$repo")"; then
+  fail "the note that the repair session left made the complete record not complete: $(log_of "$repo")"
+fi
 
 # A repair session that records blocked stops the run for the human, with
 # status 3, also without a BLOCKED line: nothing is reviewed.

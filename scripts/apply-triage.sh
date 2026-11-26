@@ -278,15 +278,19 @@ ${fix_scope}
 Do not implement any DEFER or ACCEPT finding.
 Do not commit, push, merge, deploy, or create/close Issues.
 
-Record the check of each finding in the handoff note of the Issue under
-the heading '## Triage ${triage_relative##*/}', one line per finding, as your
-contract says under 'Each finding: its class, and a check before the change'."
+Record the check of each finding in checks[] of the completion record
+(.agents/completion/$source_issue.json), one entry per finding with the triage
+'${triage_relative##*/}', as your contract says under 'Each finding: its
+class, and a check before the change'."
 start_prompt+="$(skills_prompt "$SKILLS_FILES")"
 if [[ -n "$source_issue" && -f "$root/.agents/handoffs/$source_issue.md" ]]; then
   start_prompt+="
 
 There is a handoff note: .agents/handoffs/$source_issue.md. Read it first; it
-may hold the human's answer to a question of an earlier session."
+may hold the human's answer to a question of an earlier session. Checks of
+findings that an earlier version of the workflow kept in the note, under
+'## Triage <file>', count only once they are in checks[] of the completion
+record: carry them over."
 fi
 if [[ -n "$checks" ]]; then
   start_prompt+="
@@ -499,9 +503,9 @@ report_checks() {
   local returned
   local unrecorded
 
-  outcomes="$(triage_check_outcomes "$root/.agents/handoffs/$source_issue.md" "$triage_path")"
+  outcomes="$(triage_check_outcomes "$(completion_record "$root" "$source_issue")" "$triage_path")"
   echo
-  echo "The implementer's check of each FIX_NOW finding (.agents/handoffs/$source_issue.md, '## Triage ${triage_relative##*/}'):"
+  echo "The implementer's check of each FIX_NOW finding ($COMPLETION_DIR/$source_issue.json, checks[] of triage ${triage_relative##*/}):"
   printf '%s\n' "$outcomes" | awk -F '\t' '$2 == "fixed" { printf "  - %s: fixed — %s\n", $1, $3 }'
   returned="$(printf '%s\n' "$outcomes" | awk -F '\t' '$2 ~ /^(refuted|not_reproduced|not_executable)$/ { printf "  - %s: %s — %s\n", $1, $2, $3 }')"
   unrecorded="$(printf '%s\n' "$outcomes" | awk -F '\t' '$2 == "missing" { print "  - " $1 ": no check recorded" } $2 == "conflicting" { print "  - " $1 ": conflicting checks (" $3 ")" }')"

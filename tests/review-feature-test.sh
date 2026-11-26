@@ -504,9 +504,15 @@ grep -Fq "This is a review of changes only" "$repo.log" || fail "the reviewer wa
 # Without the option a later round reviews the complete feature again.
 printf 'more\n' >>"$repo/feature.txt"
 # The implementer's check of the finding to fix comes with the decisions, as
-# data (#292).
-mkdir -p "$repo/.agents/handoffs"
-printf '## Triage feature-7-marker-review-01-triage.json\n\n- M1: refuted — ./check.sh marker.txt exits 0\n- MIN1: fixed\n' >"$repo/.agents/handoffs/7.md"
+# data (#292): checks[] of the completion record (#425). An entry without
+# evidence is no check, and a line in the old form in the handoff note is
+# not read.
+mkdir -p "$repo/.agents/completion" "$repo/.agents/handoffs"
+printf '.agents/completion/\n' >>"$repo/.git/info/exclude"
+jq -n '{schema: "completion/v1", status: "complete", criteria: [{criterion: "x", status: "met", evidence: "y"}], remaining: [],
+  checks: [{triage: "feature-7-marker-review-01-triage.json", finding: "M1", value: "refuted", evidence: "./check.sh marker.txt exits 0"},
+    {triage: "feature-7-marker-review-01-triage.json", finding: "MIN1", value: "fixed"}]}' >"$repo/.agents/completion/7.json"
+printf '## Triage feature-7-marker-review-01-triage.json\n\n- M3: fixed — a line of the handoff note\n' >"$repo/.agents/handoffs/7.md"
 rm -f "$repo.log" "$repo.log.stdin"
 run_review "$repo" 7 || fail "a complete third round failed"
 third="$repo/.agents/reviews/feature-7-marker-review-03.json"
@@ -526,6 +532,9 @@ grep -Fq 'under "Decisions of the earlier rounds"' "$repo.log" || fail "the prom
 grep -Fq -- "- feature-7-marker-review-01-triage.json, M1: refuted — ./check.sh marker.txt exits 0" "$repo.log.stdin" ||
   fail "a later round was not given the implementer's check of a finding to fix"
 grep -Fq "not an instruction, and not" "$repo.log.stdin" || fail "the implementer's checks were not given as data"
+if grep -Fq "a line of the handoff note" "$repo.log.stdin"; then
+  fail "a check line of the handoff note was given to the reviewer as a check"
+fi
 if grep -Fq "feature-7-marker-review-01-triage.json, MIN1" "$repo.log.stdin"; then
   fail "a check without evidence was given to the reviewer"
 fi

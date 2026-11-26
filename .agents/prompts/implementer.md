@@ -157,8 +157,9 @@ Keep it to what the repository does not already show:
 - **Open questions:** decisions you are waiting for from the human.
 
 When the Issue is complete, reduce the note to one line that says so. The
-scripts read the note: as long as it lists work under "Remaining", the feature
-does not count as complete (see "Completion").
+note is for people and the next session: no script reads its "Remaining" to
+decide whether the feature is complete. That is the completion record, and
+only it (see "Completion").
 
 ## When something fails
 
@@ -266,9 +267,20 @@ stop partway, run out of time, or are blocked:
     questions" in the handoff note, and in an unattended session end with
     the `BLOCKED:` line.
 - `remaining`: what is left, empty for `complete` and `awaiting_evidence`.
+  It is the only source of remaining work: the gate reads nothing else.
+- `checks` (optional): the check of each finding that a triage gave to fix,
+  one entry per finding, `{"triage": "<triage file name>", "finding":
+  "<id>", "value": "fixed" | "refuted" | "not_reproduced" |
+  "not_executable", "evidence": "<the test or command and its result>"}`.
+  The triage implementer writes them
+  (`.agents/prompts/triage-implementer.md`); keep the entries of earlier
+  sessions when you rewrite the record.
 
-Keep the handoff note in agreement with it: remaining work listed there
-counts as not complete, whatever the record says.
+The record follows `.agents/schemas/completion.schema.json`; the gate
+refuses a record that does not, and names the field. Keep the handoff note
+in agreement with it: list under "Remaining" there what `remaining` lists. A
+note of an earlier version of the workflow may hold remaining work or checks
+of findings that the record lacks: carry them into the record once.
 
 Before declaring the issue complete:
 

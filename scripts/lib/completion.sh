@@ -5,10 +5,13 @@
 # A session that ends without an error is not a feature that is complete.
 # The implementer therefore states where the work stands in a completion
 # record, .agents/completion/<issue>.json, and the scripts go on to the
-# commit and the pull request only when that record and the handoff note
-# agree that the Issue is done. The record is a claim of the implementer: the
-# independent review of the complete feature checks it against the code and
-# the tests.
+# commit and the pull request only when that record says that the Issue is
+# done. The record is the only source of remaining work: the handoff note is
+# a readable report for people and the next session, and no script parses it
+# for what remains or for the checks of findings. The record is a claim of
+# the implementer: the independent review of the complete feature checks it
+# against the code and the tests. Its schema is
+# .agents/schemas/completion.schema.json:
 #
 #   {
 #     "schema": "completion/v1",
@@ -22,8 +25,16 @@
 #                     which the evidence appears>"}
 #     ],
 #     "remaining": ["<what is left>", ...],
+#     "checks": [                            (optional)
+#       {"triage": "<triage file name>", "finding": "<finding id>",
+#        "value": "fixed" | "refuted" | "not_reproduced" | "not_executable",
+#        "evidence": "<the test or command and its result>"}
+#     ],
 #     "risk": "low" | "medium" | "high"   (optional)
 #   }
+#
+# 'checks' is the triage implementer's check of each finding to fix that it
+# was given (.agents/prompts/triage-implementer.md), kept across the rounds.
 #
 # 'risk' is the implementer's own classification of the feature (lib/risk.sh).
 # It can raise the level that the scripts compute from the diff, never lower
@@ -50,6 +61,10 @@
 # 'complete' until the pending evidence exists.
 
 COMPLETION_DIR=".agents/completion"
+COMPLETION_SCHEMA=".agents/schemas/completion.schema.json"
+# The schema is read from the checkout of these scripts, not from the
+# working tree a record is checked for.
+COMPLETION_LIB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 
 # completion_ready <status>
 # Succeeds for a gate outcome that lets the work go on to the review, the
@@ -81,8 +96,12 @@ completion_budget_checks() {
 
 # completion_errors <record> [<root>]
 # Prints what is wrong with a completion record, one problem per line, and
-# nothing for a valid one. With <root>, the evidence of a met criterion may
-# not name a budget check of that working tree.
+# nothing for a valid one. The record is checked against its schema
+# ($COMPLETION_SCHEMA, by the generic validator of lib/guardrails.sh), whose
+# lines name the field ('record.criteria[0].status must be one of ...'),
+# and then by the rules across fields that a schema cannot express. With
+# <root>, the evidence of a met criterion may not name a budget check of that
+# working tree.
 completion_errors() {
   local record="$1"
   local budget_checks=""
@@ -91,54 +110,36 @@ completion_errors() {
     echo "it is not valid JSON"
     return 0
   fi
+  # The generic validator, loaded when a record is checked: a script that
+  # only reads the gate's outcome does not need it.
+  declare -F guardrails_request_errors >/dev/null || source "$COMPLETION_LIB_ROOT/scripts/lib/guardrails.sh"
+  guardrails_request_errors "$record" "$COMPLETION_LIB_ROOT/$COMPLETION_SCHEMA" record
   [[ -z "${2:-}" ]] || budget_checks="$(completion_budget_checks "$2")"
   jq -r --arg budget_checks "$budget_checks" '
-    def text: type == "string" and test("[^[:space:]]");
     # A budget check named as a whole word in a text: not a word that merely
     # contains the name, such as a test or a path named after it.
     def budget_cited: . as $text
       | [$budget_checks | split("\n")[] | select(length > 0)
          | select(. as $name | $text | test("(^|[^a-z0-9_-])" + ($name | gsub("-"; "[-]")) + "($|[^a-z0-9_-])"))]
       | first // "";
-    if type != "object" then "it is not a JSON object"
+    def statuses: [(.criteria | if type == "array" then .[] else empty end) | objects | .status];
+    if type != "object" then empty
     else
-      (if .schema != "completion/v1" then "schema must be \"completion/v1\"" else empty end),
-      (if (.status | IN("complete", "awaiting_evidence", "partial", "blocked")) | not
-       then "status must be complete, awaiting_evidence, partial, or blocked" else empty end),
-      (if (.criteria | type) != "array" or (.criteria | length) == 0
-       then "criteria must list at least one acceptance criterion"
-       else (.criteria | to_entries[] |
-         (.key + 1) as $n | .value |
-         if type != "object" then "criterion \($n) is not an object"
-         else
-           (if (.criterion | text) | not then "criterion \($n) has no text" else empty end),
-           (if (.status | IN("met", "not_met", "not_applicable", "pending")) | not
-            then "criterion \($n): status must be met, not_met, not_applicable, or pending" else empty end),
-           (if has("gate") and (.gate | IN("implementation", "pr_ci", "owner_approval", "post_merge") | not)
-            then "criterion \($n): gate must be implementation, pr_ci, owner_approval, or post_merge" else empty end),
+      (.criteria | if type == "array" then to_entries[] else empty end |
+         (.key + 1) as $n | .value | objects |
            (if .gate == "owner_approval" and (.status == "met")
             then "criterion \($n): owner_approval cannot be met in a record the implementer writes; it stays pending until the owner approves on GitHub" else empty end),
            (if .status == "pending" and ((.gate // "implementation") == "implementation")
             then "criterion \($n): pending is only for evidence of a later gate (pr_ci, owner_approval, or post_merge)" else empty end),
-           (if (.evidence | text) | not then "criterion \($n) has no evidence" else empty end),
            (if (.evidence | type) == "string" and (.evidence | test("verify\\.sh([[:space:]]+-[^[:space:]]*)*[[:space:]]+--(only|changed)([[:space:]]|$)"))
             then "criterion \($n) cites a partial run of the checks (verify.sh --only or --changed) as evidence, which is not a verification" else empty end),
            (if .status == "met" and (.evidence | type) == "string" and (.evidence | budget_cited) != ""
-            then "criterion \($n) cites the budget check \u0027\(.evidence | budget_cited)\u0027 as evidence of a met criterion; a budget is a measurement that never fails the verification, so it shows nothing about the criterion" else empty end)
-         end)
-       end),
-      (if (.remaining | type) != "array" or ([.remaining[]? | text] | all | not)
-       then "remaining must be a list of texts; an empty list when nothing remains" else empty end),
-      (if has("risk") and ((.risk | IN("low", "medium", "high")) | not)
-       then "risk, when given, must be low, medium, or high" else empty end),
-      (if (.status == "complete" or .status == "awaiting_evidence") and (.criteria | type) == "array"
-          and ([.criteria[]? | objects | .status] | index("not_met")) != null
+            then "criterion \($n) cites the budget check \u0027\(.evidence | budget_cited)\u0027 as evidence of a met criterion; a budget is a measurement that never fails the verification, so it shows nothing about the criterion" else empty end)),
+      (if (.status == "complete" or .status == "awaiting_evidence") and (statuses | index("not_met")) != null
        then "status is \(.status), but a criterion is not met" else empty end),
-      (if .status == "complete" and (.criteria | type) == "array"
-          and ([.criteria[]? | objects | .status] | index("pending")) != null
+      (if .status == "complete" and (statuses | index("pending")) != null
        then "status is complete, but a criterion is pending; the status is awaiting_evidence until its evidence exists" else empty end),
-      (if .status == "awaiting_evidence" and (.criteria | type) == "array"
-          and ([.criteria[]? | objects | .status] | index("pending")) == null
+      (if .status == "awaiting_evidence" and (statuses | index("pending")) == null
        then "status is awaiting_evidence, but no criterion is pending" else empty end),
       (if (.status == "complete" or .status == "awaiting_evidence") and (.remaining | type) == "array" and (.remaining | length) > 0
        then "status is \(.status), but work remains" else empty end),
@@ -148,100 +149,42 @@ completion_errors() {
     end' "$record"
 }
 
-# handoff_remaining <handoff-note>
-# Prints the work that a handoff note lists under 'Remaining', one line per
-# line of the note, and nothing when there is none. The implementer reduces
-# the note to one line when the Issue is complete, so text here means that
-# work is left, whatever the completion record says. A line that is only a
-# none-word, or a label followed by one ("FIX_NOW findings: none."), says
-# that nothing is left and is not work. So is such a line whose none-word
-# ends a sentence that an explanation follows ("None. The owner's approval
-# stays pending."); a none-word that the sentence goes on from ("None of the
-# tests pass", "None, except the docs") is work.
-handoff_remaining() {
-  [[ -f "$1" ]] || return 0
-  awk '
-    function emit(text) {
-      gsub(/^[[:space:]*:>-]+|[[:space:]]+$/, "", text)
-      if (text == "") return
-      # Where the none-word ends: the end of the line, or a sentence break
-      # (".", "!", ";", a dash, a parenthesis) with an explanation after it.
-      after = "[*]*([[:space:].!*]*$|[[:space:]]*([.!;(]|--?[[:space:]]|—|–))"
-      if (tolower(text) ~ ("^(none|nothing|n/a|no remaining( work)?|nothing remains|-)" after)) return
-      # A labelled line that says a category has nothing left: "FIX_NOW findings: none."
-      if (tolower(text) ~ ("^[^:]+:[[:space:]*]*(none|nothing|n/a|no|-)" after)) return
-      print text
-    }
-    # Another part of the note ends the list.
-    found && (/^#/ || tolower($0) ~ /^[[:space:]]*([-*][[:space:]]*)?\**(done|in progress|tried and rejected|open questions?|clarification)\**[[:space:]]*:/) {
-      found = 0
-    }
-    tolower($0) ~ /^[[:space:]]*(#+[[:space:]]*|[-*][[:space:]]*)?\**remaining( work)?\**[[:space:]]*:?\**[[:space:]]*/ &&
-      tolower($0) !~ /^[[:space:]]*(#+[[:space:]]*|[-*][[:space:]]*)?\**remaining( work)?[a-z]/ {
-      found = 1
-      line = $0
-      sub(/^[[:space:]]*(#+[[:space:]]*|[-*][[:space:]]*)?\**[Rr][Ee][Mm][Aa][Ii][Nn][Ii][Nn][Gg]( [Ww][Oo][Rr][Kk])?\**[[:space:]]*:?\**/, "", line)
-      emit(line)
-      next
-    }
-    found { emit($0) }' "$1"
+# completion_finding_checks <record> [<triage-name>]
+# Prints the checks[] of a completion record: the check that the triage
+# implementer recorded for each finding it was given
+# (.agents/prompts/triage-implementer.md), one line per entry: <triage-name>
+# TAB <finding-id> TAB <value> TAB <evidence>, with the tabs and line breaks
+# of the evidence turned into spaces. With <triage-name>, only the entries of
+# that triage. An entry that does not follow the schema (another value, no
+# evidence, an id that is not one) is not a check, and a record that is
+# missing or not JSON has none. The entries are the implementer's statement:
+# they resolve nothing by themselves.
+completion_finding_checks() {
+  [[ -f "$1" ]] && jq -e . "$1" >/dev/null 2>&1 || return 0
+  jq -r --arg only "${2:-}" --slurpfile schema "$COMPLETION_LIB_ROOT/$COMPLETION_SCHEMA" '
+    ($schema[0].properties.checks.items.properties) as $fields
+    | if type == "object" and (.checks | type) == "array" then .checks[] else empty end
+    | objects
+    | select((.triage | type) == "string" and (.triage | test($fields.triage.pattern))
+        and (.finding | type) == "string" and (.finding | test($fields.finding.pattern))
+        and (.value | IN($fields.value.enum[]))
+        and (.evidence | type) == "string" and (.evidence | test($fields.evidence.pattern)))
+    | select($only == "" or .triage == $only)
+    | [.triage, .finding, .value, (.evidence | gsub("[\t\r\n]+"; " ") | gsub("^ +| +$"; ""))] | join("\t")' "$1"
 }
 
-# handoff_finding_checks <handoff-note> [<triage-name>]
-# Prints the check that the triage implementer recorded for each finding it
-# was given (.agents/prompts/triage-implementer.md), one line per check:
-# <triage-name> TAB <finding-id> TAB <value> TAB <evidence>. A check is a line
-# '- <finding-id>: <value> — <evidence>' under a heading 'Triage <name>' of
-# any level; the next heading ends the section. <finding-id> is an id as the
-# review gives it (C1, MIN1). <value> is fixed, refuted,
-# not_reproduced, or not_executable, and the evidence is required: a line
-# with another value, without evidence (a none-word or only delimiters and
-# punctuation), or outside such a heading is not a check. With <triage-name>, only the section of that triage counts. The
-# lines are the implementer's statement: they resolve nothing by themselves.
-handoff_finding_checks() {
-  [[ -f "$1" ]] || return 0
-  awk -v only="${2:-}" '
-    /^[[:space:]]*#/ {
-      triage = ""
-      line = $0
-      if (line ~ /^[[:space:]]*#+[[:space:]]+[Tt]riage[[:space:]]+`?[^`[:space:]]+`?[[:space:]]*$/) {
-        sub(/^[[:space:]]*#+[[:space:]]+[Tt]riage[[:space:]]+`?/, "", line)
-        sub(/`?[[:space:]]*$/, "", line)
-        triage = line
-      }
-      next
-    }
-    triage == "" || (only != "" && triage != only) { next }
-    match($0, /^[[:space:]]*[-*][[:space:]]+`?[[:upper:]]+[[:digit:]]+`?:[[:space:]]+`?(fixed|refuted|not_reproduced|not_executable)`?[[:space:]]+(—|–|--?)[[:space:]]+/) {
-      head = substr($0, 1, RLENGTH)
-      evidence = substr($0, RLENGTH + 1)
-      gsub(/\t/, " ", evidence)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", evidence)
-      if (tolower(evidence) ~ /^(none|nothing|n\/a|-|tbd)?[.]?$/) next
-      # Delimiters and punctuation alone are no evidence: "— —".
-      if (evidence !~ /[[:alnum:]]/) next
-      sub(/^[[:space:]]*[-*][[:space:]]+`?/, "", head)
-      id = head
-      sub(/[`:].*/, "", id)
-      value = head
-      sub(/^[^:]*:[[:space:]]+`?/, "", value)
-      sub(/[`[:space:]].*/, "", value)
-      printf "%s\t%s\t%s\t%s\n", triage, id, value, evidence
-    }' "$1"
-}
-
-# triage_check_outcomes <handoff-note> <triage-json>
+# triage_check_outcomes <record> <triage-json>
 # Prints, for each FIX_NOW finding of the triage, what the implementer's
-# check in the section of that triage says: <finding-id> TAB <outcome> TAB
+# checks[] entries of that triage say: <finding-id> TAB <outcome> TAB
 # <evidence>. <outcome> is the recorded value; 'missing' when the finding has
 # no check, and 'conflicting' when its checks differ in value or in evidence
-# (identical lines count once). Only 'fixed' is resolved; every other outcome
-# leaves the finding open until a later fix records 'fixed' or a new triage
-# decides otherwise.
+# (identical entries count once). Only 'fixed' is resolved; every other
+# outcome leaves the finding open until a later fix records 'fixed' or a new
+# triage decides otherwise.
 triage_check_outcomes() {
   local checks
 
-  checks="$(handoff_finding_checks "$1" "$(basename "$2")")"
+  checks="$(completion_finding_checks "$1" "$(basename "$2")")"
   jq -r --arg checks "$checks" '
     ($checks | split("\n") | map(select(length > 0) | split("\t")
       | {id: .[1], value: .[2], evidence: (.[3:] | join(" "))})) as $lines
@@ -269,13 +212,13 @@ completion_summary_present() {
 # Decides whether the feature is complete. Prints the outcome on the first
 # line and the reasons after it, one per line:
 #
-#   complete  the record is valid and says so, and the handoff note lists
-#             no remaining work
+#   complete  the record is valid and says so; it is the only source of
+#             remaining work, and no handoff note changes the outcome
 #   awaiting_evidence
 #             the same, and only evidence of a later gate is pending: the
 #             work may be reviewed, committed, and published, but is not
 #             complete yet. The reasons name what is pending.
-#   partial   work remains, by the record or by the handoff note
+#   partial   work remains, by the record
 #   blocked   the implementer cannot go on without the human
 #   missing   there is no record
 #   invalid   the record cannot be used
@@ -285,7 +228,6 @@ completion_gate() {
   local record
   local errors
   local status
-  local left
 
   record="$(completion_record "$root" "$issue")"
   if [[ ! -f "$record" ]]; then
@@ -308,13 +250,6 @@ completion_gate() {
     return 0
   fi
 
-  left="$(handoff_remaining "$root/.agents/handoffs/$issue.md")"
-  if [[ -n "$left" ]]; then
-    echo "partial"
-    echo "the completion record says $status, but the handoff note (.agents/handoffs/$issue.md) lists remaining work:"
-    printf '%s\n' "$left" | sed 's/^/remaining: /'
-    return 0
-  fi
   echo "$status"
   jq -r '.criteria[] | select(.status == "pending") | "pending at \(.gate): \(.criterion)"' "$record"
 }
