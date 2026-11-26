@@ -11,6 +11,12 @@ set -euo pipefail
 # grep -q <pattern> <<<"$(<producer>)". Redirecting the output of grep to
 # /dev/null instead of -q is not safe either: GNU grep and ugrep then also stop
 # at the first match.
+#
+# Nor do they pipe the output of a tar that creates an archive into another
+# tar (Issue 466): the reading tar of macOS may stop at the end-of-archive
+# marker while the writer still pads its last record, and the writer fails
+# with 'tar: Write error'. They copy with copy_files of tests/lib-fakes.sh,
+# which this test covers too.
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
@@ -49,12 +55,34 @@ quiet_grep_after_pipe() {
   return 1
 }
 
-# pipe_grep_quiet_lines <file...>: prints '<file>:<line>: <text>' for every
-# command that pipes into a quiet grep. A line that ends in '|' continues on
-# the next one; comment lines are skipped.
-pipe_grep_quiet_lines() {
+# tar_into_tar <text>: succeeds when <text> pipes the output of a tar that
+# creates an archive (a 'c' among its bundled short options, or --create)
+# into another tar. '||' is no pipe. A pipe from another producer into tar,
+# such as 'git archive', is not this form.
+tar_into_tar() {
+  local text="${1//||/ }"
+  local tar_word='(^|[[:space:];(&])tar[[:space:]]'
+  local create='(^|[[:space:];(&])tar[[:space:]](.*[[:space:]])?(-[A-Za-z]*c[A-Za-z]*|--create)([[:space:])]|$)'
+  local -a stages
+  local i
+
+  IFS='|' read -ra stages <<<"$text"
+  for ((i = 0; i + 1 < ${#stages[@]}; i++)); do
+    if [[ "${stages[i]}" =~ $create && "${stages[i + 1]}" =~ $tar_word ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# pipe_lines <predicate> <file...>: prints '<file>:<line>: <text>' for every
+# command for which <predicate> <text> succeeds. A line that ends in '|'
+# continues on the next one; comment lines are skipped.
+pipe_lines() {
+  local predicate="$1"
   local file line joined start number
 
+  shift
   for file in "$@"; do
     number=0
     joined=""
@@ -66,12 +94,22 @@ pipe_grep_quiet_lines() {
         joined+=" "
         continue
       fi
-      if [[ ! "$joined" =~ ^[[:space:]]*# ]] && quiet_grep_after_pipe "$joined"; then
+      if [[ ! "$joined" =~ ^[[:space:]]*# ]] && "$predicate" "$joined"; then
         printf '%s:%s: %s\n' "$file" "$start" "$joined"
       fi
       joined=""
     done <"$file"
   done
+}
+
+# pipe_grep_quiet_lines <file...>: the commands that pipe into a quiet grep.
+pipe_grep_quiet_lines() {
+  pipe_lines quiet_grep_after_pipe "$@"
+}
+
+# pipe_tar_lines <file...>: the commands that pipe a tar into a tar.
+pipe_tar_lines() {
+  pipe_lines tar_into_tar "$@"
 }
 
 # The tests of the workflow have none: the files tests/*.sh that
@@ -92,6 +130,9 @@ if template_repository "$source_root"; then
 fi
 found="$(pipe_grep_quiet_lines "${tests[@]}")"
 [[ -z "$found" ]] || fail "a test pipes into a quiet grep, use grep -q ... <<<\"\$(producer)\" instead:
+$found"
+found="$(pipe_tar_lines "${tests[@]}")"
+[[ -z "$found" ]] || fail "a test pipes a tar into a tar, use copy_files of tests/lib-fakes.sh instead:
 $found"
 
 # workflow_scripts <root>: prints the workflow scripts of <root>, every *.sh
@@ -126,6 +167,9 @@ done < <(workflow_scripts "$source_root")
 found="$(pipe_grep_quiet_lines "${scripts[@]}")"
 [[ -z "$found" ]] || fail "a workflow script pipes into a quiet grep, use grep -q ... <<<\"\$(producer)\" instead:
 $found"
+found="$(pipe_tar_lines "${scripts[@]}")"
+[[ -z "$found" ]] || fail "a workflow script pipes a tar into a tar, write the archive to a file instead:
+$found"
 
 # Seeded cases: each unsafe form is found, each safe one is not. The pipe is
 # written as $bar so that this file does not hold the form it looks for.
@@ -154,6 +198,31 @@ grep -Fq -- "- none" <<<"\$(message $bar grep -A1 -Fx "Manual steps:")" || fail 
 EOF
 found="$(pipe_grep_quiet_lines "$tmp/safe.sh")"
 [[ -z "$found" ]] || fail "the check reported a safe form: $found"
+
+# The tar into a tar, on one line and continued, in a subshell, after '&&',
+# with a long option; a tar that only lists or extracts, a pipe from another
+# producer, '||', and a comment are not.
+cat >"$tmp/unsafe-tar.sh" <<EOF
+tar -cf - . $bar tar -C "\$dir" -xf -
+(cd "\$root" && tar --null -T - -cf -) $bar tar -C "\$dir" -xf -
+list $bar
+  tar --null -T - -cf - $bar
+  tar -C "\$dir" -x
+cd "\$root" && tar --create --file=- . $bar ssh host tar -x
+EOF
+[[ "$(pipe_tar_lines "$tmp/unsafe-tar.sh" | cut -d: -f2 | paste -sd,)" == "1,2,3,6" ]] ||
+  fail "the check did not find every seeded tar into a tar: $(pipe_tar_lines "$tmp/unsafe-tar.sh")"
+cat >"$tmp/safe-tar.sh" <<EOF
+git -C "\$repo" archive HEAD $bar tar -x -C "\$dir"
+tar -tf "\$archive" $bar tar_names
+tar -xf "\$archive" $bar tar -C x -xf -
+tar -cf "\$archive" . ${bar}${bar} tar -xf "\$archive"
+tar -C "\$dir" -cf - . $bar gzip >out.tgz
+# tar -cf - . $bar tar -xf -
+list $bar copy_files "\$root" "\$dir"
+EOF
+found="$(pipe_tar_lines "$tmp/safe-tar.sh")"
+[[ -z "$found" ]] || fail "the check reported a safe tar form: $found"
 
 # A new unsafe line in a test file fails the check of the test files.
 cp "${tests[0]}" "$tmp/seeded-test.sh"
@@ -208,5 +277,43 @@ if bash -c "set -euo pipefail; producer $bar grep -Fqx match"; then
 fi
 bash -c 'set -euo pipefail; grep -Fqx match <<<"$(producer)"' || fail "the new form failed on a matching line"
 if bash -c 'set -euo pipefail; grep -Fqx missing <<<"$(producer)"'; then fail "the new form passed without a matching line"; fi
+
+# copy_files (Issue 466): copies the regular files among the paths on stdin,
+# with their paths, names with spaces, and modes, and skips a directory and a
+# path that does not exist.
+mkdir -p "$tmp/from/sub dir" "$tmp/from/a dir"
+printf 'one\n' >"$tmp/from/one"
+printf '#!/bin/sh\n' >"$tmp/from/sub dir/run me.sh"
+chmod +x "$tmp/from/sub dir/run me.sh"
+head -c 1048576 /dev/zero >"$tmp/from/big"
+printf '%s\0' one "sub dir/run me.sh" big "a dir" missing | copy_files "$tmp/from" "$tmp/to"
+[[ "$(cd "$tmp/to" && find . -type f | LC_ALL=C sort | paste -sd, -)" == "./big,./one,./sub dir/run me.sh" ]] ||
+  fail "copy_files did not copy exactly the regular files: $(cd "$tmp/to" && find . | LC_ALL=C sort | paste -sd, -)"
+[[ -x "$tmp/to/sub dir/run me.sh" ]] || fail "copy_files did not keep the mode"
+cmp -s "$tmp/from/big" "$tmp/to/big" || fail "copy_files changed the content of a file"
+[[ -z "$(find "$tmp" -maxdepth 1 -name '.copy-files.*')" ]] || fail "copy_files left its archive behind"
+
+# The reproduction: a reading tar that stops before the writer has finished,
+# as the tar of macOS may at the end-of-archive marker. The fake tar reads
+# its first record from a pipe and exits; from a file it is the real tar.
+# The old pipe fails under pipefail, copy_files passes.
+real_tar="$(command -v tar)"
+mkdir -p "$tmp/early" "$tmp/old"
+cat >"$tmp/early/tar" <<EOF
+#!/usr/bin/env bash
+if [[ "\$#" -ge 2 && "\${*: -2:1}" == -*x*f && "\${*: -1}" == - ]]; then
+  head -c 512 >/dev/null
+  exit 0
+fi
+exec "$real_tar" "\$@"
+EOF
+chmod +x "$tmp/early/tar"
+if PATH="$tmp/early:$PATH" bash -c "set -euo pipefail
+  (cd '$tmp/from' && printf '%s\\0' one big $bar tar --null -T - -cf -) $bar tar -C '$tmp/old' -xf -" 2>/dev/null; then
+  fail "the old pipe passed: the reproduction does not reproduce the reader that stops early"
+fi
+printf '%s\0' one big | PATH="$tmp/early:$PATH" copy_files "$tmp/from" "$tmp/new" ||
+  fail "copy_files failed with a reading tar that stops early"
+cmp -s "$tmp/from/big" "$tmp/new/big" || fail "copy_files did not copy with a reading tar that stops early"
 
 echo "pipe-grep tests passed (${#tests[@]} test files)"

@@ -39,13 +39,9 @@ commit() {
 # project's Issue #2, 7.json is one the project changes later, and the plan of
 # a template Issue.
 snapshot="$tmp/snapshot"
-mkdir -p "$snapshot"
-(cd "$source_root" && git ls-files -co --exclude-standard -z -- . ':(exclude).agents/approval-requests' \
+git -C "$source_root" ls-files -co --exclude-standard -z -- . ':(exclude).agents/approval-requests' \
   ':(exclude).agents/plans' ':(exclude).agents/verification-baseline' ':(exclude).agents/template.conf' |
-  while IFS= read -r -d '' path; do
-    [[ -f "$path" ]] && printf '%s\0' "$path"
-  done |
-  tar --null -T - -cf -) | tar -C "$snapshot" -xf -
+  copy_files "$source_root" "$snapshot"
 mkdir -p "$snapshot/.agents/approval-requests" "$snapshot/.agents/plans"
 : >"$snapshot/.agents/plans/.gitkeep"
 for issue in 2 7; do

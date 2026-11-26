@@ -1170,6 +1170,34 @@ intermediate() {
   changes_only "$1"
 }
 
+# The steps of the state loop below that succeeded in this run, one
+# '<step>|<round>' per line, and the triages this run published. The loop
+# decides its next step from the artifacts; a step that succeeds without
+# changing the artifact it is started for would otherwise be started again
+# without a bound (the triage of #527 was published 500 times). A step of
+# the loop is started at most once per round in a run: the second start
+# stops the run (loop_guard). Plain lists, not associative arrays, which the
+# Bash of macOS lacks.
+loop_done=""
+
+# loop_guard <step> <round> <state> <command>
+# Stops the run when the step <step> of round <round> succeeded already in
+# this run and the loop would start it again: it made no progress. <state>
+# says what the loop waits for, <command> runs the step by hand.
+loop_guard() {
+  grep -Fqx -- "$1|$2" <<<"$loop_done" || return 0
+  note "$1 of round $2" "no progress" "the step succeeded earlier in this run, and the loop would start it again: $3" "Stopping"
+  stop 1 "the $1 of round $2 succeeded, but $3, so the run would start the same step again; it stops instead of repeating it." \
+    "cd \"$worktree\"" \
+    "# read the output of the step above and the log of the run, .agents/run/$issue-log: the script succeeded without that change" \
+    "$4    # by hand, once the script makes that change"
+}
+
+# loop_progress <step> <round>: the step of the round succeeded in this run.
+loop_progress() {
+  loop_done+="$1|$2"$'\n'
+}
+
 # ------------------------------------------------- the owner's finding
 # --owner-finding: the owner posted a finding on the Issue of a finished
 # feature whose pull request is open. The chain runs in this process, so
@@ -1352,6 +1380,11 @@ if uncommitted || [[ "$owner_review" -eq 1 || "$owner_changed" -eq 1 || "$owner_
           note "review, round $((round + 1))" "complete" "no review of the changes only: $delta_refusal" "Reviewing the complete feature"
         fi
       fi
+      # A review of this round that succeeded already in this run and left
+      # no review that is current: the guard comes before the verification,
+      # which the round would otherwise repeat first.
+      loop_guard "review" "$((round + 1))" "no review of round $((round + 1)) that is current for the content exists (check-review.sh)" \
+        "./scripts/review-feature.sh $issue $base${review_options[*]:+ ${review_options[*]}}"
       # The full verification of a round is this run's own, after the
       # session and before the review (lib/verification.sh): the agent
       # sessions run only the checks of what they changed, and its pass is
@@ -1392,6 +1425,7 @@ if uncommitted || [[ "$owner_review" -eq 1 || "$owner_changed" -eq 1 || "$owner_
         stop 1 "the review did not complete (review-feature.sh exited with status $step_status): the reviewer failed, or the review was refused." \
           "resolve what the output above reports"
       fi
+      loop_progress "review" "$((round + 1))"
       continue
     fi
 
@@ -1404,10 +1438,13 @@ if uncommitted || [[ "$owner_review" -eq 1 || "$owner_changed" -eq 1 || "$owner_
 
     triage="$(review_latest_triage "$worktree" "$review")"
     if [[ -z "$triage" ]]; then
+      loop_guard "triage" "$round" "the review of round $round has no triage" \
+        "./scripts/triage-review.sh $review_relative"
       step "triage of round $round" ./scripts/triage-review.sh "$review_relative" --unattended
       [[ "$step_status" -eq 0 ]] ||
         stop 1 "the triage of round $round failed (triage-review.sh exited with status $step_status)." \
           "resolve what the output above reports"
+      loop_progress "triage" "$round"
       continue
     fi
     triage_relative="${triage#"$worktree"/}"
@@ -1476,6 +1513,8 @@ if uncommitted || [[ "$owner_review" -eq 1 || "$owner_changed" -eq 1 || "$owner_
     # again: apply-triage.sh refuses a review whose content changed. This
     # run's own full verification before the next round verifies the fixes
     # (--caller-verifies), and the review then reuses it.
+    loop_guard "fixes" "$round" "the review of round $round is still current and its triage has findings to fix" \
+      "./scripts/apply-triage.sh $triage_relative"
     STEP_REVIEW="$review"
     step "fixes for round $round" ./scripts/apply-triage.sh "$triage_relative" --unattended --caller-verifies
     STEP_REVIEW=""
@@ -1505,6 +1544,7 @@ if uncommitted || [[ "$owner_review" -eq 1 || "$owner_changed" -eq 1 || "$owner_
         "cd \"$worktree\"" \
         "./scripts/apply-triage.sh $triage_relative"
     fi
+    loop_progress "fixes" "$round"
   done
 
   # ---------------------------------------------------------------- finish

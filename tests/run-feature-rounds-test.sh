@@ -603,4 +603,74 @@ expect_published "$repo"
 expect_sessions "$repo" 1 1 0 0
 grep -Fq "holds no open question" <<<"$(log_of "$repo")" || fail "the ignored BLOCKED line is not in the log of the feature"
 
+# wrap_script <repo> <script> <body>: the base of the project runs
+# scripts/<script> through a wrapper, so a step of the run can succeed
+# without the change the run waits for. The wrapper runs <body> with the
+# real script at "$real"; the change is pushed to the base, from which the
+# feature worktree is made.
+wrap_script() {
+  local repo="$1"
+  local script="$2"
+  local name="${script%.sh}"
+
+  git -C "$repo" mv "scripts/$script" "scripts/$name-real.sh"
+  {
+    echo '#!/usr/bin/env bash'
+    echo 'real="$(dirname "$0")/'"$name"'-real.sh"'
+    printf '%s\n' "$3"
+  } >"$repo/scripts/$script"
+  chmod +x "$repo/scripts/$script"
+  git -C "$repo" add "scripts/$script"
+  git -C "$repo" commit -qm "Wrap $script"
+  git -C "$repo" push -q origin main
+}
+
+# A publication of a triage that succeeds without the comment that proves it
+# is started once for that triage in a run: the run then stops and says that
+# the comments of the Issue do not show it, instead of publishing again
+# (the triage of #527 was posted 500 times). The triage step publishes
+# itself; the wrapper then changes the stored triage, so that its comment no
+# longer names it, and --publish posts nothing.
+scenario no-progress-publication
+repo="$(setup_repo no-progress-publication)"
+wrap_script "$repo" triage-review.sh 'if [[ "${1:-}" == "--publish" ]]; then echo "Published nothing."; exit 0; fi
+"$real" "$@" || exit
+for triage in .agents/triage/*-triage*.json; do
+  printf "\n" >>"$triage"
+done'
+printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 1 "the triage of round 1 was published, but the comments of Issue #2 do not show it"
+[[ "$(grep -c "=== run-feature.sh: publication of the triage of round 1 ===" "$repo.out")" -eq 1 ]] ||
+  fail "the triage of round 1 was not published exactly once by the publication step"
+[[ "$(grep -c '^issue comment' "$repo.control/gh.log")" -eq 1 ]] || fail "the triage was posted on the Issue more than once"
+
+# A triage step that succeeds without writing a triage is started at most
+# twice: the second start stops the run, which names the step, the round,
+# and the state it waited for.
+scenario no-progress-triage
+repo="$(setup_repo no-progress-triage)"
+wrap_script "$repo" triage-review.sh 'if [[ "${1:-}" == "--publish" ]]; then exec "$real" "$@"; fi
+echo "Triaged nothing."'
+printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 1 "the triage of round 1 succeeded, but the review of round 1 has no triage, so the run would start the same step again"
+expect_sessions "$repo" 1 1 0 0
+[[ "$(grep -c "=== run-feature.sh: triage of round 1 ===" "$repo.out")" -eq 1 ]] ||
+  fail "the triage that made no progress was started again"
+grep -Fq "triage of round 1 | no progress |" <<<"$(log_of "$repo")" || fail "the stop is not in the log of the feature"
+grep -Fq "./scripts/triage-review.sh .agents/reviews/feature-2-thing-review-01.json" "$repo.out" ||
+  fail "the stop does not say how to run the step by hand"
+
+# A review step that succeeds without writing a review stops the run before
+# the verification of the same round is repeated.
+scenario no-progress-review
+repo="$(setup_repo no-progress-review)"
+wrap_script "$repo" review-feature.sh 'echo "Reviewed nothing."'
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 1 "the review of round 1 succeeded, but no review of round 1 that is current for the content exists"
+expect_sessions "$repo" 1 0 0 0
+[[ "$(grep -c "=== run-feature.sh: verification before round 1 ===" "$repo.out")" -eq 1 ]] ||
+  fail "the verification of round 1 was repeated after a review that made no progress"
+
 scenarios_done "${BASH_SOURCE[0]}"

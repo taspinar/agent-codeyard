@@ -1244,6 +1244,16 @@ reads every `*.sh` under `scripts/`, less the files and directories that the
 `paths:` entry of `scripts/verify-workflow.conf` excludes with
 `:(exclude)<path>`, where a project leaves out its own scripts.
 
+For the same reason a self-test does not pipe a tar that creates an archive
+into another tar (Issue #466): the tar of macOS may stop reading at the
+end-of-archive marker while the writer still pads its last record, and the
+writer fails with `tar: Write error`. A test copies files with `copy_files
+<from> <to>` of `tests/lib-fakes.sh`, which reads the paths NUL-separated on
+its input, keeps the regular files, and passes the archive through a file.
+`tests/pipe-grep-test.sh` fails on a `tar -c… | tar` pipe in the same files;
+a pipe from another producer into tar, such as `git archive | tar -x`, is not
+this form and the check leaves it alone.
+
 A few more traps of the tools, each met in a feature of the template:
 
 - `jq -r` prints a newline after a string that already ends with one. Text
@@ -3603,6 +3613,7 @@ The run stops with a non-zero status, and keeps the worktree, when:
 | The completion record says `blocked` | 3 |
 | The implementer refuted every finding left to fix, one of them critical or major, with evidence, and the review of the complete feature still reports it; the findings and the ways on are named | 3 |
 | The fixes changed nothing, the commit is refused, or the pull request cannot be opened after the retries | 1 |
+| A step of the review rounds succeeded without the change it is run for, and the run would start it again for the same round: a review that left no current review, a triage that stored none, fixes after which the review is still current. The stop names the step, the round, and what is missing. A publication of the triage is started at most once per triage in a run: when the comments of the Issue still do not show it afterwards, the run stops and says so. | 1 |
 
 It then says why it stopped and which command resolves it. After that, run
 the same command again: `./scripts/run-feature.sh <issue>`. The run reads

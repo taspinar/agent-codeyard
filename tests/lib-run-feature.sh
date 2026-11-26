@@ -449,6 +449,9 @@ fixes-tamper
 fixes-fail-once
 fixes-blocked
 fixes-nothing
+no-progress-publication
+no-progress-triage
+no-progress-review
 fixes-refuted
 fixes-mixed
 fixes-refuted-other-title
