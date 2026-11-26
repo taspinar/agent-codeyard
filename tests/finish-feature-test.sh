@@ -22,6 +22,45 @@ fail() {
 source "$source_root/tests/lib-fakes.sh"
 make_fake_agents "$tmp/bin"
 
+# The fake GitHub CLI keeps the comments of the Issue of a fixture in
+# <repo>.comments.json, as GitHub returns them: a comment that a script
+# posts is read back from there (lib/issue-comments.sh), as written by the
+# owner's account, unless a case gives its own comments in MOCK_ISSUE_COMMENTS.
+# The authenticated account (gh api user) is owner-login; MOCK_GH_USER_FAIL
+# makes it unreadable.
+cat >"$tmp/bin/gh" <<'GH'
+#!/usr/bin/env bash
+set -euo pipefail
+comments="$(git rev-parse --show-toplevel 2>/dev/null).comments.json"
+case "${1:-} ${2:-}" in
+  "auth status") exit 0 ;;
+  "api user")
+    [[ -z "${MOCK_GH_USER_FAIL:-}" ]] || exit 1
+    echo "owner-login"
+    exit 0
+    ;;
+  "issue view") printf 'Title: Marker\n\nBody.'; exit 0 ;;
+  "issue comment")
+    args=("$@")
+    for ((i = 0; i < ${#args[@]}; i++)); do
+      if [[ "${args[$i]}" == "--body-file" ]]; then
+        [[ -f "$comments" ]] || echo '[]' >"$comments"
+        jq --rawfile body "${args[$((i + 1))]}" '. + [{user: {login: "owner-login"}, author_association: "OWNER", body: $body}]' "$comments" >"$comments.tmp"
+        mv "$comments.tmp" "$comments"
+      fi
+    done
+    exit 0
+    ;;
+  "api repos/"*"/comments")
+    if [[ -z "${MOCK_ISSUE_COMMENTS:-}" && -f "$comments" ]]; then export MOCK_ISSUE_COMMENTS="$comments"; fi
+    exec "$(dirname "$0")/gh-comments" "$@"
+    ;;
+esac
+echo "Unexpected gh invocation: $*" >&2
+exit 1
+GH
+chmod +x "$tmp/bin/gh"
+
 review=".agents/reviews/feature-12-marker-review-01.json"
 triage=".agents/triage/feature-12-marker-review-01-triage.json"
 
@@ -83,18 +122,39 @@ setup_repo() {
   printf '%s\n' "$repo"
 }
 
+# publish_fixture_triage <repo> [triage]
+# Publishes the triage of a fixture, as it is now, on its Issue: the comment
+# that triage-review.sh posts, with the marker and the line that names the
+# stored artifact by its path and SHA-256, written by the owner's account.
+# A fixture that edits a published triage publishes it again; an edit without
+# it is a triage that was changed after its publication.
+publish_fixture_triage() {
+  local file="${2:-$triage}"
+
+  [[ -f "$1.comments.json" ]] || echo '[]' >"$1.comments.json"
+  jq --arg line "$(
+    source "$source_root/scripts/lib/issue-comments.sh"
+    issue_comments_triage_line "$file" "$(issue_comments_sha256 "$1/$file")" 1 1
+  )" --arg marker "<!-- workflow-report: review-triage -->" \
+    '. + [{user: {login: "owner-login"}, author_association: "OWNER",
+      body: "\($marker)\n## Independent review and triage — round 1\n\n\($line)\n\nThe reports."}]' \
+    "$1.comments.json" >"$1.comments.tmp"
+  mv "$1.comments.tmp" "$1.comments.json"
+}
+
 # add_triage <repo> <decision> [published]
 add_triage() {
   local repo="$1"
 
-  jq --arg decision "$2" --arg published "${3:-yes}" '{
+  jq --arg decision "$2" '{
     schema: "triage/v1", source_review: ".agents/reviews/feature-12-marker-review-01.json", issue,
     reviewed_tree, review_verdict: .verdict, triage: {agent: "codex", model: "model-t", mode: "full"},
     approved_at: "2026-01-02T00:00:00Z",
     decisions: [.findings[] | {finding_id: .id, severity, title, decision: $decision, rationale: "Considered.",
       followup: (if $decision == "DEFER" then {title: "[#12][R01][\(.id)] Later", recommended_action: "Later.",
         acceptance_criteria: ["Done."], issue_number: 99, issue_url: "https://github.com/example/project/issues/99"} else null end)}]
-  } + (if $published == "yes" then {published_at: "2026-01-02T00:01:00Z"} else {} end)' "$repo/$review" >"$repo/$triage"
+  }' "$repo/$review" >"$repo/$triage"
+  [[ "${3:-yes}" != "yes" ]] || publish_fixture_triage "$repo"
 }
 
 # claims_changed <repo>
@@ -107,6 +167,7 @@ claims_changed() {
 
   [[ ! -f "$1/$triage" ]] || extra="$1/$triage"
   record_reviewed_tree "$1" "$1/$review" $extra
+  [[ -z "$extra" || ! -f "$1.comments.json" ]] || publish_fixture_triage "$1"
 }
 
 minor='[{"id": "MIN1", "severity": "minor", "title": "Vague name", "evidence": "feature.txt:1", "impact": "Readability.", "recommendation": "Rename."}]'
@@ -337,6 +398,7 @@ jq '.triage = {agent: "owner", model: "owner-directed", mode: "full"}
         original_proposal: {decisions: [{finding_id: "MIN1", decision: "FIX_NOW", rationale: "Rename.", followup: null}]}}' \
   "$repo/$triage" >"$tmp/owner.tmp"
 mv "$tmp/owner.tmp" "$repo/$triage"
+publish_fixture_triage "$repo"
 run_finish "$repo" 12 "Add the marker" || {
   cat "$repo.out" >&2
   fail "finishing with an owner-directed triage failed"
@@ -380,9 +442,70 @@ expect_no_commit "$repo" "the triage of round 1 was never published" 12 "Add the
 repo="$(setup_repo newest-triage PASS_WITH_MINOR_FINDINGS "$minor")"
 add_triage "$repo" ACCEPT
 cp "$repo/$triage" "${repo}/.agents/triage/feature-12-marker-review-01-triage-02.json"
-jq 'del(.published_at)' "${repo}/.agents/triage/feature-12-marker-review-01-triage-02.json" >"$tmp/triage.tmp"
-mv "$tmp/triage.tmp" "${repo}/.agents/triage/feature-12-marker-review-01-triage-02.json"
 expect_no_commit "$repo" "the newest triage was not published" 12 "Add the marker"
+grep -Fq "the triage of round 1 was not published on Issue #12" "$repo.out" || fail "the unpublished newest triage was not given as the reason"
+
+# The publication is the workflow's comment on the Issue, not a field of the
+# triage (Issue 527). A triage without such a comment is refused, and with
+# it accepted; a comment of another triage, of an earlier state of this one,
+# or without the record line does not count, nor does a comment without the
+# marker of the workflow, nor one posted by an author who is not the owner,
+# a member, or a collaborator.
+repo="$(setup_repo comment-gate PASS_WITH_MINOR_FINDINGS "$minor")"
+add_triage "$repo" ACCEPT no
+expect_no_commit "$repo" "no comment on the Issue publishes the triage" 12 "Add the marker"
+grep -Fq "./scripts/triage-review.sh --publish $triage" "$repo.out" || fail "the refusal does not name the command that publishes the triage"
+# A comment of another triage, with the same content under another name.
+cp "$repo/$triage" "$repo/.agents/triage/feature-99-other-review-01-triage.json"
+publish_fixture_triage "$repo" ".agents/triage/feature-99-other-review-01-triage.json"
+rm "$repo/.agents/triage/feature-99-other-review-01-triage.json"
+expect_no_commit "$repo" "only another triage was published on the Issue" 12 "Add the marker"
+grep -Fq "the triage of round 1 was not published on Issue #12" "$repo.out" || fail "the refusal does not say that the triage was not published"
+publish_fixture_triage "$repo"
+jq '.[-1].body |= sub("<!-- workflow-report: review-triage -->"; "Quoted by someone:")' "$repo.comments.json" >"$repo.comments.tmp"
+mv "$repo.comments.tmp" "$repo.comments.json"
+expect_no_commit "$repo" "the comment that names the triage lacks the marker of the workflow" 12 "Add the marker"
+grep -Fq "the triage of round 1 was not published on Issue #12" "$repo.out" || fail "the refusal does not say that the triage was not published"
+# The marker and the digest are public: a matching comment of another account
+# than the authenticated one, through which the workflow posts, was not posted
+# by the workflow and does not count, whether its author is outside the
+# repository, a member, or a collaborator.
+for association in NONE MEMBER COLLABORATOR; do
+  jq --arg association "$association" '.[-1].body |= sub("Quoted by someone:"; "<!-- workflow-report: review-triage -->")
+    | .[-1].user.login = "other-login" | .[-1].author_association = $association' "$repo.comments.json" >"$repo.comments.tmp"
+  mv "$repo.comments.tmp" "$repo.comments.json"
+  expect_no_commit "$repo" "a matching record was posted by another account ($association)" 12 "Add the marker"
+  grep -Fq "the triage of round 1 was not published on Issue #12" "$repo.out" ||
+    fail "a forged record of another account ($association) counted as the publication"
+done
+publish_fixture_triage "$repo"
+jq '.decisions[0].rationale = "Edited after the publication."' "$repo/$triage" >"$repo/triage.tmp" && mv "$repo/triage.tmp" "$repo/$triage"
+expect_no_commit "$repo" "the triage was edited after its publication" 12 "Add the marker"
+grep -Fq "the triage of round 1 was not published on Issue #12" "$repo.out" || fail "a triage edited after its publication was not refused as unpublished"
+publish_fixture_triage "$repo"
+run_finish "$repo" 12 "Add the marker" || { cat "$repo.out" >&2; fail "a triage with the comment of the workflow on the Issue was refused"; }
+grep -Fq "triage published on #12" <<<"$(message "$repo")" || fail "the commit message does not mention the published triage"
+# Without access to the comments, the gate says that it cannot check.
+repo="$(setup_repo comment-gate-offline PASS_WITH_MINOR_FINDINGS "$minor")"
+add_triage "$repo" ACCEPT
+MOCK_GH_COMMENTS_FAIL=1 expect_no_commit "$repo" "the comments of the Issue cannot be read" 12 "Add the marker"
+grep -Fq "could not read the comments of Issue #12, where the triages are published" "$repo.out" ||
+  fail "the gate did not say that it cannot check the publication"
+# Without the authenticated account, it cannot tell the workflow's comment
+# from a forged one, and says that it cannot check either.
+publish_fixture_triage "$repo"
+MOCK_GH_USER_FAIL=1 expect_no_commit "$repo" "the authenticated account cannot be read" 12 "Add the marker"
+grep -Fq "could not determine the authenticated GitHub account (gh api user)" "$repo.out" ||
+  fail "the gate did not say that it cannot read the authenticated account"
+grep -Fq "could not read the comments of Issue #12, where the triages are published" "$repo.out" ||
+  fail "the gate did not say that it cannot check the publication without the account"
+# A triage of an earlier version, with published_at, is refused with a message.
+repo="$(setup_repo legacy-published-at PASS_WITH_MINOR_FINDINGS "$minor")"
+add_triage "$repo" ACCEPT no
+jq '. + {published_at: "2026-01-02T00:01:00Z"}' "$repo/$triage" >"$repo/triage.tmp" && mv "$repo/triage.tmp" "$repo/$triage"
+publish_fixture_triage "$repo"
+expect_no_commit "$repo" "the triage carries published_at" 12 "Add the marker"
+grep -Fq "published_at is no longer part of a triage" "$repo.out" || fail "a triage with published_at was not refused with a message"
 
 # A low-risk change may be finished without a review; the reason is recorded.
 repo="$(setup_repo no-review PASS "[]")"
@@ -991,6 +1114,7 @@ grep -Fq "the triage does not describe the stored state of its source review" "$
 # The FIX_NOW turned into ACCEPT, while the triage names the reviewed tree of
 # its current review, is followed: the minor finding is accepted.
 edit_artifact "$triage" ".reviewed_tree = $(jq '.reviewed_tree' "$repo/$review")"
+publish_fixture_triage "$repo"
 run_finish "$repo" 12 "Add the marker" || { cat "$repo.out" >&2; fail "the gate did not follow the decision edited to ACCEPT"; }
 grep -Fq "triage published on #12" <<<"$(message "$repo")" || fail "the commit does not rest on the edited triage"
 # Against other content, the review the triage describes is not current, and
@@ -1234,6 +1358,7 @@ grep -Fq "claims risk: low, but the feature is medium" "$repo.out" || fail "the 
 # set_triage_mode <repo> <mode>
 set_triage_mode() {
   jq --arg mode "$2" '.triage.mode = $mode' "$1/$triage" >"$1/triage.tmp" && mv "$1/triage.tmp" "$1/$triage"
+  publish_fixture_triage "$1"
 }
 # policy_for_triage <repo> <policy>: the policy on the base, with the
 # fixture review and its triage made current for the moved base.
@@ -1432,18 +1557,6 @@ if grep -Fq "could not confirm" "$repo.out"; then fail "finish-feature.sh report
 # fixed, round 2 is a current review, and round 1 is still untriaged. It is
 # triaged as a historical review, and then the feature can be committed. A
 # historical triage does not excuse a stale latest review.
-cat >"$tmp/bin/gh" <<'GH'
-#!/usr/bin/env bash
-case "${1:-} ${2:-}" in
-  "auth status") exit 0 ;;
-  "issue view") printf 'Title: Marker\n\nBody.'; exit 0 ;;
-  "issue comment") exit 0 ;;
-  "api repos/"*"/comments") exec "$(dirname "$0")/gh-comments" "$@" ;;
-esac
-echo "Unexpected gh invocation: $*" >&2
-exit 1
-GH
-chmod +x "$tmp/bin/gh"
 historical_decisions='{"decisions": [{"finding_id": "M1", "decision": "FIX_NOW", "rationale": "Blocks the feature.", "followup": null}]}'
 run_triage() {
   (

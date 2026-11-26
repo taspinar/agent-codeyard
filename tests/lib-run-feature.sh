@@ -168,7 +168,8 @@ case "${1:-} ${2:-}" in
     args=("$@")
     for ((i = 0; i < ${#args[@]}; i++)); do
       if [[ "${args[$i]}" == "--body-file" ]]; then
-        jq -n --rawfile body "${args[$((i + 1))]}" '{body: $body}' >>"$RUN_CONTROL/issue-comments.jsonl"
+        jq -n --rawfile body "${args[$((i + 1))]}" \
+          '{user: {login: "project-owner"}, author_association: "OWNER", body: $body}' >>"$RUN_CONTROL/issue-comments.jsonl"
       fi
     done
     ;;
@@ -186,7 +187,20 @@ case "${1:-} ${2:-}" in
     ;;
   "pr view") echo "main" ;;
   "api repos/{owner}/{repo}/rules/branches/main") echo "1" ;;
-  "api repos/"*"/comments") exec "$(dirname "$0")/gh-comments" "$@" ;;
+  "api repos/"*"/comments")
+    # The comments that the scripts posted are returned too, after those of
+    # MOCK_ISSUE_COMMENTS: a triage is published by its comment (Issue 527).
+    if [[ -s "$RUN_CONTROL/issue-comments.jsonl" ]]; then
+      jq -s '.' "$RUN_CONTROL/issue-comments.jsonl" >"$RUN_CONTROL/issue-comments-posted.json"
+      if [[ -n "${MOCK_ISSUE_COMMENTS:-}" ]]; then
+        jq -s 'add' "$MOCK_ISSUE_COMMENTS" "$RUN_CONTROL/issue-comments-posted.json" >"$RUN_CONTROL/issue-comments-all.json"
+      else
+        mv "$RUN_CONTROL/issue-comments-posted.json" "$RUN_CONTROL/issue-comments-all.json"
+      fi
+      export MOCK_ISSUE_COMMENTS="$RUN_CONTROL/issue-comments-all.json"
+    fi
+    exec "$(dirname "$0")/gh-comments" "$@"
+    ;;
   *)
     echo "Unexpected gh invocation: $*" >&2
     exit 97

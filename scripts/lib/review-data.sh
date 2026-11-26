@@ -525,9 +525,11 @@ triage_artifact_errors() {
                 | triage_decision_rules($review[0].findings | map({key: .id, value: .severity}) | from_entries)
                 | "the original proposal is invalid: \(.)") end)
        end),
-      (if .published_at == null or ((.published_at | type) == "string"
-          and (.published_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))) then empty
-       else "published_at must be a UTC timestamp" end),
+      # The publication of a triage is its comment on the Issue, which names
+      # the stored artifact by its SHA-256 (Issue 527): a field that says so
+      # too could disagree with it. An artifact of an earlier version has it.
+      (if has("published_at") | not then empty
+       else "published_at is no longer part of a triage: its publication is the comment on the Issue. Remove the field (jq \u0027del(.published_at)\u0027) and publish the triage again with ./scripts/triage-review.sh --publish" end),
       (if (.approved_at | type) == "string"
           and (.approved_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) then empty
        else "the triage has no valid UTC approval timestamp" end),

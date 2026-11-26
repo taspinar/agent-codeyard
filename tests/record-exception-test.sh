@@ -40,7 +40,7 @@ case "${1:-} ${2:-}" in
     args=("$@")
     for ((i = 0; i < ${#args[@]}; i++)); do
       if [[ "${args[$i]}" == "--body-file" ]]; then
-        jq -Rs '{body: .}' "${args[$((i + 1))]}" >>"$MOCK_GH_LOG.comments"
+        jq -Rs '{user: {login: "owner-login"}, author_association: "OWNER", body: .}' "${args[$((i + 1))]}" >>"$MOCK_GH_LOG.comments"
       fi
     done
     ;;
@@ -50,7 +50,8 @@ case "${1:-} ${2:-}" in
       if [[ "$1" == "--jq" ]]; then filter="$2"; fi
       shift
     done
-    if [[ -f "$MOCK_GH_LOG.comments" ]]; then jq -s . "$MOCK_GH_LOG.comments"; else echo '[]'; fi | jq -r "$filter"
+    # The triage reports of the fixtures (write_triage) come with them.
+    cat "$MOCK_GH_LOG.triage-comments" "$MOCK_GH_LOG.comments" 2>/dev/null | jq -s . | jq -r "$filter"
     ;;
   "pr list") ;;
   "pr create")
@@ -119,15 +120,24 @@ write_review() {
 }
 
 # write_triage <repo> <review>: the published triage of the review; the
-# blocking findings are FIX_NOW, as they always are.
+# blocking findings are FIX_NOW, as they always are. Its report on the Issue,
+# which names it by its SHA-256, is kept apart from the comments that the
+# scripts post (<repo>.gh.triage-comments).
 write_triage() {
+  local file=".agents/triage/$(basename "$2" .json)-triage.json"
+
   jq --arg source "$2" '{
     schema: "triage/v1", source_review: $source, issue,
     reviewed_tree, review_verdict: .verdict, triage: {agent: "codex", model: "model-t", mode: "full"},
-    approved_at: "2026-01-02T00:00:00Z", published_at: "2026-01-02T00:01:00Z",
+    approved_at: "2026-01-02T00:00:00Z",
     decisions: [.findings[] | {finding_id: .id, severity, title,
       decision: (if .severity == "minor" then "ACCEPT" else "FIX_NOW" end), rationale: "Considered.", followup: null}]
-  }' "$1/$2" >"$1/.agents/triage/$(basename "$2" .json)-triage.json"
+  }' "$1/$2" >"$1/$file"
+  jq -n --arg line "$(
+    source "$source_root/scripts/lib/issue-comments.sh"
+    issue_comments_triage_line "$file" "$(issue_comments_sha256 "$1/$file")" 1 1
+  )" '{user: {login: "owner-login"}, author_association: "OWNER",
+    body: "<!-- workflow-report: review-triage -->\n## Independent review and triage\n\n\($line)\n"}' >>"$1.gh.triage-comments"
 }
 
 # setup_repo <label>: a feature of Issue 12 with an uncommitted change, a

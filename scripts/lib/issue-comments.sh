@@ -166,3 +166,67 @@ issue_comments_newest() {
   fi
   printf '%s\n' "$newest"
 }
+
+# issue_comments_sha256 <file>: the SHA-256 hex digest of the file.
+issue_comments_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum <"$1" | cut -c1-64
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 <"$1" | cut -c1-64
+  else
+    openssl dgst -sha256 -r <"$1" | cut -c1-64
+  fi
+}
+
+# issue_comments_triage_line <triage-path> <sha256> <part> <parts>
+# Prints the line by which a triage report names the triage it publishes:
+# the stored artifact, by its path and SHA-256, and which part of the report
+# the comment is. triage_published finds it again.
+issue_comments_triage_line() {
+  printf 'Triage record: `%s`, SHA-256 `%s`, part %s of %s\n' "$1" "$2" "$3" "$4"
+}
+
+# issue_comments_triage_records <issue>
+# Prints the triages whose reports triage-review.sh published on Issue
+# <issue>, one line per comment, as '<path><TAB><sha256><TAB><part><TAB><parts>'.
+# The marker and the digest are public, so anyone who can comment could write
+# a matching record, a member or a collaborator of the repository too: only a
+# comment of the authenticated GitHub account (gh api user) counts, the
+# account through which triage-review.sh posts the report. A triage
+# published through another account is therefore not found; publish it again
+# with ./scripts/triage-review.sh --publish from the account that checks it.
+# Fails, with the reason on stderr, when the comments or the account cannot
+# be read: a run without network access cannot check a publication, which is
+# not the same as no publication.
+issue_comments_triage_records() {
+  local account
+  local bodies
+
+  account="$(gh api user --jq .login </dev/null 2>/dev/null || true)"
+  # A login is letters, digits and hyphens, a bot's with '[bot]': it is
+  # placed into the jq program below.
+  if [[ ! "$account" =~ ^[A-Za-z0-9-]+(\[bot\])?$ ]]; then
+    echo "could not determine the authenticated GitHub account (gh api user), whose comments alone publish a triage." >&2
+    return 1
+  fi
+  bodies="$(gh api "repos/{owner}/{repo}/issues/$1/comments" --paginate \
+    --jq '.[] | {login: .user.login, body: (.body // "")}
+      | select(.login == "'"$account"'" and (.body | startswith("'"$ISSUE_COMMENTS_TRIAGE_MARKER"'"))) | .body' </dev/null)" || return 1
+  printf '%s\n' "$bodies" | tr -d '\r' |
+    sed -n 's/^Triage record: `\(\.agents\/triage\/[^`]*\.json\)`, SHA-256 `\([0-9a-f]\{64\}\)`, part \([1-9][0-9]*\) of \([1-9][0-9]*\)$/\1\t\2\t\3\t\4/p'
+}
+
+# issue_comments_triage_published <records> <root> <triage-json>
+# Exits 0 when <records>, the output of issue_comments_triage_records, holds
+# every part of a report of exactly the stored triage <triage-json>: its
+# path under <root> and its SHA-256. A triage that was changed after it was
+# published, or a report of which a part is missing, is not published.
+issue_comments_triage_published() {
+  local path="${3#"$2"/}"
+  local sha
+
+  sha="$(issue_comments_sha256 "$3")"
+  printf '%s\n' "$1" | awk -F '\t' -v path="$path" -v sha="$sha" '
+    $1 == path && $2 == sha && $3 <= $4 { if (!(($4, $3) in seen)) { seen[$4, $3] = 1; count[$4]++ } }
+    END { for (parts in count) if (count[parts] == parts + 0) exit 0; exit 1 }'
+}

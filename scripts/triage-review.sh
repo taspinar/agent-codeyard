@@ -17,7 +17,7 @@ source "$script_dir/lib/completion.sh"
 usage() {
   echo "Usage: $0 <review-json> [--agent <agent>] [--model <model>]"
   echo "       $0 <review-json> --decisions <file> --reason <text> [--proposal <file>]"
-  echo "       $0 --publish <triage-json> [--mark-only]"
+  echo "       $0 --publish <triage-json>"
   echo
   echo "The agent and model come from role 'triage' in .agents/agents.conf"
   echo "unless --agent and --model are given."
@@ -38,14 +38,18 @@ fail() {
 }
 
 # publish_triage: publishes the stored triage <artifact>.json and its source
-# review as a comment on the source Issue and records the publication.
+# review as a comment on the source Issue.
 # The reports are published on the Issue instead of being committed, rendered
 # from the validated JSON. Every comment starts with the marker by which
-# lib/issue-comments.sh keeps it from the agents. A comment holds at most
-# 65,536 characters: when both reports do not fit in one comment, they are
-# published in numbered parts, so the record is never shortened.
+# lib/issue-comments.sh keeps it from the agents, and names the stored
+# artifact by its path and SHA-256 and which part it is: that comment, not a
+# field of the artifact, is the record of the publication, which
+# finish-feature.sh and run-feature.sh read back (Issue 527). A comment holds
+# at most 65,536 characters: when both reports do not fit in one comment,
+# they are published in numbered parts, so the record is never shortened.
 publish_triage() {
   round="$(jq -r '.round' "$review_path")"
+  triage_sha256="$(issue_comments_sha256 "$artifact.json")"
   comment_base="$artifact-comment"
   rm -f "$comment_base"*.md
   heading="## Independent review and triage — round $round"
@@ -64,7 +68,14 @@ publish_triage() {
 
   comment_limit=60000
   if [[ "$(wc -c <"$tmp_work/comment-body.md")" -le "$comment_limit" ]]; then
-    { echo "$ISSUE_COMMENTS_TRIAGE_MARKER"; echo "$heading"; echo; cat "$tmp_work/comment-body.md"; } >"$comment_base.md"
+    {
+      echo "$ISSUE_COMMENTS_TRIAGE_MARKER"
+      echo "$heading"
+      echo
+      issue_comments_triage_line "${artifact#"$root"/}.json" "$triage_sha256" 1 1
+      echo
+      cat "$tmp_work/comment-body.md"
+    } >"$comment_base.md"
   else
     # Split on line boundaries; a part never ends inside a line.
     awk -v limit="$comment_limit" -v base="$tmp_work/part-" '
@@ -81,6 +92,8 @@ publish_triage() {
       {
         echo "$ISSUE_COMMENTS_TRIAGE_MARKER"
         echo "$heading (part $part of $parts)"
+        echo
+        issue_comments_triage_line "${artifact#"$root"/}.json" "$triage_sha256" "$part" "$parts"
         echo
         cat "$tmp_work/part-$part.md"
       } >"$comment_base-$part.md"
@@ -105,7 +118,7 @@ publish_triage() {
         for ((retry = index; retry < ${#comment_files[@]}; retry++)); do
           echo "  gh issue comment $source_issue --body-file ${comment_files[$retry]#"$root"/}" >&2
         done
-        echo "and then record the publication with: ./scripts/triage-review.sh --publish ${artifact#"$root"/}.json --mark-only" >&2
+        echo "The triage counts as published once every part is on the Issue; or publish all parts again with: ./scripts/triage-review.sh --publish ${artifact#"$root"/}.json" >&2
       else
         echo "Retry with: ./scripts/triage-review.sh --publish ${artifact#"$root"/}.json" >&2
       fi
@@ -113,7 +126,6 @@ publish_triage() {
       exit 1
     fi
   done
-  mark_published
   echo "Published the review and triage reports on Issue #$source_issue (${#comment_files[@]} comment(s))."
 }
 
@@ -135,18 +147,17 @@ print_next_step() {
   fi
 }
 
-# mark_published: records in <artifact>.json when its reports were published.
-mark_published() {
-  jq --arg at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" '. + {published_at: $at}' "$artifact.json" >"$artifact.json.tmp"
-  mv "$artifact.json.tmp" "$artifact.json"
-}
-
 agent_parse_args "$@"
 
-# --publish <triage-json> [--mark-only]: publish a stored triage again, or only
-# record that it was published by hand.
+# --publish <triage-json>: publish a stored triage again. Its publication is
+# the comment on the Issue: nothing is recorded in the artifact, so there is
+# no '--mark-only' to record a publication by hand (Issue 527).
 if [[ "${AGENT_POSITIONAL[0]:-}" == "--publish" ]]; then
-  [[ "${#AGENT_POSITIONAL[@]}" -eq 2 || ( "${#AGENT_POSITIONAL[@]}" -eq 3 && "${AGENT_POSITIONAL[2]}" == "--mark-only" ) ]] || usage
+  if [[ "${#AGENT_POSITIONAL[@]}" -gt 2 && "${AGENT_POSITIONAL[2]}" == -* ]]; then
+    echo "Error: unknown option for --publish: ${AGENT_POSITIONAL[2]}. A triage is published by its comment on the Issue, which the commit gate reads; publish it again with: $0 --publish <triage-json>" >&2
+    usage
+  fi
+  [[ "${#AGENT_POSITIONAL[@]}" -eq 2 ]] || usage
   root="$(git rev-parse --show-toplevel)"
   review_data_require_jq
   [[ -f "${AGENT_POSITIONAL[1]}" ]] || fail "triage artifact not found: ${AGENT_POSITIONAL[1]}"
@@ -161,12 +172,6 @@ if [[ "${AGENT_POSITIONAL[0]:-}" == "--publish" ]]; then
   artifact="${triage_path%.json}"
   review_stem="$(basename "$review_path" .json)"
   source_issue="$(jq -r '.issue' "$triage_path")"
-  if [[ "${AGENT_POSITIONAL[2]:-}" == "--mark-only" ]]; then
-    mark_published
-    echo "Recorded the publication of ${artifact#"$root"/}.json."
-    print_next_step
-    exit 0
-  fi
   command -v gh >/dev/null 2>&1 || fail "GitHub CLI 'gh' is not installed."
   gh auth status >/dev/null 2>&1 || fail "GitHub CLI is not authenticated. Run: gh auth login"
   tmp_work="$(mktemp -d "${TMPDIR:-/tmp}/triage-review.XXXXXX")"
@@ -782,8 +787,8 @@ fi
 
 if [[ -n "$owner_decisions" ]]; then
   # The follow-up references are resolved: this is the complete artifact. It
-  # is shown and confirmed once more, and stored exactly as shown; only
-  # published_at is added when it is published.
+  # is shown and confirmed once more, and stored exactly as shown: its
+  # publication is the comment on the Issue, which names its SHA-256.
   echo
   echo "The complete triage artifact, as it will be stored:"
   cat "$pending"

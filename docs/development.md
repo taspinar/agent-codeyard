@@ -2740,9 +2740,26 @@ created Issue numbers. After storing it, the script publishes the review and
 triage reports as one comment on the source Issue, so the outcome is visible in
 the Issue and, through `Closes #12`, from the pull request. The reports are
 rendered from the JSON. When they exceed the size of one GitHub comment, they
-are published in numbered parts rather than shortened. A failed publication
-keeps the stored triage and prints the command to retry each unpublished
-part. Declining the proposal creates neither an artifact nor
+are published in numbered parts rather than shortened. Every comment, and
+every part, names the stored artifact by its path and SHA-256 and says which
+part it is (`Triage record: ..., part 1 of 2`). That comment is the record of
+the publication: the artifact holds no field for it, so the two cannot
+disagree (Issue 527). `finish-feature.sh` and `run-feature.sh` read the
+comments of the Issue and count a triage as published only when the
+workflow's comments, with their marker, hold every part of a report of
+exactly that artifact; a triage changed after its publication is not
+published. Only a comment of the authenticated GitHub account (`gh api user`)
+counts, the account through which `triage-review.sh` posts: the marker and the
+SHA-256 are public, and anyone else who can comment, a member or a
+collaborator of the repository too, could write a matching line. A triage
+published through another account is therefore not found by a run of this
+one; publish it again with `--publish` from the account that commits. When the
+comments or the account cannot be read, as without network access, they say
+that they cannot check, and stop. A failed publication keeps the stored
+triage and prints the command to retry each unpublished part; once every part
+is on the Issue, the triage is published, or `--publish` publishes all of it
+again. An artifact of an earlier version that still has `published_at` is
+refused with what to do: remove the field and publish it again. Declining the proposal creates neither an artifact nor
 Issues. The source review remains unchanged. The artifact is stored only after
 every follow-up Issue exists; if creating one fails, nothing is stored and a
 new triage reuses the Issues created so far, which it finds by their trace
@@ -2798,8 +2815,8 @@ refused. The script shows your exact decisions, the reason and the account, and
 asks for your confirmation before it creates follow-up Issues. It then shows
 the complete artifact, with the follow-up references, and asks once more
 before it stores and publishes it. The files are copied before anything is
-shown, and the artifact is stored exactly as shown; only `published_at` is added
-when it is published. Declining the second question stores and publishes
+shown, and the artifact is stored exactly as shown, and published as stored:
+the comment names its SHA-256. Declining the second question stores and publishes
 nothing; follow-up Issues already created are reused by the next triage.
 
 The artifact has an `owner_directed` object with the `reason`, the `account`
@@ -3176,7 +3193,9 @@ completion gate"). It checks the latest review of the
 feature: it must be current, cover the complete feature, and have no critical
 or major finding. Every
 review round with findings needs an approved triage that was published on the
-Issue (the newest triage of that round counts), and the latest round may have
+Issue (the newest triage of that round counts): the workflow's comment there
+names it by its SHA-256, which the script reads from GitHub and refuses the
+commit without, also when the comments cannot be read; and the latest round may have
 no `FIX_NOW` findings left to apply. These gates, and every other one that
 needs no verification, are checked before any check runs, so a refusal costs
 no verification. Only then does it verify the result with

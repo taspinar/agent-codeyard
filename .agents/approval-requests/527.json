@@ -1,0 +1,21 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "41389117cbffa84c7393afad6dfacabf1e9876c7",
+  "commit": {
+    "branch": "feature/527-the-triage-s-published",
+    "parent": "4dbc8960cd84cbd415a34e3d6fdd2ea0bfced4b7",
+    "base": "4dbc8960cd84cbd415a34e3d6fdd2ea0bfced4b7"
+  },
+  "review": {
+    "round": 4,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/finish-feature.sh: the file defines or carries out the workflow and its gate",
+    "scripts/lib/review-data.sh: the file defines or carries out the workflow and its gate",
+    "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The change alters the shared triage publication record and makes finish-feature.sh and run-feature.sh gates depend on reading GitHub comments and the authenticated account. These are workflow behaviors that other features rely on. "
+  ],
+  "explanation": "Issue #527: The triage's published_at and triage-review.sh --mark-only are removed: the GitHub comment proves publication (item 10 of #426). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}
