@@ -130,7 +130,9 @@ _review_data_rules='
     end;
 
   # Input: {decisions}. $severity maps each finding id of the review to its severity.
-  def triage_decision_rules($severity):
+  # $excepted holds the IDs of the critical and major findings that the owner
+  # accepts or defers, each with an exception record (lib/exceptions.sh).
+  def triage_decision_rules($severity; $excepted):
     if type != "object" or (.decisions | type) != "array" then
       "the result must be an object with a decisions array"
     else
@@ -153,8 +155,9 @@ _review_data_rules='
            else "finding \($d.finding_id) has an invalid decision" end),
           (if ($d.rationale | nonempty) then empty
            else "finding \($d.finding_id) has no rationale" end),
-          (if ($severity[$d.finding_id] | IN("critical", "major")) and $d.decision != "FIX_NOW" then
-             "\($severity[$d.finding_id]) finding \($d.finding_id) must be FIX_NOW"
+          (if ($severity[$d.finding_id] | IN("critical", "major")) and $d.decision != "FIX_NOW"
+              and ($excepted | index($d.finding_id) | not) then
+             "\($severity[$d.finding_id]) finding \($d.finding_id) must be FIX_NOW: only the owner accepts or defers it, with an exception record (triage-review.sh --decisions)"
            else empty end),
           (if $d.decision == "DEFER" then
              (if ($d.followup | type) != "object" then
@@ -468,16 +471,19 @@ review_render_markdown() {
   ' "$1"
 }
 
-# triage_decision_errors <decisions-file> <review-json>: rules for a triage
-# agent's decisions about the findings of a review.
+# triage_decision_errors <decisions-file> <review-json> [<excepted-json>]:
+# rules for a triage agent's decisions about the findings of a review, or
+# the owner's (--decisions). <excepted-json> is the array of the IDs of the
+# critical and major findings that the owner accepts or defers with an
+# exception record; none when it is not given.
 triage_decision_errors() {
   review_data_is_json "$1" || {
     echo "the decisions are not exactly one JSON value"
     return 0
   }
 
-  jq -r --slurpfile review "$2" "$_review_data_rules"'
-    triage_decision_rules($review[0].findings | map({key: .id, value: .severity}) | from_entries)
+  jq -r --slurpfile review "$2" --argjson excepted "${3:-[]}" "$_review_data_rules"'
+    triage_decision_rules($review[0].findings | map({key: .id, value: .severity}) | from_entries; $excepted)
   ' "$1"
 }
 
@@ -490,16 +496,36 @@ triage_source_review() {
          then .source_review else empty end' "$1"
 }
 
-# triage_artifact_errors <triage-json> <review-json>: rules for a stored,
-# approved triage artifact, checked against its valid source review. A triage
-# is complete only when every deferred finding has its follow-up Issue.
+# triage_artifact_errors <triage-json> <review-json> [<excepted-json>]: rules
+# for a stored, approved triage artifact, checked against its valid source
+# review. A triage is complete only when every deferred finding has its
+# follow-up Issue. A critical or major finding is FIX_NOW unless the triage is
+# the owner's and the finding has the owner's valid exception record: the IDs
+# in <excepted-json>, or else the records stored next to the review's
+# repository (lib/exceptions.sh, exception_valid_findings).
 triage_artifact_errors() {
+  local excepted="${3:-}"
+  local root
+
   review_data_is_json "$1" || {
     echo "the triage artifact is not exactly one JSON value"
     return 0
   }
 
-  jq -r --slurpfile review "$2" "$_review_data_rules"'
+  if [[ -z "$excepted" ]]; then
+    excepted='[]'
+    if jq -e --slurpfile review "$2" 'type == "object" and has("owner_directed") and (.decisions | type) == "array"
+        and ([$review[0].findings[]? | select(.severity == "critical" or .severity == "major") | .id] as $blocking
+             | any(.decisions[]; type == "object" and .decision != "FIX_NOW" and ((.finding_id as $id | $blocking | index($id)) != null)))' \
+        "$1" >/dev/null 2>&1; then
+      root="$(cd "$(dirname "$2")/../.." && pwd -P)"
+      declare -F guardrails_request_errors >/dev/null || source "$(dirname "${BASH_SOURCE[0]}")/guardrails.sh"
+      declare -F exception_valid_findings >/dev/null || source "$(dirname "${BASH_SOURCE[0]}")/exceptions.sh"
+      excepted="$(exception_valid_findings "$root" "$root/.agents/reviews/$(basename "$2")")"
+    fi
+  fi
+
+  jq -r --slurpfile review "$2" --argjson excepted "$excepted" "$_review_data_rules"'
     if type != "object" or .schema != "triage/v1" then
       "the file is not a triage/v1 artifact"
     else
@@ -522,7 +548,7 @@ triage_artifact_errors() {
           else "owner_directed.directed_at must be a UTC timestamp" end),
          (if (.owner_directed.original_proposal // null) == null then empty
           else (.owner_directed.original_proposal
-                | triage_decision_rules($review[0].findings | map({key: .id, value: .severity}) | from_entries)
+                | triage_decision_rules($review[0].findings | map({key: .id, value: .severity}) | from_entries; [])
                 | "the original proposal is invalid: \(.)") end)
        end),
       # The publication of a triage is its comment on the Issue, which names
@@ -567,7 +593,7 @@ triage_artifact_errors() {
                  else "a deferred finding has no valid follow-up Issue reference" end))
             else empty end))
        else empty end),
-      ({
+      (has("owner_directed") as $owner | {
         decisions: (if (.decisions | type) == "array" then
           (.decisions | map(if type == "object" then {
             finding_id,
@@ -577,7 +603,8 @@ triage_artifact_errors() {
                        then (.followup | del(.issue_number, .issue_url)) else .followup end)
           } else . end))
         else .decisions end)
-      } | triage_decision_rules($review[0].findings | map({key: .id, value: .severity}) | from_entries))
+      } | triage_decision_rules($review[0].findings | map({key: .id, value: .severity}) | from_entries;
+                                if $owner then $excepted else [] end))
     end
   ' "$1"
 }

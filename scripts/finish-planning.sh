@@ -9,6 +9,8 @@ records_arguments=("$@")
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/review-data.sh"
 source "$script_dir/lib/fingerprint.sh"
+source "$script_dir/lib/guardrails.sh"
+source "$script_dir/lib/exceptions.sh"
 source "$script_dir/lib/planning.sh"
 source "$script_dir/lib/records.sh"
 
@@ -34,9 +36,11 @@ usage() {
   echo "accept the planning as it is with it (accepted). It refuses a major or critical"
   echo "finding: that needs a new review round after the planning documents changed,"
   echo "or a change of the requirements. It runs only at a terminal, shows the"
-  echo "finding and the record, and asks once. The decision is stored next to the"
-  echo "review, counts for that round only while the review is current, is listed in"
-  echo "$PLANNING_APPROVAL_FILE, and is given to the planning reviewer of later rounds."
+  echo "finding and the record, and asks once. The decision is the owner's exception"
+  echo "record (kind planning; accepted is stored as the type risk-accepted),"
+  echo "stored as $EXCEPTIONS_DIR/<review>-<id>.json; it counts for that round only"
+  echo "while the review is current, is listed in $PLANNING_APPROVAL_FILE, and is"
+  echo "given to the planning reviewer of later rounds."
   exit 2
 }
 
@@ -331,7 +335,7 @@ revision="${latest%.json}-revision.json"
 
 # Your decisions on escalated findings (--resolve), each joined to the
 # escalation it resolves. A decision on anything else resolves nothing.
-planning_resolutions "$root" "$name" >"$tmp_work/resolutions.json"
+exception_planning_records "$root" "$name" >"$tmp_work/resolutions.json"
 jq --slurpfile resolutions "$tmp_work/resolutions.json" '
   map(. as $d
       | . + {resolution: (if $d.decision == "ESCALATE"
@@ -345,7 +349,9 @@ mv "$tmp_work/decisions-resolved.json" "$decisions_file"
 resolve() {
   local record
   local record_relative
-  local review_blob
+  local review_sha256
+  local record_type
+  local account
   local pending="$tmp_work/resolution.json"
   local answer=""
   local errors
@@ -363,43 +369,36 @@ resolve() {
   severity="$(jq -r --arg id "$resolve_finding" '.findings[] | select(.id == $id) | .severity' "$latest")"
   [[ "$severity" == "minor" ]] ||
     fail "finding $resolve_finding of round $round is $severity in the review: a decision records the owner's answer to a minor finding only. A $severity finding is resolved by a new review round after the planning documents changed, or by a change of the requirements (Project Grill, or a change cycle with ./scripts/start-planning.sh <name> --change <file>). Nothing was stored."
-  record="$(planning_resolution_file "$latest" "$resolve_finding")"
+  record="$(exception_file "$root" "$latest" "$resolve_finding")"
   record_relative="${record#"$root"/}"
   [[ ! -e "$record" && ! -L "$record" ]] ||
     fail "a decision on $resolve_finding of round $round exists already: $record_relative. One decision per finding; remove the file first to record it again."
+  git -C "$root" check-ignore -q "$EXCEPTIONS_DIR/x.json" ||
+    fail "Git does not ignore $EXCEPTIONS_DIR/, so the decision would be committed. Add '$EXCEPTIONS_DIR/' to .gitignore. Nothing was stored."
+  command -v gh >/dev/null 2>&1 || fail "GitHub CLI 'gh' is not installed; it names the account of the decision. Nothing was stored."
+  account="$(gh api user --jq .login </dev/null 2>/dev/null || true)"
+  [[ -n "$account" ]] || fail "could not determine the authenticated GitHub account (gh api user). Nothing was stored."
 
-  # The review is shown and bound as it is now; the record is complete
-  # before it is shown, and stored as it is shown.
-  review_blob="$(git -C "$root" hash-object -- "$latest")"
-  jq --arg type "$resolve_type" --arg reason "$resolve_reason" --arg at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-    --arg review "$latest_relative" --arg blob "$review_blob" --arg schema "$PLANNING_RESOLUTION_SCHEMA" \
-    --arg id "$resolve_finding" --slurpfile revision "$revision" '
-    ([.findings[] | select(.id == $id)] | first) as $f
-    | ([$revision[0].decisions[] | select(.finding_id == $id)] | first) as $d
-    | {
-        schema: $schema,
-        type: $type,
-        reason: $reason,
-        decided_at: $at,
-        branch,
-        review: $review,
-        review_blob: $blob,
-        round,
-        reviewed_tree,
-        finding_id: $f.id,
-        finding_severity: $f.severity,
-        finding_title: $f.title,
-        planner_rationale: $d.rationale
-      }' "$latest" >"$pending"
+  # The review is copied once, shown and bound as it is now; the record is
+  # complete before it is shown, and stored as it is shown. A planning review
+  # has no Issue, so the record is not published; the approval lists it.
+  cp "$latest" "$tmp_work/review.json"
+  review_sha256="$(exception_sha256 "$tmp_work/review.json")"
+  record_type="$resolve_type"
+  [[ "$record_type" != "accepted" ]] || record_type="risk-accepted"
+  exception_record "$tmp_work/review.json" "$latest_relative" "$review_sha256" "$resolve_finding" \
+    "$record_type" "$resolve_reason" "" "$account" \
+    "$(jq -r --arg id "$resolve_finding" '.decisions[] | select(.finding_id == $id) | .rationale' "$revision")" >"$pending"
 
   echo "YOUR DECISION on an escalated finding of $latest_relative (round $round)."
   echo "This decision comes from you, not from an agent."
+  echo "Account: $account"
   echo
   echo "The finding, as the review states it:"
   jq -r --arg id "$resolve_finding" '
     [.findings[] | select(.id == $id)] | first
     | "  \(.id) (\(.severity)): \(.title)", "  Evidence: \(.evidence)", "  Impact: \(.impact)", "  Recommendation: \(.recommendation)"
-  ' "$latest"
+  ' "$tmp_work/review.json"
   jq -r '"  The planner escalated it: \(.planner_rationale)"' "$pending"
   echo
   echo "The decision, exactly as it will be stored as $record_relative:"
@@ -420,18 +419,19 @@ resolve() {
   esac
 
   # The review is still the one shown, and still current.
-  [[ "$(git -C "$root" hash-object -- "$latest")" == "$review_blob" ]] ||
+  [[ "$(exception_sha256 "$latest")" == "$review_sha256" ]] ||
     fail "$latest_relative changed while the question was open. Nothing was stored."
   [[ "$(fingerprint_files "$root" "$tmp_work" "${PLANNING_SCOPE[@]}")" == "$(jq -r '.reviewed_tree' "$latest")" ]] ||
     fail "a planning document changed while the question was open. Nothing was stored."
   [[ ! -e "$record" && ! -L "$record" ]] || fail "$record_relative appeared while the question was open. Nothing was stored."
+  mkdir -p "$root/$EXCEPTIONS_DIR"
   cp "$pending" "$record"
-  errors="$(planning_resolution_errors "$root" "$record" "$latest")"
+  errors="$(exception_errors "$root" "$record" "$latest")"
   if [[ -n "$errors" ]]; then
     rm -f "$record"
     fail "the decision would be invalid: ${errors//$'\n'/; }. Nothing was stored."
   fi
-  records_intervention "recorded a decision ($resolve_type) on escalated planning finding $resolve_finding of round $round"
+  records_intervention "recorded a decision ($record_type) on escalated planning finding $resolve_finding of round $round"
 
   echo
   echo "Stored $record_relative."
@@ -578,7 +578,7 @@ fi
     echo "Recorded with \`finish-planning.sh --resolve\`, each for its own review round."
     echo
     jq -r '.[] | select(.resolution != null) | .resolution
-      | "- Round \(.round): \(.finding_id) [\(.finding_severity)] \(.finding_title). \(if .type == "accepted" then "Accepted" else "Not applicable" end), decided by the project owner at \(.decided_at): \(.reason)"' "$decisions_file"
+      | "- Round \(.round): \(.finding_id) [\(.finding_severity)] \(.finding_title). \(if .type == "risk-accepted" then "Accepted" else "Not applicable" end), decided by the project owner (\(.account)) at \(.directed_at): \(.reason)"' "$decisions_file"
     echo
   fi
   if [[ "$(jq 'length' "$amendments_file")" -gt 0 ]]; then

@@ -729,6 +729,124 @@ printf '{"decisions": []}\n' >"$repo.proposal.json"
 expect_no_triage "$repo" "the original proposal is invalid" "$review" --decisions "$repo.decisions.json" --reason "$reason" --proposal "$repo.proposal.json"
 [[ ! -e "$repo.log" ]] || fail "an agent was started for an override"
 
+# A critical or major finding is accepted or deferred only with the owner's
+# exception record (lib/exceptions.sh): confirmed at a terminal, bound to the
+# review by its SHA-256, and published on the Issue before it is stored.
+owner_terminal() {
+  local repo="$1"
+  local answer="$2"
+  local command
+
+  shift 2
+  command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:$ISOLATED_PATH") MOCK_AGENT_LOG=$(printf '%q' "$repo.log") MOCK_GH_LOG=$(printf '%q' "$repo.gh") ./scripts/triage-review.sh $(printf '%q ' "$@")"
+  pty_run "$answer" "$command" >"$repo.out" 2>&1 || true
+}
+exception_record_c1=".agents/exceptions/feature-5-test-review-01-C1.json"
+# setup_exception_repo <name>: a repository whose Git ignores the records,
+# with its review current for that content.
+setup_exception_repo() {
+  local repo
+
+  repo="$(setup_repo "$1")"
+  workflow_gitignore "$repo/.gitignore"
+  record_reviewed_tree "$repo" "$repo/$review"
+  printf '%s\n' "$repo"
+}
+repo="$(setup_exception_repo owner-exception-pipe)"
+printf '%s\n' "$downgraded_decisions" >"$repo.decisions.json"
+expect_no_triage "$repo" "a critical finding is deferred without a terminal" "$review" --decisions "$repo.decisions.json" --reason "$reason"
+grep -Fq "writes the owner's exception record, which is confirmed at a terminal" "$repo.out" ||
+  fail "the refusal without a terminal does not name the exception record: $(cat "$repo.out")"
+[[ ! -e "$repo/$exception_record_c1" && ! -e "$repo.gh.comments" ]] || fail "an exception was stored or published without a terminal"
+
+repo="$(setup_exception_repo owner-exception)"
+printf '%s\n' "$downgraded_decisions" >"$repo.decisions.json"
+owner_terminal "$repo" $'y\ny\n' "$review" --decisions "$repo.decisions.json" --reason "$reason"
+artifact="$repo/.agents/triage/feature-5-test-review-01-triage.json"
+[[ -f "$artifact" && -f "$repo/$exception_record_c1" ]] || {
+  cat "$repo.out" >&2
+  fail "an owner-directed triage that defers a critical finding did not store the triage and the exception"
+}
+[[ "$(jq -r '.decisions[0] | "\(.finding_id) \(.decision)"' "$artifact")" == "C1 DEFER" ]] || fail "the owner's DEFER of C1 was not stored"
+jq -e --arg sha "$(file_sha256 "$repo/$review")" '
+  .schema == "exception/v1" and .kind == "feature" and .type == "risk-accepted" and .evidence == null
+  and .account == "owner-login" and .finding_id == "C1" and .finding_severity == "critical"
+  and .review == ".agents/reviews/feature-5-test-review-01.json" and .review_sha256 == $sha and .round == 1
+  and (.reason | startswith("DEFER in the owner-directed triage: "))' "$repo/$exception_record_c1" >/dev/null ||
+  fail "the exception record differs in form: $(cat "$repo/$exception_record_c1")"
+grep -Fq '<!-- workflow-report: owner-exception -->' "$repo.gh.comments" || fail "the exception was not published"
+grep -Fq "\`$exception_record_c1\`, SHA-256 \`$(file_sha256 "$repo/$exception_record_c1")\`" "$repo.gh.comments" ||
+  fail "the published exception does not name the stored record with its SHA-256"
+shown="$(sed '/Proceed with this triage/,$d' "$repo.out")"
+[[ "$shown" == *"Critical or major findings you accept or defer: C1."* && "$shown" == *'"type": "risk-accepted"'* ]] ||
+  fail "the exception record was not shown before the question"
+(
+  cd "$repo"
+  source scripts/lib/review-data.sh
+  [[ -z "$(triage_artifact_errors "$artifact" "$repo/$review")" ]] || exit 1
+  # Without its valid record the stored triage is refused.
+  jq '.finding_title = "Edited."' "$repo/$exception_record_c1" >"$tmp/edited-exception.json"
+  cp "$repo/$exception_record_c1" "$tmp/exception.json"
+  cp "$tmp/edited-exception.json" "$repo/$exception_record_c1"
+  grep -Fq "critical finding C1 must be FIX_NOW" <<<"$(triage_artifact_errors "$artifact" "$repo/$review")" || exit 2
+  rm "$repo/$exception_record_c1"
+  grep -Fq "critical finding C1 must be FIX_NOW" <<<"$(triage_artifact_errors "$artifact" "$repo/$review")" || exit 3
+  # An agent's triage never excepts, even with a valid record.
+  cp "$tmp/exception.json" "$repo/$exception_record_c1"
+  jq 'del(.owner_directed)' "$artifact" >"$tmp/agent-triage.json"
+  grep -Fq "critical finding C1 must be FIX_NOW" <<<"$(triage_artifact_errors "$tmp/agent-triage.json" "$repo/$review")" || exit 4
+) || fail "the triage that defers a critical finding is not judged by its exception record (step $?)"
+
+# The owner's ACCEPT of a critical finding takes the same gate: refused
+# without a terminal, and at a terminal its own hash-bound record, published
+# on the Issue and stored with the triage.
+accepted_decisions="$(jq '.decisions[0] = {"finding_id": "C1", "decision": "ACCEPT", "rationale": "The risk is acceptable.", "followup": null}' <<<"$valid_decisions")"
+repo="$(setup_exception_repo owner-exception-accept-pipe)"
+printf '%s\n' "$accepted_decisions" >"$repo.decisions.json"
+expect_no_triage "$repo" "a critical finding is accepted without a terminal" "$review" --decisions "$repo.decisions.json" --reason "$reason"
+grep -Fq "writes the owner's exception record, which is confirmed at a terminal" "$repo.out" ||
+  fail "the refusal of an ACCEPT without a terminal does not name the exception record: $(cat "$repo.out")"
+[[ ! -e "$repo/$exception_record_c1" && ! -e "$repo.gh.comments" ]] || fail "an accepted exception was stored or published without a terminal"
+repo="$(setup_exception_repo owner-exception-accept)"
+printf '%s\n' "$accepted_decisions" >"$repo.decisions.json"
+owner_terminal "$repo" $'y\ny\n' "$review" --decisions "$repo.decisions.json" --reason "$reason"
+artifact="$repo/.agents/triage/feature-5-test-review-01-triage.json"
+[[ -f "$artifact" && -f "$repo/$exception_record_c1" ]] || {
+  cat "$repo.out" >&2
+  fail "an owner-directed triage that accepts a critical finding did not store the triage and the exception"
+}
+[[ "$(jq -r '.decisions[0] | "\(.finding_id) \(.decision)"' "$artifact")" == "C1 ACCEPT" ]] || fail "the owner's ACCEPT of C1 was not stored"
+jq -e --arg sha "$(file_sha256 "$repo/$review")" '
+  .schema == "exception/v1" and .kind == "feature" and .type == "risk-accepted"
+  and .finding_id == "C1" and .finding_severity == "critical" and .review_sha256 == $sha
+  and .reason == "ACCEPT in the owner-directed triage: The risk is acceptable."' "$repo/$exception_record_c1" >/dev/null ||
+  fail "the exception record of an ACCEPT differs in form: $(cat "$repo/$exception_record_c1")"
+grep -Fq "\`$exception_record_c1\`, SHA-256 \`$(file_sha256 "$repo/$exception_record_c1")\`" "$repo.gh.comments" ||
+  fail "the published exception of an ACCEPT does not name the stored record with its SHA-256"
+(
+  cd "$repo"
+  source scripts/lib/review-data.sh
+  [[ -z "$(triage_artifact_errors "$artifact" "$repo/$review")" ]] || exit 1
+  rm "$repo/$exception_record_c1"
+  grep -Fq "critical finding C1 must be FIX_NOW" <<<"$(triage_artifact_errors "$artifact" "$repo/$review")" || exit 2
+) || fail "the triage that accepts a critical finding is not judged by its exception record (step $?)"
+
+# Declining the final confirmation stores and publishes no exception.
+repo="$(setup_exception_repo owner-exception-declined)"
+printf '%s\n' "$downgraded_decisions" >"$repo.decisions.json"
+owner_terminal "$repo" $'y\nn\n' "$review" --decisions "$repo.decisions.json" --reason "$reason"
+grep -Fq "Not stored or published" "$repo.out" || { cat "$repo.out" >&2; fail "the final question was not asked"; }
+if [[ -e "$repo/$exception_record_c1" ]] || grep -Fq 'owner-exception' "$repo.gh.comments" 2>/dev/null; then
+  fail "a declined triage stored or published an exception"
+fi
+
+# A failed publication stores neither the exception nor the triage.
+repo="$(setup_exception_repo owner-exception-unpublished)"
+printf '%s\n' "$downgraded_decisions" >"$repo.decisions.json"
+MOCK_GH_COMMENT_EXIT=1 owner_terminal "$repo" $'y\ny\n' "$review" --decisions "$repo.decisions.json" --reason "$reason"
+[[ ! -e "$repo/$exception_record_c1" ]] && ! compgen -G "$repo/.agents/triage/*" >/dev/null ||
+  fail "an exception or a triage was stored although its publication failed"
+
 # The audit fields are validated, and an artifact without them stays valid.
 repo="$(setup_repo owner-audit)"
 printf '%s\n' "$owner_decisions" >"$repo.decisions.json"

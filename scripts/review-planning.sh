@@ -10,6 +10,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/agent.sh"
 source "$script_dir/lib/review-data.sh"
 source "$script_dir/lib/fingerprint.sh"
+source "$script_dir/lib/guardrails.sh"
+source "$script_dir/lib/exceptions.sh"
 source "$script_dir/lib/review-run.sh"
 source "$script_dir/lib/planning.sh"
 
@@ -106,7 +108,7 @@ result_file="$tmp_work/result.json"
 # The owner's decisions on findings that the planner escalated in earlier
 # rounds (finish-planning.sh --resolve), each with the planning documents that
 # changed since it was made, so the reviewer can tell whether it still holds.
-resolutions="$(planning_resolutions "$root" "$name")"
+resolutions="$(exception_planning_records "$root" "$name")"
 resolution_count="$(jq 'length' <<<"$resolutions")"
 if [[ "$resolution_count" -gt 0 ]]; then
   {
@@ -123,7 +125,7 @@ if [[ "$resolution_count" -gt 0 ]]; then
       fi
       jq -r --arg changed "$changed" '
         "- Round \(.round), \(.finding_id) [\(.finding_severity)] \(.finding_title)",
-        "  Decision: \(.type), at \(.decided_at)",
+        "  Decision: \(.type), at \(.directed_at)",
         "  Reason: \(.reason)",
         "  Planning documents changed since the decision: \($changed)"' <<<"$resolution"
     done

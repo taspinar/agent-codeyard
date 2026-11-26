@@ -136,26 +136,7 @@ round="$(jq -r '.round' "$tmp_work/review.json")"
 
 # The record is complete before it is shown, and stored as it is shown.
 pending="$tmp_work/exception.json"
-jq --arg type "$type" --arg reason "$reason" --arg evidence "$evidence" --arg account "$account" \
-  --arg at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" --arg review "$review_relative" --arg sha "$review_sha256" \
-  --arg id "$finding" '
-  ([.findings[] | select(.id == $id)] | first) as $f
-  | {
-      schema: "exception/v1",
-      type: $type,
-      reason: $reason,
-      evidence: (if $evidence == "" then null else $evidence end),
-      account: $account,
-      directed_at: $at,
-      review: $review,
-      review_sha256: $sha,
-      round,
-      finding_id: $f.id,
-      finding_title: $f.title,
-      finding_severity: $f.severity,
-      reviewed_tree,
-      merge_base
-    }' "$tmp_work/review.json" >"$pending"
+exception_record "$tmp_work/review.json" "$review_relative" "$review_sha256" "$finding" "$type" "$reason" "$evidence" "$account" >"$pending"
 errors="$(guardrails_request_errors "$pending" "$root/$EXCEPTIONS_SCHEMA")"
 [[ -z "$errors" ]] || fail "the exception would be invalid: ${errors//$'\n'/; }. Nothing was stored."
 
@@ -196,26 +177,7 @@ errors="$(exception_review_errors "$root" "$tmp_work" "$review_path")"
 [[ ! -e "$record_file" ]] || fail "$record_relative appeared while the question was open. Nothing was stored or published."
 
 comment="$tmp_work/comment.md"
-{
-  echo "$EXCEPTIONS_MARKER"
-  echo "## Owner exception — round $round, finding $finding"
-  echo
-  echo "The owner recorded an exception (\`$type\`) to a blocking finding of the independent review. The review keeps its verdict; the merge needs the owner's approval."
-  echo
-  jq -r --arg id "$finding" '[.findings[] | select(.id == $id)] | first
-    | "**Finding \(.id) (\(.severity)):** \(.title)\n\n- Evidence: \(.evidence)\n- Impact: \(.impact)"' "$tmp_work/review.json"
-  echo
-  jq -r '"**Exception:** \(.type), by \(.account) at \(.directed_at)\n\n- Reason: \(.reason)" + (if .evidence != null then "\n- Evidence: \(.evidence)" else "" end)' "$pending"
-  echo "- Record: \`$record_relative\`, SHA-256 \`$(exception_sha256 "$pending")\`"
-  echo
-  echo "<details><summary>Record</summary>"
-  echo
-  echo '```json'
-  cat "$pending"
-  echo '```'
-  echo
-  echo "</details>"
-} >"$comment"
+exception_comment "$pending" "$tmp_work/review.json" "$record_relative" >"$comment"
 gh issue comment "$issue" --body-file "$comment" </dev/null >/dev/null ||
   fail "publishing the exception on Issue #$issue failed. Nothing was stored; run the command again."
 

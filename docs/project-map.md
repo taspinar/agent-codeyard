@@ -75,11 +75,11 @@ the website describes the current template.
 | `scripts/start-planning.sh` | Project Grill, requirements approval, and project planning in a planning worktree; the first planning of a project removes the approval requests and plans it inherited from the template |
 | `scripts/review-planning.sh` | Independent, read-only review of the planning documents |
 | `scripts/revise-planning.sh` | The planner's decision per planning finding, then the revision |
-| `scripts/finish-planning.sh` | Checks and records your approval of the planning; `--check` tests it; `--resolve` records your decision on an escalated minor finding, at a terminal |
+| `scripts/finish-planning.sh` | Checks and records your approval of the planning; `--check` tests it; `--resolve` records your decision on an escalated minor finding, at a terminal, as the owner's exception record with `kind: planning` |
 | `scripts/create-feature-issue.sh` | Creates the Issue of one roadmap feature |
 | `scripts/start-feature.sh` | Creates the feature worktree and starts the implementer |
 | `scripts/review-feature.sh` | Independent, read-only review of the complete feature diff, or with `--changes` of what changed since the previous round |
-| `scripts/triage-review.sh` | Classifies review findings, creates follow-up Issues, and publishes the reports on the Issue |
+| `scripts/triage-review.sh` | Classifies review findings, creates follow-up Issues, and publishes the reports on the Issue; with `--decisions`, the owner's own decisions, where accepting or deferring a critical or major finding writes the owner's exception record |
 | `scripts/apply-triage.sh` | Lets an implementer resolve only the `FIX_NOW` findings |
 | `scripts/record-exception.sh` | Records the owner's exception to one critical or major finding of the latest review (not applicable, or risk accepted), confirmed at a terminal, stored exactly as shown, and published on the Issue |
 | `scripts/finish-feature.sh` | Checks the feature, including the completion gate and a review of the complete feature, and creates the commit; prints the content tree next to the commit SHA, and writes the approval request when only the owner may merge; `--partial` commits unfinished work as your choice |
@@ -162,7 +162,7 @@ the website describes the current template.
 |---|---|---|
 | `.agents/reviews/` | Review and revision results (JSON and generated reports) | No |
 | `.agents/triage/` | Approved triage results (JSON and generated reports) | No |
-| `.agents/exceptions/` | The owner's exceptions to blocking review findings, one per finding (`record-exception.sh`); valid only for the latest, current review, listed with their SHA-256 in the commit message and published on the Issue | No |
+| `.agents/exceptions/` | The owner's exceptions to review findings, one per finding: to a critical or major finding of a feature (`record-exception.sh`, or `triage-review.sh --decisions` when it accepts or defers one), listed with their SHA-256 in the commit message and published on the Issue; and, with `kind: planning`, to an escalated minor finding of a planning (`finish-planning.sh --resolve`). Valid only for the latest, current review | No |
 | `.agents/verification/` | The record of the last passed verification, the durations of its checks, and the results of its budget checks, written by `verify.sh` | No |
 | `.agents/manual-steps/` | Per Issue, the steps a feature needs from you, written by the implementer; copied into the commit message and the pull request | No |
 | `.agents/summaries/` | Per Issue, the implementer's summary of the changes; becomes the list of changes in the commit message | No |

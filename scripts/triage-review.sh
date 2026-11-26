@@ -11,6 +11,8 @@ source "$script_dir/lib/agent.sh"
 source "$script_dir/lib/review-data.sh"
 source "$script_dir/lib/base.sh"
 source "$script_dir/lib/fingerprint.sh"
+source "$script_dir/lib/guardrails.sh"
+source "$script_dir/lib/exceptions.sh"
 source "$script_dir/lib/issue-comments.sh"
 source "$script_dir/lib/completion.sh"
 
@@ -23,7 +25,10 @@ usage() {
   echo "unless --agent and --model are given."
   echo "--decisions gives the owner's own decisions instead of an agent's proposal"
   echo "(see docs/development.md, 'Owner-directed triage'); it needs --reason and"
-  echo "cannot be combined with --unattended."
+  echo "cannot be combined with --unattended. Accepting or deferring a critical or"
+  echo "major finding writes the owner's exception record of that finding, at a"
+  echo "terminal, and publishes it on the Issue (see 'Owner exceptions to a blocking"
+  echo "finding')."
   echo
   echo "Examples:"
   echo "  $0 .agents/reviews/feature-5-rendering-review-01.json"
@@ -185,6 +190,7 @@ fi
 # Owner-directed triage: --decisions, --reason, and --proposal are not known to
 # agent_parse_args, so they are taken from the remaining arguments.
 owner_decisions=""
+owner_excepted="[]"
 owner_reason=""
 owner_proposal=""
 positional=()
@@ -400,9 +406,107 @@ if [[ "$historical" -eq 1 ]]; then
 fi
 echo
 
+# The owner's exception records of an owner-directed triage that accepts or
+# defers a critical or major finding (owner_excepted). Each is the record of
+# record-exception.sh: of type risk-accepted, with the decision's rationale
+# as its reason, bound to the review by its SHA-256, confirmed at a terminal
+# with the triage, published on the Issue, and stored before the triage. A
+# valid record that is stored already, such as a not-applicable one of
+# record-exception.sh, is used as it is.
+exception_dir="$tmp_work/exceptions"
+new_exceptions=()
+reused_exceptions=()
+prepare_owner_exceptions() {
+  local id
+  local file
+  local errors
+  local reason
+
+  [[ -t 0 && -t 1 ]] ||
+    fail "accepting or deferring a critical or major finding ($(jq -r 'join(", ")' <<<"$owner_excepted")) writes the owner's exception record, which is confirmed at a terminal; standard input and output must be a terminal. No artifact or GitHub Issues were created."
+  [[ "$historical" -eq 0 ]] ||
+    fail "a critical or major finding of a historical review cannot be accepted or deferred: an exception applies to the latest, current review only. No artifact or GitHub Issues were created."
+  git -C "$root" check-ignore -q "$EXCEPTIONS_DIR/x.json" ||
+    fail "Git does not ignore $EXCEPTIONS_DIR/, so an exception would change the reviewed content and be committed. Add '$EXCEPTIONS_DIR/' to .gitignore. No artifact or GitHub Issues were created."
+  mkdir -p "$exception_dir"
+  cp "$review_path" "$exception_dir/review.json"
+  exception_review_sha256="$(exception_sha256 "$exception_dir/review.json")"
+  errors="$(exception_review_errors "$root" "$tmp_work" "$review_path")"
+  [[ -z "$errors" ]] ||
+    fail "no exception can be recorded: ${errors//$'\n'/; }. No artifact or GitHub Issues were created."
+  while IFS= read -r id; do
+    file="$(exception_file "$root" "$review_path" "$id")"
+    if [[ -e "$file" || -L "$file" ]]; then
+      errors="$(exception_errors "$root" "$file" "$review_path")"
+      [[ -z "$errors" ]] ||
+        fail "the exception record of $id, ${file#"$root"/}, is invalid: ${errors//$'\n'/; }. Remove it to record the exception with this triage. No artifact or GitHub Issues were created."
+      reused_exceptions+=("$id")
+      continue
+    fi
+    reason="$(jq -r --arg id "$id" '.decisions[] | select(.finding_id == $id) | "\(.decision) in the owner-directed triage: \(.rationale)"' "$owner_decisions")"
+    exception_record "$exception_dir/review.json" "$review_relative" "$exception_review_sha256" "$id" \
+      risk-accepted "$reason" "" "$owner_account" >"$exception_dir/$id.json"
+    errors="$(guardrails_request_errors "$exception_dir/$id.json" "$root/$EXCEPTIONS_SCHEMA")"
+    [[ -z "$errors" ]] || fail "the exception of $id would be invalid: ${errors//$'\n'/; }. No artifact or GitHub Issues were created."
+    new_exceptions+=("$id")
+  done < <(jq -r '.[]' <<<"$owner_excepted")
+}
+
+# show_owner_exceptions: the records that the triage stores and those it
+# uses, as they are stored.
+show_owner_exceptions() {
+  local id
+
+  [[ "$owner_excepted" != "[]" ]] || return 0
+  echo
+  echo "Critical or major findings you accept or defer: $(jq -r 'join(", ")' <<<"$owner_excepted")."
+  echo "Each needs the owner's exception record. The review and its verdict stay as"
+  echo "they are; no acceptance criterion is met by it, and the merge needs the owner's approval."
+  for id in ${reused_exceptions[@]+"${reused_exceptions[@]}"}; do
+    echo "- $id: the stored record $(exception_file "$root" "$review_path" "$id" | sed "s|^$root/||") is used as it is."
+  done
+  for id in ${new_exceptions[@]+"${new_exceptions[@]}"}; do
+    echo "- $id: stored as $(exception_file "$root" "$review_path" "$id" | sed "s|^$root/||") and published on Issue #$source_issue, exactly as:"
+    cat "$exception_dir/$id.json"
+  done
+}
+
+# store_owner_exceptions: publishes and stores the new records, after the
+# review was checked to be still the one shown, the latest, and current.
+store_owner_exceptions() {
+  local id
+  local file
+  local errors
+
+  [[ "$owner_excepted" != "[]" ]] || return 0
+  [[ "$(exception_sha256 "$review_path")" == "$exception_review_sha256" ]] ||
+    fail "$review_relative changed while the question was open. Nothing was stored or published."
+  errors="$(exception_review_errors "$root" "$tmp_work" "$review_path")"
+  [[ -z "$errors" ]] || fail "${errors//$'\n'/; }. Nothing was stored or published."
+  for id in ${reused_exceptions[@]+"${reused_exceptions[@]}"}; do
+    file="$(exception_file "$root" "$review_path" "$id")"
+    [[ -f "$file" && -z "$(exception_errors "$root" "$file" "$review_path")" ]] ||
+      fail "the exception record of $id changed while the question was open. Nothing was stored or published."
+  done
+  for id in ${new_exceptions[@]+"${new_exceptions[@]}"}; do
+    file="$(exception_file "$root" "$review_path" "$id")"
+    [[ ! -e "$file" && ! -L "$file" ]] ||
+      fail "${file#"$root"/} appeared while the question was open. The triage was not stored."
+    exception_comment "$exception_dir/$id.json" "$exception_dir/review.json" "${file#"$root"/}" >"$exception_dir/$id.md"
+    gh issue comment "$source_issue" --body-file "$exception_dir/$id.md" </dev/null >/dev/null ||
+      fail "publishing the exception of $id on Issue #$source_issue failed. It and the triage were not stored; run the triage again."
+    mkdir -p "$root/$EXCEPTIONS_DIR"
+    cp "$exception_dir/$id.json" "$file"
+    records_intervention "recorded an owner exception (risk-accepted) to finding $id with an owner-directed triage"
+    records_artifact exception "${file#"$root"/}" 2>/dev/null || true
+    echo "Stored ${file#"$root"/} and published it on Issue #$source_issue."
+  done
+}
+
 if [[ -n "$owner_decisions" ]]; then
   # The owner's decisions are validated like an agent's, against the same
-  # rules: a critical or major finding stays FIX_NOW.
+  # rules: a critical or major finding stays FIX_NOW unless you accept or
+  # defer it with the owner's exception record.
   # Both inputs are copied once; everything below, including what is shown
   # and what is stored, comes from the copies, so a change to the files while
   # the question is open has no effect.
@@ -412,7 +516,15 @@ if [[ -n "$owner_decisions" ]]; then
     cp "$owner_proposal" "$tmp_work/owner-proposal.json"
     owner_proposal="$tmp_work/owner-proposal.json"
   fi
-  decision_errors="$(triage_decision_errors "$owner_decisions" "$review_path")"
+  # The critical and major findings that you accept or defer: each only with
+  # the owner's exception record (lib/exceptions.sh), which this triage
+  # writes, or one that record-exception.sh stored for it.
+  owner_excepted="$(jq -c --slurpfile review "$review_path" '
+    [$review[0].findings[] | select(.severity == "critical" or .severity == "major") | .id] as $blocking
+    | [.decisions[]? | objects | select(.decision != "FIX_NOW" and (.finding_id as $id | $blocking | index($id)) != null)
+       | .finding_id] | unique' "$owner_decisions" 2>/dev/null)" || owner_excepted='[]'
+  [[ -n "$owner_excepted" ]] || owner_excepted='[]'
+  decision_errors="$(triage_decision_errors "$owner_decisions" "$review_path" "$owner_excepted")"
   if [[ -n "$decision_errors" ]]; then
     echo "The decisions are invalid:" >&2
     printf '%s\n' "$decision_errors" | sed 's/^/  - /' >&2
@@ -430,6 +542,9 @@ if [[ -n "$owner_decisions" ]]; then
   [[ -n "$owner_account" ]] ||
     fail "could not determine the authenticated GitHub account (gh api user). No artifact or GitHub Issues were created."
   jq '{decisions}' "$owner_decisions" >"$decisions_file"
+  if [[ "$owner_excepted" != "[]" ]]; then
+    prepare_owner_exceptions
+  fi
   # The record of the override is complete before it is shown, and is stored
   # as it is shown.
   owner_record="$tmp_work/owner-record.json"
@@ -631,6 +746,7 @@ if [[ -n "$owner_decisions" ]]; then
   echo "Account: $owner_account"
   echo "Record stored with the triage (owner_directed):"
   jq . "$owner_record"
+  show_owner_exceptions
   echo
   echo "Triage to store:"
 else
@@ -778,7 +894,7 @@ while IFS= read -r finding_id; do
   record_issue "$finding_id" "$issue_url"
 done < <(jq -r '.decisions[] | select(.decision == "DEFER") | .finding_id' "$pending")
 
-artifact_errors="$(triage_artifact_errors "$pending" "$review_path")"
+artifact_errors="$(triage_artifact_errors "$pending" "$review_path" "${owner_excepted:-}")"
 if [[ -n "$artifact_errors" ]]; then
   echo "Error: the triage artifact would be invalid; nothing was stored:" >&2
   printf '%s\n' "$artifact_errors" | sed 's/^/  - /' >&2
@@ -805,6 +921,7 @@ if [[ -n "$owner_decisions" ]]; then
   esac
 fi
 
+store_owner_exceptions
 cp "$pending" "$artifact.json"
 records_artifact triage "$artifact_relative.json" 2>/dev/null || true
 triage_render_markdown "$artifact.json" "$(basename "$artifact").json" >"$artifact.md"
