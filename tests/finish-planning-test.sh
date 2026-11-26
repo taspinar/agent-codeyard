@@ -21,6 +21,18 @@ fail() {
 
 source "$source_root/tests/lib-fakes.sh"
 make_fake_agents "$tmp/bin"
+# A fake GitHub CLI that names the account of a decision (--resolve).
+cat >"$tmp/bin/gh" <<'GH'
+#!/usr/bin/env bash
+case "${1:-} ${2:-}" in
+  "api user") echo "owner-login" ;;
+  *)
+    echo "Unexpected gh invocation: $*" >&2
+    exit 97
+    ;;
+esac
+GH
+chmod +x "$tmp/bin/gh"
 
 reviews=".agents/reviews"
 counter=0
@@ -34,6 +46,8 @@ setup_repo() {
   printf '# Project Requirements\n\nStatus: Approved\nApproved at: 2026-01-01T00:00:00Z\n' >"$repo/docs/PROJECT_REQUIREMENTS.md"
   printf '# Architecture\n\nLocal storage.\n' >"$repo/docs/architecture.md"
   printf '# Roadmap\n\n## F01 — Recipes\n\n- Goal: list recipes.\n' >"$repo/docs/roadmap.md"
+  # Git ignores the owner's decisions, as the template's .gitignore does.
+  printf '.agents/exceptions/\n' >"$repo/.gitignore"
   git -C "$repo" init -q -b main
   git -C "$repo" config user.name "Finish Test"
   git -C "$repo" config user.email "finish-test@example.com"
@@ -587,8 +601,10 @@ resolve() {
   at_terminal "$repo" "$answer" ./scripts/finish-planning.sh --resolve "$@" >"$repo.out" 2>&1 || true
 }
 
+# resolution <repo> <round> <finding-id>: where the decision is stored, as the
+# owner's exception record of the planning (kind planning).
 resolution() {
-  printf '%s/%s/planning-project-bootstrap-review-%02d-resolution-%s.json\n' "$1" "$reviews" "$2" "$3"
+  printf '%s/.agents/exceptions/planning-project-bootstrap-review-%02d-%s.json\n' "$1" "$2" "$3"
 }
 
 # A minor finding that the planner escalated: the owner decides it does not
@@ -621,7 +637,7 @@ resolve "$repo" y MIN2 --type risk-accepted --reason "A reason."
 grep -Fq "must be not-applicable or accepted" "$repo.out" || fail "an unknown type was not refused"
 resolve "$repo" y MIN2 --type accepted --reason " "
 grep -Fq "needs a reason" "$repo.out" || fail "an empty reason was not refused"
-compgen -G "$repo/$reviews/*-resolution-*.json" >/dev/null && fail "a refused decision was stored"
+compgen -G "$repo/.agents/exceptions/*.json" >/dev/null && fail "a refused decision was stored"
 
 # Declining stores nothing.
 resolve "$repo" n MIN2 --type not-applicable --reason "Sync is a non-goal."
@@ -631,9 +647,11 @@ grep -Fq "Offline sync is unplanned" "$repo.out" || fail "the finding was not sh
 resolve "$repo" y MIN2 --type not-applicable --reason "Sync is a non-goal of the requirements."
 record="$(resolution "$repo" 1 MIN2)"
 [[ -f "$record" ]] || { cat "$repo.out" >&2; fail "the decision was not stored"; }
-jq -e '.schema == "planning-resolution/v1" and .type == "not-applicable" and .round == 1 and .finding_id == "MIN2"
-  and .finding_severity == "minor" and .reason == "Sync is a non-goal of the requirements."
-  and .review == ".agents/reviews/planning-project-bootstrap-review-01.json"' "$record" >/dev/null ||
+jq -e --arg sha "$(sha256sum "$repo/$reviews/planning-project-bootstrap-review-01.json" | cut -c1-64)" '
+  .schema == "exception/v1" and .kind == "planning" and .type == "not-applicable" and .round == 1 and .finding_id == "MIN2"
+  and .finding_severity == "minor" and .reason == "Sync is a non-goal of the requirements." and .account == "owner-login"
+  and .review == ".agents/reviews/planning-project-bootstrap-review-01.json" and .review_sha256 == $sha
+  and .planner_rationale == "Considered."' "$record" >/dev/null ||
   fail "the stored decision lacks its fields: $(cat "$record")"
 grep -Fq '"planner_rationale": "Considered."' "$repo.out" || fail "the record was not shown as it is stored"
 resolve "$repo" y MIN2 --type accepted --reason "Again."
@@ -645,7 +663,7 @@ grep -Fq "Your decision: not-applicable, Sync is a non-goal of the requirements.
   fail "the decision was not shown with the findings"
 approval="$repo/docs/PLANNING_APPROVAL.md"
 grep -Fqx "## Escalations resolved by the owner's decision" "$approval" || fail "the approval does not list the decisions"
-grep -Eq "^- Round 1: MIN2 \[minor\] Offline sync is unplanned\. Not applicable, decided by the project owner at [0-9T:Z-]+: Sync is a non-goal of the requirements\.$" "$approval" ||
+grep -Eq "^- Round 1: MIN2 \[minor\] Offline sync is unplanned\. Not applicable, decided by the project owner \(owner-login\) at [0-9T:Z-]+: Sync is a non-goal of the requirements\.$" "$approval" ||
   fail "the approval does not record the decision: $(cat "$approval")"
 
 # A decision is for a minor finding only: an escalated major or critical
@@ -659,18 +677,20 @@ grep -Fq "a new review round after the planning documents changed" "$repo.out" &
   fail "the refusal of a major finding does not name the ways that remain"
 resolve "$repo" y C1 --type accepted --reason "The model follows later."
 grep -Fq "C1 of round 1 is critical in the review" "$repo.out" || fail "an escalated critical finding was not refused: $(cat "$repo.out")"
-compgen -G "$repo/$reviews/*-resolution-*.json" >/dev/null && fail "a decision on a major or critical finding was stored"
+compgen -G "$repo/.agents/exceptions/*.json" >/dev/null && fail "a decision on a major or critical finding was stored"
 expect_refused "$repo" "escalated major and critical findings block"
 grep -Fq "2 critical or major finding(s)" "$repo.out" || fail "the escalated blocking findings were not reported"
 # A record written by hand for a major finding resolves nothing.
 review="$repo/$reviews/planning-project-bootstrap-review-01.json"
-jq --arg blob "$(git -C "$repo" hash-object -- "$review")" '{
-  schema: "planning-resolution/v1", type: "accepted", reason: "By hand.", decided_at: "2026-01-02T00:00:00Z",
-  branch, review: ".agents/reviews/planning-project-bootstrap-review-01.json", review_blob: $blob, round,
-  reviewed_tree, finding_id: "M1", finding_severity: "minor", finding_title: "Offline sync is unplanned",
-  planner_rationale: "Considered."}' "$review" >"$(resolution "$repo" 1 M1)"
+mkdir -p "$repo/.agents/exceptions"
+jq --arg sha "$(sha256sum "$review" | cut -c1-64)" '{
+  schema: "exception/v1", kind: "planning", type: "risk-accepted", reason: "By hand.", evidence: null,
+  account: "owner-login", directed_at: "2026-01-02T00:00:00Z",
+  review: ".agents/reviews/planning-project-bootstrap-review-01.json", review_sha256: $sha, round,
+  finding_id: "M1", finding_title: "Offline sync is unplanned", finding_severity: "major",
+  reviewed_tree, merge_base, planner_rationale: "Considered."}' "$review" >"$(resolution "$repo" 1 M1)"
 expect_refused "$repo" "a decision written by hand for a major finding"
-grep -Fq "the finding is major in the review; a decision resolves a minor finding only." "$repo.out" ||
+grep -Fq "finding M1 is major: a planning record resolves a minor finding only" "$repo.out" ||
   fail "the hand-written decision on a major finding was not reported as invalid: $(cat "$repo.out")"
 
 # A decision is bound to its review as it is: an edited review voids it.
@@ -682,7 +702,7 @@ resolve "$repo" y MIN1 --type accepted --reason "Sharing stays open for now."
 jq '.limitations = "Edited."' "$repo/$reviews/planning-project-bootstrap-review-01.json" >"$tmp/review.tmp"
 mv "$tmp/review.tmp" "$repo/$reviews/planning-project-bootstrap-review-01.json"
 expect_refused "$repo" "the review was edited after the decision"
-grep -Fq "the review changed after the decision" "$repo.out" || fail "the void decision was not reported"
+grep -Fq "the review artifact changed after the exception was recorded" "$repo.out" || fail "the void decision was not reported: $(cat "$repo.out")"
 
 # A decision is stale once the documents change: the review it belongs to is
 # stale, and a new round that raises the finding again needs its own decision.

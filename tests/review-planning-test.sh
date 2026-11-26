@@ -204,7 +204,8 @@ run_review "$repo" || fail "a first planning review failed"
 if grep -Fq "This is a change cycle" "$repo.log"; then fail "a first planning was reviewed as a change cycle"; fi
 
 # The reviewer of a later round receives the owner's decisions on escalated
-# findings (finish-planning.sh --resolve), with the planning documents that
+# findings (finish-planning.sh --resolve, the owner's exception records of
+# kind planning), with the planning documents that
 # changed since each; a decision that is no longer valid is left out.
 repo="$(setup_repo decisions)"
 run_review "$repo" || { cat "$repo.out" >&2; fail "the first round failed"; }
@@ -215,14 +216,16 @@ review="$repo/.agents/reviews/planning-project-bootstrap-review-01.json"
 # A decision resolves a minor finding only.
 jq '.findings[0].severity = "minor"' "$review" >"$repo.review.tmp"
 mv "$repo.review.tmp" "$review"
-jq --arg blob "$(git -C "$repo" hash-object -- "$review")" '{
-  schema: "planning-resolution/v1", type: "not-applicable", reason: "Offline use is the whole product.",
-  decided_at: "2026-01-02T00:00:00Z", branch, review: ".agents/reviews/planning-project-bootstrap-review-01.json",
-  review_blob: $blob, round, reviewed_tree, finding_id: "M1", finding_severity: "minor",
-  finding_title: .findings[0].title, planner_rationale: "Needs the owner."}' "$review" \
-  >"$repo/.agents/reviews/planning-project-bootstrap-review-01-resolution-M1.json"
-jq '.reason = ""' "$repo/.agents/reviews/planning-project-bootstrap-review-01-resolution-M1.json" \
-  >"$repo/.agents/reviews/planning-project-bootstrap-review-01-resolution-M2.json"
+mkdir -p "$repo/.agents/exceptions"
+jq --arg sha "$(sha256sum "$review" | cut -c1-64)" '{
+  schema: "exception/v1", kind: "planning", type: "not-applicable", reason: "Offline use is the whole product.",
+  evidence: null, account: "owner-login", directed_at: "2026-01-02T00:00:00Z",
+  review: ".agents/reviews/planning-project-bootstrap-review-01.json", review_sha256: $sha, round,
+  finding_id: "M1", finding_title: .findings[0].title, finding_severity: "minor",
+  reviewed_tree, merge_base, planner_rationale: "Needs the owner."}' "$review" \
+  >"$repo/.agents/exceptions/planning-project-bootstrap-review-01-M1.json"
+jq '.reason = "" | .finding_id = "M2"' "$repo/.agents/exceptions/planning-project-bootstrap-review-01-M1.json" \
+  >"$repo/.agents/exceptions/planning-project-bootstrap-review-01-M2.json"
 printf '\n## F02 — Sharing\n' >>"$repo/docs/roadmap.md"
 rm -f "$repo.log" "$repo.log.stdin"
 run_review "$repo" || { cat "$repo.out" >&2; fail "the round after a decision failed"; }
@@ -234,7 +237,7 @@ grep -Fq "Planning documents changed since the decision: docs/roadmap.md" "$repo
   fail "the reviewer was not told what changed since the decision: $(cat "$repo.log.stdin")"
 grep -Fq '"Owner decisions" rules' "$repo.log" || fail "the reviewer was not pointed to the rules for decisions"
 if grep -Fq "Round 1, M2" "$repo.log.stdin"; then fail "an invalid decision was given to the reviewer"; fi
-grep -Fq "Ignored the decision .agents/reviews/planning-project-bootstrap-review-01-resolution-M2.json" "$repo.out" ||
+grep -Fq "Ignored the decision .agents/exceptions/planning-project-bootstrap-review-01-M2.json" "$repo.out" ||
   fail "the invalid decision was not reported"
 
 echo "review-planning tests passed"

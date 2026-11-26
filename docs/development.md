@@ -2084,9 +2084,10 @@ round:
 ```
 
 `--type not-applicable` says that the finding does not apply; `--type
-accepted` that you accept the planning as it is with it. The reason is one
-line. The command runs only at a terminal, never unattended or from a pipe: it
-shows the finding as the review states it, the planner's rationale for the
+accepted` that you accept the planning as it is with it (stored as the type
+`risk-accepted`). The reason is one line. The command runs only at a
+terminal, never unattended or from a pipe: it shows the finding as the review
+states it, the account (`gh api user`), the planner's rationale for the
 escalation, and the record exactly as it will be stored, and asks once. It
 accepts one finding of the latest round that the planner escalated and that
 the review rates `minor`, while that review is current, and one decision per
@@ -2097,10 +2098,15 @@ documents changed, or a change of the requirements (Project Grill, or a
 change cycle). A record written by hand for such a finding is invalid and
 resolves nothing.
 
-The decision is stored next to its review, as
-`.agents/reviews/<review>-resolution-<finding-id>.json`, which Git ignores like
-the review. It is bound to that review by the hash of its file, its round, and
-its reviewed tree, and resolves the finding in that round only:
+The decision is the owner's exception record of a feature, with `kind:
+planning` (one record for both, "Owner exceptions to a blocking finding"):
+`.agents/exceptions/<review>-<finding-id>.json`, schema
+`.agents/schemas/exception.schema.json`, which Git ignores. A planning record
+excepts only a minor finding, a feature record only a critical or major one,
+and a record never counts for a review of the other kind. A planning review
+has no Issue, so the record is not published; the approval lists it. It is
+bound to that review by its SHA-256, its round, and its reviewed tree, and
+resolves the finding in that round only:
 
 - `finish-planning.sh` approves a latest round whose escalated findings all
   have a decision (an escalated critical or major finding still blocks), and lists the
@@ -2828,8 +2834,8 @@ is required for `DEFER` and `null` otherwise). `--proposal` optionally gives
 the decisions the agent proposed (for example its output from an earlier run),
 so they are recorded next to yours. The same rules apply as for an agent:
 every finding exactly once, no unknown IDs, a follow-up for every `DEFER`, and
-critical and major findings stay `FIX_NOW`; an override cannot accept or defer
-them. The reason is required, no agent is started, and `--unattended` is
+critical and major findings stay `FIX_NOW` unless you accept or defer them
+with the owner's exception record (below). The reason is required, no agent is started, and `--unattended` is
 refused. The script shows your exact decisions, the reason and the account, and
 asks for your confirmation before it creates follow-up Issues. It then shows
 the complete artifact, with the follow-up references, and asks once more
@@ -2837,6 +2843,21 @@ before it stores and publishes it. The files are copied before anything is
 shown, and the artifact is stored exactly as shown, and published as stored:
 the comment names its SHA-256. Declining the second question stores and publishes
 nothing; follow-up Issues already created are reused by the next triage.
+
+A critical or major finding that your decisions accept or defer is decided
+only with the owner's exception record ("Owner exceptions to a blocking
+finding", below), which the override writes: of type `risk-accepted`, with
+your decision and its rationale as the reason, bound to the review by its
+SHA-256. A valid record that is stored already, such as a `not-applicable`
+one of `record-exception.sh`, is used as it is; an invalid one is refused. It
+needs a terminal (standard input and output), the latest and current review,
+and not a historical one; otherwise nothing is created. The records are shown
+with your decisions before the first question; after the second, each new
+record is published as a comment on the Issue with its SHA-256 and stored,
+before the triage is. A failed publication stores neither. An agent's triage
+never accepts or defers such a finding, whatever records exist: a stored
+triage that does is valid only while it is owner-directed and each such
+finding has its valid record.
 
 The artifact has an `owner_directed` object with the `reason`, the `account`
 that ran the script, the time (`directed_at`), and the `original_proposal`
@@ -2951,10 +2972,16 @@ the fix rounds").
 ### Owner exceptions to a blocking finding
 
 A critical or major finding of the latest review stops `finish-feature.sh`,
-and the triage keeps it `FIX_NOW`, owner-directed or not. When you, the
-owner, judge that such a finding is wrong, or that it is right and you accept
-its risk, record that decision for that one finding instead of fixing it or
-committing around the workflow:
+and an agent's triage keeps it `FIX_NOW`. When you, the owner, judge that
+such a finding is wrong, or that it is right and you accept its risk, record
+that decision for that one finding instead of fixing it or committing around
+the workflow. One record holds every such decision of the owner: this
+section's, an owner-directed triage that accepts or defers the finding
+(`triage-review.sh --decisions`, "Owner-directed triage", which writes it),
+and, with `kind: planning`, your decision on an escalated minor finding of a
+planning review (`finish-planning.sh --resolve`, "Your decision on an
+escalated finding"). A record without `kind`, as every record was before the
+field existed, is a feature record.
 
 ```bash
 ./scripts/record-exception.sh <review-json> --finding <id> \

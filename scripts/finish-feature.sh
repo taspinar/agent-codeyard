@@ -352,8 +352,9 @@ else
     issue_comments_triage_published "$triage_records" "$root" "$triage" ||
       fail "the triage of round $review_round was not published on Issue #$issue: no report of the workflow there names $triage_relative with its SHA-256 in every part. Run ./scripts/triage-review.sh --publish $triage_relative."
     if [[ "$review" == "$latest" ]]; then
-      # A finding with the owner's valid exception stays FIX_NOW in its
-      # triage, as every blocking finding does; it is not fixed now.
+      # A finding with the owner's valid exception is not fixed now: it
+      # stays FIX_NOW in its triage, or the owner's triage accepts or
+      # defers it with that record (triage_artifact_errors).
       [[ "$(jq --argjson excepted "$excepted_json" '[.decisions[] | select(.decision == "FIX_NOW" and (.finding_id | IN($excepted[]) | not))] | length' "$triage")" -eq 0 ]] ||
         fail "round $review_round has FIX_NOW findings. Apply them with ./scripts/apply-triage.sh $triage_relative and review again."
       # 'triage: light' is refused for high, whatever the policy or the

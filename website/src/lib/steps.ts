@@ -179,7 +179,7 @@ export const feature: Step[] = [
     id: "decide-on-the-findings",
     title: "Decide on the findings",
     summary: "Each finding is fixed now, deferred to a follow-up Issue or accepted with a reason; critical and major ones are fixed unless you record an exception.",
-    text: "Each finding gets a recorded decision: fix it now, defer it to a follow-up Issue, or accept it with a reason. Critical and major findings are always fix now; only the owner can record an exception for one of them (`record-exception.sh`). For a low- or medium-risk feature the policy can ask for the light triage, which prefers to defer or accept a suggestion or a minor finding over a fix round; a high-risk feature always gets the full triage.",
+    text: "Each finding gets a recorded decision: fix it now, defer it to a follow-up Issue, or accept it with a reason. Critical and major findings are always fix now; only the owner can record an exception for one of them (`record-exception.sh`, or an owner-directed triage that accepts or defers it, which writes the same record at a terminal and publishes it on the Issue). For a low- or medium-risk feature the policy can ask for the light triage, which prefers to defer or accept a suggestion or a minor finding over a fix round; a high-risk feature always gets the full triage.",
     facts: [
       ["who", "The triage agent proposes; step by step you approve, unattended it decides"],
       ["script", "`./scripts/triage-review.sh <review-json>`"],

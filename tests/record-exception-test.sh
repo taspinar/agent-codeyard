@@ -413,11 +413,31 @@ record "$repo" y "$review2" "${not_applicable[@]}" || {
 record_continued=".agents/exceptions/feature-12-marker-review-02-M1.json"
 [[ -f "$repo/$record_continued" ]] || fail "the exception was not stored as $record_continued"
 jq -e --arg sha "$(sha256sum "$repo/$review2" | cut -c1-64)" '
-  (keys == (["account", "directed_at", "evidence", "finding_id", "finding_severity", "finding_title", "merge_base",
+  (keys == (["account", "directed_at", "evidence", "finding_id", "finding_severity", "finding_title", "kind", "merge_base",
              "reason", "review", "review_sha256", "reviewed_tree", "round", "schema", "type"]))
-  and .review == ".agents/reviews/feature-12-marker-review-02.json" and .review_sha256 == $sha
+  and .kind == "feature" and .review == ".agents/reviews/feature-12-marker-review-02.json" and .review_sha256 == $sha
   and .round == 2 and .finding_id == "M1" and .finding_title == "Wrong result"
 ' "$repo/$record_continued" >/dev/null || fail "the exception to a continued finding differs in form: $(cat "$repo/$record_continued")"
+# A record of an earlier version, without 'kind', is a feature record and
+# stays valid; a record that names another kind is not one.
+exception_check() {
+  (
+    cd "$repo"
+    source scripts/lib/fingerprint.sh
+    source scripts/lib/guardrails.sh
+    source scripts/lib/exceptions.sh
+    exception_errors "$repo" "$repo/$record_continued" "$repo/$review2"
+  )
+}
+cp "$repo/$record_continued" "$tmp/continued-record.json"
+jq 'del(.kind)' "$tmp/continued-record.json" >"$repo/$record_continued"
+[[ -z "$(exception_check)" ]] || fail "a record without kind is not accepted as a feature record: $(exception_check)"
+jq '.kind = "planning"' "$tmp/continued-record.json" >"$repo/$record_continued"
+grep -Fq "it is a planning record, and .agents/reviews/feature-12-marker-review-02.json is a feature review" <<<"$(exception_check)" ||
+  fail "a planning record was accepted for a feature review: $(exception_check)"
+jq 'del(.kind) | .finding_severity = "minor"' "$tmp/continued-record.json" >"$repo/$record_continued"
+[[ -n "$(exception_check)" ]] || fail "a feature record of a minor severity was accepted"
+cp "$tmp/continued-record.json" "$repo/$record_continued"
 jq -r .body "$repo.gh.comments" >"$repo.comment"
 [[ "$(head -n 1 "$repo.comment")" == "<!-- workflow-report: owner-exception -->" ]] || fail "the comment on a continued finding lacks its marker"
 grep -Fqx "## Owner exception — round 2, finding M1" "$repo.comment" || fail "the comment on a continued finding differs in form"
