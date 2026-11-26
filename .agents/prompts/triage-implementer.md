@@ -114,9 +114,8 @@ there, add to it under a heading for this triage; do not remove its content.
 Do not try fixes at random. State one hypothesis about the cause, collect
 evidence that confirms or refutes it, make one change that follows from the
 confirmed cause, and verify. Undo a change whose hypothesis was refuted. After
-three materially different failed attempts at one finding, stop: record the
-attempts, the evidence, and the next recommended step in
-`.agents/handoffs/<issue-number>.md`, and report to the human.
+three materially different failed attempts at one finding, stop as
+`.agents/policies/execution-limits.md` says.
 
 ## Manual steps
 
