@@ -1179,7 +1179,6 @@ intermediate() {
 # stops the run (loop_guard). Plain lists, not associative arrays, which the
 # Bash of macOS lacks.
 loop_done=""
-loop_published=""
 
 # loop_guard <step> <round> <state> <command>
 # Stops the run when the step <step> of round <round> succeeded already in
@@ -1449,19 +1448,25 @@ if uncommitted || [[ "$owner_review" -eq 1 || "$owner_changed" -eq 1 || "$owner_
       continue
     fi
     triage_relative="${triage#"$worktree"/}"
-    # A publication that succeeded in this run is done for the rest of it,
-    # also when the triage has no published_at (a feature that changes the
-    # field, #527): across runs, published_at stays the signal.
-    if [[ "$(jq 'has("published_at")' "$triage")" != "true" ]] &&
-      ! grep -Fqx -- "$triage_relative" <<<"$loop_published"; then
+    # The publication is the workflow's comment on the Issue (Issue 527).
+    # When the comments cannot be read, the run stops rather than publish
+    # the triage a second time.
+    triage_records="$(cd "$worktree" && issue_comments_triage_records "$issue")" ||
+      stop 1 "could not read the comments of Issue #$issue or the authenticated GitHub account whose comments alone publish a triage, so the publication of the triage of round $round cannot be checked." \
+        "check the access to GitHub (gh auth status), then run ./scripts/run-feature.sh $issue again"
+    if ! issue_comments_triage_published "$triage_records" "$worktree" "$triage"; then
+      # Published once by this run and still not found: publishing it again
+      # would not find it either.
+      [[ "${republished_triage:-}" != "$triage" ]] ||
+        stop 1 "the triage of round $round was published, but the comments of Issue #$issue do not show it: no report of the workflow there names $triage_relative with its SHA-256 in every part." \
+          "cd \"$worktree\"" \
+          "./scripts/triage-review.sh --publish $triage_relative    # then run ./scripts/run-feature.sh $issue again"
+      republished_triage="$triage"
       step "publication of the triage of round $round" ./scripts/triage-review.sh --publish "$triage_relative"
       [[ "$step_status" -eq 0 ]] ||
         stop 1 "the triage of round $round could not be published on the Issue." \
           "cd \"$worktree\"" \
           "./scripts/triage-review.sh --publish $triage_relative"
-      loop_published+="$triage_relative"$'\n'
-      [[ "$(jq 'has("published_at")' "$triage")" == "true" ]] ||
-        note "publication of the triage of round $round" "published" "triage-review.sh --publish succeeded, and the triage has no published_at" "Going on; the publication counts as done in this run"
       continue
     fi
 

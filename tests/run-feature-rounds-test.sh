@@ -625,30 +625,25 @@ wrap_script() {
   git -C "$repo" push -q origin main
 }
 
-# A publication of a triage that succeeds without recording published_at (a
-# feature that changes the field, #527) is done for the rest of the run: the
-# publication step runs once, and the run goes on to the fixes and the
-# rounds after them.
-# The commit of this base still requires the field and refuses.
+# A publication of a triage that succeeds without the comment that proves it
+# is started once for that triage in a run: the run then stops and says that
+# the comments of the Issue do not show it, instead of publishing again
+# (the triage of #527 was posted 500 times). The triage step publishes
+# itself; the wrapper then changes the stored triage, so that its comment no
+# longer names it, and --publish posts nothing.
 scenario no-progress-publication
 repo="$(setup_repo no-progress-publication)"
-wrap_script "$repo" triage-review.sh '"$real" "$@" || exit
+wrap_script "$repo" triage-review.sh 'if [[ "${1:-}" == "--publish" ]]; then echo "Published nothing."; exit 0; fi
+"$real" "$@" || exit
 for triage in .agents/triage/*-triage*.json; do
-  jq "del(.published_at)" "$triage" >"$triage.tmp" && mv "$triage.tmp" "$triage"
+  printf "\n" >>"$triage"
 done'
 printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
 run_feature "$repo" 2 thing
-expect_stopped "$repo" 1 "the feature could not be committed"
-expect_sessions "$repo" 1 3 1 1
+expect_stopped "$repo" 1 "the triage of round 1 was published, but the comments of Issue #2 do not show it"
 [[ "$(grep -c "=== run-feature.sh: publication of the triage of round 1 ===" "$repo.out")" -eq 1 ]] ||
   fail "the triage of round 1 was not published exactly once by the publication step"
-# One comment by the triage step, which publishes itself, and one by the
-# publication step.
-[[ "$(grep -c '^issue comment' "$repo.control/gh.log")" -eq 2 ]] || fail "the triage was posted on the Issue more than twice"
-grep -Fq "the triage of round 1 was not published on Issue #2" "$repo.out" ||
-  fail "the commit of this base did not refuse the triage without published_at"
-grep -Fq "publication of the triage of round 1 | published | triage-review.sh --publish succeeded, and the triage has no published_at" <<<"$(log_of "$repo")" ||
-  fail "the publication without published_at is not in the log of the feature"
+[[ "$(grep -c '^issue comment' "$repo.control/gh.log")" -eq 1 ]] || fail "the triage was posted on the Issue more than once"
 
 # A triage step that succeeds without writing a triage is started at most
 # twice: the second start stops the run, which names the step, the round,

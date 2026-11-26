@@ -140,6 +140,34 @@ setup_repo() {
   printf '%s\n' "$repo"
 }
 
+# file_sha256 <file>: the SHA-256 of the file, as the workflow computes it.
+file_sha256() {
+  (source "$source_root/scripts/lib/issue-comments.sh" && issue_comments_sha256 "$1")
+}
+
+# triage_published <repo> <triage-json>
+# Exits 0 when the comments that the fake GitHub received on Issue #5 prove
+# the publication of exactly the stored triage, as finish-feature.sh and
+# run-feature.sh read it back from GitHub (lib/issue-comments.sh).
+triage_published() {
+  local comments="$1.published.json"
+
+  rm -rf "$1.bodies"
+  mkdir -p "$1.bodies"
+  [[ -f "$1.gh.comments" ]] &&
+    awk -v dir="$1.bodies" '
+      /^COMMENT ON #5$/ { n++; file = dir "/" n; inside = 1; next }
+      /^END COMMENT$/ { inside = 0; close(file); next }
+      inside { print > file }
+    ' "$1.gh.comments"
+  find "$1.bodies" -type f | sort | while read -r body; do jq -n --rawfile body "$body" '{user: {login: "owner-login"}, author_association: "OWNER", body: $body}'; done | jq -s . >"$comments"
+  (
+    source "$source_root/scripts/lib/issue-comments.sh"
+    records="$(PATH="$tmp/bin:$PATH" MOCK_ISSUE_COMMENTS="$comments" issue_comments_triage_records 5)"
+    issue_comments_triage_published "$records" "$1" "$2"
+  )
+}
+
 run_triage() {
   local repo="$1"
   local answer="$2"
@@ -201,9 +229,13 @@ grep -Fq -- "--strict-mcp-config --permission-mode dontAsk --tools Read,Glob,Gre
 grep -Fq -- "--json-schema" "$repo.log" || fail "triage agent was not given the schema"
 grep -Fq "Correctness regression" "$repo.log.stdin" || fail "findings were not supplied to the triage agent"
 
-# One comment with both reports is published on the source Issue, and the
-# publication is recorded in the triage.
-grep -Eq '"published_at": "[0-9]{4}-' "$artifact.json" || fail "the publication was not recorded in the triage"
+# One comment with both reports is published on the source Issue. It names
+# the stored triage by its path and SHA-256, and is the record of the
+# publication: the artifact holds no field for it (Issue 527).
+triage_published "$repo" "$artifact.json" || fail "the comment does not prove the publication of the stored triage"
+grep -Fqx "Triage record: \`.agents/triage/feature-5-test-review-01-triage.json\`, SHA-256 \`$(file_sha256 "$artifact.json")\`, part 1 of 1" "$repo.gh.comments" ||
+  fail "the comment does not name the stored triage by its path and SHA-256"
+jq -e 'has("published_at") | not' "$artifact.json" >/dev/null || fail "the publication was recorded in the triage artifact"
 [[ "$(grep -c '^COMMENT ON #5$' "$repo.gh.comments")" -eq 1 ]] || fail "exactly one comment on Issue #5 was expected"
 grep -Fq "C1. Correctness regression" "$repo.gh.comments" || fail "the comment lacks the review report"
 grep -Fq "## Fix now" "$repo.gh.comments" || fail "the comment lacks the triage report"
@@ -256,6 +288,19 @@ parts="$(grep -c '^COMMENT ON #5$' "$repo.gh.comments")"
 [[ "$parts" -ge 2 ]] || fail "a record too long for one comment was not split"
 grep -Fq "evidence line 4000" "$repo.gh.comments" || fail "the long review was shortened"
 grep -Fq "## Fix now" "$repo.gh.comments" || fail "the split record lacks the triage report"
+[[ "$(grep -c "^Triage record: .*, part [0-9]* of $parts\$" "$repo.gh.comments")" -eq "$parts" ]] ||
+  fail "not every part of a split record names the triage and its part"
+triage_published "$repo" "$repo/.agents/triage/feature-5-test-review-01-triage.json" ||
+  fail "a split record that was published completely does not prove the publication"
+# A record of which a part is missing is not a publication.
+awk -v parts="$parts" '
+  /^COMMENT ON #5$/ { n++ }
+  n != parts { print }
+' "$repo.gh.comments" >"$repo.gh.comments.tmp"
+mv "$repo.gh.comments.tmp" "$repo.gh.comments"
+if triage_published "$repo" "$repo/.agents/triage/feature-5-test-review-01-triage.json"; then
+  fail "a split record without its last part proved the publication"
+fi
 
 # A failed publication keeps the stored triage and tells how to retry.
 repo="$(setup_repo comment-fails)"
@@ -265,7 +310,8 @@ fi
 [[ -f "$repo/.agents/triage/feature-5-test-review-01-triage.json" ]] ||
   fail "a failed publication discarded the stored triage"
 triage_file="$repo/.agents/triage/feature-5-test-review-01-triage.json"
-[[ "$(jq -r '.published_at // "none"' "$triage_file")" == "none" ]] || fail "a failed publication was recorded as published"
+if triage_published "$repo" "$triage_file"; then fail "a failed publication counts as published"; fi
+stored_before="$(file_sha256 "$triage_file")"
 grep -Fq "./scripts/triage-review.sh --publish .agents/triage/feature-5-test-review-01-triage.json" "$repo.out" ||
   fail "a failed publication did not print the retry command"
 (
@@ -276,7 +322,32 @@ grep -Fq "./scripts/triage-review.sh --publish .agents/triage/feature-5-test-rev
   fail "retrying the publication failed"
 }
 [[ "$(grep -c '^COMMENT ON #5$' "$repo.gh.comments")" -eq 1 ]] || fail "the retry did not publish the reports"
-grep -Eq '"published_at": "[0-9]{4}-' "$triage_file" || fail "the retried publication was not recorded"
+triage_published "$repo" "$triage_file" || fail "the retried publication does not prove the publication"
+[[ "$(file_sha256 "$triage_file")" == "$stored_before" ]] || fail "publishing changed the stored triage"
+
+# --mark-only, which recorded a publication by hand, is gone: the comment is
+# the record. It is refused as an unknown option, and nothing is changed.
+if (
+  cd "$repo"
+  PATH="$tmp/bin:$ISOLATED_PATH" MOCK_GH_LOG="$repo.gh" ./scripts/triage-review.sh --publish .agents/triage/feature-5-test-review-01-triage.json --mark-only
+) >"$repo.mark.out" 2>&1; then
+  fail "--mark-only was accepted"
+fi
+grep -Fq "unknown option for --publish: --mark-only" "$repo.mark.out" || fail "--mark-only was not refused as an unknown option"
+[[ "$(grep -c '^COMMENT ON #5$' "$repo.gh.comments")" -eq 1 ]] || fail "--mark-only published a comment"
+[[ "$(file_sha256 "$triage_file")" == "$stored_before" ]] || fail "--mark-only changed the stored triage"
+
+# A triage artifact of an earlier version, with published_at, is refused
+# with what to do, by --publish as by every reader of the artifact.
+jq '. + {published_at: "2026-01-02T00:01:00Z"}' "$triage_file" >"$tmp/legacy.json"
+cp "$tmp/legacy.json" "$triage_file"
+if (
+  cd "$repo"
+  PATH="$tmp/bin:$ISOLATED_PATH" MOCK_GH_LOG="$repo.gh" ./scripts/triage-review.sh --publish .agents/triage/feature-5-test-review-01-triage.json
+) >"$repo.legacy.out" 2>&1; then
+  fail "a triage with published_at was published"
+fi
+grep -Fq "published_at is no longer part of a triage" "$repo.legacy.out" || fail "a triage with published_at was not refused with a message"
 
 # When Issue creation fails, no triage artifact is stored.
 repo="$(setup_repo create-fails)"
@@ -550,7 +621,7 @@ artifact="$repo/.agents/triage/feature-5-test-review-01-triage"
 jq -e '.owner_directed.directed_at | test("^[0-9]{4}-")' "$artifact.json" >/dev/null || fail "the time was not recorded"
 [[ "$(jq -r '.owner_directed.original_proposal.decisions[2].decision' "$artifact.json")" == "FIX_NOW" ]] ||
   fail "the original proposal was not recorded"
-jq -e '.published_at' "$artifact.json" >/dev/null || fail "the owner-directed triage was not published"
+triage_published "$repo" "$artifact.json" || fail "the owner-directed triage was not published"
 grep -Fq "Owner-directed triage" "$repo.gh.comments" || fail "the comment does not show the override"
 grep -Fq "$reason" "$repo.gh.comments" || fail "the comment lacks the reason"
 grep -Fq "S1: FIX_NOW — Rename it now." "$repo.gh.comments" || fail "the comment lacks the original proposal"
@@ -585,9 +656,10 @@ artifact="$repo/.agents/triage/feature-5-test-review-01-triage.json"
 [[ "$(jq -r '.owner_directed.original_proposal.decisions[2].decision' "$artifact")" == "FIX_NOW" ]] ||
   fail "a changed proposal file changed the stored original proposal"
 # The complete artifact that was shown for the final confirmation is the
-# artifact that is stored, byte for byte, apart from published_at.
+# artifact that is stored, byte for byte, and the one that was published.
 shown_artifact="$(sed -n '/^The complete triage artifact, as it will be stored:/,/^Store and publish exactly/p' "$repo.out" | sed '1d;$d')"
-[[ "$shown_artifact" == "$(jq 'del(.published_at)' "$artifact")" ]] || fail "the stored artifact differs from the artifact that was shown"
+[[ "$shown_artifact" == "$(cat "$artifact")" ]] || fail "the stored artifact differs from the artifact that was shown"
+triage_published "$repo" "$artifact" || fail "the stored artifact is not the one that was published"
 [[ "$(jq -r '.decisions[1].followup.issue_number' <<<"$shown_artifact")" == "123" ]] || fail "the shown artifact lacks the follow-up reference"
 
 # Declining the complete artifact stores and publishes nothing.
@@ -702,7 +774,7 @@ grep -Fq "## Triage mode" "$repo.log.stdin" || fail "the triage agent was not to
 grep -Fq "Triage mode: light" "$repo.out" || fail "the light mode was not shown"
 [[ "$(jq -c '[.decisions[].decision]' "$artifact")" == '["FIX_NOW","DEFER","ACCEPT"]' ]] || fail "the light triage lost its decisions"
 grep -Fq "TITLE: [F02][R01][MIN1] Add boundary-condition coverage" "$repo.gh" || fail "the deferred finding of a light triage got no follow-up Issue"
-jq -e '.published_at' "$artifact" >/dev/null || fail "the light triage was not published"
+triage_published "$repo" "$artifact" || fail "the light triage was not published"
 (
   source "$source_root/scripts/lib/review-data.sh"
   [[ -z "$(triage_artifact_errors "$artifact" "$repo/$review")" ]]

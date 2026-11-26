@@ -18,6 +18,7 @@ source "$script_dir/lib/verification.sh"
 source "$script_dir/lib/records.sh"
 source "$script_dir/lib/attribution.sh"
 source "$script_dir/lib/exceptions.sh"
+source "$script_dir/lib/issue-comments.sh"
 
 usage() {
   echo "Usage: $0 <issue-number> \"<commit summary>\" [--no-review \"<reason>\"] [--unattended] [--partial]"
@@ -335,8 +336,12 @@ else
 
   # Every round with findings needs an approved triage that was published on
   # the Issue; only the latest round may not have FIX_NOW findings left, since
-  # a newer, current review confirms the fixes of earlier rounds.
+  # a newer, current review confirms the fixes of earlier rounds. The
+  # publication is the workflow's comment on the Issue that names the stored
+  # triage by its SHA-256 (Issue 527), read once for every round.
   triage_note=""
+  triage_records=""
+  triage_records_read=0
   for review in "${reviews[@]}"; do
     [[ "$(jq '.findings | length' "$review")" -gt 0 ]] || continue
     review_round="$(jq -r '.round' "$review")"
@@ -346,8 +351,13 @@ else
     triage_relative="${triage#"$root"/}"
     errors="$(triage_artifact_errors "$triage" "$review")"
     [[ -z "$errors" ]] || fail "the triage of round $review_round is invalid: ${errors//$'\n'/; }"
-    [[ "$(jq -r '.published_at // empty' "$triage")" != "" ]] ||
-      fail "the triage of round $review_round was not published on Issue #$issue. Run ./scripts/triage-review.sh --publish $triage_relative."
+    if [[ "$triage_records_read" -eq 0 ]]; then
+      triage_records="$(issue_comments_triage_records "$issue")" ||
+        fail "could not read the comments of Issue #$issue, where the triages are published, or the authenticated GitHub account whose comments alone publish them, so their publication cannot be checked. Retry with access to GitHub. Nothing was committed."
+      triage_records_read=1
+    fi
+    issue_comments_triage_published "$triage_records" "$root" "$triage" ||
+      fail "the triage of round $review_round was not published on Issue #$issue: no report of the workflow there names $triage_relative with its SHA-256 in every part. Run ./scripts/triage-review.sh --publish $triage_relative."
     if [[ "$review" == "$latest" ]]; then
       # A finding with the owner's valid exception stays FIX_NOW in its
       # triage, as every blocking finding does; it is not fixed now.

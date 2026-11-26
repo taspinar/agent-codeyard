@@ -148,6 +148,14 @@ Each finding gets one recorded decision: fix it now (`FIX_NOW`), defer it to a f
 
 **Exception:** if you judge a critical or major finding wrong, or accept its risk, you can <a href="#workflow-and-commands/owner-exception">record an exception</a> for it.
 
+### "the triage of round … was not published on Issue #…"
+
+- **First fix:** run `./scripts/triage-review.sh --publish <triage-json>` with the triage the message names.
+- **Recovered when:** `finish-feature.sh` accepts the triage.
+- **Output:** the output of `finish-feature.sh` or `run-feature.sh`; the comments on the Issue.
+
+A triage counts as published when the workflow's comment on the Issue names the stored triage by its SHA-256, in every part of the report, and was written by the GitHub account that `gh` is signed in to, the account the workflow posts through; a matching comment of any other account does not count, a member's or a collaborator's neither. A triage published through another account is published again with `./scripts/triage-review.sh --publish` from the account that commits. The comment is the only record: a triage edited after its publication is published again. When the comments or the signed-in account cannot be read, for example without network access, the commit waits until they can. A triage of an earlier version that still holds `published_at` is refused: remove the field and publish it again.
+
 ### "the implementer refuted every finding left to fix in round …"
 
 - **First fix:** read each finding the run names, with the implementer's evidence in the handoff note. When you agree that a critical or major finding does not hold, run the `./scripts/record-exception.sh` command the run printed for it. For a minor finding, give your own triage that accepts it. When the reviewer is right, write your instruction into the handoff note and run `./scripts/start-feature.sh <issue> --resume`.
