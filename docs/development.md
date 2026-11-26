@@ -3594,6 +3594,7 @@ The run stops with a non-zero status, and keeps the worktree, when:
 | The completion record says `blocked` | 3 |
 | The implementer refuted every finding left to fix, one of them critical or major, with evidence, and the review of the complete feature still reports it; the findings and the ways on are named | 3 |
 | The fixes changed nothing, the commit is refused, or the pull request cannot be opened after the retries | 1 |
+| A step of the review rounds succeeded without the change it is run for, and the run would start it again for the same round: a review that left no current review, a triage that stored none, fixes after which the review is still current. The stop names the step, the round, and what is missing. A publication of the triage that succeeded counts as done for the rest of the run, also when the triage has no `published_at` | 1 |
 
 It then says why it stopped and which command resolves it. After that, run
 the same command again: `./scripts/run-feature.sh <issue>`. The run reads
