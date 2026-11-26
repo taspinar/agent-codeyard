@@ -1701,9 +1701,8 @@ agents named changes the line to `allowed`.
   project did before the setting existed.
 - `disabled`: no commit of a feature and no pull request description may name
   an agent. Three things follow it:
-  - **The instructions.** `AGENTS.md` tells every agent to add no agent
-    trailer and no "Generated with" line to a commit message, a pull request
-    description, or a summary the scripts copy into them.
+  - **The instructions.** The section "Attribution" of `AGENTS.md`, which
+    every agent reads, holds the rule.
   - **The client settings, as far as a client has them.** A Claude session
     that the scripts start in the `write` or `unattended` profile gets
     `--settings '{"attribution": {"commit": "", "pr": "", "sessionUrl": false}}'`,

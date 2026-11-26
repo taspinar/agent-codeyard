@@ -57,38 +57,19 @@ attribute as your client does.
 - Never access or mutate production data, secrets, IAM, or production infrastructure without explicit human approval.
 - Never broaden the task merely to make implementation easier.
 - One writing agent per worktree. Parallel writers require separate worktrees/branches.
-- After three materially different failed repair attempts, stop and record the attempts, the evidence, and the next recommended step in the handoff note of the Issue (`.agents/handoffs/<issue-number>.md`).
+- Stop and escalate on the limits of `.agents/policies/execution-limits.md`, among them three materially different failed repair attempts.
 
 ## Context freshness
 When resuming work, check the plan and the handoff note against the current repository state: the files are the truth, the note is a summary. Revalidate assumptions before continuing and update stale artifacts.
 
 ## Branch and worktree policy
 
-Agents must not make repository changes directly on `main`.
-
-This applies to:
-
-- application code
-- architecture documentation
-- roadmap changes
-- ADRs
-- feature plans
-- CI/CD configuration
-- infrastructure configuration
-
-Before modifying repository files, work on an appropriate branch.
-
-Examples:
-
-- `planning/project-bootstrap`
-- `planning/issue-12-authentication`
-- `feature/12-authentication`
-- `fix/27-login-error`
-
-For substantial implementation work, prefer a dedicated Git worktree.
-
-If the current branch is `main`, do not modify files before creating or
-switching to an appropriate branch.
+Make no change to any repository file on `main`. The workflow scripts create
+the branch and the worktree of a feature or a planning cycle; a session
+started otherwise creates or switches to a branch such as
+`feature/12-authentication`, `planning/issue-12-authentication` or
+`fix/27-login-error` before its first change, and prefers a dedicated Git
+worktree for substantial implementation work.
 
 ## Roadmap, Issues and Plans
 

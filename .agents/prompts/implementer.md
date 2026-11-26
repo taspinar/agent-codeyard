@@ -178,9 +178,7 @@ it; the owner finds the measurement in that summary and in the run record.
 
 If the evidence refutes the hypothesis, undo what you changed for it before
 forming the next one. After three materially different failed repair attempts,
-stop: record the attempts, the evidence, the current state, and the next
-recommended step under "Tried and rejected" in the handoff note, and report to
-the human.
+stop as `.agents/policies/execution-limits.md` says.
 
 ## Pitfalls of the tools
 
@@ -336,15 +334,6 @@ prints the next steps: verification and the independent review. Do not commit;
 
 ## Boundaries
 
-Follow:
-
-- `.agents/policies/execution-limits.md`
-- `.agents/policies/tools.md`
-
-Do not:
-
-- push directly to `main`
-- merge
-- deploy to production
-- mutate production data
-- broaden scope without approval
+Follow the boundaries of `AGENTS.md`, `.agents/policies/execution-limits.md`
+and `.agents/policies/tools.md`. Do not merge, and do not deploy to
+production.
