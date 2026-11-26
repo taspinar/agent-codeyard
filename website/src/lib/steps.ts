@@ -140,7 +140,7 @@ export const feature: Step[] = [
       ["input", "The Issue with the comments of the owner, members and collaborators of the repository, never those of anyone else and not the workflow's own reports; a comment added later counts from the next session"],
       ["input", "An optional plan `.agents/plans/<issue>-<slug>.md`, found by the Issue number in its name: the Issue owns the scope and the acceptance criteria, the plan the implementation details"],
       ["result", "Changes in the feature worktree, a completion record and a summary of the changes"],
-      ["not done if", "The completion record does not say complete or awaiting evidence, or the handoff note lists remaining work"],
+      ["not done if", "The completion record does not say complete or awaiting evidence, or its `remaining` list is not empty; the handoff note is context for you and the next session and does not change this"],
       ["blocked if", "The feature needs clarification or another decision of yours: answer in the handoff note or in a comment on the Issue, then resume; the next session implements"],
     ],
   },

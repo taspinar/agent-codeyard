@@ -132,6 +132,9 @@ $COMMITTED_EXTRA}"
   mkdir -p "$repo/scripts/lib"
   cp "$source_root/scripts/publish-feature.sh" "$source_root/scripts/report-runs.sh" "$repo/scripts/"
   cp "$source_root/scripts/lib/report.jq" "$repo/scripts/lib/"
+  # The schema of the completion record, which the completion gate checks.
+  mkdir -p "$repo/.agents/schemas"
+  cp "$source_root/.agents/schemas/completion.schema.json" "$repo/.agents/schemas/"
   cp "$source_root/scripts/lib/github.sh" "$source_root/scripts/lib/completion.sh" "$source_root/scripts/lib/records.sh" \
     "$source_root/scripts/lib/attribution.sh" "$source_root/scripts/lib/fingerprint.sh" "$source_root/scripts/lib/base.sh" \
     "$source_root/scripts/lib/guardrails.sh" "$source_root/scripts/lib/risk.sh" "$source_root/scripts/lib/exceptions.sh" "$repo/scripts/lib/"
@@ -229,8 +232,7 @@ run_publish "$repo" 12 || fail "publishing a commit without a completion stateme
 expect_open "$repo" "the commit has no completion statement" "the commit has no completion statement of finish-feature.sh"
 
 # The gate is asked again: a commit that says complete does not close the
-# Issue when the record is gone, says something else, or the handoff note
-# lists remaining work.
+# Issue when the record is gone or says something else.
 repo="$(setup_repo record-gone)"
 rm "$repo/.agents/completion/12.json"
 run_publish "$repo" 12 || fail "publishing without a completion record failed"
@@ -241,11 +243,17 @@ set_completion "$repo" partial
 run_publish "$repo" 12 || fail "publishing with a record that says partial failed"
 expect_open "$repo" "the completion record says partial" "the commit says the feature is complete, but the completion gate does not pass now (partial)"
 
+# The completion record is the only source of remaining work (#425): a
+# handoff note that lists work does not keep the Issue open.
 repo="$(setup_repo handoff-remaining)"
 mkdir -p "$repo/.agents/handoffs"
 printf 'Remaining: steps 3 to 9\n' >"$repo/.agents/handoffs/12.md"
 run_publish "$repo" 12 || fail "publishing with remaining work in the handoff note failed"
-expect_open "$repo" "the handoff note lists remaining work" "the commit says the feature is complete, but the completion gate does not pass now (partial)"
+if grep -Fq -- "--draft" "$repo.gh"; then fail "the handoff note made the pull request of a complete record a draft"; fi
+grep -Eiq '(^|[^[:alnum:]])closes:? +#12([^0-9]|$)' "$repo.gh.body" || {
+  cat "$repo.gh.body" >&2
+  fail "the handoff note kept a complete record from closing the Issue"
+}
 
 # set_awaiting <repo> <gate>...: a record that awaits evidence of these gates.
 set_awaiting() {

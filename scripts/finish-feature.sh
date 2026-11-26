@@ -31,7 +31,7 @@ usage() {
   echo "Complete means: the implementer's completion record (.agents/completion/"
   echo "<issue>.json) says complete, or awaiting_evidence when only evidence of a"
   echo "later gate is pending, with evidence for every acceptance criterion that can"
-  echo "have it now, and the handoff note lists no remaining work. --partial commits work that"
+  echo "have it now, and nothing remaining. --partial commits work that"
   echo "is not complete, as your explicit choice: the commit message says what"
   echo "remains, and publish-feature.sh then opens a draft pull request that does"
   echo "not close the Issue."
@@ -118,13 +118,6 @@ case "$gate_status" in
     [[ "$partial" -eq 1 ]] ||
       refuse_incomplete "the feature is not complete ($gate_status):" \
         "Continue the work with ./scripts/start-feature.sh $issue --resume. To commit the work as it is, as your own choice, add --partial: the pull request then stays a draft and does not close Issue #$issue."
-    # The commit message is made from the record. A record that says complete
-    # or awaiting_evidence while the handoff note lists remaining work would
-    # be committed as such, without what remains, so the record has to say
-    # what is left first.
-    ! completion_ready "$(jq -r '.status' "$completion_file")" ||
-      refuse_incomplete "the completion record says $(jq -r '.status' "$completion_file"), so the work cannot be committed as partial:" \
-        "Correct $COMPLETION_DIR/$issue.json first: the status partial or blocked, the criteria that are not met, and what remains. Then run again with --partial."
     ;;
   missing)
     refuse_incomplete "the completion gate does not pass:" \

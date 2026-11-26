@@ -349,7 +349,13 @@ if [[ "$resume" -eq 1 ]]; then
       fi
     done < <(git -C "$worktree" status --porcelain -z --untracked-files=all)
     echo "  Handoff:  $note_relative${newer:+ (older than some changed files)}"
-    note_prompt="The earlier session kept a handoff note: $note_relative. Read it first."
+    note_prompt="The earlier session kept a handoff note: $note_relative. Read it first.
+The completion record ($COMPLETION_DIR/$issue.json) is the only source of
+remaining work and of the checks of findings; no script reads them from the
+note. A note of an earlier version of the workflow may list work under
+'Remaining', or checks '- <id>: <value> — <evidence>' under a heading
+'## Triage <file>': carry them over once, into remaining[] and checks[] of
+the record (.agents/prompts/implementer.md, 'Completion')."
     if [[ -n "$newer" ]]; then
       note_prompt+="
 The note is STALE in part: these files changed after it was last written, so

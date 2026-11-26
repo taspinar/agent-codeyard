@@ -37,8 +37,8 @@ finding:
    and the untracked files), and their tests. Fix every place there that has
    the same defect, as part of the finding. List the places you checked that
    do not have it, or that you are not sure about, in the handoff note under
-   the line of the finding. Outside those files change nothing: name what you
-   found in your report.
+   a heading for this triage. Outside those files change nothing: name what
+   you found in your report.
 3. **Check a claim that can be checked before you change code.** When the
    finding claims that something goes wrong, and a small test or command can
    show it, run it first. Then record exactly one value:
@@ -56,29 +56,32 @@ finding:
      settles the claim, and say in the evidence that the fix is unverified;
      otherwise change no code for it.
 
-Record the value in the handoff note under the heading the script names,
-`## Triage <triage file name>`, one line per finding, in the labelled style
-of the note:
+Record the value in `checks[]` of the completion record
+(`.agents/completion/<issue-number>.json`), one entry per finding, with the
+triage file name that the script names:
 
-```markdown
-## Triage feature-12-recipes-review-01-triage.json
-
-- M1: fixed — tests/search-test.sh: the query with CRLF fails before the fix and passes after
-  Class: input split on LF only; also checked scripts/import.sh (has it, fixed) and scripts/export.sh (does not).
-- S2: refuted — `printf 'a\n' | ./scripts/search.sh` prints "a" and exits 0; the claimed error does not occur
+```json
+"checks": [
+  {"triage": "feature-12-recipes-review-01-triage.json", "finding": "M1", "value": "fixed",
+   "evidence": "tests/search-test.sh: the query with CRLF fails before the fix and passes after"},
+  {"triage": "feature-12-recipes-review-01-triage.json", "finding": "S2", "value": "refuted",
+   "evidence": "`printf 'a\\n' | ./scripts/search.sh` prints \"a\" and exits 0; the claimed error does not occur"}
+]
 ```
 
-The form is `- <finding-id>: <value> — <evidence in one line>`, with one of
-the four values and the evidence required; other lines under the heading are
-free text. The scripts read these lines and nothing else of the section:
+The value is one of the four, and the evidence is required
+(`.agents/schemas/completion.schema.json`). Keep the entries of earlier
+triages. The scripts read these entries and nothing of the handoff note:
 `apply-triage.sh` names the findings you returned as `refuted`,
 `not_reproduced`, or `not_executable`, and the next review and its triage
-receive every line as data. Only `fixed` with its evidence counts as
-resolved. Evidence of delimiters or punctuation alone is no evidence, and two
-lines for one finding that differ in value or evidence are a conflict that
-leaves it open: correct the line instead of adding one. A returned finding stays `FIX_NOW` until the triage decides again,
-with the owner's approval: no line of yours closes it, so do not mark it
-resolved anywhere else either.
+receive every entry as data. Only `fixed` with its evidence counts as
+resolved. A none-word or delimiters and punctuation alone are no evidence,
+and two entries for one finding of one triage that differ in value or
+evidence are a conflict that leaves it open: correct the entry instead of
+adding one. The class and the places you checked go into the handoff note,
+in its own words. A returned finding stays `FIX_NOW` until the triage decides
+again, with the owner's approval: no entry of yours closes it, so do not mark
+it resolved anywhere else either.
 
 ## Actions
 

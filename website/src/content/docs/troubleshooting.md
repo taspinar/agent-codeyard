@@ -61,10 +61,10 @@ The implementer asks before it invents an answer to a decision that the Issue, t
 ### "the implementer wrote no completion record", or "the handoff note … lists remaining work"
 
 - **First fix:** resume the feature: `./scripts/start-feature.sh <issue> --resume`, or `run-feature.sh <issue>` again.
-- **Recovered when:** the completion record says complete or awaiting evidence, and the handoff note lists no remaining work.
+- **Recovered when:** the completion record follows its schema and says complete or awaiting evidence, with nothing under `remaining`.
 - **Output:** `.agents/completion/<issue>.json` and `.agents/handoffs/<issue>.md` in the feature worktree.
 
-The commit needs a completion record that says complete or awaiting evidence, and a handoff note without remaining work. Under "Remaining", `None.` may carry an explanation after it (`None. The owner approves on GitHub.`); `None of the tests pass` is work, and the message names the line. A session that ended is not a finished feature. See <a href="#verification-and-review">Verification and completion</a>.
+The commit needs a completion record that says complete or awaiting evidence, with an empty `remaining` list. The record is the only source: what the handoff note says under "Remaining" no longer changes the outcome, so the second message comes only from an older version of the workflow. A record that does not follow `.agents/schemas/completion.schema.json` is refused, and the message names the field. A session that ended is not a finished feature. See <a href="#verification-and-review">Verification and completion</a>.
 
 **Exception:** to commit unfinished work on purpose, `finish-feature.sh` takes `--partial`; the pull request is then a draft that leaves the Issue open.
 
@@ -158,9 +158,9 @@ A triage counts as published when the workflow's comment on the Issue names the 
 
 ### "the implementer refuted every finding left to fix in round …"
 
-- **First fix:** read each finding the run names, with the implementer's evidence in the handoff note. When you agree that a critical or major finding does not hold, run the `./scripts/record-exception.sh` command the run printed for it. For a minor finding, give your own triage that accepts it. When the reviewer is right, write your instruction into the handoff note and run `./scripts/start-feature.sh <issue> --resume`.
+- **First fix:** read each finding the run names, with the implementer's evidence in the completion record. When you agree that a critical or major finding does not hold, run the `./scripts/record-exception.sh` command the run printed for it. For a minor finding, give your own triage that accepts it. When the reviewer is right, write your instruction into the handoff note and run `./scripts/start-feature.sh <issue> --resume`.
 - **Recovered when:** `./scripts/run-feature.sh <issue>` goes on to the commit, or reviews the fix.
-- **Output:** the output of `run-feature.sh` and `.agents/run/<issue>-log`; the evidence in `.agents/handoffs/<issue>.md`, under `## Triage …`.
+- **Output:** the output of `run-feature.sh` and `.agents/run/<issue>-log`; the evidence in `checks` of `.agents/completion/<issue>.json`.
 
 An unattended run stops with status 3 when the implementer showed, with a reproduction, that every finding left to fix does not hold and changed no code for it, and a later review still reports it under the same title. No agent may accept a critical or major finding, so another fix session would only refute it again. Your decision lets the same command continue. A finding that names a refuted one as its predecessor but has another title is a new finding: it gets a fix session, not this stop.
 

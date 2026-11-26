@@ -806,13 +806,17 @@ run_triage "$repo" y "$review" || {
 }
 [[ "$(jq -r '.triage.mode' "$repo/.agents/triage/feature-5-test-review-01-triage.json")" == "full" ]] || fail "the full triage was not recorded"
 if grep -Fq "## Triage mode" "$repo.log.stdin"; then fail "the triage agent was told a mode although the triage is full"; fi
-if grep -Fq "## The implementer's checks" "$repo.log.stdin"; then fail "the triage agent was given checks without a handoff note"; fi
+if grep -Fq "## The implementer's checks" "$repo.log.stdin"; then fail "the triage agent was given checks without a completion record"; fi
 # The implementer's checks of earlier findings reach the triage agent as data
-# (#292); they decide nothing by themselves.
+# (#292), from checks[] of the completion record (#425); they decide nothing
+# by themselves.
 repo="$(setup_repo checks)"
 with_policy "$repo" "$(printf 'default: medium')"
-mkdir -p "$repo/.agents/handoffs"
-printf '## Triage feature-5-test-review-00-triage.json\n- C1: not_reproduced — ran ./check.sh, it passes\n' >"$repo/.agents/handoffs/5.md"
+mkdir -p "$repo/.agents/completion"
+printf '.agents/completion/\n' >>"$repo/.git/info/exclude"
+jq -n '{schema: "completion/v1", status: "complete", criteria: [{criterion: "x", status: "met", evidence: "y"}], remaining: [],
+  checks: [{triage: "feature-5-test-review-00-triage.json", finding: "C1", value: "not_reproduced", evidence: "ran ./check.sh, it passes"}]}' \
+  >"$repo/.agents/completion/5.json"
 record_reviewed_tree "$repo" "$repo/$review"
 run_triage "$repo" y "$review" || {
   cat "$repo.out" >&2

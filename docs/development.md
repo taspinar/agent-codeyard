@@ -2532,11 +2532,27 @@ The implementer writes a completion record before it ends, in every session:
 }
 ```
 
-`status` is `complete`, `awaiting_evidence`, `partial`, or `blocked`. A
-criterion is `met`, `not_met`, `not_applicable`, or `pending`, each with
-evidence. `complete` needs every criterion met or not applicable and nothing
-remaining; `partial` and `blocked` need something that remains. A record that
-breaks these rules is invalid.
+The record follows `.agents/schemas/completion.schema.json`, which the
+generic validator of `scripts/lib/guardrails.sh` checks; a record that does
+not validate is refused with the field named
+(`record.criteria[1].status must be one of met, not_met, not_applicable,
+pending`). `status` is `complete`, `awaiting_evidence`, `partial`, or
+`blocked`. A criterion is `met`, `not_met`, `not_applicable`, or `pending`,
+each with evidence. `complete` needs every criterion met or not applicable
+and nothing remaining; `partial` and `blocked` need something that remains.
+These rules across fields, which a schema cannot express, stay in
+`completion_errors` (`scripts/lib/completion.sh`), and a record that breaks
+them is invalid as well. An optional `checks[]` holds the triage
+implementer's check of each finding to fix (see "Fixing triaged findings"
+below).
+
+The record is the single source of remaining work: the gate reads
+`remaining[]` and nothing else. The handoff note keeps its sections for
+people and for the next session, and no script parses them; readable
+Markdown reports are never parsed (the retained decision of #30). A feature
+whose note, written by an earlier version of the workflow, still lists work or
+checks of findings that the record lacks carries them into the record once;
+the prompt of the resumed session says so.
 
 The evidence of a criterion cannot be a partial run of the checks: a record
 that cites `./scripts/verify.sh --changed` or `--only` is refused. For a
@@ -2607,16 +2623,9 @@ approval stays with the merge approval gate and with the work to enforce it on
 GitHub with a separate identity (#99).
 
 The gate passes when the record is valid and says `complete` or
-`awaiting_evidence`, and the handoff note lists nothing under "Remaining".
-The note outweighs the record: remaining work listed there means not complete,
-whatever the record says. A line there that only says a category has nothing
-left, a label followed by `none`, `nothing`, `n/a`, `no` or `-` (such as
-`FIX_NOW findings: none.`), is not work; a label followed by anything else
-is. Nor is such a line whose `none` ends a sentence with an explanation after
-it, after `.`, `!`, `;`, a dash, or a parenthesis (`None. The owner's approval
-stays pending on GitHub.`); a sentence that goes on from the word (`None of
-the tests pass`, `None, except the docs`) is work, and the gate names the line.
-Two things are never evidence: a partial run of the checks
+`awaiting_evidence`; a valid record with either status has an empty
+`remaining[]`. What the handoff note says under "Remaining" does not change
+the outcome. Two things are never evidence: a partial run of the checks
 (`verify.sh --only`), which is not a verification, and a budget check of
 `scripts/verify.conf` or `scripts/verify-workflow.conf` (see "Budgets"),
 which is a measurement that never fails the verification. A record whose
@@ -2890,9 +2899,10 @@ A fix session does not only repair the place a finding names
 the class of the defect in one sentence and looks for the same pattern in the
 files the feature changes and their tests, fixing it there and only reporting
 it elsewhere. When the finding claims that something goes wrong and a small
-test or command can show it, it runs that first, and records one line per
-finding in the handoff note under `## Triage <triage file name>`:
-`- <finding-id>: <value> — <evidence>`, where the value is `fixed`,
+test or command can show it, it runs that first, and records one entry per
+finding in `checks[]` of the completion record:
+`{"triage": "<triage file name>", "finding": "<id>", "value": "<value>",
+"evidence": "<evidence>"}`, where the value is `fixed`,
 `refuted` (a reproduction shows the claim does not hold), `not_reproduced`
 (the reproduction ran and shows nothing, which proves nothing), or
 `not_executable` (it cannot run here; fixed only when reading settles it).
@@ -2900,10 +2910,10 @@ For the last three the code of the finding stays unchanged. `apply-triage.sh`
 names at its end the findings returned that way, or without a single check,
 and they stay `FIX_NOW`: no script resolves or refutes a finding, and only a
 fix recorded as `fixed` with its evidence, or a new triage decision, closes
-it. The next review gets the lines under "Decisions of the earlier rounds" and
+it. The next review gets the entries under "Decisions of the earlier rounds" and
 the triage agent in a section of its own, both as the implementer's statement
 and not as evidence, so the existing triage, with its approval, decides again:
-a `refuted` minor finding can become `ACCEPT` with its rationale. The lines
+a `refuted` minor finding can become `ACCEPT` with its rationale. The entries
 are not remaining work for the completion gate, and the triage schema has no
 new category.
 
@@ -2922,7 +2932,7 @@ stays current. Your ways on, printed with the stop:
 
 - you agree that the finding does not hold: record an exception with
   `./scripts/record-exception.sh <review-json> --finding <id> --type
-  not-applicable --evidence ".agents/handoffs/<issue>.md" --reason "<why>"`
+  not-applicable --evidence ".agents/completion/<issue>.json" --reason "<why>"`
   (below);
 - a minor finding or a suggestion among them: an owner-directed triage that
   accepts it (`triage-review.sh <review-json> --decisions <file> --reason
@@ -2933,7 +2943,7 @@ stays current. Your ways on, printed with the stop:
 Then run `./scripts/run-feature.sh <issue>` again: with your exception it
 goes on to the commit, after a fix it reviews again, and without a decision it
 stops in the same way. A `not_reproduced` or `not_executable` finding proves
-nothing either way and is fixed in the next round as before. `scripts/lib/completion.sh` reads them (`handoff_finding_checks`).
+nothing either way and is fixed in the next round as before. `scripts/lib/completion.sh` reads the entries (`completion_finding_checks`).
 Whether this makes fix rounds cheaper is a follow-up evaluation over later
 features; its baseline and measures are in `docs/evaluation.md` ("Measuring
 the fix rounds").
@@ -3236,9 +3246,9 @@ Work that is not complete is committed only as your explicit choice:
 ```
 
 The completion record has to say `partial` or `blocked` itself, with what
-remains: a record that says `complete` against a handoff note with remaining
-work is refused also with `--partial`, because the commit message is made
-from the record. The commit message
+remains: a record that says `complete` or `awaiting_evidence` passes the gate,
+and `--partial` is refused for it, because the commit message is made from
+the record. The commit message
 carries `Completion: partial` with the criteria and what remains, and
 `publish-feature.sh` opens a draft pull request that does not close the Issue.
 `run-feature.sh` never uses the option.
@@ -3584,7 +3594,7 @@ only together with what it recorded:
 | Failed verification | A check failed in both runs, and the base did not move | Resumes the implementer with those checks in the handoff note, at most three times (`AGENTS.md`); a review follows. A repair session is retried like any other |
 | Budget exceeded | The verification passed, and a budget check (`<name> [<group>] budget: <command>`, see "Budgets") exceeded its target | Goes on: no repair session, whatever the measurement. The measurement is in the summary of the verification, in the output of the run, and in its `verification` event of the run record; the handoff note, the reviewer's context, the commit message, and the pull request do not repeat it (see "Budgets") |
 | Blocked | An agent ends with `BLOCKED:` and the handoff note holds a question under "Open questions", or the completion record says `blocked` | Stops with status 3. Without such a question there is nothing to answer: the line is ignored and the run goes on |
-| Not complete | The implementer ended normally, but the completion gate does not pass: no record, an invalid one, `partial`, remaining work in the handoff note, or no summary of the changes | Resumes the implementer with the reasons in the handoff note, at most four sessions in a run. Nothing is reviewed or committed before the gate passes |
+| Not complete | The implementer ended normally, but the completion gate does not pass: no record, an invalid one, `partial` with what remains, or no summary of the changes | Resumes the implementer with the reasons in the handoff note, at most four sessions in a run. Nothing is reviewed or committed before the gate passes |
 
 Every interruption is written to `.agents/run/<issue>-log` in the feature
 worktree, one line each: the time, the step, the outcome, the reason, and

@@ -77,8 +77,8 @@ where each figure comes from:
 - repair work: the `apply-triage.sh` sessions (`agent-call` with role
   `triage-implementer`) and the size of each repair diff, to see that the
   scope does not grow;
-- unjustified blocks: findings later classified as invalid, and the lines
-  `refuted` under `## Triage <triage file name>` in the handoff note;
+- unjustified blocks: findings later classified as invalid, and the
+  `refuted` entries of `checks[]` in the completion record;
 - the later findings by category, as absolute counts next to the share, since
   the share of one category can fall only because another rises.
 

@@ -51,7 +51,8 @@ scripts act on its status without understanding it, so you are the check:
   `major` finding, also when the evidence it names exists but does not prove
   the criterion.
 - A record with the status `complete` while work is missing, a missing
-  record, or remaining work in the handoff note is a `major` finding.
+  record, or a record whose `remaining` still lists work is a `major`
+  finding.
 - A test that passes without checking the criterion is not evidence
   (`docs/evaluation.md`, "Meaningful tests").
 - A criterion you could not check at all, for example because its evidence
@@ -130,7 +131,7 @@ fixed, and its review artifact is under `.agents/reviews/`.
 - Leave `previous` null for a new finding.
 
 The section may also list what the implementer recorded about each finding to
-fix: `fixed`, or returned to the triage as `refuted`, `not_reproduced`, or
+fix, in `checks[]` of the completion record: `fixed`, or returned to the triage as `refuted`, `not_reproduced`, or
 `not_executable`, with its evidence. It is the implementer's statement, not
 evidence: check a `fixed` claim against the code, and report a returned
 finding that still holds as `unresolved`, with what you found about the

@@ -597,19 +597,22 @@ repo="$(setup_repo completion-blocked PASS "[]")"
 set_completion "$repo" blocked
 expect_no_commit "$repo" "the completion record says blocked" 12 "Add the marker"
 
-# A record that says complete is not believed against the handoff note.
-repo="$(setup_repo completion-contradicted PASS "[]")"
+# The completion record is the only source of remaining work (#425): what
+# the handoff note lists does not change the outcome of the gate. The note
+# is still part of the reviewed content, so a change of it after the review
+# makes the review stale.
+repo="$(setup_repo completion-note-lists-work PASS "[]")"
 mkdir -p "$repo/.agents/handoffs"
 printf '**Done:** steps 1 and 2.\n**Remaining:** steps 3 to 9.\n**Open questions:** none\n' >"$repo/.agents/handoffs/12.md"
-expect_no_commit "$repo" "the handoff note lists remaining work" 12 "Add the marker"
-grep -Fq "the handoff note (.agents/handoffs/12.md) lists remaining work" "$repo.out" ||
-  fail "the handoff note was not given as the reason"
-grep -Fq "remaining: steps 3 to 9." "$repo.out" || fail "the remaining work of the handoff note was not shown"
-printf 'Issue 12 is complete.\n' >"$repo/.agents/handoffs/12.md"
 expect_no_commit "$repo" "the handoff note changed after the review" 12 "Add the marker"
 grep -Fq "is stale" "$repo.out" || fail "a handoff note changed after the review did not make it stale"
+if grep -Fq "lists remaining work" "$repo.out"; then fail "the handoff note was read as remaining work"; fi
 claims_changed "$repo"
-run_finish "$repo" 12 "Add the marker" || fail "a handoff note without remaining work stopped the commit"
+run_finish "$repo" 12 "Add the marker" || {
+  cat "$repo.out" >&2
+  fail "a handoff note that lists work stopped the commit of a complete record"
+}
+grep -Fqx "Completion: complete" <<<"$(message "$repo")" || fail "the complete record was not committed as complete"
 
 invalid_count=0
 for broken in 'not json' '{"schema": "completion/v1", "status": "complete", "criteria": [], "remaining": []}' \
@@ -641,16 +644,16 @@ run_finish "$repo" 12 "Add the first part of the marker" --partial || {
 - remaining: Plan steps 3 to 9" ]] || fail "the commit message of partial work does not say what remains"
 grep -Fq "does not close Issue #12" "$repo.out" || fail "the draft pull request was not announced for partial work"
 
-# --partial takes what the record says into the commit, so a record that says
-# complete, contradicted by the handoff note, is not committed as partial: it
-# would be recorded as complete, without what remains.
+# --partial takes what the record says into the commit. A record that says
+# complete passes the gate, whatever the handoff note lists, so --partial is
+# refused for it: the record has to say what is left first.
 repo="$(setup_repo completion-partial-contradicted PASS "[]")"
 mkdir -p "$repo/.agents/handoffs"
 printf '**Remaining:** steps 3 to 9.\n' >"$repo/.agents/handoffs/12.md"
-expect_no_commit "$repo" "--partial with a record that says complete against the handoff note" 12 "Add the marker" --partial
-grep -Fq "the completion record says complete, so the work cannot be committed as partial" "$repo.out" ||
-  fail "the contradicted record was not given as the reason with --partial"
-grep -Fq "remaining: steps 3 to 9." "$repo.out" || fail "what the handoff note lists was not shown with --partial"
+claims_changed "$repo"
+expect_no_commit "$repo" "--partial with a record that says complete" 12 "Add the marker" --partial
+grep -Fq -- "--partial was given, but the completion gate passes: the feature is complete" "$repo.out" ||
+  fail "--partial with a complete record was not refused because the gate passes"
 # With the record corrected, the same work is committed as partial.
 set_completion "$repo" partial
 claims_changed "$repo"
@@ -705,19 +708,18 @@ grep -Fqx -- "- pending at owner_approval: The owner approves (approval of the f
   fail "the pending approval is not shown as pending in the commit"
 if grep -Fq -- "- met: The owner approves" <<<"$(message "$repo")"; then fail "the commit states the owner's approval as met"; fi
 
-# --partial takes the commit statement from the record, so a record that
-# awaits evidence, contradicted by the handoff note, is not committed as
-# partial either: it would carry no remaining work.
+# The same for a record that awaits evidence: it carries no remaining work,
+# so it is not committed as partial, whatever the handoff note lists.
 repo="$(setup_repo completion-awaiting-contradicted PASS "[]")"
 jq '.status = "awaiting_evidence" | .criteria[1] = {criterion: "CI", gate: "pr_ci", status: "pending", evidence: "later"}' \
   "$repo/.agents/completion/12.json" >"$repo/completion.tmp"
 mv "$repo/completion.tmp" "$repo/.agents/completion/12.json"
 mkdir -p "$repo/.agents/handoffs"
 printf '**Remaining:** steps 3 to 9.\n' >"$repo/.agents/handoffs/12.md"
-expect_no_commit "$repo" "--partial with an awaiting_evidence record against the handoff note" 12 "Add the marker" --partial
-grep -Fq "the completion record says awaiting_evidence, so the work cannot be committed as partial" "$repo.out" ||
-  fail "the contradicted awaiting record was not given as the reason with --partial"
-grep -Fq "remaining: steps 3 to 9." "$repo.out" || fail "what the handoff note lists was not shown for the awaiting record"
+claims_changed "$repo"
+expect_no_commit "$repo" "--partial with an awaiting_evidence record" 12 "Add the marker" --partial
+grep -Fq -- "--partial was given, but the completion gate passes: the feature is awaiting_evidence" "$repo.out" ||
+  fail "--partial with an awaiting record was not refused because the gate passes"
 set_completion "$repo" partial
 claims_changed "$repo"
 run_finish "$repo" 12 "Add the first part of the marker" --partial || fail "partial work with a corrected record was refused"

@@ -120,7 +120,7 @@ the website describes the current template.
 | `scripts/lib/records.sh` | The run records: duration and token usage per run, step, and agent call, and the copy per feature or planning |
 | `scripts/lib/experience.sh` | The experience record of a feature run: what a script derives from the run |
 | `scripts/lib/report.jq` | The report of `report-runs.sh`: totals, comparisons, and the summary for GitHub, from numeric fields only |
-| `scripts/lib/completion.sh` | The completion gate: validation of the implementer's completion record, the remaining work a handoff note lists, and the decision the scripts act on |
+| `scripts/lib/completion.sh` | The completion gate: validation of the implementer's completion record against its schema and the rules across its fields, the checks of findings it holds, and the decision the scripts act on |
 | `scripts/lib/exceptions.sh` | The owner's exceptions to blocking findings: where a record is stored, its SHA-256, its validation against its schema and its binding to the latest, current review, the lines of the commit message, and the records published on the Issue |
 | `scripts/lib/guardrails.sh` | The merge approval gate: the protected and sensitive paths on the diff, by the rules of the base, the decision with the reviewer's classification, the approval requests (writing, validation against their schema, display), and the finish commit of a branch that merged its base afterwards |
 | `scripts/lib/risk.sh` | The risk level of a feature: the path classes of `.agents/policies/risk.conf` on the diff, the fixed escalations, and what the agents recorded, of which the highest counts; and what a level requires of the review rounds, by the same policy; the presets of the workflow profiles `light` and `standard` |
@@ -152,6 +152,7 @@ the website describes the current template.
 | `.agents/schemas/analysis.schema.json` | The result of an analysis of runs |
 | `.agents/schemas/assessment.schema.json` | The assessor's report and proposal for an assessment of a repository |
 | `.agents/schemas/approval-request.schema.json` | An approval request: references and an explanation only; `check-guardrails.sh` refuses a request with any other field |
+| `.agents/schemas/completion.schema.json` | The implementer's completion record: the status, the criteria with their evidence, the remaining work, and the checks of findings to fix; the only source of remaining work for the completion gate |
 | `.agents/schemas/revision.schema.json` | Planning revision decisions |
 | `.agents/schemas/exception.schema.json` | The owner's exception to one blocking review finding, bound to the review by its SHA-256 and reviewed tree |
 
