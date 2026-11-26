@@ -47,7 +47,6 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/records.sh"
 source "$script_dir/lib/completion.sh"
 source "$script_dir/lib/github.sh"
-source "$script_dir/lib/verify-lock.sh"
 
 markdown=0
 changes=0
@@ -89,6 +88,25 @@ release_lock() {
   fi
   lock_held=0
 }
+# A recovery lock, or a lock without an owner, older than this many seconds
+# is left over from a run that died while it took or removed the lock.
+lock_grace_seconds=60
+# process_started <pid>: the start time of the process, or nothing when it
+# does not exist or ps cannot tell. In the C locale, so that sessions with
+# different locales write and compare the same text.
+process_started() {
+  LC_ALL=C ps -o lstart= -p "$1" 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' || true
+}
+# process_exists <pid>: succeeds when the process exists, returns 1 when it
+# confirmedly does not (kill reports "No such process"), and 2 when that
+# cannot be told, for example for a process of another user.
+process_exists() {
+  local out
+
+  out="$(export LC_ALL=C; kill -0 -- "$1" 2>&1)" && return 0
+  [[ "$out" != *"No such process"* ]] || return 1
+  return 2
+}
 # lock_stale <owner-text>: whether the process that the text names is
 # confirmedly gone, or its PID now belongs to another process. A process that
 # cannot be inspected holds the lock.
@@ -98,10 +116,10 @@ lock_stale() {
   pid="$(sed -n 's/^pid=//p' <<<"$1")"
   started="$(sed -n 's/^started=//p' <<<"$1")"
   [[ "$pid" =~ ^[0-9]+$ ]] || return 1
-  verify_lock_exists "$pid" || exists=$?
+  process_exists "$pid" || exists=$?
   case "$exists" in
     0)
-      now="$(verify_lock_started "$pid")"
+      now="$(process_started "$pid")"
       [[ -n "$now" && -n "$started" && "$now" != "$started" ]]
       ;;
     1) return 0 ;;
@@ -109,15 +127,15 @@ lock_stale() {
   esac
 }
 # lock_old <dir>: whether the directory is older than the grace period
-# (VERIFY_LOCK_RECOVER_SECONDS). A lock without an owner is being taken right
+# (lock_grace_seconds). A lock without an owner is being taken right
 # now, or was left by a run killed while it took the lock; only an old one is
 # stale. The same holds for a recovery lock. A directory whose time cannot be
 # read (it was removed a moment ago) is not old.
 lock_old() {
   local mtime
 
-  mtime="$(verify_lock_mtime "$1")"
-  [[ "$mtime" =~ ^[0-9]+$ && "$mtime" -gt 0 && -e "$1" && $(($(date +%s) - mtime)) -gt "$VERIFY_LOCK_RECOVER_SECONDS" ]]
+  mtime="$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0)"
+  [[ "$mtime" =~ ^[0-9]+$ && "$mtime" -gt 0 && -e "$1" && $(($(date +%s) - mtime)) -gt "$lock_grace_seconds" ]]
 }
 # recover_lock <owner-text>: removes the stale lock under the recovery lock,
 # only when it is still the lock that was seen: the same owner, or still no
@@ -136,7 +154,7 @@ recover_lock() {
 # claim_lock: creates the owner of the lock, exclusively; fails when another
 # run did first, or when the directory is gone.
 claim_lock() {
-  lock_owner="$(printf 'pid=%s\nstarted=%s' "$$" "$(verify_lock_started "$$")")"
+  lock_owner="$(printf 'pid=%s\nstarted=%s' "$$" "$(process_started "$$")")"
   (set -C && printf '%s\n' "$lock_owner" >"$lock_dir/owner") 2>/dev/null
 }
 take_lock() {
@@ -429,7 +447,6 @@ while IFS= read -r issue; do
       [[ "$command" == "run-feature.sh" ]] || phase="stopped ($command)"
       case "$exit_status" in
         3) decisions+=("your decision: ${question:-${reason:-an agent needs it}}; answer in .agents/handoffs/$issue.md, then run $continue_command") ;;
-        75) decisions+=("run again when the slot for heavy verification is free: $continue_command") ;;
         # A prerequisite of the machine that ran it is missing: nothing for
         # the feature to fix, and nothing to answer, only to install.
         78) decisions+=("install what this machine lacks: ${reason:-a prerequisite is missing}; ./scripts/doctor.sh lists every prerequisite; then run $continue_command") ;;

@@ -78,11 +78,9 @@ usage() {
   echo
   echo "The run stops with a non-zero status when a step fails or needs you, and"
   echo "says which command continues. Status 3 means that an agent needs a decision"
-  echo "of yours. Status 75 means that another run holds the slot for heavy"
-  echo "verification of this machine ('heavy:' in scripts/verify.conf): nothing is"
-  echo "wrong with the feature, and nothing is repaired. Status 78 means that a"
-  echo "prerequisite of this machine is missing (an ENVIRONMENT line of verify.sh):"
-  echo "nothing is tried again or repaired; install it. Running the same command"
+  echo "of yours. Status 78 means that a prerequisite of this machine is missing"
+  echo "(an ENVIRONMENT line of verify.sh): nothing is tried again or repaired;"
+  echo "install it. Running the same command"
   echo "again continues where the feature stands: every step that is already done"
   echo "is skipped."
   echo
@@ -548,10 +546,7 @@ merge_moved_base() {
 # twice the implementer is resumed with their names in the handoff note, at
 # most MAX_REPAIRS times. Sets step_status to 0 when the run can go on, to 4
 # when the verification cannot be repaired here, and to the status of the
-# repair session when that failed or is blocked. A verification that found the
-# slot for heavy verification of this machine busy (BUSY, status 75) is no
-# defect: it is not repaired, and the run stops with status 75 when the slot
-# is still busy in the repeat.
+# repair session when that failed or is blocked.
 repair_verification() {
   local title="$1"
   local first_log="$worktree/.agents/run/$issue-step.log"
@@ -581,16 +576,6 @@ repair_verification() {
   # A pass of this run's own: the step done again reuses it.
   [[ "$repeat_status" -ne 0 ]] || verification_trust "$(verification_field "$worktree" tree)"
   environment_stop "$title" "$repeat_status" "$log"
-  if [[ "$repeat_status" -eq 75 ]] || grep -q '^BUSY  ' "$log" 2>/dev/null; then
-    note "$title" "busy" "$(sed -n 's/^BUSY  //p' "$log" | sed -n 1p)" "Stopping; nothing is repaired"
-    stop 75 "the slot for heavy verification of this machine is held by another run, which says nothing about this feature; the holder is in .agents/run/$issue-verify.log." \
-      "# wait until that run has ended; stop it only by its PID or worktree as the log names them"
-  fi
-  if [[ "$repeat_status" -eq 0 ]] && grep -q '^BUSY  ' "$first_log" 2>/dev/null; then
-    note "$title" "temporary" "the slot for heavy verification was busy, and free in the repeat" "Going on; the step is done again"
-    step_status=0
-    return 0
-  fi
   second="$(failing_checks "$log")"
   twice="$(comm -12 <(printf '%s\n' "$first") <(printf '%s\n' "$second") | grep . || true)"
   once="$(comm -3 <(printf '%s\n' "$first") <(printf '%s\n' "$second") | tr -d '\t' | grep . | tr '\n' ' ' || true)"

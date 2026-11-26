@@ -64,11 +64,10 @@ first feature, and look again whenever the content doubles.
    inputs it covers ("digits and the English number words from zero to
    ninety-nine", not "a count in a data file") and, where it helps, what a
    reviewer should not report.
-9. **Heavy checks take the machine-wide slot.** On a shared machine,
-   `heavy:` in `scripts/verify.conf` names the checks that need the machine
-   to themselves (`docs/development.md`, "Heavy checks and the machine-wide
-   slot"), so that a limit on concurrent heavy runs is a lock, not a
-   convention.
+9. **The load of several runs is measured.** On a shared machine,
+   `parallel:` in `scripts/verify.conf` is set from a measurement of the
+   runs that share it (`docs/development.md`, "Several verifications on one
+   machine"), not from one run alone.
 10. **Small changes are batched.** A one-line fix waits for the next
     feature in the same area, or goes into one Issue with others, unless it
     is urgent.
@@ -239,5 +238,7 @@ lock, not by convention.
 - In PBC: not applied. PBC had no machine-wide lock (Issue #313); running
   independent groups in parallel on one machine is question 3 of PBC #389,
   which is open.
-- In the template: the machine-wide slot for heavy checks
-  (`docs/development.md`, "Heavy checks and the machine-wide slot").
+- In the template: a machine-wide slot for heavy checks existed from Issue
+  175 and was removed in Issue 521: no project declared a heavy check, and
+  two verifications at once made no check fail on the template's host
+  (`docs/development.md`, "Several verifications on one machine").

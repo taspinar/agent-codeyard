@@ -865,11 +865,7 @@ parallel: 4
   writes only into a temporary directory of its own (`mktemp -d`), never
   into a fixed path or into the checkout, and does not depend on a port, a
   lock, or a file that another check uses too. A check that cannot run
-  beside others is a defect of that check. A check that needs the machine to
-  itself is declared `heavy:` (see "Heavy checks and the machine-wide
-  slot"); a parallel run that holds the slot holds it while any of its checks
-  runs. A verification that a check of the holder starts runs inside the slot
-  and runs its own checks one at a time, whatever its `parallel:` says.
+  beside others is a defect of that check.
 - A sync of the template never brings the template's line into a project,
   and never changes or removes the project's own (see "Taking over template
   changes"): a project runs its checks one at a time until it sets a value
@@ -890,83 +886,25 @@ for it: a simulation with the durations of a full run one at a time gave
 982 s for four at a time in that old order, 695 s with `adopted-project`
 first, and 663 s for an order by the recorded durations.
 
-### Heavy checks and the machine-wide slot
+### Several verifications on one machine
 
-Feature worktrees share the machine: two sessions that run a browser suite or
-a full build at the same time compete for CPU, memory, and the browser, and a
-check can time out for no fault of the code. A project can name the checks
-that need the machine to themselves, in either file, once per file:
+Feature worktrees share the machine, and each verification runs up to
+`parallel:` checks of its own; nothing limits the checks of several runs
+together. Measured on the host of the runs (8 cores, 31 GB) in its run
+records, with `parallel: 4`: in 18 full verifications that ran at least half
+of their time beside another one, no check failed because of the load (the
+two runs that failed there failed the same checks again when repeated
+alone), and `adopted-project`, the longest check, took a median of 750 s
+instead of 626 s alone. Two runs side by side take longer each, and together
+as long as one after the other (Issue 453: 1,361 to 1,650 s each at
+`VERIFY_PARALLEL=2`, against 813 to 846 s for one run alone).
 
-```text
-heavy: site-build tests-in-a-browser
-```
-
-The line is optional, and without it nothing is locked: that is the default,
-and the template ships none. With it, a run that is going to start one of the
-named checks first takes the one slot for heavy verification of the machine,
-and holds it until the run ends:
-
-- The slot is a lock directory outside every worktree,
-  `/tmp/agentic-verify-<uid>/lock`, the same for every session and worktree of
-  the user. `VERIFY_LOCK_DIR` names another directory, for example one that
-  several users share, or one that a sandboxed agent can write. `TMPDIR` is
-  not used: it differs between sessions, and the slot would not be shared.
-- A run that finds the slot held starts no check, records nothing (an
-  existing record of a pass stays as it is), and exits with status 75. Its
-  summary shows `BUSY` with the holder: its run, its PID, its worktree, and
-  since when. That is not a failed verification and not a defect:
-  `run-feature.sh` does not send it to the implementer for repair, but stops
-  with status 75. There is no queue; run again when the holder has ended.
-- A run of the light checks only, such as `--only lint`, takes no slot and
-  runs while another run holds it. A run with a heavy check holds the slot
-  for its light checks too.
-- The run that holds the slot starts each check in a process group of its
-  own and records the group in the lock (`group=` in the file `owner`)
-  before the check begins. The check's standard input is `/dev/null`. A run
-  with `parallel:` records the groups of all checks that run at the same
-  time, separated by spaces, and holds the slot while a process of any of
-  them lives. A check that ends keeps its group in the record until no
-  process of it remains: a process that a check left behind holds the slot
-  too, and the run stops it when it ends. An older `verify-lock.sh` reads such a list as a group it
-  cannot check and counts the slot as busy.
-- The slot is released when the run ends, also by `Ctrl-C`, `SIGTERM`, or
-  `SIGHUP`: the run first stops the checks that are running, with `SIGTERM`
-  to their process groups. If one has not ended within ten seconds, the lock
-  stays until it has.
-- After a crash or `SIGKILL` the lock stays. A check that the run started
-  can outlive it, and while any process of a recorded group exists, the
-  slot is still held: the next run reports it `BUSY` with the group. Only
-  when the holder no longer exists, with the same PID and start time, and no
-  process of its group remains does the next run remove the lock, say so,
-  and take the slot. A process that reused the PID is not taken for the
-  holder. Only a run that is confirmed over is stale: when a process cannot
-  be inspected, as a process of another user in a shared `VERIFY_LOCK_DIR`
-  may not be, the run reports the slot `BUSY` and keeps the lock.
-- A verification that a heavy check starts, inside the run that holds the
-  slot, runs in that slot instead of waiting for it. The holder passes
-  `VERIFY_LOCK_TOKEN` to its checks; a run counts as nested only when the
-  token is the one in the lock and the holder is one of its own ancestors, so
-  a copied or stale token does not get past the slot. A nested run records
-  nothing in the lock and ignores its own `parallel:` and `VERIFY_PARALLEL`:
-  it runs its checks one at a time, without process groups of their own, so
-  that they stay in the group of the holder's check that started it, which
-  the lock records. A check of the nested run that outlives a crash of both
-  runs, or ignores `SIGTERM`, therefore keeps the slot held as well. This
-  holds for every verification that a check of the holder starts, also one
-  without a heavy check.
-
-To end a holder, take its PID and worktree from the `BUSY` line or from the
-file `owner` in the lock directory, check them with `ps -p <pid> -o pid,lstart,args`,
-and stop exactly that process: `kill <pid>`. Do not stop processes by a
-match on their name, such as `pkill -f verify.sh`: that ends the
-verification of every other worktree too. A heavy check that a killed
-holder started can outlive it and keeps the slot held; the `BUSY` line and
-the file `owner` name its process group. List it with
-`ps -o pid,pgid,lstart,args -g <group>` and stop exactly that group:
-`kill -- -<group>`.
-
-Like any line of these files, adding the `heavy:` line is sensitive and
-changing or removing it is protected by the merge approval gate.
+A machine-wide slot for heavy checks (`heavy: <check>...`, Issue 175) was
+declared by no project and never taken, and is removed (Issue 521). A line
+`heavy:` in `scripts/verify.conf` or `scripts/verify-workflow.conf` is now an
+error of the configuration that names the line: remove it, and lower
+`parallel:` (or `VERIFY_PARALLEL` for one run) on a machine that runs several
+features at the same time.
 
 ### Missing prerequisites
 
@@ -3749,7 +3687,7 @@ The columns:
   `committing`, `publishing`, `published` or `finished` when the run ended
   well, `stopped (<phase>)`, `interrupted (<phase>)` for a run that has no
   recorded end and whose process is gone, and `merged`.
-- **Exit**: the exit status of that run when it stopped (1, 3, 75, or 130;
+- **Exit**: the exit status of that run when it stopped (1, 3, 78, or 130;
   see `docs/workflow.md`).
 - **Verification**: the last full verification of the feature, whether it
   passed, and whether it counts as trusted evidence, with its origin
