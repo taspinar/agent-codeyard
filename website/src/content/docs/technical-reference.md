@@ -115,7 +115,7 @@ An analysis changes nothing in your repository. Each proposal says where it belo
 | [`scripts/doctor.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/doctor.sh) | Checks the local prerequisites: the tools, the agent configuration, the Git commit identity, reports the attribution preference and whether the tools can be made to follow it, and warns while a project still has approval requests or plans of the template's own Issues |
 | [`scripts/start-planning.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/start-planning.sh) | Project Grill, the review of the draft requirements, requirements approval, and project planning in a planning worktree; the first planning of a project removes the approval requests and plans it inherited from the template |
 | [`scripts/review-planning.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/review-planning.sh) | Independent, read-only review of the planning documents |
-| [`scripts/revise-planning.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/revise-planning.sh) | The planner's decision per planning finding, then the revision |
+| [`scripts/revise-planning.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/revise-planning.sh) | The triage of a planning review with `triage-review.sh`, then the planner's revision for its `FIX_NOW` findings |
 | [`scripts/finish-planning.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/finish-planning.sh) | Checks and records your approval of the planning; `--check` tests it; `--resolve` records your decision on an escalated minor finding, only at a terminal, as the owner's exception record of a planning |
 | [`scripts/create-feature-issue.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/create-feature-issue.sh) | Creates the Issue of one roadmap feature |
 | [`scripts/start-feature.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/start-feature.sh) | Creates the feature worktree from its base branch (the third argument, or the project default) and starts the implementer; records the base, which every later step of the feature uses |
@@ -153,7 +153,7 @@ An analysis changes nothing in your repository. Each proposal says where it belo
 |---|---|
 | [`scripts/lib/agent.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/agent.sh) | Role configuration, `--agent`/`--model` overrides, and starting agents with the `write`, `unattended`, or `read-only` profile; for Codex, the runtime directories under [`.agents/`](https://github.com/taspinar/agent-codeyard/tree/main/.agents/) that a write session may write (`AGENT_CODEX_WRITABLE_DIRS`), opened as writable roots of its sandbox and created before the session; [`tests/agent-sandbox-test.sh`](https://github.com/taspinar/agent-codeyard/blob/main/tests/agent-sandbox-test.sh) checks that with the real Codex CLI, run by hand |
 | [`scripts/lib/attribution.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/attribution.sh) | The attribution preference of [`.agents/attribution.conf`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/attribution.conf), and the check of commits and texts for agent `Co-authored-by` trailers and generated attribution text |
-| [`scripts/lib/review-data.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/review-data.sh) | Validation and rendering of review, triage, and revision JSON; the decisions of the earlier rounds of a feature, against which the predecessor of a finding (`previous`) is checked |
+| [`scripts/lib/review-data.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/review-data.sh) | Validation and rendering of review and triage JSON, of a feature or a planning triage; the decisions of the earlier rounds of a feature, against which the predecessor of a finding (`previous`) is checked |
 | [`scripts/lib/review-run.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/review-run.sh) | Running a read-only agent with one retry, and storing a review |
 | [`scripts/lib/github.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/github.sh) | Questions about the repository on GitHub, such as whether a branch requires a status check |
 | [`scripts/lib/issue-comments.sh`](https://github.com/taspinar/agent-codeyard/blob/main/scripts/lib/issue-comments.sh) | The comments of a feature Issue that are passed on to the implementer, the reviewer, and the triage agent: those of the owner, members, and collaborators, without the workflow's own reports, bounded in size |
@@ -200,7 +200,6 @@ An analysis changes nothing in your repository. Each proposal says where it belo
 | [`.agents/schemas/completion.schema.json`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/schemas/completion.schema.json) | The implementer's completion record: status, criteria with evidence, remaining work, and checks of findings to fix; the only source of remaining work |
 | [`.agents/schemas/assessment.schema.json`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/schemas/assessment.schema.json) | The report and proposal of an assessment |
 | [`.agents/schemas/exception.schema.json`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/schemas/exception.schema.json) | The owner's exception to one critical or major finding |
-| [`.agents/schemas/revision.schema.json`](https://github.com/taspinar/agent-codeyard/blob/main/.agents/schemas/revision.schema.json) | Planning revision decisions |
 
 <a id="directories"></a>
 
@@ -208,7 +207,7 @@ An analysis changes nothing in your repository. Each proposal says where it belo
 
 | Path | Contents | Committed |
 |---|---|---|
-| [`.agents/reviews/`](https://github.com/taspinar/agent-codeyard/tree/main/.agents/reviews/) | Review and revision results (JSON and generated reports) | No |
+| [`.agents/reviews/`](https://github.com/taspinar/agent-codeyard/tree/main/.agents/reviews/) | Review results (JSON and generated reports) | No |
 | [`.agents/triage/`](https://github.com/taspinar/agent-codeyard/tree/main/.agents/triage/) | Approved triage results (JSON and generated reports) | No |
 | `.agents/verification/` | The record of the last passed verification, the durations of its checks, and the results of its budget checks, written by `verify.sh` | No |
 | `.agents/verification-baseline` | In an adopted project, how each check of `scripts/verify.conf` ended in its first run, before any change (`verify.sh --baseline`); a change needs the owner's approval | Yes |

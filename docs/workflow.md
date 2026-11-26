@@ -52,7 +52,7 @@ All planning steps run in the planning worktree (`planning/<name>`).
 flowchart TD
   start["start-planning.sh<br/>Project Grill, your approval, planner"]
   review["review-planning.sh<br/>independent review, read-only"]
-  revise["revise-planning.sh<br/>decisions, your approval, revision"]
+  revise["revise-planning.sh<br/>triage, your approval, revision"]
   finish["finish-planning.sh<br/>checks, your final approval"]
 
   start --> clarify
@@ -62,17 +62,21 @@ flowchart TD
   review -- findings --> revise
   revise -- review again --> review
   review -- no findings --> finish
-  revise -- nothing adopted --> finish
+  revise -- nothing to fix --> finish
 
   classDef plan fill:#E1F5EE,stroke:#0F6E56,color:#085041
   class start,review,revise,finish plan
 ```
 
-- A revision that adopts findings changes the planning documents, so the
+- `revise-planning.sh` first triages the findings with `triage-review.sh`
+  (a planning triage: `FIX_NOW`, `ACCEPT`, `DEFER`, `ESCALATE`, or `AMEND`),
+  which you approve before any document changes; then the planner revises
+  the planning for the `FIX_NOW` findings.
+- A revision that fixes findings changes the planning documents, so the
   review becomes stale and the next step is a new review round.
-- When the planner rejects or defers every finding, nothing changes and you
+- When the triage accepts or defers every finding, nothing changes and you
   can finish directly.
-- A finding that the planner escalates needs your decision: either it does not
+- A finding that the triage escalates needs your decision: either it does not
   apply or you accept the planning as it is with it, which, for a minor
   finding only, `finish-planning.sh --resolve <finding-id> --type
   not-applicable|accepted --reason "<why>"` records at a terminal for that
@@ -235,8 +239,8 @@ Every step writes to one of three places:
 flowchart LR
   sp["start-planning.sh"] --> docs["PROJECT_DESCRIPTION.md or changes/NAME.md<br/>PROJECT_REQUIREMENTS.md<br/>architecture.md, roadmap.md, ADRs"]
   rp["review-planning.sh"] --> prv["planning-NAME-review-NN.json and .md"]
-  rv["revise-planning.sh"] --> rvd["…-review-NN-revision.json and .md"]
-  rv --> rdocs["architecture.md, roadmap.md, ADRs<br/>for adopted findings"]
+  rv["revise-planning.sh"] --> rvd["…-review-NN-triage.json and .md<br/>(triage/v1, kind planning)"]
+  rv --> rdocs["architecture.md, roadmap.md, ADRs<br/>for FIX_NOW findings"]
   fp["finish-planning.sh"] --> appr["PLANNING_APPROVAL.md"]
   cfi["create-feature-issue.sh F01"] --> fi["Feature Issue"]
 
@@ -251,7 +255,7 @@ flowchart LR
 ```
 
 Green is committed, grey is a working file, orange is on GitHub. Because
-review and revision files are not committed, `PLANNING_APPROVAL.md` records
+review and triage files are not committed, `PLANNING_APPROVAL.md` records
 the review rounds and every finding that was not adopted; use it for the
 planning PR description.
 
@@ -325,7 +329,7 @@ exits with status 3.
 | `start-planning.sh` | `project-grill` (write), `planning-reviewer` (read-only) on the Draft requirements, then `project-planner` (write) | Per Draft review: resume Grill with the findings, approve, or mark findings not applicable | Description, requirements, architecture, roadmap, ADRs; the Draft review and your choices in `.agents/reviews/requirements-<name>-review-NN.json` | Documents yes, Draft review no | No |
 | `start-planning.sh <name> --change <file>` | `project-planner` (write); with `--grill` first `project-grill` (write) and the Draft review | With `--grill`, as above for the changed requirements | The change request; the roadmap, architecture, or ADRs; with `--grill` the requirements and the Draft review | Documents yes, Draft review no | No |
 | `review-planning.sh` | `planning-reviewer` (read-only) | None | Planning review JSON and report | No | No |
-| `revise-planning.sh` | `project-planner` (read-only, then write) | Approve the decisions | Revision JSON and report; architecture, roadmap, ADRs | Documents yes, revision no | No |
+| `revise-planning.sh` | `triage` (read-only, through `triage-review.sh`), then `project-planner` (write) | Approve the triage; confirm each amendment of the requirements | Planning triage JSON and report in `.agents/triage/`; architecture, roadmap, ADRs | Documents yes, triage no | No |
 | `finish-planning.sh` | None | Confirm earlier escalations; approve the planning | `docs/PLANNING_APPROVAL.md` | Yes | No |
 | `finish-planning.sh --resolve` | None | Decide on one escalated minor finding, at a terminal | `.agents/exceptions/<review>-<id>.json` (the owner's exception record, `kind: planning`) | No | No |
 | `create-feature-issue.sh` | None | Create the Issue | Feature Issue on GitHub | Not applicable | No |
@@ -344,7 +348,7 @@ exits with status 3.
 | `start-planning.sh` | The checkout is dirty (except an uncommitted description or change request), the planning branch or worktree exists, an agent leaves its file scope or commits, or the Draft reviewer changes a file or returns an invalid result twice |
 | `start-planning.sh --change` | Also: `origin/main` has no approved planning, the change request name is taken, the planner changed nothing, removed or renumbered a feature ID, or deleted an ADR |
 | `review-planning.sh` | Not on a planning branch, a planning document is missing, or the requirements are not approved |
-| `revise-planning.sh` | The planning review is stale, or the planner leaves its file scope, commits, or changes nothing for adopted findings |
+| `revise-planning.sh` | The planning review is stale, or the planner leaves its file scope, commits, or changes nothing for the FIX_NOW findings of the triage |
 | `finish-planning.sh` | No current review, a critical or major finding in the latest round (escalated or not), an undecided or unapplied finding, or an escalation without your decision (`--resolve`) or confirmation |
 | `finish-planning.sh --resolve` | No terminal, a finding that is not escalated in the latest round or that the review rates major or critical, a stale review, a decision on that finding exists, or the review or the planning changed while you decided |
 | `finish-planning.sh --amend` | Anything but the architecture and the ADRs changed, an ADR was deleted, the planning on `main` has no current approval, the branch lacks the latest `main`, or a required planning document is missing |

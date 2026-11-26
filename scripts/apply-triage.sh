@@ -148,6 +148,11 @@ review_errors="$(review_artifact_errors "$source_review_path")"
 
 triage_errors="$(triage_artifact_errors "$triage_path" "$source_review_path")"
 [[ -z "$triage_errors" ]] || report_errors "invalid or unapproved triage artifact:" "$triage_errors"
+if [[ "$(triage_kind "$triage_path")" != "feature" ]]; then
+  echo "Error: this is the triage of a planning review; ./scripts/revise-planning.sh applies it in the planning worktree."
+  records_stop "${0##*/}" "this is the triage of a planning review"
+  exit 1
+fi
 
 tmp_work="$(mktemp -d "${TMPDIR:-/tmp}/apply-triage.XXXXXX")"
 trap 'rm -rf "$tmp_work"' EXIT

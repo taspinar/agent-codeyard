@@ -74,19 +74,26 @@ add_review() {
   record_reviewed_tree "$repo" "$review"
 }
 
-# add_revision <repo> <round> <decision-for-each-finding>
-add_revision() {
+# add_triage <repo> <round> <decision-for-each-finding>: the approved planning
+# triage of the review of that round (triage-review.sh, kind planning).
+add_triage() {
   local repo="$1"
   local review="$repo/$reviews/planning-project-bootstrap-review-$(printf '%02d' "$2").json"
 
+  mkdir -p "$repo/.agents/triage"
   jq --arg decision "$3" '{
-    schema: "revision/v1",
+    schema: "triage/v1", kind: "planning",
     source_review: ".agents/reviews/planning-project-bootstrap-review-\(.round | tostring | if length == 1 then "0" + . else . end).json",
-    branch, review_round: .round, reviewed_tree,
-    planner: {agent: "claude", model: "model-p"},
+    branch, round, reviewed_tree, review_verdict: .verdict,
+    triage: {agent: "claude", model: "model-t", mode: "full"},
     approved_at: "2026-01-02T00:00:00Z",
-    decisions: [.findings[] | {finding_id: .id, severity, title, decision: $decision, rationale: "Considered."}]
-  }' "$review" >"${review%.json}-revision.json"
+    decisions: [.findings[] | {finding_id: .id, severity, title, decision: $decision, rationale: "Considered.", followup: null}]
+  }' "$review" >"$(triage_file "$repo" "$2")"
+}
+
+# triage_file <repo> <round>: where the triage of that round is stored.
+triage_file() {
+  printf '%s/.agents/triage/planning-project-bootstrap-review-%02d-triage.json\n' "$1" "$2"
 }
 
 finding() {
@@ -134,18 +141,18 @@ printf '# Architecture\n\nLocal storage, as the planner confirmed it.\n' >"$repo
 add_review "$repo" 2 PASS "[]"
 run_finish "$repo" y || { cat "$repo.out" >&2; fail "a planning without the mark was not approved"; }
 
-# An amendment of the requirements that the owner confirmed in a revision
+# An amendment of the requirements that the owner confirmed in a planning triage
 # is listed in the approval with its finding and the confirmation, and not
 # as a finding that was not adopted.
 repo="$(setup_repo amended)"
 add_review "$repo" 1 CHANGES_REQUIRED "[$(finding M1 major "Cost is not capped")]"
-add_revision "$repo" 1 AMEND
+add_triage "$repo" 1 AMEND
 amend_diff=$'--- a/docs/PROJECT_REQUIREMENTS.md\n+++ b/docs/PROJECT_REQUIREMENTS.md\n@@ -1,1 +1,1 @@\n-# Project Requirements\n+# Project Requirements (cost limited)\n'
 jq --arg diff "$amend_diff" '
   .decisions[0].amendment = {diff: $diff, confirmed_by: "owner", confirmed_at: "2026-01-02T00:00:01Z"}
   | .amended_requirements = {before: ("a" * 40), after: ("b" * 40)}' \
-  "$repo/$reviews/planning-project-bootstrap-review-01-revision.json" >"$tmp/revision.tmp"
-mv "$tmp/revision.tmp" "$repo/$reviews/planning-project-bootstrap-review-01-revision.json"
+  "$(triage_file "$repo" 1)" >"$tmp/triage.tmp"
+mv "$tmp/triage.tmp" "$(triage_file "$repo" 1)"
 sed -i.bak '1s/.*/# Project Requirements (cost limited)/' "$repo/docs/PROJECT_REQUIREMENTS.md" && rm "$repo/docs/PROJECT_REQUIREMENTS.md.bak"
 add_review "$repo" 2 PASS "[]"
 run_finish "$repo" y || {
@@ -163,10 +170,10 @@ grep -Fq "  +# Project Requirements (cost limited)" "$approval" || fail "the app
 # approval lists the rounds and the findings that were not adopted.
 repo="$(setup_repo approve)"
 add_review "$repo" 1 CHANGES_REQUIRED "[$(finding M1 major "Offline use is unplanned"), $(finding MIN1 minor "Vague name")]"
-add_revision "$repo" 1 ADOPT
-jq '.decisions[1].decision = "REJECT" | .decisions[1].rationale = "The name follows the requirements."' \
-  "$repo/$reviews/planning-project-bootstrap-review-01-revision.json" >"$tmp/revision.tmp"
-mv "$tmp/revision.tmp" "$repo/$reviews/planning-project-bootstrap-review-01-revision.json"
+add_triage "$repo" 1 FIX_NOW
+jq '.decisions[1].decision = "ACCEPT" | .decisions[1].rationale = "The name follows the requirements."' \
+  "$(triage_file "$repo" 1)" >"$tmp/triage.tmp"
+mv "$tmp/triage.tmp" "$(triage_file "$repo" 1)"
 printf '\n## F02 — Offline use\n' >>"$repo/docs/roadmap.md"
 add_review "$repo" 2 PASS "[]"
 run_finish "$repo" y || {
@@ -176,7 +183,7 @@ run_finish "$repo" y || {
 approval="$repo/docs/PLANNING_APPROVAL.md"
 grep -Fqx "Status: Approved" "$approval" || fail "the approval was not recorded"
 grep -Eq '^Planning fingerprint: [0-9a-f]{40}$' "$approval" || fail "the approval lacks the planning fingerprint"
-grep -Fq "Round 1, REJECT: MIN1 [minor] Vague name" "$approval" || fail "the approval lacks a rejected finding"
+grep -Fq "Round 1, ACCEPT: MIN1 [minor] Vague name" "$approval" || fail "the approval lacks a rejected finding"
 grep -Fq "Round 2: PASS" "$approval" || fail "the approval lacks the final round"
 grep -Fq "Vague name" "$repo.out" || fail "a rejected finding was not shown before approval"
 grep -Fq "git add docs/PROJECT_REQUIREMENTS.md docs/architecture.md docs/roadmap.md docs/decisions docs/PLANNING_APPROVAL.md" "$repo.out" ||
@@ -197,7 +204,7 @@ repo_without="$(setup_repo no-approval)"
 # Minor findings that were all rejected or deferred can be approved.
 repo="$(setup_repo minor-handled)"
 add_review "$repo" 1 PASS_WITH_MINOR_FINDINGS "[$(finding MIN1 minor "Vague name"), $(finding S1 suggestion "Sharing")]"
-add_revision "$repo" 1 DEFER
+add_triage "$repo" 1 DEFER
 run_finish "$repo" y || {
   cat "$repo.out" >&2
   fail "approving with deferred minor findings failed"
@@ -220,21 +227,21 @@ expect_refused "$repo" "the latest review is stale"
 
 repo="$(setup_repo blocking)"
 add_review "$repo" 1 CHANGES_REQUIRED "[$(finding M1 major "Offline use is unplanned")]"
-add_revision "$repo" 1 ESCALATE
+add_triage "$repo" 1 ESCALATE
 expect_refused "$repo" "the latest review has a major finding"
 
 repo="$(setup_repo undecided)"
 add_review "$repo" 1 PASS_WITH_MINOR_FINDINGS "[$(finding MIN1 minor "Vague name")]"
-expect_refused "$repo" "a minor finding has no revision decision"
+expect_refused "$repo" "a minor finding has no approved triage"
 
 repo="$(setup_repo not-applied)"
 add_review "$repo" 1 PASS_WITH_MINOR_FINDINGS "[$(finding MIN1 minor "Vague name")]"
-add_revision "$repo" 1 ADOPT
-expect_refused "$repo" "an adopted finding is not applied"
+add_triage "$repo" 1 FIX_NOW
+expect_refused "$repo" "a FIX_NOW finding is not applied"
 
 repo="$(setup_repo escalated)"
 add_review "$repo" 1 PASS_WITH_MINOR_FINDINGS "[$(finding MIN1 minor "Vague name")]"
-add_revision "$repo" 1 ESCALATE
+add_triage "$repo" 1 ESCALATE
 expect_refused "$repo" "a finding is escalated"
 grep -Fq "Round 1, ESCALATE: MIN1 [minor] Vague name" "$repo.out" || fail "a refusal did not show the escalated finding"
 grep -Fq "Rationale: Considered." "$repo.out" || fail "a refusal did not show the rationale"
@@ -243,7 +250,7 @@ grep -Fq "Rationale: Considered." "$repo.out" || fail "a refusal did not show th
 # the human confirms its resolution, and the approval records that.
 repo="$(setup_repo earlier-escalation)"
 add_review "$repo" 1 PASS_WITH_MINOR_FINDINGS "[$(finding MIN1 minor "Sharing scope is open")]"
-add_revision "$repo" 1 ESCALATE
+add_triage "$repo" 1 ESCALATE
 printf 'Sharing is out of scope.\n' >>"$repo/docs/PROJECT_REQUIREMENTS.md"
 add_review "$repo" 2 PASS "[]"
 if run_finish "$repo" $'n\ny'; then
@@ -607,13 +614,13 @@ resolution() {
   printf '%s/.agents/exceptions/planning-project-bootstrap-review-%02d-%s.json\n' "$1" "$2" "$3"
 }
 
-# A minor finding that the planner escalated: the owner decides it does not
+# A minor finding that the triage escalated: the owner decides it does not
 # apply, and the planning can then be approved; the approval lists the decision.
 repo="$(setup_repo resolve)"
 add_review "$repo" 1 PASS_WITH_MINOR_FINDINGS "[$(finding MIN2 minor "Offline sync is unplanned"), $(finding MIN1 minor "Vague name")]"
-add_revision "$repo" 1 ESCALATE
-jq '.decisions[1].decision = "REJECT"' "$repo/$reviews/planning-project-bootstrap-review-01-revision.json" >"$tmp/revision.tmp"
-mv "$tmp/revision.tmp" "$repo/$reviews/planning-project-bootstrap-review-01-revision.json"
+add_triage "$repo" 1 ESCALATE
+jq '.decisions[1].decision = "ACCEPT"' "$(triage_file "$repo" 1)" >"$tmp/triage.tmp"
+mv "$tmp/triage.tmp" "$(triage_file "$repo" 1)"
 expect_refused "$repo" "an escalated minor finding has no decision"
 grep -Fq -- "--resolve <finding-id>" "$repo.out" || fail "the refusal does not name the command that records a decision"
 
@@ -670,7 +677,7 @@ grep -Eq "^- Round 1: MIN2 \[minor\] Offline sync is unplanned\. Not applicable,
 # finding is refused with the severity of the review, and nothing is recorded.
 repo="$(setup_repo resolve-blocking)"
 add_review "$repo" 1 CHANGES_REQUIRED "[$(finding M1 major "Offline sync is unplanned"), $(finding C1 critical "No data model")]"
-add_revision "$repo" 1 ESCALATE
+add_triage "$repo" 1 ESCALATE
 resolve "$repo" y M1 --type not-applicable --reason "Sync is a non-goal."
 grep -Fq "M1 of round 1 is major in the review" "$repo.out" || fail "an escalated major finding was not refused: $(cat "$repo.out")"
 grep -Fq "a new review round after the planning documents changed" "$repo.out" && grep -Fq "change of the requirements" "$repo.out" ||
@@ -696,7 +703,7 @@ grep -Fq "finding M1 is major: a planning record resolves a minor finding only" 
 # A decision is bound to its review as it is: an edited review voids it.
 repo="$(setup_repo resolve-edited)"
 add_review "$repo" 1 PASS_WITH_MINOR_FINDINGS "[$(finding MIN1 minor "Sharing scope is open")]"
-add_revision "$repo" 1 ESCALATE
+add_triage "$repo" 1 ESCALATE
 resolve "$repo" y MIN1 --type accepted --reason "Sharing stays open for now."
 [[ -f "$(resolution "$repo" 1 MIN1)" ]] || { cat "$repo.out" >&2; fail "the decision on a minor escalation was not stored"; }
 jq '.limitations = "Edited."' "$repo/$reviews/planning-project-bootstrap-review-01.json" >"$tmp/review.tmp"
@@ -708,7 +715,7 @@ grep -Fq "the review artifact changed after the exception was recorded" "$repo.o
 # stale, and a new round that raises the finding again needs its own decision.
 repo="$(setup_repo resolve-stale)"
 add_review "$repo" 1 PASS_WITH_MINOR_FINDINGS "[$(finding MIN1 minor "Sharing scope is open")]"
-add_revision "$repo" 1 ESCALATE
+add_triage "$repo" 1 ESCALATE
 resolve "$repo" y MIN1 --type accepted --reason "Sharing stays open for now."
 [[ -f "$(resolution "$repo" 1 MIN1)" ]] || fail "the decision was not stored"
 printf '\n## F02 — Sharing\n' >>"$repo/docs/roadmap.md"
@@ -717,7 +724,7 @@ grep -Fq "is stale" "$repo.out" || fail "the stale review was not reported"
 resolve "$repo" y MIN1 --type accepted --reason "Again."
 grep -Fq "is stale" "$repo.out" || fail "a decision on a stale review was not refused"
 add_review "$repo" 2 PASS_WITH_MINOR_FINDINGS "[$(finding MIN1 minor "Sharing scope is still open")]"
-add_revision "$repo" 2 ESCALATE
+add_triage "$repo" 2 ESCALATE
 expect_refused "$repo" "a later round escalated the finding again"
 grep -Fq "without your decision: MIN1" "$repo.out" || fail "the new escalation was not reported: $(cat "$repo.out")"
 # The decision of round 1 still resolves the escalation of round 1, without

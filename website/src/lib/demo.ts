@@ -143,7 +143,7 @@ const planningLog: string[][] = [
   ["Approve these requirements? [y/N]", "> y", "Requirements approved", "Starting the project planner"],
   ["Planner: wrote docs/architecture.md", "Planner: wrote docs/roadmap.md (F01 to F05)", "Planner: wrote docs/decisions/0001-access-control.md"],
   ["$ ./scripts/review-planning.sh", "! M1 major: F05 member history does not depend on F02", "Verdict: CHANGES REQUIRED", "# The report is a local work file that Git ignores."],
-  ["$ ./scripts/revise-planning.sh --review .agents/reviews/planning-project-bootstrap-review-01.json", "M1: ADOPT", "Record these decisions? [y/N]", "> y", "Updated docs/roadmap.md: F05 depends on F02", "# The review is stale now: review again."],
+  ["$ ./scripts/revise-planning.sh --review .agents/reviews/planning-project-bootstrap-review-01.json", "M1: FIX_NOW", "Proceed with this triage? [y/N]", "> y", "Updated docs/roadmap.md: F05 depends on F02", "# The review is stale now: review again."],
   ["$ ./scripts/review-planning.sh", "Round 2: no findings. Verdict: PASS"],
   ["$ ./scripts/finish-planning.sh", "Approve the planning? [y/N]", "> y", "Wrote docs/PLANNING_APPROVAL.md", "# On GitHub, you merge the planning pull request."],
   ["$ ./scripts/create-feature-issue.sh F02", "Created Issue #41: Trainer attendance", "$ ./scripts/create-feature-issue.sh F03", "Created Issue #42: Class timetable", "$ ./scripts/create-feature-issue.sh F04", "Created Issue #43: Notification preferences"],
@@ -239,7 +239,7 @@ export const planningFiles: DemoFile[] = [
   file("docs/roadmap.md", 3, "The roadmap: features with stable IDs and their dependencies.", (m) => `# Roadmap\n\n- F01 Roles and sign-in (on main)\n- F02 Trainer attendance, depends on F01\n- F03 Class timetable, depends on F01\n- F04 Notification preferences, depends on F01\n- F05 Member history, ${m >= 5 ? "depends on F02" : "depends on F01"}`),
   file("docs/decisions/0001-access-control.md", 3, "A design decision of the plan.", () => "# 0001 Access control\n\nStatus: Accepted\n\n## Decision\nRoles, with an ownership check in the\nservice layer.\n\n## Why\nOnly the trainer of a class edits its\nattendance; a member reads only their own data."),
   file(".agents/reviews/planning-project-bootstrap-review-01.md", 4, "The report of the first planning review: a local work file.", () => "# Planning review, round 1\n\nVerdict: CHANGES REQUIRED\n\n## M1, major\nF05 (member history) needs the attendance\nrecords of F02, but the roadmap does not\nsay so.", { local: true, until: 7 }),
-  file(".agents/reviews/planning-project-bootstrap-review-01-revision.md", 5, "The decision on each finding of round 1: a local work file.", () => "# Revision of round 1\n\nM1: ADOPT\nMember history needs attendance data.\n\nChanged: docs/roadmap.md, F05 depends on F02.", { local: true, until: 7 }),
+  file(".agents/triage/planning-project-bootstrap-review-01-triage.md", 5, "The triage of round 1, the decision on each finding: a local work file.", () => "# Planning triage, round 1\n\nM1: FIX_NOW\nMember history needs attendance data.\n\nChanged: docs/roadmap.md, F05 depends on F02.", { local: true, until: 7 }),
   file(".agents/reviews/planning-project-bootstrap-review-02.md", 6, "The report of the second planning review: a local work file.", () => "# Planning review, round 2\n\nVerdict: PASS\n\nNo findings.", { local: true, until: 7 }),
   file("docs/PLANNING_APPROVAL.md", 7, "Your approval of the reviewed planning documents.", () => "# Planning approval\n\nApproved by the owner.\nBranch: planning/project-bootstrap\nReview rounds: 2, the last one PASS\n\nFingerprint of the planning documents:\n(recorded by finish-planning.sh)"),
 ];
@@ -315,7 +315,7 @@ export interface Substep { name: string; moment: number; text: string; artifacts
 export const planSteps: Substep[] = [
   { name: "Draft the plan", moment: 3, text: "The planner turns the approved requirements into the architecture, a roadmap with stable feature IDs, and the design decisions it needs.", artifacts: ["docs/architecture.md", "docs/roadmap.md", "docs/decisions/"] },
   { name: "Review the plan", moment: 4, text: "An agent of another provider reads the plan without changing it. Here it finds a dependency the roadmap does not state.", artifacts: ["review-planning.sh", ".agents/reviews/ (local)"] },
-  { name: "Revise the plan", moment: 5, text: "The planner decides on each finding, you approve the decisions, and it changes the plan. The earlier review is then stale.", artifacts: ["revise-planning.sh", "docs/roadmap.md"] },
+  { name: "Revise the plan", moment: 5, text: "The findings are triaged, you approve the decisions, and the planner changes the plan. The earlier review is then stale.", artifacts: ["revise-planning.sh", "docs/roadmap.md"] },
   { name: "Review again", moment: 6, text: "A new round reviews the revised plan. When it passes, the approval is yours.", artifacts: ["review-planning.sh", ".agents/reviews/ (local)"] },
 ];
 

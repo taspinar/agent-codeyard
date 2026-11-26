@@ -74,12 +74,12 @@ the website describes the current template.
 | `scripts/verify.sh` | Runs the checks in `scripts/verify.conf`, and the workflow self-tests when a workflow file changed or with `--all`; records a pass and skips a repeated run with `--reuse`; used by humans, agents, and CI. `--only <group>` runs the checks of named groups for a CI with parallel jobs, and `--changed` the project checks and the self-tests of the files changed since the base, the targeted check of an agent session; such a partial run records nothing. Within a run that keeps trusted passes, the self-tests run when a workflow file differs from its last trusted pass. A check declared as a budget (`<name> [<group>] budget: <command>`) is a measurement: over its target it is `BUDGET`, with its output, not `FAIL`, and the verification still passes. Times every check and records the durations; `budget-seconds: <n>` in either file is a target for the duration of its checks, shown as `BUDGET` with the slowest checks when exceeded. A line `heavy:` is refused as an error of the configuration (Issue 521). `parallel: <n>` in `scripts/verify.conf` (or `VERIFY_PARALLEL` for one run) runs up to `<n>` checks of both files at a time, the output of each as one block when it ends, with the result of a run one at a time. A check may declare the partition of a split test suite it runs (`<name> [<group>] partition <file>: <command>`); `--partitions` lists the declarations. A self-test marked `framework` (`<name> [<group>] framework: <command>` in `scripts/verify-workflow.conf`) runs only in the template: in a repository whose origin is positively not the template it is `SKIP` with the reason and recorded as `framework-checks: skipped`; `--framework-checks` runs it anywhere, also when no workflow file changed (the other self-tests then stay skipped). In an adopted project, `--baseline` records once how each check ended before any change, in `.agents/verification-baseline`; later a check that failed then and fails now is `KNOWN`, a pre-existing failure that still fails the verification, apart from a regression, and `accepted-failure: <check> <reason>` in `scripts/verify.conf`, the owner's exception, shows it as `ACCEPTED` instead. A scoped exception, `accepted-failure: <check> changed-files exit <statuses> <command>` or `accepted-failure: <check> recorded exit <statuses>` with the list `.agents/accepted-failures/<check>`, accepts only the failures of files unchanged since the feature's base, of a check that ended with a status it declares, shown as `SCOPED`, and reports a recorded failure that no longer occurs as `FIXED`. |
 | `scripts/start-planning.sh` | Project Grill, requirements approval, and project planning in a planning worktree; the first planning of a project removes the approval requests and plans it inherited from the template |
 | `scripts/review-planning.sh` | Independent, read-only review of the planning documents |
-| `scripts/revise-planning.sh` | The planner's decision per planning finding, then the revision |
+| `scripts/revise-planning.sh` | The triage of a planning review (`triage-review.sh`), then the planner's revision for its `FIX_NOW` findings |
 | `scripts/finish-planning.sh` | Checks and records your approval of the planning; `--check` tests it; `--resolve` records your decision on an escalated minor finding, at a terminal, as the owner's exception record with `kind: planning` |
 | `scripts/create-feature-issue.sh` | Creates the Issue of one roadmap feature |
 | `scripts/start-feature.sh` | Creates the feature worktree and starts the implementer |
 | `scripts/review-feature.sh` | Independent, read-only review of the complete feature diff, or with `--changes` of what changed since the previous round |
-| `scripts/triage-review.sh` | Classifies review findings, creates follow-up Issues, and publishes the reports on the Issue; with `--decisions`, the owner's own decisions, where accepting or deferring a critical or major finding writes the owner's exception record |
+| `scripts/triage-review.sh` | Classifies review findings, creates follow-up Issues, and publishes the reports on the Issue; for a planning review (`kind: planning`), the planning triage that `revise-planning.sh` starts, with `ESCALATE` and `AMEND` and without Issues; with `--decisions`, the owner's own decisions, where accepting or deferring a critical or major finding writes the owner's exception record |
 | `scripts/apply-triage.sh` | Lets an implementer resolve only the `FIX_NOW` findings |
 | `scripts/record-exception.sh` | Records the owner's exception to one critical or major finding of the latest review (not applicable, or risk accepted), confirmed at a terminal, stored exactly as shown, and published on the Issue |
 | `scripts/finish-feature.sh` | Checks the feature, including the completion gate and a review of the complete feature, and creates the commit; prints the content tree next to the commit SHA, and writes the approval request when only the owner may merge; `--partial` commits unfinished work as your choice |
@@ -110,7 +110,7 @@ the website describes the current template.
 | `scripts/lib/environment.sh` | The prerequisites of the machine: the preflight of `verify.sh` (general, and the workflow self-tests only when one is going to run), its status 78 and `ENVIRONMENT` lines, which `doctor.sh` reports read-only, and the isolated test toolchain that `tests/lib-fakes.sh` builds for the self-tests |
 | `scripts/lib/agent.sh` | Role configuration, `--agent`/`--model` overrides, and starting agents with the `write`, `unattended`, or `read-only` profile; for Codex, the runtime directories under `.agents/` that a write session may write (`AGENT_CODEX_WRITABLE_DIRS`), opened as writable roots of its sandbox and created before the session; `tests/agent-sandbox-test.sh` checks that with the real Codex CLI, run by hand |
 | `scripts/lib/attribution.sh` | The attribution preference of `.agents/attribution.conf`, and the check of commits and texts for agent `Co-authored-by` trailers and generated attribution text |
-| `scripts/lib/review-data.sh` | Validation and rendering of review, triage, and revision JSON; the decisions of the earlier rounds of a feature, against which the predecessor of a finding (`previous`) is checked |
+| `scripts/lib/review-data.sh` | Validation and rendering of review and triage JSON, of a feature or a planning triage; the decisions of the earlier rounds of a feature, against which the predecessor of a finding (`previous`) is checked |
 | `scripts/lib/review-run.sh` | Running a read-only agent with one retry, and storing a review |
 | `scripts/lib/base.sh` | The base branch of a feature: the base `start-feature.sh` recorded for the branch, else the default of the project (`base:` in `.agents/template.conf`), else `main` |
 | `scripts/lib/github.sh` | Questions about the repository on GitHub, such as whether a branch requires a status check |
@@ -126,7 +126,7 @@ the website describes the current template.
 | `scripts/lib/risk.sh` | The risk level of a feature: the path classes of `.agents/policies/risk.conf` on the diff, the fixed escalations, and what the agents recorded, of which the highest counts; and what a level requires of the review rounds, by the same policy; the presets of the workflow profiles `light` and `standard` |
 | `scripts/lib/skills.sh` | The project skills: their metadata, the digest of their files, the selection in a plan, and the paragraph of the prompt that `start-feature.sh`, `review-feature.sh`, and `apply-triage.sh` give every role of the feature |
 | `scripts/lib/scope.sh` | File-scope enforcement for write sessions: a snapshot of the worktree before and after, which leaves out the directories Git ignores as a whole |
-| `scripts/lib/planning.sh` | The planning scope, the planning approval check, and the result rules of the Draft requirements review |
+| `scripts/lib/planning.sh` | The planning scope, the planning approval check, the result rules of the Draft requirements review, and the amendments of the requirements (decision `AMEND`) |
 | `scripts/lib/template-repository.sh` | Whether the repository is the template: the one predicate with which `verify.sh` skips the framework-only self-tests outside the template and the job `scope` of `ci.yml` tells the template from a project; a doubt is never a project |
 | `scripts/lib/inherited.sh` | The approval requests and plans of the template's own Issues that a project inherited with "Use this template", and whether the repository is a project |
 
@@ -138,29 +138,28 @@ the website describes the current template.
 | `.agents/prompts/project-planner.md` | The project planner in `start-planning.sh` |
 | `.agents/prompts/requirements-reviewer.md` | The review of the Draft requirements in `start-planning.sh`, before the owner approves them |
 | `.agents/prompts/planning-reviewer.md` | `review-planning.sh` |
-| `.agents/prompts/planning-reviser.md` | `revise-planning.sh` |
+| `.agents/prompts/planning-reviser.md` | `revise-planning.sh` (the revision; its triage follows `triage-reviewer.md`) |
 | `.agents/prompts/implementer.md` | `start-feature.sh` |
 | `.agents/prompts/reviewer.md` | `review-feature.sh` |
-| `.agents/prompts/triage-reviewer.md` | `triage-review.sh` |
+| `.agents/prompts/triage-reviewer.md` | `triage-review.sh`, for a feature or a planning review |
 | `.agents/prompts/triage-implementer.md` | `apply-triage.sh` |
 | `.agents/prompts/analyst.md` | `analyze-runs.sh` |
 | `.agents/prompts/assessor.md` | `assess-repository.sh` |
 | `.agents/schemas/requirements-review.schema.json` | Results of the Draft requirements review: findings with a proposed wording |
 | `.agents/schemas/review.schema.json` | Results of planning reviews |
 | `.agents/schemas/feature-review.schema.json` | Results of feature reviews: the same, with the reviewer's classification of the impact on the architecture |
-| `.agents/schemas/triage.schema.json` | Triage decisions |
+| `.agents/schemas/triage.schema.json` | Triage decisions, of a feature or a planning review |
 | `.agents/schemas/analysis.schema.json` | The result of an analysis of runs |
 | `.agents/schemas/assessment.schema.json` | The assessor's report and proposal for an assessment of a repository |
 | `.agents/schemas/approval-request.schema.json` | An approval request: references and an explanation only; `check-guardrails.sh` refuses a request with any other field |
 | `.agents/schemas/completion.schema.json` | The implementer's completion record: the status, the criteria with their evidence, the remaining work, and the checks of findings to fix; the only source of remaining work for the completion gate |
-| `.agents/schemas/revision.schema.json` | Planning revision decisions |
 | `.agents/schemas/exception.schema.json` | The owner's exception to one blocking review finding, bound to the review by its SHA-256 and reviewed tree |
 
 ## Working directories
 
 | Path | Contents | Committed |
 |---|---|---|
-| `.agents/reviews/` | Review and revision results (JSON and generated reports) | No |
+| `.agents/reviews/` | Review results (JSON and generated reports) | No |
 | `.agents/triage/` | Approved triage results (JSON and generated reports) | No |
 | `.agents/exceptions/` | The owner's exceptions to review findings, one per finding: to a critical or major finding of a feature (`record-exception.sh`, or `triage-review.sh --decisions` when it accepts or defers one), listed with their SHA-256 in the commit message and published on the Issue; and, with `kind: planning`, to an escalated minor finding of a planning (`finish-planning.sh --resolve`). Valid only for the latest, current review | No |
 | `.agents/verification/` | The record of the last passed verification, the durations of its checks, and the results of its budget checks, written by `verify.sh` | No |

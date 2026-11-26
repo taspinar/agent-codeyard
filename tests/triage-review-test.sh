@@ -1071,4 +1071,150 @@ grep -Fq "Level:  high (the level could not be determined (check-risk.sh exited 
   fail "a warning before the level did not select the agent of a high feature, as agent_computed_level reads it: $(cat "$repo.out")"
 grep -Fq -- "--model model-th" "$repo.log" || fail "the triage agent after a warning was not the high line: $(cat "$repo.log")"
 
+# A feature triage is unchanged by the planning triage (Issue 538): ESCALATE
+# and AMEND are refused for it, from the agent as in a stored artifact, and
+# the stored artifact has no kind and no amendment, as every version of the
+# scripts reads it.
+for invalid in \
+  "$(jq '.decisions[2] |= (.decision = "ESCALATE" | .amendment = null)' <<<"$valid_decisions")" \
+  "$(jq '.decisions[2] |= (.decision = "AMEND" | .amendment = "--- a/x\n+++ b/x\n")' <<<"$valid_decisions")" \
+  "$(jq '.decisions[2].amendment = "--- a/x\n+++ b/x\n"' <<<"$valid_decisions")"; do
+  repo="$(setup_repo "feature-planning-decision-$(grep -c . "$tmp/feature-planning-count" 2>/dev/null || true)")"
+  echo x >>"$tmp/feature-planning-count"
+  MOCK_OUTPUT="$invalid" expect_no_triage "$repo" "a feature triage with a decision of a planning triage" "$review"
+  grep -Eq "ESCALATE and AMEND are decisions of a planning triage only|must not have an amendment" "$repo.out" ||
+    fail "the planning decision of a feature triage was not refused with its reason: $(cat "$repo.out")"
+done
+repo="$(setup_repo feature-unchanged)"
+MOCK_OUTPUT="$(jq '.decisions[] |= (. + {amendment: null})' <<<"$valid_decisions")" run_triage "$repo" y "$review" || {
+  cat "$repo.out" >&2
+  fail "a feature triage with the amendment null of the schema failed"
+}
+artifact="$repo/.agents/triage/feature-5-test-review-01-triage.json"
+jq -e 'has("kind") | not' "$artifact" >/dev/null || fail "a feature triage recorded a kind"
+jq -e '[.decisions[] | has("amendment")] | any | not' "$artifact" >/dev/null || fail "a feature triage recorded an amendment"
+for forged in \
+  '.decisions[2].decision = "ESCALATE"' \
+  '.decisions[2].amendment = null' \
+  '.kind = "planning"' \
+  '.kind = "feature"'; do
+  jq "$forged" "$artifact" >"$tmp/forged-feature.json"
+  [[ -n "$(source "$repo/scripts/lib/review-data.sh" && triage_artifact_errors "$tmp/forged-feature.json" "$repo/$review")" ]] ||
+    fail "a feature triage was valid after: $forged"
+done
+
+# The triage of a planning review (kind planning), which revise-planning.sh
+# starts; tests/revise-planning-test.sh covers the whole cycle and AMEND.
+planning_review=".agents/reviews/planning-project-bootstrap-review-01.json"
+setup_planning_repo() {
+  local repo="$tmp/$1"
+
+  mkdir -p "$repo/.agents/reviews" "$repo/docs"
+  copy_workflow "$repo"
+  printf 'triage: claude model-t\n' >"$repo/.agents/agents.conf"
+  printf '# Project Requirements\n\nStatus: Approved\nApproved at: 2026-01-01T00:00:00Z\n\nOffline recipes.\n' >"$repo/docs/PROJECT_REQUIREMENTS.md"
+  printf '# Architecture\n' >"$repo/docs/architecture.md"
+  printf '# Roadmap\n' >"$repo/docs/roadmap.md"
+  git -C "$repo" init -q -b main
+  git -C "$repo" config user.name "Triage Test"
+  git -C "$repo" config user.email "triage-test@example.com"
+  git -C "$repo" add .
+  git -C "$repo" commit -qm "Seed planning"
+  git -C "$repo" switch -q -c planning/project-bootstrap
+  jq -n '{
+    schema: "review/v1", kind: "planning", issue: null, round: 1,
+    branch: "planning/project-bootstrap", base: "origin/main", merge_base: "aaaa", head: "bbbb",
+    reviewed_tree: "", reviewed_paths: ["docs/PROJECT_DESCRIPTION.md", "docs/changes", "docs/PROJECT_REQUIREMENTS.md", "docs/architecture.md", "docs/roadmap.md", "docs/decisions"],
+    reviewer: {agent: "codex", model: "model-r"}, created_at: "2026-01-01T00:00:00Z",
+    verdict: "CHANGES_REQUIRED", limitations: "",
+    findings: [
+      {id: "M1", severity: "major", title: "Offline use is unplanned", evidence: "docs/roadmap.md", impact: "An MVP requirement is missing.", recommendation: "Add a feature."},
+      {id: "MIN1", severity: "minor", title: "Feature name is vague", evidence: "docs/roadmap.md", impact: "Readability.", recommendation: "Rename it."}
+    ]
+  }' >"$repo/$planning_review"
+  record_reviewed_tree "$repo" "$repo/$planning_review"
+  printf '%s\n' "$repo"
+}
+planning_decisions='{"decisions": [
+  {"finding_id": "M1", "decision": "ESCALATE", "rationale": "Offline use is a product decision.", "followup": null, "amendment": null},
+  {"finding_id": "MIN1", "decision": "DEFER", "rationale": "The name belongs to the feature plan.", "followup": null, "amendment": null}
+]}'
+
+# planning_terminal <repo> <answer> <argument>...: triage-review.sh at a
+# pseudo-terminal, where the owner approves a planning triage. Its status is
+# kept in a file, since not every 'script' passes it on.
+planning_terminal() {
+  local repo="$1"
+  local answer="$2"
+  local command
+
+  shift 2
+  rm -f "$repo.status"
+  command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:$ISOLATED_PATH") MOCK_AGENT_LOG=$(printf '%q' "$repo.log") MOCK_GH_LOG=$(printf '%q' "$repo.gh") ./scripts/triage-review.sh $(printf '%q ' "$@"); echo \$? >$(printf '%q' "$repo.status")"
+  pty_run "$answer"$'\n' "$command" 2>&1 | tr -d '\r' >"$repo.out" || true
+  [[ -f "$repo.status" ]] || fail "triage-review.sh did not end at the terminal: $(cat "$repo.out")"
+  return "$(cat "$repo.status")"
+}
+
+# An approval on a pipe is refused for every planning triage, also without an
+# amendment: the approval is not asked, and nothing is recorded.
+repo="$(setup_planning_repo planning-piped)"
+MOCK_OUTPUT="$planning_decisions" expect_no_triage "$repo" "a planning triage approved on a pipe" "$planning_review"
+grep -Fq "a planning triage is approved by you at a terminal" "$repo.out" ||
+  fail "a piped planning approval was not refused with its reason: $(cat "$repo.out")"
+if grep -Fq "Proceed with this triage?" "$repo.out"; then fail "a planning triage was asked on a pipe"; fi
+[[ -z "$(git -C "$repo" status --porcelain -- docs)" ]] || fail "a piped planning approval changed a planning document"
+
+# Approved: a triage/v1 artifact of kind planning, without an Issue, a
+# follow-up Issue, or a publication; GitHub is not needed for it.
+repo="$(setup_planning_repo planning-approve)"
+MOCK_OUTPUT="$planning_decisions" planning_terminal "$repo" y "$planning_review" || {
+  cat "$repo.out" >&2
+  fail "the triage of a planning review failed"
+}
+artifact="$repo/.agents/triage/planning-project-bootstrap-review-01-triage.json"
+[[ "$(jq -c '[.schema, .kind, .branch, .round, has("issue"), .triage.mode, (.decisions | map(.decision))]' "$artifact")" == \
+  '["triage/v1","planning","planning/project-bootstrap",1,false,"full",["ESCALATE","DEFER"]]' ]] ||
+  fail "the planning triage is not recorded as one: $(cat "$artifact")"
+[[ ! -e "$repo.gh" && ! -e "$repo.gh.comments" ]] || fail "a planning triage created or published something on GitHub"
+grep -Fq "Planning triage" "$repo.log" || fail "the agent was not pointed at the planning triage of its contract"
+# The rules of a planning triage, on the stored artifact.
+for forged in \
+  '.decisions[0].decision = "ACCEPT"' \
+  '.decisions[0].decision = "DEFER"' \
+  '.decisions[1].followup = {title: "Later", recommended_action: "Rename.", acceptance_criteria: ["Renamed."], issue_number: 7, issue_url: "https://github.com/example/project/issues/7"}' \
+  'del(.kind)' \
+  '.round = 2' \
+  '.triage.mode = "light"' \
+  '.issue = 5' \
+  '.decisions[1] |= (.decision = "AMEND" | .amendment = {diff: "--- a\n", confirmed_by: "planner", confirmed_at: "2026-01-02T00:00:00Z"})' \
+  '.amended_requirements = {before: ("a" * 40), after: ("b" * 40)}'; do
+  jq "$forged" "$artifact" >"$tmp/forged-planning.json"
+  [[ -n "$(source "$repo/scripts/lib/review-data.sh" && triage_artifact_errors "$tmp/forged-planning.json" "$repo/$planning_review")" ]] ||
+    fail "a planning triage was valid after: $forged"
+done
+# A planning triage is not published, and a feature fix session does not apply it.
+if run_triage "$repo" y --publish "${artifact#"$repo"/}"; then fail "a planning triage was published"; fi
+grep -Fq "is not published" "$repo.out" || fail "publishing a planning triage was not refused with its reason: $(cat "$repo.out")"
+
+# A critical or major planning finding is never accepted or deferred: by the
+# agent, or by the owner's own decisions.
+repo="$(setup_planning_repo planning-major-accepted)"
+MOCK_OUTPUT="$(jq '.decisions[0].decision = "ACCEPT"' <<<"$planning_decisions")" expect_no_triage "$repo" "a major planning finding accepted" "$planning_review"
+grep -Fq "major finding M1 must be FIX_NOW, AMEND, or ESCALATE" "$repo.out" || fail "an accepted major planning finding was not refused: $(cat "$repo.out")"
+jq '.decisions[0].decision = "DEFER"' <<<"$planning_decisions" >"$tmp/planning-owner.json"
+expect_no_triage "$repo" "a major planning finding deferred by the owner" "$planning_review" --decisions "$tmp/planning-owner.json" --reason "Later."
+grep -Fq "major finding M1 must be FIX_NOW, AMEND, or ESCALATE" "$repo.out" || fail "a deferred major planning finding of the owner was not refused: $(cat "$repo.out")"
+
+# The owner approves planning decisions: never unattended, and only in the
+# planning worktree of the review.
+repo="$(setup_planning_repo planning-unattended)"
+MOCK_OUTPUT="$planning_decisions" expect_no_triage "$repo" "an unattended planning triage" "$planning_review" --unattended
+grep -Fq "cannot run with --unattended" "$repo.out" || fail "an unattended planning triage was not refused with its reason"
+[[ ! -e "$repo.log" ]] || fail "an agent started for an unattended planning triage"
+repo="$(setup_planning_repo planning-other-branch)"
+git -C "$repo" switch -q -c planning/other
+MOCK_OUTPUT="$planning_decisions" expect_no_triage "$repo" "a planning triage outside its worktree" "$planning_review"
+grep -Fq "triage it in that planning worktree" "$repo.out" || fail "a planning triage outside its worktree was not refused with its reason"
+
 echo "triage-review tests passed"

@@ -144,11 +144,13 @@ run_review "$repo" --agent codex --model model-c || {
   fail "the re-review was not numbered"
 grep -Fq "planning-project-bootstrap-review-01.json" "$repo.log" || fail "the re-review did not reference the previous review"
 
-# A planning review is not triaged as a feature review.
-if (cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/triage-review.sh "$artifact.json" </dev/null) >"$repo.triage.out" 2>&1; then
-  fail "a planning review was accepted by triage-review.sh"
+# A planning review is triaged as a planning triage (Issue 538), only while
+# it is current: the stale round 1 is refused with the next step.
+if (cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/triage-review.sh "$artifact.json" --agent claude --model model-t </dev/null) >"$repo.triage.out" 2>&1; then
+  fail "a stale planning review was triaged"
 fi
-grep -Fq "review-planning.sh" "$repo.triage.out" || fail "triage-review.sh did not point to the planning review"
+grep -Fq "the planning review is stale" "$repo.triage.out" && grep -Fq "review-planning.sh" "$repo.triage.out" ||
+  { cat "$repo.triage.out" >&2; fail "triage-review.sh did not point to a new planning review"; }
 
 # A planning document deleted relative to the base appears in the reviewer's diff.
 repo="$(setup_repo deleted-adr)"

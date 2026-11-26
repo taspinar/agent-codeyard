@@ -94,19 +94,22 @@ and a readable `.md` report next to it. The script suggests the next step:
 ./scripts/revise-planning.sh --review .agents/reviews/planning-project-bootstrap-review-01.json
 ```
 
-The planner first decides per finding, read-only, and you see:
+The script first triages the findings with `triage-review.sh`: a read-only
+triage agent decides per finding, and you see:
 
 ```text
-ADOPT
-- M1 [major] Household access is required but no feature plans it — The requirements make access per household part of the MVP.
-REJECT
-- MIN1 [minor] F02 has no acceptance criterion for an empty week — An empty week is the default state and covered by F02's criteria.
+FIX_NOW
+- M1 Household access is required but no feature plans it — The requirements make access per household part of the MVP.
+DEFER
+- (none)
+ACCEPT
+- MIN1 F02 has no acceptance criterion for an empty week — An empty week is the default state and covered by F02's criteria.
 ...
-Record these decisions and revise the planning for the adopted findings? [y/N]
+Proceed with this triage? [y/N]
 ```
 
-After `y`, the decisions are recorded in `…-review-01-revision.json` and the
-planner changes only the architecture, roadmap, and ADRs, for example by adding
+After `y`, the decisions are recorded in `.agents/triage/…-review-01-triage.json`
+and the planner changes only the architecture, roadmap, and ADRs, for example by adding
 `F03 — Household access`. The review is now stale, so run round 2:
 
 ```bash
@@ -114,7 +117,7 @@ planner changes only the architecture, roadmap, and ADRs, for example by adding
 ```
 
 Repeat until a round passes, or until its remaining minor findings are
-rejected or deferred.
+accepted or deferred.
 
 ## 3. Approve and merge the planning
 
@@ -275,7 +278,7 @@ The next feature starts again at step 4 with `create-feature-issue.sh F02`.
 | Item | Where |
 |---|---|
 | Idea, requirements, architecture, roadmap, ADRs, planning approval | `docs/`, committed with the planning PR |
-| Planning reviews and revisions | `.agents/reviews/` in the planning worktree, not committed; summarized in `PLANNING_APPROVAL.md` |
+| Planning reviews and their triage | `.agents/reviews/` and `.agents/triage/` in the planning worktree, not committed; summarized in `PLANNING_APPROVAL.md` |
 | Feature Issue `#12` and follow-up Issue for `MIN1` | GitHub |
 | Feature reviews and triage | `.agents/` in the feature worktree, not committed; published as a comment on `#12` |
 | Handoff note, manual steps, verification record | `.agents/` in the feature worktree, not committed; the manual steps are copied into the commit message and the pull request |

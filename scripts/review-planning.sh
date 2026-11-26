@@ -105,7 +105,7 @@ result_file="$tmp_work/result.json"
   GIT_INDEX_FILE="$tmp_work/fingerprint-files.index" git -C "$root" diff --cached --no-color "$merge_base" -- "${scope[@]}"
 } >"$context_file"
 
-# The owner's decisions on findings that the planner escalated in earlier
+# The owner's decisions on findings that the triage escalated in earlier
 # rounds (finish-planning.sh --resolve), each with the planning documents that
 # changed since it was made, so the reviewer can tell whether it still holds.
 resolutions="$(exception_planning_records "$root" "$name")"
@@ -178,7 +178,8 @@ if [[ -n "$previous_review" ]]; then
 
 This is a re-review. Read the previous review (JSON):
 .agents/reviews/$(basename "$previous_review")
-and any revision decisions next to it (*-revision.json). Check whether its
+and the decisions of its triage, if any
+(.agents/triage/$(basename "$previous_review" .json)-triage*.json). Check whether its
 findings have been resolved, but review the complete current planning."
 fi
 
@@ -186,7 +187,7 @@ if [[ "$resolution_count" -gt 0 ]]; then
   prompt+="
 
 The owner decided on $resolution_count finding(s) of earlier rounds that the
-planner escalated; standard input lists them under \"The owner's decisions on
+triage escalated; standard input lists them under \"The owner's decisions on
 earlier findings\". Apply the \"Owner decisions\" rules of your contract."
 fi
 
