@@ -129,11 +129,21 @@ _review_data_rules='
        end)
     end;
 
-  # Input: {decisions}. $severity maps each finding id of the review to its severity.
-  # $excepted holds the IDs of the critical and major findings that the owner
-  # accepts or defers, each with an exception record (lib/exceptions.sh).
-  def triage_decision_rules($severity; $excepted):
-    if type != "object" or (.decisions | type) != "array" then
+  # Input: {decisions}. $kind is the kind of the review, "feature" or
+  # "planning". $severity maps each finding id of the review to its severity.
+  # $excepted holds the IDs of the critical and major findings of a feature
+  # review that the owner accepts or defers, each with an exception record
+  # (lib/exceptions.sh); a planning triage has none.
+  #
+  # A planning triage has two decisions more: ESCALATE (a product decision
+  # of the owner) and AMEND (a diff of the approved requirements, which the
+  # owner confirms); its DEFER needs no follow-up Issue. A critical or major
+  # planning finding is resolved only by a revision of the planning (FIX_NOW),
+  # an amendment, or the owner (ESCALATE): the owner record of a planning
+  # review resolves a minor finding only (finish-planning.sh --resolve).
+  def triage_decision_rules($kind; $severity; $excepted):
+    ($kind == "planning") as $planning
+    | if type != "object" or (.decisions | type) != "array" then
       "the result must be an object with a decisions array"
     else
       unexpected(["decisions"]; "the result"),
@@ -149,17 +159,27 @@ _review_data_rules='
         elif ($d.finding_id | type) != "string" or ($severity | has($d.finding_id) | not) then
           "decision \($n) refers to an unknown finding: \($d.finding_id | tostring)"
         else
-          ($d | unexpected(["decision", "finding_id", "followup", "rationale"]; "decision \($n)")),
+          ($d | unexpected(["amendment", "decision", "finding_id", "followup", "rationale"]; "decision \($n)")),
           ($d | missing(["decision", "finding_id", "followup", "rationale"]; "decision \($n)")),
           (if ($d.decision | IN("FIX_NOW", "DEFER", "ACCEPT")) then empty
+           elif ($d.decision | IN("ESCALATE", "AMEND")) then
+             (if $planning then empty
+              else "finding \($d.finding_id) is \($d.decision): ESCALATE and AMEND are decisions of a planning triage only" end)
            else "finding \($d.finding_id) has an invalid decision" end),
           (if ($d.rationale | nonempty) then empty
            else "finding \($d.finding_id) has no rationale" end),
-          (if ($severity[$d.finding_id] | IN("critical", "major")) and $d.decision != "FIX_NOW"
-              and ($excepted | index($d.finding_id) | not) then
+          (if ($severity[$d.finding_id] | IN("critical", "major")) | not then empty
+           elif $planning then
+             (if ($d.decision | IN("ACCEPT", "DEFER")) then
+                "\($severity[$d.finding_id]) finding \($d.finding_id) must be FIX_NOW, AMEND, or ESCALATE: a planning finding of this severity is resolved by a revision of the planning, an amendment of the requirements, or the owner, never accepted or deferred"
+              else empty end)
+           elif $d.decision != "FIX_NOW" and ($excepted | index($d.finding_id) | not) then
              "\($severity[$d.finding_id]) finding \($d.finding_id) must be FIX_NOW: only the owner accepts or defers it, with an exception record (triage-review.sh --decisions)"
            else empty end),
-          (if $d.decision == "DEFER" then
+          (if $planning then
+             (if $d.followup == null then empty
+              else "finding \($d.finding_id) must not have a follow-up: a planning triage creates no Issue" end)
+           elif $d.decision == "DEFER" then
              (if ($d.followup | type) != "object" then
                 "deferred finding \($d.finding_id) needs a follow-up"
               else
@@ -176,36 +196,6 @@ _review_data_rules='
               end)
            elif $d.followup != null then
              "finding \($d.finding_id) is not deferred and must not have a follow-up"
-           else empty end)
-        end)
-    end;
-
-  # Input: {decisions}. Revision decisions of the project planner about the
-  # findings of a planning review.
-  def revision_decision_rules($severity):
-    if type != "object" or (.decisions | type) != "array" then
-      "the result must be an object with a decisions array"
-    else
-      unexpected(["decisions"]; "the result"),
-      ([.decisions[] | objects | .finding_id] as $decided
-       | ($severity | keys[]) as $id
-       | ($decided | map(select(. == $id)) | length) as $count
-       | if $count == 0 then "finding \($id) has no revision decision"
-         elif $count > 1 then "finding \($id) has more than one revision decision"
-         else empty end),
-      (.decisions | to_entries[] | (.key + 1) as $n | .value as $d |
-        if ($d | type) != "object" then
-          "decision \($n) is not an object"
-        elif ($d.finding_id | type) != "string" or ($severity | has($d.finding_id) | not) then
-          "decision \($n) refers to an unknown finding: \($d.finding_id | tostring)"
-        else
-          ($d | unexpected(["amendment", "decision", "finding_id", "rationale"]; "decision \($n)")),
-          (if ($d.decision | IN("ADOPT", "REJECT", "DEFER", "ESCALATE", "AMEND")) then empty
-           else "finding \($d.finding_id) has an invalid decision" end),
-          (if ($d.rationale | nonempty) then empty
-           else "finding \($d.finding_id) has no rationale" end),
-          (if ($severity[$d.finding_id] | IN("critical", "major")) and ($d.decision | IN("REJECT", "DEFER")) then
-             "\($severity[$d.finding_id]) finding \($d.finding_id) must be adopted, amended, or escalated"
            else empty end),
           # An amendment is a diff of the approved requirements; only AMEND has one.
           (if $d.decision == "AMEND" then
@@ -473,9 +463,10 @@ review_render_markdown() {
 
 # triage_decision_errors <decisions-file> <review-json> [<excepted-json>]:
 # rules for a triage agent's decisions about the findings of a review, or
-# the owner's (--decisions). <excepted-json> is the array of the IDs of the
-# critical and major findings that the owner accepts or defers with an
-# exception record; none when it is not given.
+# the owner's (--decisions), by the kind of the review (feature or planning).
+# <excepted-json> is the array of the IDs of the critical and major findings
+# of a feature review that the owner accepts or defers with an exception
+# record; none when it is not given.
 triage_decision_errors() {
   review_data_is_json "$1" || {
     echo "the decisions are not exactly one JSON value"
@@ -483,7 +474,8 @@ triage_decision_errors() {
   }
 
   jq -r --slurpfile review "$2" --argjson excepted "${3:-[]}" "$_review_data_rules"'
-    triage_decision_rules($review[0].findings | map({key: .id, value: .severity}) | from_entries; $excepted)
+    triage_decision_rules(if $review[0].kind == "planning" then "planning" else "feature" end;
+                          $review[0].findings | map({key: .id, value: .severity}) | from_entries; $excepted)
   ' "$1"
 }
 
@@ -496,13 +488,27 @@ triage_source_review() {
          then .source_review else empty end' "$1"
 }
 
+# triage_kind <triage-json>: "planning" for the triage of a planning review,
+# "feature" otherwise: a triage without 'kind' is a feature triage.
+triage_kind() {
+  jq -r 'if type == "object" and .kind == "planning" then "planning" else "feature" end' "$1" 2>/dev/null || echo feature
+}
+
 # triage_artifact_errors <triage-json> <review-json> [<excepted-json>]: rules
 # for a stored, approved triage artifact, checked against its valid source
-# review. A triage is complete only when every deferred finding has its
+# review. The triage has the kind of its review: a feature triage has no
+# 'kind' and names the Issue; a planning triage has 'kind: planning' and
+# names the branch and the round of its review.
+#
+# A feature triage is complete only when every deferred finding has its
 # follow-up Issue. A critical or major finding is FIX_NOW unless the triage is
 # the owner's and the finding has the owner's valid exception record: the IDs
 # in <excepted-json>, or else the records stored next to the review's
 # repository (lib/exceptions.sh, exception_valid_findings).
+#
+# A planning triage creates no Issue. Its AMEND decisions record the diff of
+# the requirements and the owner's confirmation of exactly that diff, and the
+# triage names the requirements before and after them.
 triage_artifact_errors() {
   local excepted="${3:-}"
   local root
@@ -514,7 +520,7 @@ triage_artifact_errors() {
 
   if [[ -z "$excepted" ]]; then
     excepted='[]'
-    if jq -e --slurpfile review "$2" 'type == "object" and has("owner_directed") and (.decisions | type) == "array"
+    if jq -e --slurpfile review "$2" '$review[0].kind != "planning" and type == "object" and has("owner_directed") and (.decisions | type) == "array"
         and ([$review[0].findings[]? | select(.severity == "critical" or .severity == "major") | .id] as $blocking
              | any(.decisions[]; type == "object" and .decision != "FIX_NOW" and ((.finding_id as $id | $blocking | index($id)) != null)))' \
         "$1" >/dev/null 2>&1; then
@@ -526,11 +532,22 @@ triage_artifact_errors() {
   fi
 
   jq -r --slurpfile review "$2" --argjson excepted "$excepted" "$_review_data_rules"'
-    if type != "object" or .schema != "triage/v1" then
+    def utc: type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$");
+    (if $review[0].kind == "planning" then "planning" else "feature" end) as $kind
+    | ($kind == "planning") as $planning
+    | ($review[0].findings | map({key: .id, value: .severity}) | from_entries) as $severity
+    | if type != "object" or .schema != "triage/v1" then
       "the file is not a triage/v1 artifact"
+    elif (if has("kind") then .kind else "feature" end) != $kind or (has("kind") and .kind != "planning") then
+      "the triage is not of the kind of its review (\($kind)): a planning triage has \"kind\": \"planning\", a feature triage has no kind"
     else
-      unexpected(["approved_at", "decisions", "historical", "issue", "published_at", "review_verdict", "reviewed_tree",
-                  "owner_directed", "schema", "source_review", "triage", "unattended"]; "the triage"),
+      (if $planning then
+         unexpected(["amended_requirements", "approved_at", "branch", "decisions", "kind", "owner_directed",
+                     "review_verdict", "reviewed_tree", "round", "schema", "source_review", "triage"]; "the planning triage")
+       else
+         unexpected(["approved_at", "decisions", "historical", "issue", "published_at", "review_verdict", "reviewed_tree",
+                     "owner_directed", "schema", "source_review", "triage", "unattended"]; "the triage")
+       end),
       (if .unattended == null or .unattended == true then empty
        else "unattended must be true or absent" end),
       (if .historical == null or .historical == true then empty
@@ -543,12 +560,11 @@ triage_artifact_errors() {
          (.owner_directed | unexpected(["account", "directed_at", "original_proposal", "reason"]; "owner_directed")),
          (if (.owner_directed.reason | nonempty) then empty else "an owner-directed triage needs a reason" end),
          (if (.owner_directed.account | nonempty) then empty else "an owner-directed triage needs the account that directed it" end),
-         (if (.owner_directed.directed_at | type) == "string"
-             and (.owner_directed.directed_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) then empty
+         (if (.owner_directed.directed_at | utc) then empty
           else "owner_directed.directed_at must be a UTC timestamp" end),
          (if (.owner_directed.original_proposal // null) == null then empty
           else (.owner_directed.original_proposal
-                | triage_decision_rules($review[0].findings | map({key: .id, value: .severity}) | from_entries; [])
+                | triage_decision_rules($kind; $severity; [])
                 | "the original proposal is invalid: \(.)") end)
        end),
       # The publication of a triage is its comment on the Issue, which names
@@ -556,16 +572,20 @@ triage_artifact_errors() {
       # too could disagree with it. An artifact of an earlier version has it.
       (if has("published_at") | not then empty
        else "published_at is no longer part of a triage: its publication is the comment on the Issue. Remove the field (jq \u0027del(.published_at)\u0027) and publish the triage again with ./scripts/triage-review.sh --publish" end),
-      (if (.approved_at | type) == "string"
-          and (.approved_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) then empty
+      (if (.approved_at | utc) then empty
        else "the triage has no valid UTC approval timestamp" end),
-      (if .issue == $review[0].issue then empty
+      (if $planning then
+         (if .branch == $review[0].branch and .round == $review[0].round then empty
+          else "the planning triage and its review name different branches or rounds" end)
+       elif .issue == $review[0].issue then empty
        else "triage and review reference different source Issues" end),
       (if (.triage | type) == "object" and (.triage.agent | nonempty) and (.triage.model | nonempty) then empty
        else "triage must name its agent and model" end),
       # triage-review.sh writes the mode into every triage (Issue 520): a
-      # missing one is refused, never read as full.
-      (if (.triage | type) != "object" or (.triage.mode | IN("full", "light")) then empty
+      # missing one is refused, never read as full. A planning triage is full.
+      (if (.triage | type) != "object" then empty
+       elif $planning and .triage.mode != "full" then "the mode of a planning triage must be full"
+       elif (.triage.mode | IN("full", "light")) then empty
        elif .triage.mode == null then "triage.mode is missing: a triage records the mode it was made in (full or light)"
        else "triage.mode must be full or light" end),
       (if .review_verdict == $review[0].verdict and .reviewed_tree == $review[0].reviewed_tree then empty
@@ -578,11 +598,12 @@ triage_artifact_errors() {
          else empty end),
       (if (.decisions | type) == "array" then
          (.decisions[] | objects |
-           unexpected(["decision", "finding_id", "followup", "rationale", "severity", "title"];
+           unexpected(["decision", "finding_id", "followup", "rationale", "severity", "title"]
+                      + (if $planning then ["amendment"] else [] end);
              "the decision for \(.finding_id | tostring)"),
            missing(["decision", "finding_id", "followup", "rationale", "severity", "title"];
              "the decision for \(.finding_id | tostring)"),
-           (if (.followup | type) == "object" then
+           (if (.followup | type) == "object" and ($planning | not) then
               (.followup |
                 unexpected(["acceptance_criteria", "issue_number", "issue_url", "recommended_action", "title"];
                   "a follow-up"),
@@ -591,8 +612,27 @@ triage_artifact_errors() {
                     and (.issue_url | test("^https://[^ ]+/issues/[0-9]+$"))
                     and ((.issue_url | sub("^.*/"; "")) == (.issue_number | tostring)) then empty
                  else "a deferred finding has no valid follow-up Issue reference" end))
+            else empty end),
+           # A recorded amendment holds the diff and the owner'"'"'s confirmation
+           # of exactly that diff.
+           (if $planning and .decision == "AMEND" then
+              (if (.amendment | type) != "object" then "amended finding \(.finding_id) has no recorded amendment"
+               else
+                 (.amendment | unexpected(["confirmed_at", "confirmed_by", "diff"]; "the amendment of \(.finding_id)")),
+                 (if .amendment.confirmed_by == "owner" and (.amendment.confirmed_at | utc) then empty
+                  else "the amendment of \(.finding_id) has no confirmation by the owner" end)
+               end)
             else empty end))
        else empty end),
+      # The requirements as reviewed and as amended, when an amendment was applied.
+      (if $planning | not then empty
+       elif ([.decisions[]? | objects | select(.decision == "AMEND")] | length) == 0 then
+         (if has("amended_requirements") then "the planning triage amends nothing and must not name amended requirements" else empty end)
+       elif (.amended_requirements | type) == "object"
+            and ([.amended_requirements.before, .amended_requirements.after]
+                 | all(type == "string" and test("^[0-9a-f]{40,64}$")))
+            and (.amended_requirements | keys) == ["after", "before"] then empty
+       else "the planning triage does not name the requirements before and after its amendments" end),
       (has("owner_directed") as $owner | {
         decisions: (if (.decisions | type) == "array" then
           (.decisions | map(if type == "object" then {
@@ -601,135 +641,48 @@ triage_artifact_errors() {
             rationale,
             followup: (if (.followup | type) == "object"
                        then (.followup | del(.issue_number, .issue_url)) else .followup end)
-          } else . end))
+          } + (if has("amendment") then
+                 {amendment: (if (.amendment | type) == "object" then .amendment.diff else .amendment end)}
+               else {} end)
+          else . end))
         else .decisions end)
-      } | triage_decision_rules($review[0].findings | map({key: .id, value: .severity}) | from_entries;
-                                if $owner then $excepted else [] end))
+      } | triage_decision_rules($kind; $severity; if $owner and ($planning | not) then $excepted else [] end))
     end
   ' "$1"
 }
 
-# revision_decision_errors <decisions-file> <review-json>: rules for the
-# project planner's decisions about the findings of a planning review.
-revision_decision_errors() {
-  review_data_is_json "$1" || {
-    echo "the decisions are not exactly one JSON value"
-    return 0
-  }
-
-  jq -r --slurpfile review "$2" "$_review_data_rules"'
-    revision_decision_rules($review[0].findings | map({key: .id, value: .severity}) | from_entries)
-  ' "$1"
-}
-
-# revision_artifact_errors <revision-json> <review-json>: rules for a stored
-# revision, checked against its planning review.
-revision_artifact_errors() {
-  review_data_is_json "$1" || {
-    echo "the revision is not exactly one JSON value"
-    return 0
-  }
-
-  jq -r --slurpfile review "$2" "$_review_data_rules"'
-    if type != "object" or .schema != "revision/v1" then
-      "the file is not a revision/v1 artifact"
-    else
-      unexpected(["amended_requirements", "approved_at", "branch", "decisions", "planner", "review_round",
-                  "reviewed_tree", "schema", "source_review"]; "the revision"),
-      (if (.approved_at | type) == "string"
-          and (.approved_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) then empty
-       else "the revision has no valid UTC approval timestamp" end),
-      (if .branch == $review[0].branch and .review_round == $review[0].round
-          and .reviewed_tree == $review[0].reviewed_tree then empty
-       else "the revision does not describe its planning review" end),
-      (if (.planner | type) == "object" and (.planner.agent | nonempty) and (.planner.model | nonempty) then empty
-       else "the revision must name its planner agent and model" end),
-      ($review[0].findings | map({key: .id, value: {severity, title}}) | from_entries) as $source
-      | (if (.decisions | type) == "array" then
-           (.decisions[] | objects |
-             unexpected(["amendment", "decision", "finding_id", "rationale", "severity", "title"]; "the decision for \(.finding_id | tostring)"),
-             (if $source[.finding_id] == null or {severity, title} == $source[.finding_id] then empty
-              else "the decision for \(.finding_id) does not match the severity and title in the review" end),
-             # A recorded amendment holds the diff and the confirmation by the owner
-             # of exactly that diff.
-             (if .decision != "AMEND" then empty
-              elif (.amendment | type) != "object" then "amended finding \(.finding_id) has no recorded amendment"
-              else
-                (.amendment | unexpected(["confirmed_at", "confirmed_by", "diff"]; "the amendment of \(.finding_id)")),
-                (if .amendment.confirmed_by == "owner"
-                    and (.amendment.confirmed_at | type) == "string"
-                    and (.amendment.confirmed_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
-                 then empty
-                 else "the amendment of \(.finding_id) has no confirmation by the owner" end)
-              end))
-         else empty end),
-      # The requirements as reviewed and as amended, when an amendment was applied.
-      (if ([.decisions[]? | objects | select(.decision == "AMEND")] | length) == 0 then
-         (if has("amended_requirements") then "the revision amends nothing and must not name amended requirements" else empty end)
-       elif (.amended_requirements | type) == "object"
-            and ([.amended_requirements.before, .amended_requirements.after]
-                 | all(type == "string" and test("^[0-9a-f]{40,64}$")))
-            and (.amended_requirements | keys) == ["after", "before"] then empty
-       else "the revision does not name the requirements before and after its amendments" end),
-      ({decisions: (if (.decisions | type) == "array"
-                    then (.decisions | map(if type == "object"
-                                           then {finding_id, decision, rationale,
-                                                 amendment: (if (.amendment | type) == "object" then .amendment.diff else .amendment end)}
-                                           else . end))
-                    else .decisions end)}
-       | revision_decision_rules($review[0].findings | map({key: .id, value: .severity}) | from_entries))
-    end
-  ' "$1"
-}
-
-# revision_render_markdown <revision-json> <source-name>
-revision_render_markdown() {
-  jq -r --arg source "$2" '
-    def group($decision; $heading):
-      "## \($heading)\n\n" +
-      ([.decisions[] | select(.decision == $decision)] as $items
-       | if ($items | length) == 0 then "None.\n"
-         else ($items | map("### \(.finding_id). \(.title)\n\n- Severity: \(.severity)\n- Rationale: \(.rationale)\n") | join("\n")) end);
-    "<!-- Generated from \($source). Do not edit; this file is never read by the scripts. -->\n\n" +
-    "# Planning Revision — \(.branch), review round \(.review_round)\n\n" +
-    "Source review: `\(.source_review)`\n\n" +
-    "Planner: \(.planner.agent) (\(.planner.model))\n\n" +
-    "Approved at: \(.approved_at)\n\n" +
-    group("ADOPT"; "Adopted") + "\n" +
-    group("REJECT"; "Rejected") + "\n" +
-    group("DEFER"; "Deferred") + "\n" +
-    group("ESCALATE"; "Escalated to the human") + "\n" +
-    "## Requirements amended with the owner'"'"'s confirmation\n\n" +
-    ([.decisions[] | select(.decision == "AMEND")] as $items
-     | if ($items | length) == 0 then "None.\n"
-       else ($items | map("### \(.finding_id). \(.title)\n\n- Severity: \(.severity)\n- Rationale: \(.rationale)\n" +
-                         "- Confirmed by the owner at: \(.amendment.confirmed_at)\n\n```diff\n\(.amendment.diff | rtrimstr("\n"))\n```\n")
-             | join("\n")) end)
-  ' "$1"
-}
-
-# triage_render_markdown <triage-json> <source-name>
+# triage_render_markdown <triage-json> <source-name>: the report of a
+# feature or a planning triage.
 triage_render_markdown() {
   jq -r --arg source "$2" '
+    def item:
+      "### \(.finding_id). \(.title)\n\n" +
+      "- Severity: \(.severity)\n" +
+      "- Rationale: \(.rationale)\n" +
+      (if .followup != null then
+         "- Follow-up Issue: \(.followup.title)" +
+         (if .followup.issue_number != null then " ([#\(.followup.issue_number)](\(.followup.issue_url)))" else "" end) + "\n" +
+         "- Recommended action: \(.followup.recommended_action)\n" +
+         "- Acceptance criteria:\n" + (.followup.acceptance_criteria | map("  - \(.)\n") | join(""))
+       else "" end) +
+      (if (.amendment | type) == "object" then
+         "- Confirmed by the owner at: \(.amendment.confirmed_at)\n\n```diff\n\(.amendment.diff | rtrimstr("\n"))\n```\n"
+       else "" end);
     def group($decision; $heading):
       "## \($heading)\n\n" +
       ([.decisions[] | select(.decision == $decision)] as $items
        | if ($items | length) == 0 then "None.\n"
-         else ($items | map(
-           "### \(.finding_id). \(.title)\n\n" +
-           "- Severity: \(.severity)\n" +
-           "- Rationale: \(.rationale)\n" +
-           (if .followup != null then
-              "- Follow-up Issue: \(.followup.title)" +
-              (if .followup.issue_number != null then " ([#\(.followup.issue_number)](\(.followup.issue_url)))" else "" end) + "\n" +
-              "- Recommended action: \(.followup.recommended_action)\n" +
-              "- Acceptance criteria:\n" + (.followup.acceptance_criteria | map("  - \(.)\n") | join(""))
-            else "" end)
-         ) | join("\n")) end);
+         else ($items | map(item) | join("\n")) end);
+    (.kind == "planning") as $planning |
     "<!-- Generated from \($source). Do not edit; this file is never read by the scripts. -->\n\n" +
-    "# Review Triage\n\n" +
-    "Source review: `\(.source_review)`\n\n" +
-    "Source feature Issue: #\(.issue)\n\n" +
+    (if $planning then
+       "# Planning Triage — \(.branch), review round \(.round)\n\n" +
+       "Source review: `\(.source_review)`\n\n"
+     else
+       "# Review Triage\n\n" +
+       "Source review: `\(.source_review)`\n\n" +
+       "Source feature Issue: #\(.issue)\n\n"
+     end) +
     "Reviewer verdict: \(.review_verdict | gsub("_"; " "))\n\n" +
     (if .owner_directed != null then "Decisions: given by the owner, not proposed by an agent\n\n"
      else "Triage agent: \(.triage.agent) (\(.triage.model))\n\n" end) +
@@ -744,9 +697,17 @@ triage_render_markdown() {
              (.owner_directed.original_proposal.decisions | map("  - \(.finding_id): \(.decision) — \(.rationale)\n") | join("")) + "\n"
         end)
      else "" end) +
-    group("FIX_NOW"; "Fix now") + "\n" +
-    group("DEFER"; "Deferred") + "\n" +
-    group("ACCEPT"; "Accepted")
+    if $planning then
+      group("FIX_NOW"; "Fix now: the planning is revised") + "\n" +
+      group("DEFER"; "Deferred to a later feature or feature plan") + "\n" +
+      group("ACCEPT"; "Accepted: no change") + "\n" +
+      group("ESCALATE"; "Escalated to the owner") + "\n" +
+      group("AMEND"; "Requirements amended with the owner'"'"'s confirmation")
+    else
+      group("FIX_NOW"; "Fix now") + "\n" +
+      group("DEFER"; "Deferred") + "\n" +
+      group("ACCEPT"; "Accepted")
+    end
   ' "$1"
 }
 

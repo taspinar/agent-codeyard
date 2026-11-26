@@ -31,7 +31,7 @@ usage() {
   echo "to the existing approval. Anything else needs a change cycle:"
   echo "  ./scripts/start-planning.sh <name> --change <file>"
   echo
-  echo "--resolve records, for one minor finding that the planner escalated in the"
+  echo "--resolve records, for one minor finding that the triage escalated in the"
   echo "latest review round, that it does not apply (not-applicable) or that you"
   echo "accept the planning as it is with it (accepted). It refuses a major or critical"
   echo "finding: that needs a new review round after the planning documents changed,"
@@ -312,18 +312,22 @@ case "$current" in
   *) fail "could not compute the fingerprint of the planning documents." ;;
 esac
 
-# Every rejected, deferred, or escalated decision of every round, oldest first.
-shopt -s nullglob
-revisions=("$root/.agents/reviews/planning-${name}-review-"[0-9][0-9]-revision.json)
-shopt -u nullglob
+# The approved triage of every round (triage-review.sh, a planning triage):
+# the newest valid one of each review, oldest round first.
+triages=()
+for review in "${reviews[@]}"; do
+  candidate="$(review_approved_triage "$root" "$review")"
+  [[ -z "$candidate" ]] || triages+=("$candidate")
+done
+# Every accepted, deferred, or escalated decision of every round.
 decisions_file="$tmp_work/decisions.json"
 # The amendments of the requirements that you confirmed, of every round.
 amendments_file="$tmp_work/amendments.json"
-if [[ "${#revisions[@]}" -gt 0 ]]; then
-  jq -s '[.[] | .review_round as $round | .decisions[]
-          | select(.decision != "ADOPT" and .decision != "AMEND") | . + {round: $round}]' "${revisions[@]}" >"$decisions_file"
-  jq -s '[.[] | .review_round as $round | .decisions[]
-          | select(.decision == "AMEND") | . + {round: $round}]' "${revisions[@]}" >"$amendments_file"
+if [[ "${#triages[@]}" -gt 0 ]]; then
+  jq -s '[.[] | .round as $round | .decisions[]
+          | select(.decision != "FIX_NOW" and .decision != "AMEND") | . + {round: $round}]' "${triages[@]}" >"$decisions_file"
+  jq -s '[.[] | .round as $round | .decisions[]
+          | select(.decision == "AMEND") | . + {round: $round}]' "${triages[@]}" >"$amendments_file"
 else
   echo '[]' >"$decisions_file"
   echo '[]' >"$amendments_file"
@@ -331,7 +335,8 @@ fi
 
 round="$(jq -r '.round' "$latest")"
 verdict="$(jq -r '.verdict' "$latest")"
-revision="${latest%.json}-revision.json"
+# The approved triage of the latest round, or nothing.
+triage="$(review_approved_triage "$root" "$latest")"
 
 # Your decisions on escalated findings (--resolve), each joined to the
 # escalation it resolves. A decision on anything else resolves nothing.
@@ -357,15 +362,13 @@ resolve() {
   local errors
   local severity
 
-  [[ -f "$revision" ]] ||
-    fail "the findings of round $round have no revision decisions. Run ./scripts/revise-planning.sh --review $latest_relative."
-  errors="$(revision_artifact_errors "$revision" "$latest")"
-  [[ -z "$errors" ]] || fail "the revision of round $round is invalid: ${errors//$'\n'/; }"
+  [[ -n "$triage" ]] ||
+    fail "the findings of round $round have no approved triage. Run ./scripts/revise-planning.sh --review $latest_relative."
   [[ "$(jq --arg id "$resolve_finding" '[.findings[] | select(.id == $id)] | length' "$latest")" -eq 1 ]] ||
     fail "$latest_relative (round $round, the latest) has no finding $resolve_finding."
-  [[ "$(jq -r --arg id "$resolve_finding" '.decisions[] | select(.finding_id == $id) | .decision' "$revision")" == "ESCALATE" ]] ||
-    fail "finding $resolve_finding of round $round is not escalated: only a finding that the planner escalated needs your decision."
-  # The severity is the review's, never an argument's or the planner's.
+  [[ "$(jq -r --arg id "$resolve_finding" '.decisions[] | select(.finding_id == $id) | .decision' "$triage")" == "ESCALATE" ]] ||
+    fail "finding $resolve_finding of round $round is not escalated: only a finding that the triage escalated needs your decision."
+  # The severity is the review's, never an argument's or the triage's.
   severity="$(jq -r --arg id "$resolve_finding" '.findings[] | select(.id == $id) | .severity' "$latest")"
   [[ "$severity" == "minor" ]] ||
     fail "finding $resolve_finding of round $round is $severity in the review: a decision records the owner's answer to a minor finding only. A $severity finding is resolved by a new review round after the planning documents changed, or by a change of the requirements (Project Grill, or a change cycle with ./scripts/start-planning.sh <name> --change <file>). Nothing was stored."
@@ -388,7 +391,7 @@ resolve() {
   [[ "$record_type" != "accepted" ]] || record_type="risk-accepted"
   exception_record "$tmp_work/review.json" "$latest_relative" "$review_sha256" "$resolve_finding" \
     "$record_type" "$resolve_reason" "" "$account" \
-    "$(jq -r --arg id "$resolve_finding" '.decisions[] | select(.finding_id == $id) | .rationale' "$revision")" >"$pending"
+    "$(jq -r --arg id "$resolve_finding" '.decisions[] | select(.finding_id == $id) | .rationale' "$triage")" >"$pending"
 
   echo "YOUR DECISION on an escalated finding of $latest_relative (round $round)."
   echo "This decision comes from you, not from an agent."
@@ -399,7 +402,7 @@ resolve() {
     [.findings[] | select(.id == $id)] | first
     | "  \(.id) (\(.severity)): \(.title)", "  Evidence: \(.evidence)", "  Impact: \(.impact)", "  Recommendation: \(.recommendation)"
   ' "$tmp_work/review.json"
-  jq -r '"  The planner escalated it: \(.planner_rationale)"' "$pending"
+  jq -r '"  The triage escalated it: \(.planner_rationale)"' "$pending"
   echo
   echo "The decision, exactly as it will be stored as $record_relative:"
   cat "$pending"
@@ -461,12 +464,10 @@ blocking="$(jq '[.findings[] | select(.severity == "critical" or .severity == "m
   fail "the latest planning review (round $round) has $blocking critical or major finding(s). Revise with ./scripts/revise-planning.sh and review again, or change the requirements; a decision with --resolve is for minor findings only."
 
 if [[ "$(jq '.findings | length' "$latest")" -gt 0 ]]; then
-  [[ -f "$revision" ]] ||
-    fail "the findings of round $round have no revision decisions. Run ./scripts/revise-planning.sh --review $latest_relative."
-  revision_errors="$(revision_artifact_errors "$revision" "$latest")"
-  [[ -z "$revision_errors" ]] || fail "the revision of round $round is invalid: ${revision_errors//$'\n'/; }"
-  [[ "$(jq '[.decisions[] | select(.decision == "ADOPT")] | length' "$revision")" -eq 0 ]] ||
-    fail "round $round has adopted findings that are not applied yet. Run ./scripts/revise-planning.sh --review $latest_relative and review again."
+  [[ -n "$triage" ]] ||
+    fail "the findings of round $round have no approved triage. Run ./scripts/revise-planning.sh --review $latest_relative."
+  [[ "$(jq '[.decisions[] | select(.decision == "FIX_NOW")] | length' "$triage")" -eq 0 ]] ||
+    fail "round $round has FIX_NOW findings that are not applied yet. Run ./scripts/revise-planning.sh --review $latest_relative and review again."
 fi
 
 escalated_now="$(jq -r --argjson round "$round" '
@@ -584,7 +585,7 @@ fi
   if [[ "$(jq 'length' "$amendments_file")" -gt 0 ]]; then
     echo "## Requirements amended with the owner's confirmation"
     echo
-    echo "Proposed by the planner for a finding (\`revise-planning.sh\`, decision AMEND),"
+    echo "Proposed by the triage for a finding (\`triage-review.sh\` of \`revise-planning.sh\`, decision AMEND),"
     echo "applied to \`docs/PROJECT_REQUIREMENTS.md\` only after the project owner confirmed"
     echo "exactly this diff at a terminal."
     echo

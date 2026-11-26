@@ -67,10 +67,10 @@ export const planning: Step[] = [
   {
     id: "address-the-findings",
     title: "Address the review findings",
-    summary: "The planning agent proposes a decision per finding, you approve them, and a changed plan is reviewed again.",
-    text: "The planning agent proposes a decision per finding: adopt, reject, defer or escalate to you. You approve the decisions, and a changed plan is reviewed again.",
+    summary: "The triage agent proposes a decision per finding, you approve them, the planning agent changes the plan, and it is reviewed again.",
+    text: "The triage agent proposes a decision per finding, as for a feature: fix now, accept, defer, escalate to you, or amend the requirements. You approve the decisions, the planning agent changes the plan for the findings to fix, and a changed plan is reviewed again.",
     facts: [
-      ["who", "You and the planning agent"],
+      ["who", "You, the triage agent, and the planning agent"],
       ["script", "`./scripts/revise-planning.sh`"],
       ["where", "The planning worktree"],
       ["your decision", "You approve the decisions; an escalated finding needs your answer: change the requirements, or, for a minor finding, record your decision with `finish-planning.sh --resolve`"],

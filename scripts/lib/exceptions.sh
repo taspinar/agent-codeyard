@@ -10,7 +10,7 @@
 # not applicable or that its risk is accepted: scripts/record-exception.sh,
 # or scripts/triage-review.sh --decisions when the owner's triage accepts or
 # defers the finding. A planning review has the same record for the owner's
-# decision on a minor finding that the planner escalated
+# decision on a minor finding that the triage escalated
 # (scripts/finish-planning.sh --resolve, 'kind: planning'); a record without
 # 'kind' is a feature record, as every record was before the field existed.
 # The record is .agents/exceptions/<review-basename>-<finding-id>.json, which

@@ -23,11 +23,13 @@ source "$source_root/tests/lib-fakes.sh"
 make_fake_agents "$tmp/bin"
 
 review=".agents/reviews/planning-project-bootstrap-review-01.json"
-revision=".agents/reviews/planning-project-bootstrap-review-01-revision"
+# The planning triage of the review (triage-review.sh): one triage/v1 artifact
+# with kind planning, next to the triages of the features.
+revision=".agents/triage/planning-project-bootstrap-review-01-triage"
 valid_decisions='{"decisions": [
-  {"finding_id": "M1", "decision": "ADOPT", "rationale": "Offline use is an MVP requirement."},
-  {"finding_id": "MIN1", "decision": "REJECT", "rationale": "The name follows the requirements."},
-  {"finding_id": "S1", "decision": "ESCALATE", "rationale": "Sharing scope is a product decision."}
+  {"finding_id": "M1", "decision": "FIX_NOW", "rationale": "Offline use is an MVP requirement.", "followup": null, "amendment": null},
+  {"finding_id": "MIN1", "decision": "ACCEPT", "rationale": "The name follows the requirements.", "followup": null, "amendment": null},
+  {"finding_id": "S1", "decision": "ESCALATE", "rationale": "Sharing scope is a product decision.", "followup": null, "amendment": null}
 ]}'
 export MOCK_OUTPUT="$valid_decisions"
 
@@ -37,7 +39,7 @@ setup_repo() {
 
   mkdir -p "$repo/docs/decisions" "$repo/.agents/reviews"
   copy_workflow "$repo"
-  printf 'project-planner: claude model-p\n' >"$repo/.agents/agents.conf"
+  printf 'project-planner: claude model-p\ntriage: claude model-t\n' >"$repo/.agents/agents.conf"
   printf '# Agents\n' >"$repo/AGENTS.md"
   printf '# Project Requirements\n\nStatus: Approved\nApproved at: 2026-01-01T00:00:00Z\n\n## MVP scope\n\nOffline recipes.\n' \
     >"$repo/docs/PROJECT_REQUIREMENTS.md"
@@ -67,7 +69,26 @@ setup_repo() {
   printf '%s\n' "$repo"
 }
 
+# run_revise <repo> <answer> <argument>...: revise-planning.sh at a
+# pseudo-terminal, as the owner approves a planning triage, answering
+# <answer>. Its status is kept in a file, since not every 'script' passes it
+# on, and the carriage returns of the terminal are removed from the output.
 run_revise() {
+  local repo="$1"
+  local answer="$2"
+  local command
+
+  shift 2
+  rm -f "$repo.status"
+  command="cd $(printf '%q' "$repo") && PATH=$(printf '%q' "$tmp/bin:$ISOLATED_PATH") MOCK_AGENT_LOG=$(printf '%q' "$repo.log") ./scripts/revise-planning.sh $(printf '%q ' "$@"); echo \$? >$(printf '%q' "$repo.status")"
+  pty_run "$answer"$'\n' "$command" 2>&1 | tr -d '\r' >"$repo.out" || true
+  [[ -f "$repo.status" ]] || fail "revise-planning.sh did not end at the terminal: $(cat "$repo.out")"
+  return "$(cat "$repo.status")"
+}
+
+# run_revise_piped <repo> <answer> <argument>...: the same with <answer> on a
+# pipe instead of a terminal.
+run_revise_piped() {
   local repo="$1"
   local answer="$2"
   shift 2
@@ -85,20 +106,30 @@ write_sessions() {
 
 add_offline_feature="printf '\\n## F02 — Offline use\\n\\n- Goal: work offline.\\n' >>docs/roadmap.md"
 
-# The planner decides read-only; after approval the decisions are recorded and
-# a write session revises exactly the adopted findings.
+# The triage decides read-only (triage-review.sh); after approval the decisions are recorded and
+# a write session revises exactly the FIX_NOW findings.
 repo="$(setup_repo revise)"
 MOCK_WRITE_ACTION="$add_offline_feature" run_revise "$repo" y --review "$review" || {
   cat "$repo.out" >&2
   fail "revising the planning failed"
 }
 [[ -f "$repo/$revision.json" && -f "$repo/$revision.md" ]] || fail "the revision and its report were not recorded"
-[[ "$(jq -c '[.schema, .review_round, (.decisions | map(.decision))]' "$repo/$revision.json")" == \
-  '["revision/v1",1,["ADOPT","REJECT","ESCALATE"]]' ]] || fail "the recorded decisions are wrong"
-grep -Fq -- "--tools Read,Glob,Grep" "$repo.log" || fail "the planner did not decide read-only"
-grep -Fq -- "--json-schema" "$repo.log" || fail "the planner was not given the revision schema"
+[[ "$(jq -c '[.schema, .kind, .branch, .round, .triage.mode, (.decisions | map(.decision))]' "$repo/$revision.json")" == \
+  '["triage/v1","planning","planning/project-bootstrap",1,"full",["FIX_NOW","ACCEPT","ESCALATE"]]' ]] ||
+  fail "the recorded decisions are wrong: $(cat "$repo/$revision.json")"
+jq -e '[.decisions[] | has("amendment")] | any | not' "$repo/$revision.json" >/dev/null ||
+  fail "a decision without an amendment recorded the field"
+(source "$repo/scripts/lib/review-data.sh" && [[ -z "$(triage_artifact_errors "$repo/$revision.json" "$repo/$review")" ]]) ||
+  fail "the recorded planning triage is invalid"
+grep -Fq "# Planning Triage — planning/project-bootstrap, review round 1" "$repo/$revision.md" ||
+  fail "the report is not that of a planning triage"
+grep -Fq -- "--tools Read,Glob,Grep" "$repo.log" || fail "the triage did not decide read-only"
+grep -Fq -- "--json-schema" "$repo.log" || fail "the triage was not given the triage schema"
+grep -Fq -- "--model model-t" "$repo.log" || fail "the triage did not use the agent of the role triage"
+grep -Fq "triage-reviewer.md, section" "$repo.log" || fail "the triage was not given the planning triage contract"
+[[ ! -e "$repo/.agents/reviews/planning-project-bootstrap-review-01-revision.json" ]] || fail "a revision artifact was written"
 [[ "$(write_sessions "$repo")" -eq 1 ]] || fail "exactly one write session was expected"
-grep -Fq "M1. Offline use is unplanned" "$repo.log" || fail "the adopted finding was not passed to the planner"
+grep -Fq "M1. Offline use is unplanned" "$repo.log" || fail "the FIX_NOW finding was not passed to the planner"
 if grep -Fq "Feature name is vague" "$repo.log" || grep -Fq "Consider sharing" "$repo.log"; then
   fail "a finding that was not adopted was passed to the write session"
 fi
@@ -120,6 +151,19 @@ if run_revise "$repo" y --review "$review" --unattended; then fail "a revision r
 grep -Fq "cannot run with --unattended" "$repo.out" || fail "the refusal of an unattended revision gave no reason"
 [[ ! -e "$repo.log" ]] || fail "an agent started for an unattended revision"
 
+# A planning triage is approved only at a terminal: an approval on a pipe is
+# refused, with or without an amendment, and records and changes nothing.
+repo="$(setup_repo piped-approval)"
+roadmap_before="$(git -C "$repo" hash-object docs/roadmap.md)"
+if MOCK_WRITE_ACTION="$add_offline_feature" run_revise_piped "$repo" y --review "$review"; then
+  fail "a planning triage was approved on a pipe"
+fi
+grep -Fq "must be a terminal" "$repo.out" || fail "the refusal of a piped approval does not say why: $(cat "$repo.out")"
+grep -Fq "Proceed with this triage?" "$repo.out" && fail "the approval was asked on a pipe"
+[[ ! -e "$repo/$revision.json" && "$(write_sessions "$repo")" -eq 0 ]] ||
+  fail "a piped approval recorded the triage or started a write session"
+[[ "$(git -C "$repo" hash-object docs/roadmap.md)" == "$roadmap_before" ]] || fail "a piped approval changed the planning"
+
 # Declining records nothing and changes nothing.
 repo="$(setup_repo decline)"
 run_revise "$repo" n --review "$review" || fail "declining returned an error"
@@ -131,18 +175,19 @@ run_revise "$repo" n --review "$review" || fail "declining returned an error"
 for invalid in \
   "not json" \
   '{"decisions": {}}' \
-  "$(jq '.decisions[0].decision = "REJECT"' <<<"$valid_decisions")" \
+  "$(jq '.decisions[0].decision = "ACCEPT"' <<<"$valid_decisions")" \
   "$(jq '.decisions[0].decision = "DEFER"' <<<"$valid_decisions")" \
   "$(jq 'del(.decisions[2])' <<<"$valid_decisions")" \
   "$(jq '.decisions += [.decisions[1]]' <<<"$valid_decisions")" \
   "$(jq '.decisions[1].finding_id = "MIN9"' <<<"$valid_decisions")" \
   "$(jq '.decisions[1].decision = "LATER"' <<<"$valid_decisions")" \
   "$(jq '.decisions[1].rationale = ""' <<<"$valid_decisions")" \
-  "$(jq '.decisions[1].severity = "minor"' <<<"$valid_decisions")"; do
+  "$(jq '.decisions[1].severity = "minor"' <<<"$valid_decisions")" \
+  "$(jq '.decisions[1] |= (.decision = "DEFER" | .followup = {title: "Later", recommended_action: "Rename.", acceptance_criteria: ["Renamed."]})' <<<"$valid_decisions")"; do
   repo="$(setup_repo "invalid-$(grep -c . "$tmp/invalid-count" 2>/dev/null || true)")"
   echo x >>"$tmp/invalid-count"
   if MOCK_OUTPUT="$invalid" run_revise "$repo" y --review "$review"; then
-    fail "invalid revision decisions were accepted"
+    fail "invalid planning triage decisions were accepted: $invalid"
   fi
   [[ ! -e "$repo/$revision.json" ]] || fail "invalid decisions were recorded"
   [[ "$(grep -c '^AGENT=' "$repo.log")" -eq 2 ]] || fail "invalid decisions were not retried exactly once"
@@ -195,13 +240,13 @@ MOCK_WRITE_ACTION="$add_offline_feature" run_revise "$repo" y --review "$review"
 }
 [[ "$(grep -c '^AGENT=' "$repo.log")" -eq 1 ]] || fail "resuming decided again instead of applying the recorded decisions"
 
-# Without adopted findings no document is changed.
+# Without FIX_NOW findings no document is changed.
 repo="$(setup_repo nothing-adopted)"
 MOCK_OUTPUT="$(jq '.decisions[0].decision = "ESCALATE"' <<<"$valid_decisions")" run_revise "$repo" y --review "$review" || {
   cat "$repo.out" >&2
-  fail "a revision without adopted findings failed"
+  fail "a revision without FIX_NOW findings failed"
 }
-[[ "$(write_sessions "$repo")" -eq 0 ]] || fail "a write session started without adopted findings"
+[[ "$(write_sessions "$repo")" -eq 0 ]] || fail "a write session started without FIX_NOW findings"
 
 # AMEND: a finding caused by the approved requirements. The planner proposes
 # a diff of them; it is applied only after the owner confirms it at a
@@ -215,7 +260,7 @@ amend_diff='--- a/docs/PROJECT_REQUIREMENTS.md
 +Offline recipes, stored on the device.
 '
 amend_decisions="$(jq --arg diff "$amend_diff" '
-  .decisions[0] = {finding_id: "M1", decision: "AMEND", amendment: $diff,
+  .decisions[0] = {finding_id: "M1", decision: "AMEND", amendment: $diff, followup: null,
                    rationale: "The requirements leave the storage of offline recipes open."}' <<<"$valid_decisions")"
 align_roadmap="printf '\\n## F02 — Offline storage\\n\\n- Goal: store recipes on the device.\\n' >>docs/roadmap.md"
 
@@ -258,8 +303,8 @@ grep -Eq '^Approved at: 20[0-9]{2}-' "$repo/docs/PROJECT_REQUIREMENTS.md" &&
   fail "the revision does not record the owner's confirmation of exactly the diff"
 [[ "$(jq -r '.amended_requirements.after' "$repo/$revision.json")" == "$(requirements_blob "$repo")" ]] ||
   fail "the revision does not name the amended requirements"
-(source "$repo/scripts/lib/review-data.sh" && [[ -z "$(revision_artifact_errors "$repo/$revision.json" "$repo/$review")" ]]) ||
-  fail "the recorded revision with an amendment is invalid"
+(source "$repo/scripts/lib/review-data.sh" && [[ -z "$(triage_artifact_errors "$repo/$revision.json" "$repo/$review")" ]]) ||
+  fail "the recorded planning triage with an amendment is invalid"
 grep -Fq "Requirements amended with the owner's confirmation" "$repo/$revision.md" || fail "the report does not list the amendment"
 [[ "$(write_sessions "$repo")" -eq 1 ]] || fail "the amendment did not lead to one write session"
 grep -Fq "Align the architecture, the" "$repo.log" || fail "the write session was not asked to align with the amended requirements"
@@ -267,7 +312,7 @@ grep -Fq "F02 — Offline storage" "$repo/docs/roadmap.md" || fail "the write se
 
 # A recorded amendment is the owner's: one without confirmation is invalid.
 jq '.decisions[0].amendment.confirmed_by = "planner"' "$repo/$revision.json" >"$tmp/forged.json"
-grep -Fq "no confirmation by the owner" <<<"$(source "$repo/scripts/lib/review-data.sh" && revision_artifact_errors "$tmp/forged.json" "$repo/$review")" || fail "an amendment without the owner's confirmation was valid"
+grep -Fq "no confirmation by the owner" <<<"$(source "$repo/scripts/lib/review-data.sh" && triage_artifact_errors "$tmp/forged.json" "$repo/$review")" || fail "an amendment without the owner's confirmation was valid"
 
 # A failed write session after the amendment: the decisions and the amended
 # requirements stay, and a re-run aligns the planning without asking again.
@@ -323,7 +368,7 @@ done < <(
 # Without a terminal an amendment is not asked and nothing is recorded.
 repo="$(setup_repo amend-no-terminal)"
 before="$(requirements_blob "$repo")"
-if MOCK_OUTPUT="$amend_decisions" run_revise "$repo" y --review "$review"; then
+if MOCK_OUTPUT="$amend_decisions" run_revise_piped "$repo" y --review "$review"; then
   fail "an amendment was accepted without a terminal"
 fi
 grep -Fq "must be a terminal" "$repo.out" || fail "the refusal without a terminal does not say why"

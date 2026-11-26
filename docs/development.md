@@ -1912,35 +1912,52 @@ Each round is stored as `.agents/reviews/planning-<name>-review-NN.json` with
 a generated report, in the same format as feature reviews but without an Issue.
 The review covers only the planning documents, so it becomes stale when one of
 them is added, changed, or deleted, and stays current otherwise
-(`./scripts/check-review.sh`). A planning review is not triaged; it is
-revised.
+(`./scripts/check-review.sh`). A planning review is triaged like a feature
+review, with the decisions of a planning, and then revised.
 
 ### Planning revision
 
-Let the original project planner handle the findings of a current planning
-review:
+Handle the findings of a current planning review:
 
 ```bash
 ./scripts/revise-planning.sh --review .agents/reviews/planning-project-bootstrap-review-01.json
 ```
 
-It uses role `project-planner` in two phases:
+It runs in two phases:
 
-1. **Decide.** Read-only, the planner returns one decision per finding with a
-   rationale: `ADOPT`, `REJECT`, `DEFER` (belongs to a later feature),
-   `ESCALATE` (needs a human product decision or a change to the approved
-   requirements), or `AMEND` (the approved requirements themselves are wrong,
-   and a small diff of them fixes it; "Amending the approved requirements",
-   below). Critical and major findings may only be adopted, amended, or
-   escalated. The decisions are validated like review results, shown to you,
-   and recorded only after your approval, as
-   `.agents/reviews/<review>-revision.json` with a generated report.
-2. **Revise.** A write session resolves exactly the adopted findings, and
-   aligns the planning with the amended requirements. It may change only
-   `docs/architecture.md`, `docs/roadmap.md`, and direct Markdown ADRs. Any
-   other change, including to the requirements, the description, or a review
-   artifact, and any commit fails the run and keeps the worktree for
-   inspection.
+1. **Triage.** The script runs `triage-review.sh` on the planning review: the
+   triage of a feature review ("Independent review triage"), with role
+   `triage`, read-only, and the section "Planning triage" of
+   `.agents/prompts/triage-reviewer.md`. It returns one decision per finding
+   with a rationale: `FIX_NOW` (the planner revises the planning for it),
+   `ACCEPT` (the finding is wrong or the planning is the better choice),
+   `DEFER` (belongs to a later feature or feature plan; no follow-up Issue),
+   `ESCALATE` (needs a product decision of yours or a change to the approved
+   requirements), or `AMEND` (the approved requirements themselves are
+   wrong, and a small diff of them fixes it; "Amending the approved
+   requirements", below). `ESCALATE` and `AMEND` exist only in a planning
+   triage; a feature triage that returns them is refused. Critical and
+   major findings may only be `FIX_NOW`, `AMEND`, or `ESCALATE`: as in a
+   feature triage they are never accepted or deferred by an agent, and the
+   owner's record of a planning finding resolves a minor finding only
+   (`finish-planning.sh --resolve`, below). The decisions are validated, shown
+   to you, and recorded only after your approval, before any planning
+   document changes, as the triage artifact
+   `.agents/triage/<review>-triage.json` (schema `triage/v1` with `kind:
+   planning`, the branch and the round of the review instead of an Issue)
+   with a generated report. A planning triage runs only at a terminal of the
+   planning worktree, never `--unattended`; it creates no Issue and is not
+   published, since a planning has no Issue. `triage-review.sh --decisions`
+   gives your own decisions instead, as for a feature.
+2. **Revise.** The project planner (role `project-planner`,
+   `.agents/prompts/planning-reviser.md`) resolves in a write session exactly
+   the `FIX_NOW` findings, and aligns the planning with the amended
+   requirements. It may change only `docs/architecture.md`,
+   `docs/roadmap.md`, and direct Markdown ADRs. Any other change, including
+   to the requirements, the description, or a review or triage artifact, and
+   any commit fails the run and keeps the worktree for inspection.
+
+`--agent` and `--model` choose the agent of both phases.
 
 The scripts find such a change by recording the files of the worktree before
 the session and comparing them afterwards; they say when they do. The record
@@ -1954,8 +1971,8 @@ committed. A secret written into such a directory is therefore not reported.
 Escalated findings are listed with the next step: change the requirements
 through Project Grill and approve them again, or, for a minor finding, record
 your decision that it does not apply or that you accept the planning as it is
-with it (`finish-planning.sh --resolve`, below). When the write session fails, the approved decisions stay recorded;
-while the review is still current, running the script again applies them
+with it (`finish-planning.sh --resolve`, below). When the write session fails, the approved triage stays recorded;
+while the review is still current, running the script again applies it
 without deciding again.
 
 After a revision the review is stale by design. Run `review-planning.sh` for
@@ -1966,7 +1983,7 @@ the next round, and repeat until the review passes.
 Sometimes a finding's cause is the approved requirements: "cost is capped"
 where the design can only limit cost, or a closed list of APIs that misses
 one the requirements need. Escalating it would cost a hand edit and extra
-review rounds. The planner decides `AMEND` instead and returns, with its
+review rounds. The triage decides `AMEND` instead and returns, with its
 rationale, the minimal unified diff of `docs/PROJECT_REQUIREMENTS.md` that
 corrects it.
 
@@ -1974,14 +1991,14 @@ corrects it.
   `docs/PROJECT_REQUIREMENTS.md`, not its `Status:` or `Approved at:` line,
   and must apply cleanly, the amendments in the order of the decisions, to
   the requirements as they are. A diff that does not is an invalid decision:
-  the planner gets one retry, then the run stops and nothing is recorded.
+  the triage agent gets one retry, then the run stops and nothing is recorded.
 - **Confirmed by you, one by one, at a terminal.** After you approve the
   decisions, the script shows each amendment with its finding and its diff and
   asks "Apply this change to the approved requirements? [y/N]". It runs only
   at a terminal, never unattended or from a pipe.
 - **Applied exactly.** On yes the script applies exactly that diff and
   refuses a result whose changed lines differ from it, sets `Approved at` to
-  the time of your confirmation, and records in the revision the diff, your
+  the time of your confirmation, and records in the triage the diff, your
   confirmation, and the requirements before and after. On no the finding
   stays `ESCALATE`, as without the decision, and the requirements are
   unchanged.
@@ -2012,9 +2029,9 @@ When the latest review round is resolved, approve the planning:
 The script refuses when a required document is missing, the requirements are
 not approved, there is no planning review, the latest review is stale, the
 latest round has a critical or major finding (escalated or not), a
-finding of the latest round has no revision decision, an adopted finding is
+finding of the latest round has no approved triage, a `FIX_NOW` finding is
 not applied yet, or a finding of the latest round is escalated without your
-decision. It shows every rejected, deferred, and escalated finding of all
+decision. It shows every accepted, deferred, and escalated finding of all
 rounds, with your decisions, also before a refusal. A finding escalated in an
 earlier round is not resolved by a newer review alone: you confirm that it was
 resolved, unless you recorded a decision on it, and the approval records
@@ -2035,7 +2052,7 @@ the planning: the time, the planning branch, the final review round, the
 review rounds, the findings that were not adopted, the amendments of the
 requirements you confirmed, your decisions on escalated minor findings, and
 the fingerprint of the planning documents. Use it for the planning PR description, because review
-and revision files are not committed.
+and triage files are not committed.
 
 Whether the approval is still current:
 
@@ -2087,12 +2104,12 @@ round:
 accepted` that you accept the planning as it is with it (stored as the type
 `risk-accepted`). The reason is one line. The command runs only at a
 terminal, never unattended or from a pipe: it shows the finding as the review
-states it, the account (`gh api user`), the planner's rationale for the
+states it, the account (`gh api user`), the triage's rationale for the
 escalation, and the record exactly as it will be stored, and asks once. It
-accepts one finding of the latest round that the planner escalated and that
-the review rates `minor`, while that review is current, and one decision per
-finding. The severity is read from the review, never from an argument or from
-the planner's revision. A major or critical finding is refused, with its
+accepts one finding of the latest round that the approved planning triage
+escalated and that the review rates `minor`, while that review is current,
+and one decision per finding. The severity is read from the review, never
+from an argument or from the triage. A major or critical finding is refused, with its
 severity and the ways that remain: a new review round after the planning
 documents changed, or a change of the requirements (Project Grill, or a
 change cycle). A record written by hand for such a finding is invalid and
@@ -2138,7 +2155,7 @@ Which route a change needs:
 | New or changed requirement | Sharing between households when one household was agreed | Requirements, and usually architecture, roadmap, and ADRs | `--change --grill` |
 | Technical change only | From local storage to a server database | Architecture and an ADR that supersedes the old one | `--change` |
 | Small technical amendment | One ADR gets an addition | Architecture and ADRs only | `finish-planning.sh --amend`, without a review |
-| Correction of the requirements that a planning review finds | A closed list of APIs misses one the requirements need | Requirements, by a diff you confirm, and the planning aligned with it | `revise-planning.sh`, decision `AMEND` ("Amending the approved requirements") |
+| Correction of the requirements that a planning review finds | A closed list of APIs misses one the requirements need | Requirements, by a diff you confirm, and the planning aligned with it | `revise-planning.sh`, decision `AMEND` of the planning triage ("Amending the approved requirements") |
 
 Write the change down in a short file, in your own words, and start the cycle
 from a clean primary checkout:
@@ -2182,6 +2199,10 @@ worktree:
 ./scripts/revise-planning.sh --review .agents/reviews/planning-shopping-list-review-01.json    # when the review has findings
 ./scripts/finish-planning.sh
 ```
+
+`revise-planning.sh` triages the findings with `triage-review.sh` (a planning
+triage, `.agents/triage/<review>-triage.json`, "Planning revision"), which
+you approve before any planning document changes.
 
 The reviewer receives the change request and the complete planning with the
 difference against `main`, and checks the rules above. The approval records
@@ -2739,8 +2760,11 @@ The triage agent (role `triage`) classifies every finding as:
 The script validates the decisions before showing them: every finding is
 decided exactly once, Critical and Major findings are `FIX_NOW`, and a deferred
 finding has a follow-up title, action, and acceptance criteria. Invalid
-decisions are retried once and then rejected. A review without findings needs
-no triage agent. The triage mode of the project policy for the risk level of
+decisions are retried once and then rejected. `ESCALATE` and `AMEND`, which
+the schema also allows, are decisions of a planning triage only ("Planning
+revision"); a feature triage that returns one is refused, and a feature
+triage artifact has no `kind` and no `amendment`, as before. A review without
+findings needs no triage agent. The triage mode of the project policy for the risk level of
 the feature, `full` or `light` (see "What each level requires" and "Light
 triage"), is derived by the script itself from the diff and the rules of the
 base, shown before the proposal, told to the agent when it is `light`, and

@@ -201,3 +201,80 @@ planning_draft_review_errors() {
     end
   ' "$1"
 }
+
+# Amendments of the approved requirements: the AMEND decision of a planning
+# triage (triage-review.sh) proposes a unified diff of them, which the owner
+# confirms at a terminal; revise-planning.sh applies a recorded one again
+# when a run ended before it did.
+PLANNING_REQUIREMENTS="docs/PROJECT_REQUIREMENTS.md"
+
+# planning_amendment_lines <diff-file>: the added and removed lines of a diff
+# of one file, in order, without the file headers.
+planning_amendment_lines() {
+  awk '/^@@/ { hunk = 1; next } hunk && /^[-+]/ { print }' "$1"
+}
+
+# planning_amendment_apply <scratch-dir> <diff-file> <requirements-copy>:
+# applies a diff of the requirements to a copy of them, exactly: it refuses a
+# diff that touches another file, renames or changes a mode, changes the
+# Status or Approved at line, or does not apply cleanly, and a result whose
+# changed lines differ from those of the diff. Prints the reason of a
+# refusal; the copy is unchanged then.
+planning_amendment_apply() {
+  local work="$1/amendment-apply"
+  local diff="$2"
+  local copy="$3"
+  local touched
+
+  rm -rf "$work"
+  mkdir -p "$work/docs"
+  git init -q "$work"
+  cp "$copy" "$work/$PLANNING_REQUIREMENTS"
+  touched="$(git -C "$work" apply --recount --numstat -- "$diff" 2>/dev/null)" || {
+    echo "it is not a valid diff"
+    return 1
+  }
+  [[ "$(printf '%s\n' "$touched" | cut -f3-)" == "$PLANNING_REQUIREMENTS" ]] || {
+    echo "it must change $PLANNING_REQUIREMENTS and nothing else"
+    return 1
+  }
+  [[ -z "$(git -C "$work" apply --recount --summary -- "$diff" 2>/dev/null)" ]] || {
+    echo "it must not create, delete, rename, or change the mode of a file"
+    return 1
+  }
+  ! grep -Eq '^[-+](Status|Approved at):' <<<"$(planning_amendment_lines "$diff")" || {
+    echo "it must not change the Status or Approved at line; the script updates Approved at"
+    return 1
+  }
+  git -C "$work" apply --recount -- "$diff" 2>"$work.err" || {
+    echo "it does not apply cleanly to $PLANNING_REQUIREMENTS: $(head -n 1 "$work.err")"
+    return 1
+  }
+  git diff --no-index --no-color --no-ext-diff --no-textconv -U0 -- "$copy" "$work/$PLANNING_REQUIREMENTS" >"$work.result" || true
+  [[ "$(planning_amendment_lines "$work.result")" == "$(planning_amendment_lines "$diff")" ]] || {
+    echo "applying it changes other lines than the diff shows"
+    return 1
+  }
+  cp "$work/$PLANNING_REQUIREMENTS" "$copy"
+}
+
+# planning_amendment_errors <root> <scratch-dir> <decisions-file>: every
+# proposed amendment must apply exactly, in the order of the decisions, to
+# the requirements as they are. Prints one line per refused amendment.
+planning_amendment_errors() {
+  local root="$1"
+  local scratch="$2"
+  local copy="$2/requirements-check.md"
+  local index=0
+  local id
+  local reason
+
+  cp "$root/$PLANNING_REQUIREMENTS" "$copy"
+  while IFS= read -r id; do
+    jq -j --argjson i "$index" '[.decisions[] | objects | select(.decision == "AMEND")][$i].amendment | if endswith("\n") then . else . + "\n" end' "$3" \
+      >"$scratch/amendment-check.diff"
+    index=$((index + 1))
+    reason="$(planning_amendment_apply "$scratch" "$scratch/amendment-check.diff" "$copy")" ||
+      echo "the amendment of finding $id is refused: $reason"
+  done < <(jq -r '.decisions[] | objects | select(.decision == "AMEND") | .finding_id' "$3")
+}
