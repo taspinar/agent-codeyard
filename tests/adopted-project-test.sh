@@ -43,7 +43,6 @@ fixture_tests=(
   "check-docs: builds its fixture from the repository's own files (git ls-files of it) and asks template_repository whether this is the template"
   "check-ci-groups: .github/workflows/ci.yml, the project's own CI, and template_repository"
   "status: website/, which the project does not have, and template_repository"
-  "agent-sandbox: .agents/policies/*, the project's risk policy, and .agents/agents.conf, its agents (agent_lookup on the repository)"
   "agent-levels: .agents/agents.conf, the project's agents, and template_repository"
   "sync-template: .github/workflows/ci.yml, the project's CI, its .agents/template.conf (template_conf), and template_repository"
   "inherited: a snapshot of the repository's own files (git ls-files of it) and its .agents/template.conf (template_conf)"
@@ -135,10 +134,9 @@ printf '# 0001. Store orders in PostgreSQL\n\nStatus: Accepted\n\nThe project ke
   >"$project/docs/decisions/0001-store-orders-in-postgresql.md"
 # Its agents are its own: other models and level lines for the roles than
 # the template's. No self-test may need the agents the template ships. The
-# writing roles stay on Claude: with Codex there, tests/agent-sandbox-test.sh
-# starts the real Codex CLI with the project's model wherever it is logged
-# in, which is a check of the project's own account, not of the workflow.
-# The assessor, a role that only reads, is on Codex: no self-test of the
+# writing roles stay on Claude; tests/agent-sandbox-test.sh, which would
+# start the real Codex CLI for a writing role on Codex, is no self-test
+# (Issue 522) and does not run here. The assessor, a role that only reads, is on Codex: no self-test of the
 # assessment or the adoption may take its assessor from this file.
 cat >"$project/.agents/agents.conf" <<'EOF'
 # The project's agents.

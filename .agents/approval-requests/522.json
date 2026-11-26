@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "3a9fc800c928eebcaea4c418cacf65e4ca26385c",
+  "commit": {
+    "branch": "feature/522-the-self-test-suite",
+    "parent": "c5c02db87bf93dff91e8dc1ccab05bb45922b77f",
+    "base": "c5c02db87bf93dff91e8dc1ccab05bb45922b77f"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/verify-workflow.conf: an existing check or line is changed or removed",
+    "the review could not confirm: ./scripts/verify.sh --all passes; the self-test duration is reported before and after."
+  ],
+  "explanation": "Issue #522: The self-test suite drops agent-sandbox and marks scenario-register and pipe-grep framework-only (items 14 and 15 of #426). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

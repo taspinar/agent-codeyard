@@ -13,7 +13,10 @@ set -euo pipefail
 #
 # Skipped, with a message, when codex is not installed, not logged in, or no
 # role with write access uses it (AGENT_SANDBOX_TEST_MODEL names a model
-# then). The session is a real one: it takes a minute and uses tokens.
+# then). The session is a real one: it takes a minute and uses tokens. It is
+# therefore no self-test of scripts/verify-workflow.conf (Issue 522): run it
+# by hand after a Codex update or a change of the Codex grant in agent.sh
+# (docs/development.md, "Codex and .agents/").
 
 # Run as on CI: without the user's global or system Git configuration, so a
 # test cannot depend on a local Git identity or setting.
