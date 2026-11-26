@@ -274,6 +274,21 @@ if (cd "$dir" && PATH="$ISOLATED_PATH" ./scripts/verify.sh --groups --framework-
   fail "--groups took --framework-checks"
 fi
 
+# ------------------------------------------- the choices of the real list
+# Issue 522: no self-test starts the real Codex CLI, so a project whose
+# implementer is Codex does not start a paid session in every verification
+# (tests/agent-sandbox-test.sh runs by hand); the check of the scenario
+# register, which reads no file of a project's own, is framework-only, and
+# pipe-grep, which reads a project's own scripts, is not.
+workflow_conf="$source_root/scripts/verify-workflow.conf"
+if grep -Eq '^[^#]*tests/agent-sandbox-test\.sh' "$workflow_conf"; then
+  fail "scripts/verify-workflow.conf runs tests/agent-sandbox-test.sh, which starts a real Codex session"
+fi
+grep -Eq '^scenario-register \[[a-z0-9-]+\] framework: \./tests/scenario-register-test\.sh$' "$workflow_conf" ||
+  fail "scenario-register is not a framework-only check of scripts/verify-workflow.conf"
+grep -Eq '^pipe-grep \[[a-z0-9-]+\]: \./tests/pipe-grep-test\.sh$' "$workflow_conf" ||
+  fail "pipe-grep is not a check of scripts/verify-workflow.conf that a project runs"
+
 # ---------------------------------------------------------------- CI
 # The template's ci.yml, in the template only (template_repository in
 # tests/lib-fakes.sh): a project owns its CI, which may run verify.sh in a

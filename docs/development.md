@@ -1222,7 +1222,7 @@ helpers of `tests/lib-run-feature.sh`, so that no single self-test holds up
 `scenario <id>`, its stable identifier, and the register in
 `tests/lib-run-feature.sh` (`scenario_register`) lists each identifier once.
 Each part checks at its end that the register agrees with all parts, and
-`tests/scenario-register-test.sh` checks it as a test of its own: an
+`tests/scenario-register-test.sh`, framework-only, checks it as a test of its own: an
 identifier defined twice, one that the register lists and no part runs, and
 one that a part runs and the register does not list each fail it. A new case
 gets an identifier and a line in the register; a case moves between parts
@@ -1236,8 +1236,8 @@ instead; `>/dev/null` in place of `-q` is no remedy, since GNU grep then stops
 at the first match as well. `tests/pipe-grep-test.sh` fails on such a pipe in
 the workflow's test files, the `tests/*.sh` that `scripts/verify-workflow.conf`
 names, also one that continues on the next line. A project's own test files
-are its own and follow its rules; in the template every `tests/*.sh` must be
-named there, so none escapes the check. The workflow scripts follow the same
+are its own and follow its rules; in the template the check reads every
+`tests/*.sh`, also `tests/agent-sandbox-test.sh`, which runs by hand only. The workflow scripts follow the same
 rule (Issue #509): there a wrong result is a wrong decision of the workflow,
 such as `check-ci-groups.sh` calling a group that is there missing. The check
 reads every `*.sh` under `scripts/`, less the files and directories that the
@@ -1330,7 +1330,8 @@ The checks marked so, and why:
 | `adopted-project` | yes | It repeats the direct self-tests in a project; its distinct catches were all in the template's own CI. |
 | `adopted-project-list` | yes | It tests the list of `adopted-project`, which runs only in the template. |
 | `adoption`, `adopt-repository`, `assess-repository` | yes | The adoption tooling runs from a clone of the template, never from a project. |
-| `scenario-register` | no | It costs seconds and guards a project's own edits of the parts of the tests of `run-feature.sh`. |
+| `scenario-register` | yes | It reads no file of a project's own: every part of the tests of `run-feature.sh` checks the register at its end, in a project too, and this test adds only the faults of that check (Issue #522). |
+| `pipe-grep` | no | In a project it reads the `scripts/*.sh` that `paths:` does not exclude, the project's own scripts until it excludes them, and its copies of the workflow files (Issue #522). |
 | `sync-template` | no | Projects use `sync-template.sh`. |
 
 **Whether this is the template.** `scripts/lib/template-repository.sh` holds
@@ -1535,8 +1536,9 @@ which it holds itself: what each level resolves to, and that `doctor.sh`
 accepts them without a same-provider warning. Only in the template does it
 check that `.agents/agents.conf` still holds exactly those lines; a project's
 agents are its own. With no writing role on Codex,
-`tests/agent-sandbox-test.sh` has no Codex sandbox to check and skips that
-check; it runs it again as soon as a line gives Codex write access.
+`tests/agent-sandbox-test.sh`, which you run by hand (see "Codex and
+`.agents/`"), has no Codex sandbox to check and skips; it checks it as soon
+as a line gives Codex write access.
 
 `AGENT_CONFIG_FILE` selects another configuration file for a run, for the
 workflow scripts and `doctor.sh`; `ATTRIBUTION_CONFIG_FILE` does the same for
@@ -1615,7 +1617,24 @@ runs inside the sandbox therefore cannot record its pass
 primary checkout): both are warnings of the scripts, the verification itself
 passes or fails as always, and the step that follows the session verifies
 the result again. `tests/agent-sandbox-test.sh` checks the grant with the
-real Codex CLI, when it is installed and logged in. `doctor.sh` does not
+real Codex CLI, when it is installed and logged in: the four directories are
+writable, `.agents/policies/`, `.agents/prompts/`, `.git/`, `.codex/`, and a
+directory beside the worktree are not, and the write profile grants the same
+roots. It is no self-test of `scripts/verify-workflow.conf` (Issue #522): it
+starts a real Codex session, which takes a minute and is paid, and the
+verification would start it in every run of a project whose implementer is
+Codex. Run it by hand after you update Codex or change the Codex grant of
+`scripts/lib/agent.sh`, before you give a writing role to Codex, and when a
+Codex session leaves no completion record:
+
+```bash
+./tests/agent-sandbox-test.sh
+```
+
+It proves what the report of `start-feature.sh` below cannot: that the
+grant works before a session needs it, and that it opens nothing else, which
+no missing record would show. `AGENT_SANDBOX_TEST_MODEL` names the model when
+no writing role uses Codex. `doctor.sh` does not
 start a session to check it: a Codex of your host that does not honour the
 grant shows at the first session with write access, which leaves no
 completion record. `start-feature.sh` then reports the Issue as not complete
