@@ -1,0 +1,21 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "25b7b4b2edbfab8408988ab002f26b82f644d4f5",
+  "commit": {
+    "branch": "feature/526-the-run-records-stay",
+    "parent": "1e444a3c6b89e567ea90caf4b885cba9ce510873",
+    "base": "1e444a3c6b89e567ea90caf4b885cba9ce510873"
+  },
+  "review": {
+    "round": 1,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/publish-feature.sh: the file defines or carries out the workflow and its gate",
+    "the independent review classified the impact on the architecture as major: The change removes the per-feature and per-planning copy as a second record store and makes the per-run files the sole source for readers. That changes shared record storage and reader behavior across publish, cleanup, planning, reporting, and experience workflows. ",
+    "the review could not confirm: Every other existing test passes unchanged, or the pull request names why it changed.",
+    "the review could not confirm: ./scripts/verify.sh --all passes."
+  ],
+  "explanation": "Issue #526: The run records stay one file per run: the consolidation into .agents/records/ is removed (item 9 of #426). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

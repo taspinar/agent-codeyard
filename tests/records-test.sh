@@ -113,37 +113,17 @@ in_repo "$repo" 'records_begin planning final-curriculum review-planning.sh; rec
 [[ "$(lines "$repo" | jq -r 'select(.type == "run-start" and .kind == "planning") | .subject')" == "final-curriculum" ]] ||
   fail "a planning run is not recorded by its name"
 
-# The runs of a subject come together in .agents/records/, in the order in
-# which they were written, without the runs of another subject. A later copy
-# replaces the file and loses no run of an earlier one.
+# The runs of a subject stay one file per run, and nothing copies them
+# together: records_feature_events reads every run of the feature once, from
+# its own file, without the runs of another subject.
 in_repo "$repo" 'records_begin feature 13 run-feature.sh; records_end 0'
-in_repo "$repo" 'records_consolidate feature 12'
-copy="$repo/.agents/records/feature-12.jsonl"
-[[ "$(jq -r -s '[.[] | select(.type == "run-start")] | length' "$copy")" -eq 3 ]] || fail "the copy does not hold the three runs of the feature"
-if jq -e -s 'any(.subject? == "13")' "$copy" >/dev/null; then fail "the copy holds a run of another feature"; fi
-jq -e -s '[.[].epoch] == ([.[].epoch] | sort)' "$copy" >/dev/null || fail "the copy is not in the order of writing"
-in_repo "$repo" 'records_begin feature 12 publish-feature.sh; records_end 0; records_consolidate feature 12'
-[[ "$(jq -r -s '[.[] | select(.type == "run-start")] | length' "$copy")" -eq 4 ]] || fail "a later copy lost a run"
-git -C "$repo" check-ignore -q ".agents/records/feature-12.jsonl" || fail "Git does not ignore the copy"
+[[ "$(in_repo "$repo" 'records_feature_events 12 '"'"'[.[] | select(.type == "run-start") | .run] | length'"'")" -eq 3 ]] ||
+  fail "the events of a feature do not hold each of its three runs once"
+if grep -qx 13 <<<"$(in_repo "$repo" 'records_feature_events 12 '"'"'.[] | .subject // empty'"'")"; then
+  fail "the events of a feature hold a run of another feature"
+fi
+[[ ! -e "$repo/.agents/records" ]] || fail "a run wrote into .agents/records/"
 git -C "$repo" check-ignore -q ".agents/run/records/x.jsonl" || fail "Git does not ignore the run files"
-# A run whose file is gone stays in the copy, and a later run is added to it.
-# A copy that cannot be read is left as it is.
-mkdir "$tmp/gone" && cp "$repo"/.agents/run/records/*.jsonl "$tmp/gone/"
-rm -f "$repo"/.agents/run/records/*.jsonl
-in_repo "$repo" 'records_consolidate feature 12'
-[[ "$(jq -r -s '[.[] | select(.type == "run-start")] | length' "$copy")" -eq 4 ]] || fail "a copy without the run files lost runs"
-in_repo "$repo" 'records_begin feature 12 publish-feature.sh; records_end 0; records_consolidate feature 12'
-[[ "$(jq -r -s '[.[] | select(.type == "run-start")] | length' "$copy")" -eq 5 ]] || fail "a later run was not added to a copy of runs without files"
-[[ "$(jq -r -s '[.[] | select(.type == "run-start") | .run] | unique | length' "$copy")" -eq 5 ]] || fail "a run is twice in the copy"
-cp "$copy" "$tmp/copy-before"
-printf 'not json\n' >>"$copy"
-cp "$copy" "$tmp/copy-damaged"
-if in_repo "$repo" 'records_consolidate feature 12' 2>/dev/null; then fail "a copy that cannot be read was replaced"; fi
-cmp -s "$copy" "$tmp/copy-damaged" || fail "a copy that cannot be read was changed"
-cp "$tmp/copy-before" "$copy"
-cp "$tmp/gone"/*.jsonl "$repo/.agents/run/records/"
-in_repo "$repo" 'records_consolidate planning final-curriculum'
-[[ -s "$repo/.agents/records/planning-final-curriculum.jsonl" ]] || fail "a planning was not copied by its name"
 
 # From a worktree the runs go to the primary checkout, so that they survive
 # the removal of the worktree.
@@ -151,9 +131,6 @@ git -C "$repo" worktree add -q -b feature/14-thing "$tmp/basic-14" >/dev/null 2>
 in_repo "$tmp/basic-14" 'records_begin feature 14 run-feature.sh; records_end 0'
 [[ ! -d "$tmp/basic-14/.agents/run/records" ]] || fail "a run in a worktree wrote into the worktree"
 lines "$repo" | jq -e -s 'any(.type == "run-start" and .subject == "14")' >/dev/null || fail "a run in a worktree did not reach the primary checkout"
-in_repo "$tmp/basic-14" 'records_consolidate feature 14'
-[[ -s "$repo/.agents/records/feature-14.jsonl" ]] || fail "a copy made from a worktree is not in the primary checkout"
-
 # Parallel runs, and parallel writers in one run, lose nothing.
 repo="$(setup_repo parallel)"
 for n in 1 2 3 4 5 6 7 8; do
@@ -270,59 +247,12 @@ chmod 700 "$repo/.agents/run/records"
 [[ "$status" -eq 7 ]] || fail "an unwritable record changed the exit status ($status)"
 grep -Fq "the run record could not be written" "$tmp/warn" || fail "an unwritable record was not reported"
 
-# A primary checkout that ignores .agents/run/ but not yet .agents/records/,
-# as before a sync: the runs are recorded, but the copy cannot be made safely,
-# so it fails, which keeps a worktree in cleanup-worktree.sh. A subject without
-# a run needs no copy.
-repo="$(setup_repo half-ignored)"
-grep -Ev '^\.agents/records/$' "$repo/.gitignore" >"$tmp/gitignore" && cp "$tmp/gitignore" "$repo/.gitignore"
-in_repo "$repo" 'records_begin feature 12 run-feature.sh; records_end 0'
-status=0
-in_repo "$repo" 'records_consolidate feature 12' 2>"$tmp/half" || status=$?
-[[ "$status" -ne 0 ]] || fail "a copy that cannot be made safely was reported as made"
-grep -Fq "cannot be copied to .agents/records/" "$tmp/half" || fail "the reason was not given"
-[[ ! -e "$repo/.agents/records/feature-12.jsonl" ]] || fail "a copy was written that Git does not ignore"
-in_repo "$repo" 'records_consolidate feature 99' || fail "a subject without a run failed its copy"
-
-# Many run files that match: the missing ignore rule is still reported. A
-# pipeline of two greps loses the match to SIGPIPE under pipefail.
-repo="$(setup_repo many-runs)"
-grep -Ev '^\.agents/records/$' "$repo/.gitignore" >"$tmp/gitignore" && cp "$tmp/gitignore" "$repo/.gitignore"
-mkdir -p "$repo/.agents/run/records"
-long="$(printf 'x%.0s' $(seq 1 120))"
-for i in $(seq 1 3000); do
-  printf '{"type":"run-start","subject":"12"}\n' >"$repo/.agents/run/records/$long-$i.jsonl"
-done
-status=0
-in_repo "$repo" 'records_consolidate feature 12' 2>"$tmp/many" || status=$?
-[[ "$status" -ne 0 ]] || fail "many matching run files hid the missing ignore rule"
-grep -Fq "cannot be copied to .agents/records/" "$tmp/many" || fail "the missing ignore rule was not reported for many run files"
-
-# A run file that cannot be read leaves an existing copy as it was.
-repo="$(setup_repo unreadable-run)"
-in_repo "$repo" 'records_begin feature 12 run-feature.sh; records_end 0; records_consolidate feature 12'
-before="$(cat "$repo/.agents/records/feature-12.jsonl")"
-printf '{"type": "run-start", broken\n' >"$repo/.agents/run/records/other.jsonl"
-status=0
-in_repo "$repo" 'records_consolidate feature 12' 2>"$tmp/unreadable" || status=$?
-[[ "$status" -ne 0 ]] || fail "a copy over a malformed run file was reported as made"
-[[ "$(cat "$repo/.agents/records/feature-12.jsonl")" == "$before" ]] || fail "a malformed run file changed the existing copy"
-grep -Fq "other.jsonl cannot be read" "$tmp/unreadable" || fail "the malformed run file was not named"
-rm "$repo/.agents/run/records/other.jsonl"
-printf '{"type": "run-start"}\n' >"$repo/.agents/run/records/locked.jsonl"
-chmod 000 "$repo/.agents/run/records/locked.jsonl"
-status=0
-in_repo "$repo" 'records_consolidate feature 12' 2>/dev/null || status=$?
-chmod 644 "$repo/.agents/run/records/locked.jsonl"
-[[ "$status" -ne 0 ]] || fail "a copy over an unreadable run file was reported as made"
-[[ "$(cat "$repo/.agents/records/feature-12.jsonl")" == "$before" ]] || fail "an unreadable run file changed the existing copy"
-
-# Without the ignore rule nothing is recorded or copied: a record must never
+# Without the ignore rule nothing is recorded: a record must never
 # become part of what is committed.
 repo="$(setup_repo not-ignored)"
 grep -Ev '^\.agents/(run|records)/$' "$repo/.gitignore" >"$tmp/gitignore" && cp "$tmp/gitignore" "$repo/.gitignore"
-in_repo "$repo" 'records_begin feature 12 run-feature.sh 2>"'"$tmp/note"'"; records_end 0; records_consolidate feature 12 2>>"'"$tmp/note"'"'
-[[ ! -d "$repo/.agents/run/records" && ! -d "$repo/.agents/records" ]] || fail "records were written although Git does not ignore them"
+in_repo "$repo" 'records_begin feature 12 run-feature.sh 2>"'"$tmp/note"'"; records_end 0'
+[[ ! -d "$repo/.agents/run/records" ]] || fail "records were written although Git does not ignore them"
 grep -Fq "no run record is kept" "$tmp/note" || fail "the missing ignore rule was not reported"
 
 # Usage, as each provider reports it. A figure it did not report is null,
@@ -404,33 +334,6 @@ printf '%s\n' '{"type": "result", "is_error": false, "result": "done", "usage": 
 [[ "$(in_repo "$repo" "records_usage claude unattended '$out'" | jq -r '.total_input')" == "null" ]] ||
   fail "a Claude total was computed although a cache figure is missing"
 
-# Overlapping copies of one feature, while a run appends, leave a copy that
-# holds every run and only whole lines, and no temporary file or lock.
-repo="$(setup_repo overlapping)"
-for n in 1 2 3; do in_repo "$repo" "records_begin feature 12 run-feature.sh; records_step 'step $n' 0 1; records_end 0"; done
-in_repo "$repo" 'records_begin feature 12 run-feature.sh
-  for i in $(seq 1 40); do records_step "late $i" 0 1; done
-  records_end 0' &
-writer=$!
-for _ in 1 2 3 4 5 6; do in_repo "$repo" 'records_consolidate feature 12' & done
-wait
-wait "$writer" 2>/dev/null || true
-in_repo "$repo" 'records_consolidate feature 12'
-copy="$repo/.agents/records/feature-12.jsonl"
-jq -e . "$copy" >/dev/null || fail "overlapping copies left a line that is not JSON"
-[[ "$(jq -r -s '[.[] | select(.type == "run-start")] | length' "$copy")" -eq 4 ]] || fail "overlapping copies lost a run"
-[[ "$(jq -r -s '[.[] | select(.type == "step" and (.name | startswith("late")))] | length' "$copy")" -eq 40 ]] ||
-  fail "the last copy does not hold every event of the run that was appending"
-[[ -z "$(find "$repo/.agents/records" -name '.*' -mindepth 1)" ]] || fail "a copy left a temporary file or a lock"
-
-# The copy that a step of a run made is brought up to date at the end of the
-# run, with its status and why it stopped.
-repo="$(setup_repo copy-at-end)"
-in_repo "$repo" 'records_begin feature 12 publish-feature.sh; records_consolidate feature 12; records_step "after the copy" 0 1; records_end 3'
-[[ "$(jq -r -s 'map(.type) | join(",")' "$repo/.agents/records/feature-12.jsonl")" == "run-start,step,stop,experience,run-end" ]] ||
-  fail "the copy was not brought up to date at the end of the run"
-[[ "$(jq -r -s '.[-1].status' "$repo/.agents/records/feature-12.jsonl")" == "3" ]] || fail "the copy lacks the status of the run"
-
 # An agent call or a step that is interrupted leaves its start without its
 # end, so that the record says what was going on.
 repo="$(setup_repo interrupted-call)"
@@ -481,15 +384,15 @@ in_repo "$repo" 'export PATH="'"$tmp/no-mktemp"':$PATH"; records_begin feature 1
 grep -Fq "the record of this verification could not be prepared" "$tmp/verify-warn" ||
   fail "a verification whose recording could not be prepared did not say so"
 
-# Recording and copying call GitHub for nothing: with a GitHub command that
-# fails, a run and its copy are complete.
+# Recording calls GitHub for nothing: with a GitHub command that fails, a
+# run is complete.
 repo="$(setup_repo offline)"
 mkdir -p "$tmp/offline-bin"
 printf '#!/usr/bin/env bash\necho "gh: offline" >&2\nexit 1\n' >"$tmp/offline-bin/gh"
 chmod +x "$tmp/offline-bin/gh"
 in_repo "$repo" 'export PATH="'"$tmp/offline-bin"':$PATH"; records_begin feature 12 run-feature.sh
-  records_step "review, round 1 of at most 5" 0 3; records_end 0; records_consolidate feature 12'
-[[ "$(jq -r -s 'map(.type) | join(",")' "$repo/.agents/records/feature-12.jsonl")" == "run-start,step,experience,run-end" ]] ||
+  records_step "review, round 1 of at most 5" 0 3; records_end 0'
+[[ "$(lines "$repo" | jq -r -s 'map(.type) | join(",")')" == "run-start,step,experience,run-end" ]] ||
   fail "a run without GitHub is not complete"
 
 # Every stop of a workflow script is in the end of its run: the script, or

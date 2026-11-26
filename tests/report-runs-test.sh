@@ -79,20 +79,14 @@ json="$(report "$repo" 12 --json)"
 grep -Fq "higher than the elapsed time when work ran side by side" <<<"$(report "$repo" 12)" ||
   fail "the Markdown does not tell agent time from elapsed time"
 
-# A run is counted once: from its own file while it exists, from the copy of
-# its feature when it is gone. The copy alone gives the same totals, as after
-# the removal of a worktree.
+# A run is counted once, from its own file. A copy that an earlier workflow
+# left in .agents/records/ is not read, so it adds no run and no figure.
 cat "$repo"/.agents/run/records/*.jsonl >"$repo/.agents/records/feature-12.jsonl"
-copy_and_files="$(report "$repo" 12 --json | jq -c '.subjects[0] | {runs, elapsed, input, output, rounds}')"
-[[ "$copy_and_files" == "$(jq -c '.subjects[0] | {runs, elapsed, input, output, rounds}' <<<"$json")" ]] ||
-  fail "a run that is both in its file and in the copy was counted twice: $copy_and_files"
-mkdir "$tmp/moved" && mv "$repo"/.agents/run/records/r*.jsonl "$tmp/moved/"
-[[ "$(report "$repo" 12 --json | jq -c '.subjects[0] | {runs, elapsed, input, output, rounds}')" == "$copy_and_files" ]] ||
-  fail "the copy alone gives other totals than the run files"
-mv "$tmp/moved"/*.jsonl "$repo/.agents/run/records/"
-# A run that is only in its file, newer than the copy, is added once.
+with_copy="$(report "$repo" 12 --json | jq -c '.subjects[0] | {runs, elapsed, input, output, rounds}')"
+[[ "$with_copy" == "$(jq -c '.subjects[0] | {runs, elapsed, input, output, rounds}' <<<"$json")" ]] ||
+  fail "a run that is both in its file and in an old copy was counted twice: $with_copy"
 run_file "$repo" r5 12 review-feature.sh 7000 7100 0
-[[ "$(report "$repo" 12 --json | jq '.subjects[0].runs.total')" -eq 5 ]] || fail "a run newer than the copy was not added once"
+[[ "$(report "$repo" 12 --json | jq '.subjects[0].runs.total')" -eq 5 ]] || fail "a new run was not added once"
 
 # Missing token figures are unknown, never zero.
 repo="$(setup_repo unknown)"

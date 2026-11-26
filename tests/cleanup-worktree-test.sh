@@ -309,8 +309,10 @@ run_cleanup "$repo" "$tmp/fix-70" || {
 # An unknown target fails.
 if run_cleanup "$repo" 99; then fail "an unknown target succeeded"; fi
 
-# The run records of a feature are copied to .agents/records/ before its
-# worktree goes; a copy that cannot be written keeps the worktree.
+# The run records of a feature stay one file per run in the primary checkout:
+# the cleanup copies nothing, so .agents/records/ that cannot be written does
+# not keep the worktree, and after the cleanup report-runs.sh and the reader
+# of status.sh (records_feature_events) count the run once.
 repo="$(setup_repo records)"
 add_worktree "$repo" feature/41-records records-41
 merge "$repo" feature/41-records records-41
@@ -324,17 +326,21 @@ merge "$repo" feature/41-records records-41
 )
 mkdir -p "$repo/.agents/records"
 chmod 500 "$repo/.agents/records"
-if run_cleanup "$repo" 41; then fail "a worktree was removed although its run records could not be copied"; fi
-chmod 700 "$repo/.agents/records"
-[[ -d "$tmp/records-41" ]] || fail "the worktree is gone although its run records could not be copied"
-grep -Fq "its run records could not be copied" "$repo.out" || fail "the failed copy of the run records was not given as the reason"
 run_cleanup "$repo" 41 || {
+  chmod 700 "$repo/.agents/records"
   cat "$repo.out" >&2
   fail "cleaning a worktree with run records failed"
 }
+chmod 700 "$repo/.agents/records"
 [[ ! -d "$tmp/records-41" ]] || fail "the worktree with run records was not removed"
-jq -e -s 'any(.type == "step" and .name == "review, round 1 of at most 5")' "$repo/.agents/records/feature-41.jsonl" >/dev/null ||
-  fail "the run records of the feature were not copied before the worktree went"
+[[ -z "$(ls -A "$repo/.agents/records")" ]] || fail "the cleanup copied the run records to .agents/records/"
+jq -e -s 'any(.type == "step" and .name == "review, round 1 of at most 5")' "$repo"/.agents/run/records/*.jsonl >/dev/null ||
+  fail "the run file of the feature is gone after the cleanup"
+runs="$(cd "$repo" && PATH="$tmp/bin:$ISOLATED_PATH" "$source_root/scripts/report-runs.sh" 41 --json | jq '.subjects[0].runs.total')"
+[[ "$runs" == "1" ]] || fail "report-runs.sh does not count the run once after the cleanup: $runs"
+runs="$(cd "$repo" && unset RECORDS_RUN_ID RECORDS_FILE && source "$source_root/scripts/lib/records.sh" &&
+  records_feature_events 41 '[.[] | select(.type == "run-start")] | length')"
+[[ "$runs" == "1" ]] || fail "the reader of status.sh does not count the run once after the cleanup: $runs"
 
 # The branch on GitHub can be ahead of the local one: "Update branch" on the
 # pull request merged main into it, and the pull request was merged with that

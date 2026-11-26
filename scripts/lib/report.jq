@@ -2,7 +2,6 @@
 #
 # Input, as named arguments:
 #   $active     the events of .agents/run/records/*.jsonl, as one array
-#   $copies     the events of .agents/records/*.jsonl, as one array
 #   $selection  [{kind, subject}], the subjects to report on
 #   $since, $until, $split   epoch seconds, or null
 #   $declared   {pairs: {"<agent> <model>": true}, history: bool}: the pairs
@@ -11,8 +10,7 @@
 #               false); null without any version
 #   $mode       "json", "markdown", or "summary" (the GitHub summary)
 #
-# A run is read from its own file while that file exists, and from the copy
-# of its subject only when it does not, so no event is counted twice.
+# Every run is read from its own file, so no event is counted twice.
 
 def roles: ["project-grill", "project-planner", "planning-reviewer", "implementer",
             "reviewer", "triage", "triage-implementer", "analyst"];
@@ -62,11 +60,10 @@ def state_of($finish):
 def starts_of($events; $kind; $subject):
   $events | map(select(.type == "run-start" and .kind == $kind and ((.subject | tostring) == $subject)));
 
-# The events of the runs of one subject, each run from one source.
+# The events of the runs of one subject.
 def events_of($kind; $subject):
-  (starts_of($active; $kind; $subject) | map({key: .run, value: true}) | from_entries) as $from_active
-  | (starts_of($copies; $kind; $subject) | map(select($from_active[.run] | not)) | map({key: .run, value: true}) | from_entries) as $from_copy
-  | ($active | map(select(.run as $r | $from_active[$r]))) + ($copies | map(select(.run as $r | $from_copy[$r])));
+  (starts_of($active; $kind; $subject) | map({key: .run, value: true}) | from_entries) as $runs
+  | $active | map(select(.run as $r | $runs[$r]));
 
 def runs_of($events):
   $events | group_by(.run) | map(

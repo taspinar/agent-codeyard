@@ -43,7 +43,7 @@ Name: Agentic Coding Template (ACT). Positioning line: "Build software with AI. 
 
 ## Evidence on Hand
 
-Real, linkable evidence only: GitHub Issues and pull requests of this repository with their published review and triage comments (recommended end-to-end example: #217 → PR #222; owner in the loop: #189 → PR #194; short path: #204 → PR #205; clarification: #16 → PR #213), run records with measured verification durations and review rounds (`.agents/records/`), the run analysis of 2026-10-28. There are no testimonials, user counts, benchmarks or customers; none may be invented.
+Real, linkable evidence only: GitHub Issues and pull requests of this repository with their published review and triage comments (recommended end-to-end example: #217 → PR #222; owner in the loop: #189 → PR #194; short path: #204 → PR #205; clarification: #16 → PR #213), run records with measured verification durations and review rounds (`.agents/run/records/`), the run analysis of 2026-10-28. There are no testimonials, user counts, benchmarks or customers; none may be invented.
 
 ## Product Principles
 

@@ -602,10 +602,6 @@ fi
 echo
 echo "Recorded the approval in $PLANNING_APPROVAL_FILE."
 echo
-# The runs of this planning together in .agents/records/ of the primary
-# checkout; cleanup-worktree.sh copies them again before the worktree goes.
-records_consolidate planning "$name" ||
-  echo "Warning: the run records of the planning could not be copied to .agents/records/; cleanup-worktree.sh tries again." >&2
 echo "Next steps:"
 echo "  ./scripts/verify.sh"
 to_add=()

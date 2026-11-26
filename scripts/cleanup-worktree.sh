@@ -3,7 +3,6 @@ case $0 in */*) bootstrap_dir=${0%/*} ;; *) if [ -f "$0" ]; then bootstrap_dir=.
 
 set -euo pipefail
 
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/records.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/github.sh"
 
 usage() {
@@ -239,21 +238,6 @@ cleanup() {
   # The pull request is merged and holds the branch: its Issue may close.
   if [[ -n "$issue" && -n "$head" && "$contained" -eq 0 ]]; then
     close_issue_after_merge "$issue" "$number" "$pr_base" "$merge_commit" "$pr_closes" "$pr_post_merge"
-  fi
-
-  # The run records of the feature or the planning together in the primary
-  # checkout (.agents/records/), before the worktree goes. They are in the
-  # primary checkout already; the copy holds them per feature. A copy that
-  # cannot be written keeps the worktree.
-  case "$branch" in
-    feature/*) records_kind=feature records_subject="$(printf '%s' "$branch" | sed -n 's#^feature/\([0-9][0-9]*\)-.*#\1#p')" ;;
-    planning/*) records_kind=planning records_subject="${branch#planning/}" ;;
-    *) records_kind="" records_subject="" ;;
-  esac
-  if [[ -n "$records_subject" ]] && command -v jq >/dev/null 2>&1 &&
-    ! (cd "$primary" && records_consolidate "$records_kind" "$records_subject"); then
-    echo "Kept $branch: its run records could not be copied to .agents/records/ in $primary."
-    return 1
   fi
 
   if ! git worktree remove "$path"; then
