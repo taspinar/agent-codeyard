@@ -13,6 +13,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/planning.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/inherited.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/review-data.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/review-run.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/base.sh"
 
 usage() {
   cat <<EOF
@@ -126,6 +127,9 @@ command -v git >/dev/null 2>&1 || fail "Git is required."
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" ||
   fail "run this script from inside a Git repository."
 repo_name="$(basename "$repo_root")"
+# The planning branches from the default base of the project, as a feature
+# does (lib/base.sh): 'main' unless .agents/template.conf names another.
+base="$(project_base "$repo_root")" || exit 1
 branch="planning/$name"
 worktree="$(dirname "$repo_root")/${repo_name}-planning-${name}"
 grill_prompt="$repo_root/.agents/prompts/project-grill.md"
@@ -185,6 +189,7 @@ else
 fi
 echo "  Branch:   $branch"
 echo "  Worktree: $worktree"
+echo "  Base:     $base"
 if [[ "$change_cycle" -eq 0 || "$with_grill" -eq 1 ]]; then
   echo "  Grill:    $grill_agent ($grill_model)"
   echo "  Reviewer: $reviewer_agent ($reviewer_model), read-only, of the Draft requirements"
@@ -198,11 +203,11 @@ if [[ "$change_cycle" -eq 1 ]]; then
 fi
 echo
 
-git -C "$repo_root" fetch origin main ||
-  fail "could not fetch origin/main."
-git -C "$repo_root" rev-parse --verify --quiet "refs/remotes/origin/main" \
+git -C "$repo_root" fetch origin "$base" ||
+  fail "could not fetch origin/$base."
+git -C "$repo_root" rev-parse --verify --quiet "refs/remotes/origin/$base" \
   >/dev/null ||
-  fail "origin/main is unavailable."
+  fail "origin/$base is unavailable."
 
 # A shallow clone of a project lacks the root commit that tells which
 # approval requests and plans it inherited from the template
@@ -227,23 +232,26 @@ fi
 if [[ "$change_cycle" -eq 1 ]]; then
   # Read successfully before matching: grep -q can close a pipe early and
   # make git show fail with SIGPIPE under pipefail for a large document.
-  approved_requirements="$(git -C "$repo_root" show "origin/main:docs/PROJECT_REQUIREMENTS.md" 2>/dev/null)" ||
-    fail "could not read origin/main:docs/PROJECT_REQUIREMENTS.md; the requirements are missing or unreadable."
+  approved_requirements="$(git -C "$repo_root" show "origin/$base:docs/PROJECT_REQUIREMENTS.md" 2>/dev/null)" ||
+    fail "could not read origin/$base:docs/PROJECT_REQUIREMENTS.md; the requirements are missing or unreadable."
   grep -Fqx "Status: Approved" <<<"$approved_requirements" ||
-    fail "origin/main has no approved docs/PROJECT_REQUIREMENTS.md; a change cycle needs an approved planning. Start the first planning without --change."
+    fail "origin/$base has no approved docs/PROJECT_REQUIREMENTS.md; a change cycle needs an approved planning. Start the first planning without --change."
   for document in docs/architecture.md docs/roadmap.md; do
-    git -C "$repo_root" cat-file -e "origin/main:$document" 2>/dev/null ||
-      fail "origin/main has no $document; a change cycle needs an approved planning."
+    git -C "$repo_root" cat-file -e "origin/$base:$document" 2>/dev/null ||
+      fail "origin/$base has no $document; a change cycle needs an approved planning."
   done
-  ! git -C "$repo_root" cat-file -e "origin/main:$change_relative" 2>/dev/null ||
-    fail "$change_relative already exists on origin/main; choose another name for this change."
+  ! git -C "$repo_root" cat-file -e "origin/$base:$change_relative" 2>/dev/null ||
+    fail "$change_relative already exists on origin/$base; choose another name for this change."
 fi
 
-git -C "$repo_root" worktree add "$worktree" -b "$branch" origin/main ||
+git -C "$repo_root" worktree add "$worktree" -b "$branch" "origin/$base" ||
   fail "could not create planning worktree."
+# Remember the base for the scripts that follow on this branch
+# (review-planning.sh, finish-planning.sh), as start-feature.sh does.
+git -C "$worktree" config "branch.$branch.workflow-base" "$base"
 
 # A change cycle starts from a planning whose approval is current. The new
-# worktree holds exactly origin/main, so the approval is checked there; a
+# worktree holds exactly origin/$base, so the approval is checked there; a
 # worktree that fails the check has nothing in it yet and is removed again.
 if [[ "$change_cycle" -eq 1 ]]; then
   approval_scratch="$(mktemp -d "${TMPDIR:-/tmp}/start-planning-approval.XXXXXX")"
@@ -253,7 +261,7 @@ if [[ "$change_cycle" -eq 1 ]]; then
   if [[ "$approval_status" -ne 0 ]]; then
     git -C "$repo_root" worktree remove --force "$worktree" >/dev/null 2>&1 || true
     git -C "$repo_root" branch -q -D "$branch" >/dev/null 2>&1 || true
-    fail "the planning on origin/main has no current approval: $approval_reason A change cycle changes an approved planning; approve it first with ./scripts/finish-planning.sh in its planning worktree and merge that."
+    fail "the planning on origin/$base has no current approval: $approval_reason A change cycle changes an approved planning; approve it first with ./scripts/finish-planning.sh in its planning worktree and merge that."
   fi
 fi
 

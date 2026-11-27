@@ -14,6 +14,7 @@ source "$script_dir/lib/guardrails.sh"
 source "$script_dir/lib/exceptions.sh"
 source "$script_dir/lib/review-run.sh"
 source "$script_dir/lib/planning.sh"
+source "$script_dir/lib/base.sh"
 
 fail() {
   echo "Error: $*" >&2
@@ -71,12 +72,15 @@ while IFS= read -r decision; do
 done < <(cd "$root" && find docs/decisions -mindepth 1 -maxdepth 1 -name '*.md' -type f 2>/dev/null |
   sed 's#^docs/decisions/##' | LC_ALL=C sort)
 
-if git -C "$root" rev-parse --verify --quiet "origin/main^{commit}" >/dev/null; then
-  base_ref="origin/main"
-elif git -C "$root" rev-parse --verify --quiet "main^{commit}" >/dev/null; then
-  base_ref="main"
+# The base the planning branched from: the one start-planning.sh recorded
+# for the branch, and the default of the project otherwise (lib/base.sh).
+base="$(branch_base "$root" "$branch")" || exit 1
+if git -C "$root" rev-parse --verify --quiet "origin/$base^{commit}" >/dev/null; then
+  base_ref="origin/$base"
+elif git -C "$root" rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
+  base_ref="$base"
 else
-  fail "neither origin/main nor main exists."
+  fail "neither origin/$base nor $base exists."
 fi
 merge_base="$(git -C "$root" merge-base HEAD "$base_ref")"
 

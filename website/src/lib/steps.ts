@@ -93,23 +93,22 @@ export const planning: Step[] = [
   {
     id: "merge-the-plan",
     title: "Merge the planning pull request",
-    summary: "The approved planning is merged into main, and features start from it.",
-    text: "The approved planning is merged into main; features start from that version of the plan.",
+    summary: "The approved planning is merged into its base (main by default), and features start from it.",
+    text: "The approved planning is merged into its base, main unless the project names another; features start from that version of the plan.",
     facts: [
       ["who", "You, or a maintainer by your repository's rules"],
-      ["result", "The approved plan on main"],
+      ["result", "The approved plan on the base"],
     ],
   },
   {
     id: "change-the-plan",
     title: "Change an approved plan",
     summary: "A change of direction is written down, applied by the planning agent, and reviewed and approved again.",
-    text: "When the requirements or the direction change, write the change down in a short file. The planning agent updates the documents it touches, and the change goes through the review and your approval again. A small change to the architecture or an ADR has a lighter route.",
+    text: "When the requirements or the direction change, write the change down in a short file. The planning agent updates the documents it touches, and the change goes through the review and your approval again. A change to the architecture or an ADR alone is a feature, reviewed as one.",
     facts: [
       ["who", "You and the planning agents"],
       ["script", "`./scripts/start-planning.sh <name> --change <file>`, with `--grill` when the requirements change"],
-      ["where", "`start-planning.sh` from a clean primary checkout; `--amend` in a planning worktree"],
-      ["small amendment", "`./scripts/finish-planning.sh --amend`"],
+      ["where", "`start-planning.sh` from a clean primary checkout"],
     ],
   },
 ];
