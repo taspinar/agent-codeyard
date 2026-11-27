@@ -469,5 +469,5 @@ echo
 echo "Open the planning PR into $base; $PLANNING_APPROVAL_FILE summarizes the review"
 echo "rounds and the findings that were not adopted for its description. After the"
 echo "merge, from the primary checkout:"
-echo "  ./scripts/cleanup-worktree.sh $branch    # removes this worktree and updates main"
+echo "  ./scripts/cleanup-worktree.sh $branch    # removes this worktree and updates $base"
 echo "  ./scripts/create-feature-issue.sh <feature-id>    # for example F01"

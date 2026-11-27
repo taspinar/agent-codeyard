@@ -92,7 +92,7 @@ setup_repo() {
 
   mkdir -p "$seed/scripts/lib"
   cp "$source_root/scripts/cleanup-worktree.sh" "$seed/scripts/"
-  cp "$source_root/scripts/lib/records.sh" "$source_root/scripts/lib/github.sh" "$seed/scripts/lib/"
+  cp "$source_root/scripts/lib/records.sh" "$source_root/scripts/lib/github.sh" "$source_root/scripts/lib/base.sh" "$seed/scripts/lib/"
   workflow_gitignore "$seed/.gitignore"
   printf '# Project\n' >"$seed/README.md"
   git -C "$seed" init -q -b main
@@ -504,5 +504,122 @@ MOCK_DEFAULT_FAIL=1 run_cleanup "$repo" 87 || {
 [[ ! -e "$repo.gh" ]] || fail "an Issue was changed although the default branch is unknown"
 grep -Fq "close Issue #87 by hand" "$repo.out" || fail "the unknown default branch was not reported"
 [[ ! -e "$tmp/develop-87" ]] || fail "the worktree was kept because the default branch is unknown"
+
+# The primary checkout is brought up to date with the base of the removed
+# branch, not with main: the default base of the project ('base:' in
+# .agents/template.conf) or the base recorded for the branch.
+# use_develop <repo>: a branch develop on the remote, and the primary
+# checkout on it.
+use_develop() {
+  git -C "$1" push -q origin main:develop
+  git -C "$1" fetch -q origin
+  git -C "$1" checkout -q -b develop origin/develop
+}
+
+# merge_to_develop <repo> <branch> <directory> <file>...: squash-merges the
+# files of the branch into develop on the remote, and records its head as the
+# head of a merged pull request into develop.
+merge_to_develop() {
+  local repo="$1"
+  local branch="$2"
+  local directory="$3"
+  local other
+  local file
+
+  shift 3
+  other="$(mktemp -d "$tmp/merge-develop.XXXXXX")"
+  git clone -q -b develop "$(git -C "$repo" remote get-url origin)" "$other"
+  git -C "$other" config user.name "Cleanup Test"
+  git -C "$other" config user.email "cleanup-test@example.com"
+  for file in "$@"; do
+    mkdir -p "$other/$(dirname "$file")"
+    cp "$tmp/$directory/$file" "$other/$file"
+  done
+  git -C "$other" add -A
+  git -C "$other" commit -qm "Squash merge $branch"
+  git -C "$other" push -q origin develop
+  printf '%s %s 1 develop open\n' "$branch" "$(git -C "$tmp/$directory" rev-parse HEAD)" >>"$repo.merged"
+}
+
+repo="$(setup_repo default-develop)"
+mkdir -p "$repo/.agents"
+printf 'base: develop\n' >"$repo/.agents/template.conf"
+git -C "$repo" add .agents/template.conf
+git -C "$repo" commit -qm "Default base develop"
+git -C "$repo" push -q origin main
+use_develop "$repo"
+add_worktree "$repo" feature/90-develop develop-90
+merge_to_develop "$repo" feature/90-develop develop-90 work.txt
+main_before="$(git -C "$repo" rev-parse origin/main)"
+run_cleanup "$repo" 90 || {
+  cat "$repo.out" >&2
+  fail "cleaning a feature of a project with the default base develop failed"
+}
+[[ ! -e "$tmp/develop-90" ]] || fail "the worktree of a feature with the default base develop was not removed"
+[[ -f "$repo/work.txt" ]] || fail "develop was not fast-forwarded with the merged work"
+[[ "$(git -C "$repo" rev-parse HEAD)" == "$(git -C "$repo" rev-parse origin/develop)" ]] || fail "develop is not at origin/develop after the cleanup"
+grep -Fq "Updated develop in $repo." "$repo.out" || fail "the update of develop was not reported"
+if grep -Fq "main" "$repo.out"; then fail "the cleanup of a feature with the base develop named main: $(cat "$repo.out")"; fi
+[[ "$(git -C "$repo" rev-parse origin/main)" == "$main_before" ]] || fail "the test meant main to stay unchanged"
+
+# A primary checkout that is not on the base is fetched only, and the hint
+# names the base.
+git -C "$repo" checkout -q main
+add_worktree "$repo" feature/91-develop develop-91
+printf 'more\n' >"$tmp/develop-91/more.txt"
+git -C "$tmp/develop-91" add more.txt
+git -C "$tmp/develop-91" commit -qm "More work"
+merge_to_develop "$repo" feature/91-develop develop-91 more.txt
+run_cleanup "$repo" 91 || {
+  cat "$repo.out" >&2
+  fail "cleaning a feature with the base develop from a checkout on main failed"
+}
+grep -Fq "it is not on develop" "$repo.out" || fail "the warning does not name the base develop"
+grep -Fq "git pull --ff-only origin develop" "$repo.out" || fail "the hint does not name the base develop: $(cat "$repo.out")"
+git -C "$repo" cat-file -e "origin/develop:more.txt" || fail "origin/develop was not fetched"
+[[ ! -e "$repo/more.txt" ]] || fail "a checkout that is not on the base was changed"
+
+# The base recorded for a branch wins over the default of the project, and
+# the untracked original of a merged planning into it is removed after the
+# update of that base.
+repo="$(setup_repo recorded-develop)"
+use_develop "$repo"
+git -C "$repo" worktree add -q "$tmp/planning-develop" -b planning/shopping-list origin/develop
+git -C "$repo" config branch.planning/shopping-list.workflow-base develop
+mkdir -p "$tmp/planning-develop/docs/changes"
+printf 'Add a shopping list.\n' >"$tmp/planning-develop/docs/changes/shopping-list.md"
+git -C "$tmp/planning-develop" add docs/changes
+git -C "$tmp/planning-develop" commit -qm "Plan change: shopping-list"
+merge_to_develop "$repo" planning/shopping-list planning-develop docs/changes/shopping-list.md
+printf 'Add a shopping list.\n' >"$repo/change.md"
+run_cleanup "$repo" planning/shopping-list || {
+  cat "$repo.out" >&2
+  fail "cleaning a planning with the recorded base develop failed"
+}
+[[ -f "$repo/docs/changes/shopping-list.md" ]] || fail "the recorded base develop was not fast-forwarded"
+grep -Fq "Updated develop in $repo." "$repo.out" || fail "the update of the recorded base was not reported"
+[[ ! -e "$repo/change.md" ]] || fail "the original of a planning merged into develop was not removed after the update"
+
+# Without the update of the base, the original stays.
+repo="$(setup_repo recorded-develop-kept)"
+use_develop "$repo"
+git -C "$repo" worktree add -q "$tmp/planning-develop-kept" -b planning/shopping-list origin/develop
+git -C "$repo" config branch.planning/shopping-list.workflow-base develop
+mkdir -p "$tmp/planning-develop-kept/docs/changes"
+printf 'Add a shopping list.\n' >"$tmp/planning-develop-kept/docs/changes/shopping-list.md"
+git -C "$tmp/planning-develop-kept" add docs/changes
+git -C "$tmp/planning-develop-kept" commit -qm "Plan change: shopping-list"
+merge_to_develop "$repo" planning/shopping-list planning-develop-kept docs/changes/shopping-list.md
+git -C "$repo" checkout -q main
+mkdir -p "$repo/docs/changes"
+printf 'Add a shopping list.\n' >"$repo/docs/changes/shopping-list.md"
+git -C "$repo" add docs/changes
+git -C "$repo" commit -qm "A tracked copy on main"
+printf 'Add a shopping list.\n' >"$repo/change.md"
+run_cleanup "$repo" planning/shopping-list || {
+  cat "$repo.out" >&2
+  fail "cleaning a planning with the base develop from a checkout on main failed"
+}
+[[ -f "$repo/change.md" ]] || fail "an original was removed although the base of the planning was not updated"
 
 echo "cleanup-worktree tests passed"

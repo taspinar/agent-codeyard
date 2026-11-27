@@ -414,6 +414,7 @@ printf 'base: develop\n' >>"$base_repo/.agents/template.conf"
 add_review "$base_repo" 1 PASS "[]"
 run_finish "$base_repo" y || { cat "$base_repo.out" >&2; fail "approving a planning of a project with the base develop failed"; }
 grep -Fq "Open the planning PR into develop;" "$base_repo.out" || fail "the next steps do not name the default base develop: $(cat "$base_repo.out")"
+grep -Fq "removes this worktree and updates develop" "$base_repo.out" || fail "the cleanup hint does not name the base develop: $(cat "$base_repo.out")"
 base_repo="$(setup_repo recorded-base)"
 printf 'base: develop\n' >>"$base_repo/.agents/template.conf"
 git -C "$base_repo" config branch.planning/project-bootstrap.workflow-base release

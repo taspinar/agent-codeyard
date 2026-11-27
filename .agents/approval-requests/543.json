@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "b051427f6273399e3ce89fcb2d88bfa4967dd46d",
+  "commit": {
+    "branch": "feature/543-539-r01-min2-cleanup",
+    "parent": "11c94c52850fdcd71d5fbb4f1f655397f2ba17fb",
+    "base": "11c94c52850fdcd71d5fbb4f1f655397f2ba17fb"
+  },
+  "review": {
+    "round": 3,
+    "verdict": "PASS",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the review could not confirm: ./scripts/verify.sh --all passes.",
+    "the review could not confirm: `./scripts/verify.sh` passes."
+  ],
+  "explanation": "Issue #543: [#539][R01][MIN2] cleanup-worktree.sh updates the branch's recorded base or the project default base instead of main. The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

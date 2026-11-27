@@ -96,7 +96,7 @@ the website describes the current template.
 | `scripts/check-risk.sh` | The risk level of a feature, `low`, `medium`, or `high`, with every reason and what the level requires of the review rounds, by the risk policy of its base; exits 0, 1, or 2 for the level |
 | `scripts/check-review.sh` | Reports whether a review still matches what it covers |
 | `scripts/check-skills.sh` | Checks the metadata of the project skills, the skills a plan selects (`--issue`, which prints their files), and prints the digest of a skill (`--digest`); reads and hashes files only. A project without skills passes |
-| `scripts/cleanup-worktree.sh` | Removes a merged worktree and its branch and updates `main` |
+| `scripts/cleanup-worktree.sh` | Removes a merged worktree and its branch and fast-forwards its base |
 | `scripts/sync-template.sh` | Takes over the template's changes since the version the project has; never commits |
 | `scripts/assess-repository.sh` | Assesses an existing repository for an adoption, read-only: the facts, a report of a read-only agent, and a proposal; runs none of its code and changes nothing in it |
 | `scripts/adopt-repository.sh` | Applies the proposal of an assessment to the existing repository, additively, as one commit on its branch `adopt/agent-codeyard`; never overwrites a file, stops on uncommitted work and unresolved collisions, safe to repeat; `--publish` opens a pull request. Writes `scripts/verify.conf` from the project's own commands and, where the project has none, the planning documents as a minimal baseline marked *observed, not approved*; writes no ADR |
