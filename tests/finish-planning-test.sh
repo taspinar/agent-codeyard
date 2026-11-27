@@ -34,6 +34,222 @@ esac
 GH
 chmod +x "$tmp/bin/gh"
 
+# The lists of planning documents are defined once, in scripts/lib/planning.sh
+# (Issue 540). They agree with each other: the scope is the product planning
+# and what a feature may update, and the baseline and the planner's
+# documents are part of it.
+(
+  source "$source_root/scripts/lib/planning.sh"
+  sorted() { printf '%s\n' "$@" | LC_ALL=C sort; }
+  [[ "$(sorted "${PLANNING_SCOPE[@]}")" == "$(sorted "${PLANNING_PRODUCT_SCOPE[@]}" "${PLANNING_FEATURE_SCOPE[@]}")" ]] ||
+    fail "PLANNING_SCOPE is not PLANNING_PRODUCT_SCOPE and PLANNING_FEATURE_SCOPE together"
+  [[ -z "$(LC_ALL=C comm -12 <(sorted "${PLANNING_PRODUCT_SCOPE[@]}") <(sorted "${PLANNING_FEATURE_SCOPE[@]}"))" ]] ||
+    fail "a document is both in PLANNING_PRODUCT_SCOPE and in PLANNING_FEATURE_SCOPE"
+  [[ -z "$(LC_ALL=C comm -23 <(sorted "${PLANNING_BASELINE_DOCUMENTS[@]}") <(sorted "${PLANNING_SCOPE[@]}"))" ]] ||
+    fail "PLANNING_BASELINE_DOCUMENTS names a document outside PLANNING_SCOPE"
+  [[ -z "$(LC_ALL=C comm -23 <(sorted "${PLANNING_PLANNER_DOCUMENTS[@]}") <(sorted "${PLANNING_BASELINE_DOCUMENTS[@]}"))" ]] ||
+    fail "PLANNING_PLANNER_DOCUMENTS names a document outside PLANNING_BASELINE_DOCUMENTS"
+  [[ " ${PLANNING_FEATURE_SCOPE[*]} " == *" $PLANNING_DECISIONS_DIR "* ]] ||
+    fail "PLANNING_DECISIONS_DIR is not in PLANNING_FEATURE_SCOPE"
+  [[ "$(planning_list ", " a b c)" == "a, b, c" && "$(planning_list ", " a)" == "a" ]] ||
+    fail "planning_list does not join its items"
+
+  # The light risk profile leaves every planning document out of its low
+  # class, from the same list.
+  source "$source_root/scripts/lib/risk.sh"
+  excluded="$(printf '%s\n' "${RISK_PROFILE_LIGHT_LOW[@]}" | sed -n 's/^:(exclude)//p' | LC_ALL=C sort)"
+  [[ "$excluded" == "$(sorted "${PLANNING_SCOPE[@]}" "$PLANNING_APPROVAL_FILE" AGENTS.md)" ]] ||
+    fail "the light risk profile does not leave out exactly the planning documents and AGENTS.md: $excluded"
+
+  # No other script copies a list (M1 of reviews 01 and 04). A copy need not
+  # be one list: separate assignments, case or grep alternatives, or messages
+  # can each name one document. So the check does not look for documents
+  # that follow each other. planning_copies <table> <file...> counts, per
+  # file and planning document, the lines that name it (comment lines do not
+  # count; a pathspec magic, a variable directory and a '\' before '/' or '.'
+  # are left out first; adjacent quoted pieces are joined, a brace list is
+  # expanded, a variable assigned a literal value stands for that value, and
+  # a document file counts by its name alone, as in "$dir"/roadmap.md), and
+  # prints each file and document whose count differs from the table, with
+  # the lines that name it. The table lists
+  # every permitted mention: "<file> | <document> | <lines> | <reason>".
+  planning_copies() {
+    PLANNING_COPY_PATHS="$(printf '%s\n' "${PLANNING_SCOPE[@]}" "$PLANNING_APPROVAL_FILE")" perl -e '
+      my (%document, @names, @dirs);
+      for my $full (split /\n/, $ENV{PLANNING_COPY_PATHS}) {
+        (my $name = $full) =~ s{^docs/}{};
+        $document{$name} = $full;
+        if ($name =~ /\.md$/) { push @names, quotemeta $name } else { push @dirs, quotemeta $name }
+      }
+      my $names = join("|", @names);
+      my $dirs = join("|", @dirs);
+      my $table = shift @ARGV;
+      my (%allowed, %found, %lines);
+      open(my $rows, "<", $table) or die "no table: $table\n";
+      while (<$rows>) {
+        next if /^\s*(#|$)/;
+        chomp;
+        my ($file, $document, $count, $reason) = split /\s*\|\s*/;
+        die "a row of the table has no reason: $_\n" unless defined $reason && $reason =~ /\S/;
+        $allowed{"$file\t$document"} = $count;
+      }
+      for my $file (@ARGV) {
+        open(my $in, "<", $file) or next;
+        my @lines = <$in>;
+        close $in;
+        # A variable assigned a literal value (no expansion, no command)
+        # stands for that value, so "$d/$n" with d=docs and n=decisions
+        # names docs/decisions (M1 of review 06).
+        my %value;
+        for (@lines) {
+          next if /^\s*#/;
+          while (/(?:^|[\s;(&|])(?:(?:local|readonly|export|declare(?:\s+-[A-Za-z]+)?)\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"\$`\\]*"|\x27[^\x27]*\x27|[A-Za-z0-9_.\/-]*)(?=$|[\s;)&|])/g) {
+            my ($name, $literal) = ($1, $2);
+            $literal =~ s/^["\x27]|["\x27]$//g;
+            # A value that names a document already counts on the line
+            # that assigns it; only the pieces of a path are resolved.
+            next if $literal =~ m{(?<![A-Za-z0-9_.-])(?:docs/(?:$dirs)|(?:docs/)?(?:$names))(?![A-Za-z0-9_.-])};
+            $value{$name} = $literal;
+          }
+        }
+        for my $index (0 .. $#lines) {
+          my $line = $lines[$index];
+          local $. = $index + 1;
+          next if $line =~ /^\s*#/;
+          my $text = $line;
+          $text =~ s/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/exists $value{$1} ? $value{$1} : "\${$1}"/ge;
+          $text =~ s/\$([A-Za-z_][A-Za-z0-9_]*)/exists $value{$1} ? $value{$1} : "\$$1"/ge;
+          $text =~ s/:\(exclude\)//g;
+          $text =~ s/\$\{?[A-Za-z_][A-Za-z0-9_]*\}?\///g;
+          $text =~ s/\\([\/.])/$1/g;
+          $text =~ s/(["\x27])\s*(["\x27])//g;
+          $text =~ s{["\x27]?/["\x27]?}{/}g;
+          1 while $text =~ s{([A-Za-z0-9_./-]*)(?<!\$)\{([^{}]*,[^{}]*)\}([A-Za-z0-9_./-]*)}{join(" ", map { "$1$_$3" } split(/,/, $2, -1))}e;
+          my %named;
+          while ($text =~ m{(?<![A-Za-z0-9_.-])(?:(?<![/])docs/($dirs)|(?:docs/)?($names))(?![A-Za-z0-9_.-])}g) {
+            $named{$document{$1 // $2}} = 1;
+          }
+          for my $document (keys %named) {
+            $found{"$file\t$document"}++;
+            push @{$lines{"$file\t$document"}}, "  $file:$.: $line";
+          }
+        }
+      }
+      my %scanned = map { $_ => 1 } @ARGV;
+      for my $key (sort keys %{{ %found, %allowed }}) {
+        my ($file, $document) = split /\t/, $key;
+        next unless $scanned{$file};
+        my $count = $found{$key} // 0;
+        my $permitted = $allowed{$key} // 0;
+        next if $count == $permitted;
+        print "$file names $document on $count line(s), the table permits $permitted:\n", @{$lines{$key} // []};
+      }
+    ' "$@"
+  }
+
+  # The check catches a copy in each of these forms, and a script that uses
+  # the shared lists is no copy. A mention that the table permits passes; one
+  # more fails.
+  scan="$tmp/copy-scan"
+  mkdir -p "$scan"
+  : >"$scan/none.table"
+  printf 'scope=(docs/roadmap.md docs/architecture.md)\n' >"$scan/one-line.sh"
+  printf 'scope=(\n  "$root/docs/roadmap.md"\n  docs/PROJECT_REQUIREMENTS.md \\\n)\n' >"$scan/array.sh"
+  printf 'cat <<EOF\ndocs/architecture.md\n\ndocs/decisions\nEOF\n' >"$scan/heredoc.sh"
+  printf 'git diff -- :(exclude)docs/roadmap.md\n# docs/changes\n  :(exclude)docs/changes\n' >"$scan/pathspec.sh"
+  printf 'roadmap=docs/roadmap.md\nrun_tests\narchitecture="$root/docs/architecture.md"\n' >"$scan/assignments.sh"
+  printf 'case "$path" in\n  docs/roadmap.md) x ;;\n  docs/architecture.md) y ;;\nesac\n' >"$scan/case.sh"
+  printf "grep -E 'docs/roadmap\\\\.md|docs/architecture\\\\.md' \"\$file\"\n" >"$scan/grep.sh"
+  printf 'awk %s\n' "'/^docs\\/decisions\\// { print }'" >"$scan/escaped.sh"
+  # Assembled paths (M1 of review 05): adjacent quoted pieces, brace
+  # expansion, and a bare document name after another directory.
+  printf 'printf "%%s/%%s\\n" "docs" "roadmap.md"\nx="docs/""architecture.md"\n' >"$scan/pieces.sh"
+  printf "y='docs/'\"changes\"\n" >"$scan/pieces-directory.sh"
+  printf 'scope=(docs/{roadmap,architecture}.md)\n' >"$scan/brace.sh"
+  printf 'scope=(docs/{changes,decisions} "$root"/docs/{PROJECT_REQUIREMENTS,PROJECT_DESCRIPTION}.md)\n' >"$scan/brace-nested.sh"
+  printf 'f="$root"/roadmap.md\n' >"$scan/basename.sh"
+  # A path assembled from variables (M1 of review 06): a variable assigned a
+  # literal value stands for it.
+  printf 'd=docs\nn=decisions\npath="$d/$n"\n' >"$scan/variables.sh"
+  printf 'local d="docs" n=changes; x="${d}"/"$n"\n' >"$scan/variables-braced.sh"
+  printf 'source lib/planning.sh\nscope=("${PLANNING_SCOPE[@]}")\n# docs/roadmap.md docs/architecture.md\n' >"$scan/shared.sh"
+  for form in one-line array heredoc pathspec assignments case grep escaped pieces pieces-directory brace brace-nested basename variables variables-braced; do
+    [[ -n "$(planning_copies "$scan/none.table" "$scan/$form.sh")" ]] || fail "the copy check misses a copied list ($form)"
+  done
+  [[ -z "$(planning_copies "$scan/none.table" "$scan/shared.sh")" ]] ||
+    fail "the copy check takes the use of the shared lists for a copy: $(planning_copies "$scan/none.table" "$scan/shared.sh")"
+  [[ "$(planning_copies "$scan/none.table" "$scan/brace.sh")" == *"names docs/roadmap.md"*"names docs/architecture.md"* ||
+    "$(planning_copies "$scan/none.table" "$scan/brace.sh")" == *"names docs/architecture.md"*"names docs/roadmap.md"* ]] ||
+    fail "the copy check does not expand a brace list into each document"
+  [[ "$(planning_copies "$scan/none.table" "$scan/variables.sh")" == *"names docs/decisions on 1 line(s)"*'variables.sh:3:'* ]] ||
+    fail "the copy check does not resolve a directory assembled from variables"
+  printf '%s\n' "$scan/case.sh | docs/roadmap.md | 1 | a test" "$scan/case.sh | docs/architecture.md | 1 | a test" >"$scan/case.table"
+  [[ -z "$(planning_copies "$scan/case.table" "$scan/case.sh")" ]] ||
+    fail "the copy check reports a mention that its table permits"
+  printf '  docs/decisions) z ;;\n' >>"$scan/case.sh"
+  [[ "$(planning_copies "$scan/case.table" "$scan/case.sh")" == *"names docs/decisions on 1 line(s), the table permits 0"* ]] ||
+    fail "the copy check misses a mention that its table does not permit"
+  printf 'scripts/x.sh | docs/roadmap.md | 1\n' >"$scan/bad.table"
+  ! planning_copies "$scan/bad.table" "$scan/shared.sh" 2>/dev/null ||
+    fail "the copy check takes a table row without a reason"
+
+  # Only the template checks its own scripts (template_repository in
+  # tests/lib-fakes.sh): a project keeps its own scripts there too, and what
+  # they name is not the workflow's.
+  if template_repository "$source_root"; then
+    mapfile -d '' scripts < <(cd "$source_root" && git ls-files -z -- scripts ':(exclude)scripts/lib/planning.sh')
+    cat >"$tmp/permitted-mentions" <<'MENTIONS'
+# Each line of a script outside scripts/lib/planning.sh that names a planning
+# document. None of them is a list of the planning: each acts on one
+# document, or names documents for another purpose. A new mention fails
+# the test until it is added here, with its reason.
+scripts/adopt-repository.sh | docs/PLANNING_APPROVAL.md | 1 | later_paths: the paths that check-docs.sh may find missing, not a list of the planning
+scripts/adopt-repository.sh | docs/decisions | 2 | later_paths (docs/decisions/x.md), and the text of the reconstructed architecture
+scripts/adopt-repository.sh | docs/architecture.md | 1 | the reconstruction writes the architecture document
+scripts/adopt-repository.sh | docs/PROJECT_REQUIREMENTS.md | 2 | the reconstruction writes the requirements document
+scripts/assess-repository.sh | docs/PLANNING_APPROVAL.md | 1 | later_paths, as in adopt-repository.sh
+scripts/assess-repository.sh | docs/decisions | 3 | later_paths, and the ADRs other than the README that the assessment leaves out
+scripts/check-docs.sh | docs/PLANNING_APPROVAL.md | 1 | the --later example of its usage
+scripts/check-docs.sh | docs/changes | 1 | the --later example of its usage
+scripts/cleanup-worktree.sh | docs/PROJECT_DESCRIPTION.md | 1 | the description that a planning cycle copies back to the primary checkout
+scripts/cleanup-worktree.sh | docs/changes | 1 | the change requests that a planning cycle copies back
+scripts/cleanup-worktree.sh | docs/roadmap.md | 1 | the message that names the next step
+scripts/create-feature-issue.sh | docs/roadmap.md | 3 | it reads the feature from the roadmap
+scripts/finish-planning.sh | docs/architecture.md | 1 | the usage text
+scripts/finish-planning.sh | docs/PROJECT_REQUIREMENTS.md | 2 | it checks and names the approved requirements
+scripts/finish-planning.sh | docs/changes | 2 | the change request of the cycle
+scripts/lib/guardrails.sh | docs/decisions | 2 | a protected path: an ADR change needs approval
+scripts/lib/risk.sh | docs/decisions | 1 | RISK_PROFILE_HIGH: the ADRs are high risk, not a list of the planning
+scripts/review-planning.sh | docs/PROJECT_REQUIREMENTS.md | 1 | it checks the approved requirements
+scripts/review-planning.sh | docs/changes | 2 | the change request of the cycle
+scripts/revise-planning.sh | docs/PROJECT_REQUIREMENTS.md | 2 | the usage text, and it checks the approved requirements
+scripts/revise-planning.sh | docs/decisions | 6 | it checks that the ADRs are regular Markdown files
+scripts/start-planning.sh | docs/PROJECT_DESCRIPTION.md | 1 | the description that the cycle copies in
+scripts/start-planning.sh | docs/changes | 3 | the usage text, and the change request that the cycle copies in
+scripts/start-planning.sh | docs/PROJECT_REQUIREMENTS.md | 11 | Project Grill writes and the owner approves the requirements
+scripts/start-planning.sh | docs/architecture.md | 2 | the placeholder check of the architecture
+scripts/start-planning.sh | docs/roadmap.md | 4 | the placeholder check of the roadmap and its feature IDs before and after
+scripts/start-planning.sh | docs/decisions | 5 | it checks the ADRs that the planner wrote and that none was deleted
+scripts/verify.conf | docs/architecture.md | 1 | the template-structure check
+scripts/verify.conf | docs/PROJECT_DESCRIPTION.md | 1 | the --later argument of docs-references
+scripts/verify.conf | docs/PLANNING_APPROVAL.md | 1 | the --later argument of docs-references
+scripts/verify.conf | docs/changes | 1 | the --later argument of docs-references
+MENTIONS
+    copies="$(cd "$source_root" && planning_copies "$tmp/permitted-mentions" "${scripts[@]}")" ||
+      fail "the copy check could not read its table"
+    [[ -z "$copies" ]] ||
+      fail "a script copies a list of planning documents instead of using scripts/lib/planning.sh:"$'\n'"$copies"
+
+    # Each script that needs a list sources scripts/lib/planning.sh and uses
+    # one of its lists.
+    for script in check-docs.sh lib/risk.sh lib/scope.sh review-planning.sh finish-planning.sh start-planning.sh revise-planning.sh adopt-repository.sh assess-repository.sh; do
+      grep -qE '^[^#]*source .*planning\.sh' "$source_root/scripts/$script" &&
+        grep -qE '^[^#]*PLANNING_(SCOPE|PRODUCT_SCOPE|FEATURE_SCOPE|BASELINE_DOCUMENTS|PLANNER_DOCUMENTS|DECISIONS_DIR)' "$source_root/scripts/$script" ||
+        fail "scripts/$script does not use the lists of scripts/lib/planning.sh"
+    done
+  fi
+) || exit 1
+
 reviews=".agents/reviews"
 counter=0
 

@@ -27,7 +27,7 @@ setup_repo() {
 
   mkdir -p "$repo/docs" "$repo/scripts/lib" "$repo/.agents/reviews"
   cp "$source_root/scripts/check-docs.sh" "$repo/scripts/check-docs.sh"
-  cp "$source_root/scripts/lib/base.sh" "$source_root/scripts/lib/fingerprint.sh" "$repo/scripts/lib/"
+  cp "$source_root/scripts/lib/base.sh" "$source_root/scripts/lib/fingerprint.sh" "$source_root/scripts/lib/planning.sh" "$repo/scripts/lib/"
   printf '.agents/reviews/\n' >"$repo/.gitignore"
   printf '# Workflow\n' >"$repo/docs/workflow.md"
   {

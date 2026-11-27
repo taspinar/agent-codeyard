@@ -30,7 +30,7 @@ usage() {
   echo "                        credential file such as .env is there); the"
   echo "                        project's file, which a sync does not change."
   echo "  .agents/template.conf records the proposal's base as 'base:' where it is not main."
-  echo "  docs/architecture.md, docs/PROJECT_REQUIREMENTS.md, docs/roadmap.md"
+  echo "  $(planning_list ", " "${PLANNING_BASELINE_DOCUMENTS[@]}")"
   echo "                        a minimal baseline from the assessment, marked"
   echo "                        'Observed, not approved' until the planning approval."
   echo "  A planning document the project has is resolved by the assessment's judgement:"
@@ -134,7 +134,6 @@ git -C "$root" cat-file -e "$template_commit^{commit}" 2>/dev/null ||
 # document of the baseline, which this script writes. A path that leaves the
 # repository (absolute, or with a '.' or '..' component) or that the template
 # does not have is an edited or damaged proposal, refused before any change.
-baseline_documents=(docs/architecture.md docs/PROJECT_REQUIREMENTS.md docs/roadmap.md)
 plain_relative='def plain_relative: type == "string" and . != "" and (startswith("/") | not)
   and (explode | any(. < 32 or . == 127) | not) and (split("/") | any(. == "" or . == "." or . == "..") | not);'
 invalid_paths=()
@@ -142,7 +141,7 @@ while IFS= read -r line; do
   invalid_paths+=("$line")
 done < <(jq -r "$plain_relative"' (.additions[], .collisions[]) | .path | select(plain_relative | not) | tojson' "$proposal")
 while IFS= read -r path; do
-  [[ " ${baseline_documents[*]} " != *" $path "* ]] || continue
+  [[ " ${PLANNING_BASELINE_DOCUMENTS[*]} " != *" $path "* ]] || continue
   [[ "$(git -C "$root" cat-file -t "$template_commit:$path" 2>/dev/null)" == blob ]] ||
     invalid_paths+=("\"$path\" (not a file of the template commit ${template_commit:0:7})")
 done < <(jq -r "$plain_relative"' (.additions[], .collisions[]) | .path | select(plain_relative)' "$proposal")
@@ -254,7 +253,7 @@ while IFS=$'\t' read -r path ownership; do
     printf 'config\t%s\t%s\n' "$path" "$path" >>"$work/plan"
   elif [[ "$path" == "$verify_path" ]]; then
     printf 'verify\t%s\t%s\n' "$path" "$path" >>"$work/plan"
-  elif [[ " ${baseline_documents[*]} " == *" $path "* ]]; then
+  elif [[ " ${PLANNING_BASELINE_DOCUMENTS[*]} " == *" $path "* ]]; then
     printf 'document\t%s\t%s\n' "$path" "$path" >>"$work/plan"
   elif [[ "$path" == .github/workflows/* ]]; then
     printf 'ci\t%s\t%s\n' "$path" "$path" >>"$work/plan"
@@ -278,7 +277,7 @@ while IFS=$'\t' read -r path ownership kind resolution project_path rationale; d
   fi
   # A planning document of the baseline is the project's: reused when the
   # assessment judged it sufficient, reconstructed when not.
-  if [[ " ${baseline_documents[*]} " == *" $path "* ]]; then
+  if [[ " ${PLANNING_BASELINE_DOCUMENTS[*]} " == *" $path "* ]]; then
     [[ "$ownership" != template || ("$resolution" != keep-project && "$resolution" != reconstruct) ]] || exclusions+=(":(exclude)$path")
     case "$resolution" in
       keep-project) printf 'keep\t%s\t%s\n' "$path" "$path" >>"$work/plan" ;;
@@ -342,7 +341,7 @@ assessed_path() {
 # proposal, or a file of the assessed commit. Its own checks are reused as
 # they are; a planning document the proposal does not judge stops the run,
 # as a proposal of an older assessment would leave it.
-for path in "$verify_path" "${baseline_documents[@]}"; do
+for path in "$verify_path" "${PLANNING_BASELINE_DOCUMENTS[@]}"; do
   jq -e --arg path "$path" '[.additions[], .collisions[]] | any(.path == $path)' "$proposal" >/dev/null && continue
   if tgit cat-file -e "$assessed_head:$path" 2>/dev/null; then
     [[ "$path" == "$verify_path" ]] ||

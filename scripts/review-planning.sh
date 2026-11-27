@@ -46,7 +46,7 @@ reviews_dir="$root/.agents/reviews"
 [[ -f "$schema_file" ]] || fail "review schema not found: $schema_file"
 review_data_require_jq
 
-for required in docs/PROJECT_REQUIREMENTS.md docs/architecture.md docs/roadmap.md; do
+for required in "${PLANNING_BASELINE_DOCUMENTS[@]}"; do
   [[ -f "$root/$required" && ! -L "$root/$required" ]] || fail "required planning document is missing: $required"
 done
 grep -Fqx "Status: Approved" "$root/docs/PROJECT_REQUIREMENTS.md" ||
@@ -59,18 +59,25 @@ model="$AGENT_MODEL"
 # The reviewed scope: the planning documents, and nothing else.
 scope=("${PLANNING_SCOPE[@]}")
 
-# The documents whose contents the reviewer receives.
-paths=()
-[[ ! -f "$root/docs/PROJECT_DESCRIPTION.md" ]] || paths+=(docs/PROJECT_DESCRIPTION.md)
-# A change cycle has a change request named after its branch.
+# The documents whose contents the reviewer receives, in the order of the
+# scope: each document that exists, and the direct Markdown files of a
+# directory. Of the change requests, only that of this cycle: a change cycle
+# has a change request named after its branch.
 change_request="docs/changes/$name.md"
 [[ -f "$root/$change_request" ]] || change_request=""
-[[ -z "$change_request" ]] || paths+=("$change_request")
-paths+=(docs/PROJECT_REQUIREMENTS.md docs/architecture.md docs/roadmap.md)
-while IFS= read -r decision; do
-  paths+=("docs/decisions/$decision")
-done < <(cd "$root" && find docs/decisions -mindepth 1 -maxdepth 1 -name '*.md' -type f 2>/dev/null |
-  sed 's#^docs/decisions/##' | LC_ALL=C sort)
+paths=()
+for entry in "${scope[@]}"; do
+  if [[ "$entry" == docs/changes ]]; then
+    [[ -z "$change_request" ]] || paths+=("$change_request")
+  elif [[ -d "$root/$entry" ]]; then
+    while IFS= read -r document; do
+      paths+=("$entry/$document")
+    done < <(cd "$root" && find "$entry" -mindepth 1 -maxdepth 1 -name '*.md' -type f 2>/dev/null |
+      sed "s#^$entry/##" | LC_ALL=C sort)
+  elif [[ -f "$root/$entry" ]]; then
+    paths+=("$entry")
+  fi
+done
 
 # The base the planning branched from: the one start-planning.sh recorded
 # for the branch, and the default of the project otherwise (lib/base.sh).

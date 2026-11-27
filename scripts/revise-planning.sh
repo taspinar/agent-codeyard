@@ -221,8 +221,8 @@ follow the old wording:
 ${amendments}"
 fi
 revise_prompt+="
-Change only docs/architecture.md, docs/roadmap.md, and direct Markdown ADRs
-under docs/decisions/. Do not commit, push, open or merge a pull request,
+Change only $(planning_list ", " "${PLANNING_PLANNER_DOCUMENTS[@]}"), and direct Markdown ADRs
+under $PLANNING_DECISIONS_DIR/. Do not commit, push, open or merge a pull request,
 create GitHub Issues, or deploy."
 
 echo
@@ -245,7 +245,7 @@ scope_unchanged "$baseline" "$tmp_work/scope-after.tsv" ||
   preserved "the planner changed files outside the architecture, the roadmap, and the ADRs."
 [[ "$agent_status" -eq 0 ]] || preserved "the planner failed with status $agent_status." "$agent_status"
 
-for document in docs/architecture.md docs/roadmap.md; do
+for document in "${PLANNING_PLANNER_DOCUMENTS[@]}"; do
   [[ -f "$root/$document" && ! -L "$root/$document" && -s "$root/$document" ]] ||
     preserved "$document must remain a non-empty regular file."
   [[ ! "$(scope_file_mode "$root/$document")" =~ [1357] ]] ||
