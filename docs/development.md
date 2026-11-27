@@ -3498,9 +3498,13 @@ pull request first; when that fails, the worktree is kept and the script says
 why. It refuses an unmerged worktree, a branch with a local commit that the
 merged pull request does not contain, and a worktree with uncommitted changes;
 ignored review and triage files do not count. After removing the worktree and
-the local branch it fast-forwards `main` when the primary checkout is on `main`
-without modified tracked files; untracked files do not prevent that. After a
-merged planning it also removes an untracked file in the primary checkout that
+the local branch it fast-forwards the base of the branch: the base recorded
+for it, or the default base of the project (`base:` in
+`.agents/template.conf`, `main` without it). It does so when the primary
+checkout is on that base without modified tracked files; untracked files do
+not prevent that. Otherwise it only fetches the base and prints the
+`git pull --ff-only origin <base>` that updates it. After a merged planning
+whose base it updated it also removes an untracked file in the primary checkout that
 is identical to `docs/PROJECT_DESCRIPTION.md`, such as the original idea file. A planning worktree is cleaned with
 `./scripts/cleanup-worktree.sh planning/<name>`, every merged worktree at once
 with `--merged`, and an abandoned, unmerged one with `--discard` after

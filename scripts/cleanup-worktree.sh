@@ -4,6 +4,7 @@ case $0 in */*) bootstrap_dir=${0%/*} ;; *) if [ -f "$0" ]; then bootstrap_dir=.
 set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/github.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/base.sh"
 
 usage() {
   echo "Usage:"
@@ -13,6 +14,10 @@ usage() {
   echo "  $0 --merged              Remove every worktree whose pull request is merged"
   echo
   echo "Add --discard to remove an unmerged worktree and its branch after confirmation."
+  echo
+  echo "After a removal, the primary checkout is brought up to date with the base of"
+  echo "the removed branch: the base recorded for it (lib/base.sh), or the default"
+  echo "base of the project ('base:' in .agents/template.conf, else main)."
   echo
   echo "GitHub closes an Issue from 'Closes #<n>' only on a merge into the default"
   echo "branch. For a feature merged into another base, the script closes its Issue,"
@@ -187,6 +192,7 @@ cleanup() {
   local pr_post_merge=""
   local contained=1
   local answer=""
+  local base=""
 
   path="$(cd "$path" && pwd -P)"
   if [[ "$path" == "$current" ]]; then
@@ -240,6 +246,13 @@ cleanup() {
     close_issue_after_merge "$issue" "$number" "$pr_base" "$merge_commit" "$pr_closes" "$pr_post_merge"
   fi
 
+  # The base of the branch, read before 'git branch -D' removes its recorded
+  # base with the rest of its configuration.
+  if ! base="$(branch_base "$primary" "$branch")"; then
+    base=""
+    echo "Warning: could not determine the base of $branch; the primary checkout is not updated for it." >&2
+  fi
+
   if ! git worktree remove "$path"; then
     echo "Error: could not remove the worktree of $branch at $path; the branch was kept." >&2
     return 2
@@ -249,15 +262,31 @@ cleanup() {
     return 2
   fi
   echo "Removed $branch and its worktree $path."
-  if [[ "$branch" == planning/* && -n "$head" && "$contained" -eq 0 ]]; then
-    removed_planning=1
+  if [[ -n "$base" ]]; then
+    add_base "$base"
+    if [[ "$branch" == planning/* && -n "$head" && "$contained" -eq 0 ]]; then
+      planning_bases["$base"]=1
+    fi
   fi
   return 0
 }
 
+# The bases of the removed branches, in the order of their first removal; the
+# bases of the removed merged plannings; and the bases brought up to date.
+bases=()
+declare -A planning_bases=()
+declare -A updated_bases=()
+
+add_base() {
+  local known
+
+  for known in ${bases[@]+"${bases[@]}"}; do
+    [[ "$known" != "$1" ]] || return 0
+  done
+  bases+=("$1")
+}
+
 removed=0
-removed_planning=0
-main_updated=0
 errors=0
 if [[ "$merged_mode" -eq 1 ]]; then
   while IFS=$'\t' read -r path branch; do
@@ -299,26 +328,34 @@ fi
 git worktree prune
 
 if [[ "$removed" -gt 0 ]]; then
-  # Bring main up to date with the merged work. Untracked files do not prevent
-  # a fast-forward; modified tracked files do.
-  if [[ "$(git -C "$primary" branch --show-current)" == "main" &&
-        -z "$(git -C "$primary" status --porcelain --untracked-files=no)" ]]; then
-    if git -C "$primary" pull -q --ff-only origin main; then
-      echo "Updated main in $primary."
-      main_updated=1
+  # Bring the base of each removed branch up to date with the merged work.
+  # Untracked files do not prevent a fast-forward; modified tracked files do.
+  primary_branch="$(git -C "$primary" branch --show-current)"
+  for base in ${bases[@]+"${bases[@]}"}; do
+    if [[ "$primary_branch" == "$base" &&
+          -z "$(git -C "$primary" status --porcelain --untracked-files=no)" ]]; then
+      if git -C "$primary" pull -q --ff-only origin "$base"; then
+        echo "Updated $base in $primary."
+        updated_bases["$base"]=1
+      else
+        echo "Warning: could not fast-forward $base in $primary; update it by hand with: git pull --ff-only origin $base"
+      fi
     else
-      echo "Warning: could not fast-forward main in $primary; update it by hand with: git pull --ff-only origin main"
+      git -C "$primary" fetch -q origin "$base" || true
+      echo "Fetched origin/$base, but did not update $primary: it is not on $base or has uncommitted changes to tracked files."
+      echo "Update it by hand with: git pull --ff-only origin $base"
     fi
-  else
-    git -C "$primary" fetch -q origin main || true
-    echo "Fetched origin/main, but did not update $primary: it is not on main or has uncommitted changes to tracked files."
-    echo "Update it by hand with: git pull --ff-only origin main"
-  fi
+  done
+
+  planning_updated=0
+  for base in ${bases[@]+"${bases[@]}"}; do
+    [[ -z "${planning_bases[$base]:-}" || -z "${updated_bases[$base]:-}" ]] || planning_updated=1
+  done
 
   # After a merged planning, the description or the change request that
   # start-planning.sh copied is in the repository. Remove an untracked
   # original that is byte-identical to its copy.
-  if [[ "$removed_planning" -eq 1 && "$main_updated" -eq 1 ]]; then
+  if [[ "$planning_updated" -eq 1 ]]; then
     copies=()
     [[ ! -f "$primary/docs/PROJECT_DESCRIPTION.md" ]] || copies+=("docs/PROJECT_DESCRIPTION.md")
     while IFS= read -r -d '' copy; do
