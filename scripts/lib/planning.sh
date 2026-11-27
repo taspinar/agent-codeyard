@@ -16,6 +16,37 @@ PLANNING_APPROVAL_FILE="docs/PLANNING_APPROVAL.md"
 # Definition of Done asks for and a feature review covers.
 PLANNING_PRODUCT_SCOPE=(docs/PROJECT_DESCRIPTION.md docs/changes docs/PROJECT_REQUIREMENTS.md docs/roadmap.md)
 
+# The rest of the scope: what a feature may update as well.
+PLANNING_FEATURE_SCOPE=(docs/architecture.md docs/decisions)
+
+# The documents that every planning has: a planning cycle needs them before
+# its review and its approval, and the adoption of an existing project writes
+# them as its baseline (adopt-repository.sh, assess-repository.sh).
+PLANNING_BASELINE_DOCUMENTS=(docs/architecture.md docs/PROJECT_REQUIREMENTS.md docs/roadmap.md)
+
+# The documents that the project planner writes besides the ADRs under
+# PLANNING_DECISIONS_DIR (start-planning.sh, revise-planning.sh, and
+# scope_planner_allowed in lib/scope.sh).
+PLANNING_PLANNER_DOCUMENTS=(docs/architecture.md docs/roadmap.md)
+PLANNING_DECISIONS_DIR="docs/decisions"
+
+# Each list above is defined here only; every script sources this file for
+# them. tests/finish-planning-test.sh fails when another script copies one.
+
+# planning_list <separator> <item...>: prints the items joined by the
+# separator, for a message that names a list.
+planning_list() {
+  local separator="$1"
+  local joined="$2"
+  local item
+
+  shift 2 || return 0
+  for item in "$@"; do
+    joined+="$separator$item"
+  done
+  printf '%s' "$joined"
+}
+
 # The mark of a planning document that adopt-repository.sh reconstructed from
 # an existing project: what its files show and what was inferred from them,
 # not what the owner approved. It is the start of one line. Approving the
@@ -83,7 +114,7 @@ planning_feature_updates() {
   local issue
   local review
 
-  git -C "$root" log --no-merges --reverse --format='%H' "$2..$3" -- docs/architecture.md docs/decisions |
+  git -C "$root" log --no-merges --reverse --format='%H' "$2..$3" -- "${PLANNING_FEATURE_SCOPE[@]}" |
     while IFS= read -r commit; do
       body="$(git -C "$root" log -1 --format=%b "$commit")"
       issue="$(printf '%s\n' "$body" | sed -n 's/^Issue: //p' | head -n 1)"

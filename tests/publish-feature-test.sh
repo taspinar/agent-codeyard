@@ -137,7 +137,7 @@ $COMMITTED_EXTRA}"
   cp "$source_root/.agents/schemas/completion.schema.json" "$repo/.agents/schemas/"
   cp "$source_root/scripts/lib/github.sh" "$source_root/scripts/lib/completion.sh" "$source_root/scripts/lib/records.sh" \
     "$source_root/scripts/lib/attribution.sh" "$source_root/scripts/lib/fingerprint.sh" "$source_root/scripts/lib/base.sh" \
-    "$source_root/scripts/lib/guardrails.sh" "$source_root/scripts/lib/risk.sh" "$source_root/scripts/lib/exceptions.sh" "$repo/scripts/lib/"
+    "$source_root/scripts/lib/guardrails.sh" "$source_root/scripts/lib/risk.sh" "$source_root/scripts/lib/planning.sh" "$source_root/scripts/lib/exceptions.sh" "$repo/scripts/lib/"
   printf '.agents/manual-steps/\n.agents/completion/\n.agents/handoffs/\n' >"$repo/.gitignore"
   git -C "$repo" config user.name "Publish Test"
   git -C "$repo" config user.email "publish-test@example.com"

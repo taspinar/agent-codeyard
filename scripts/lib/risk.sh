@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # The risk level of a feature: low, medium, or high, from one policy. Source
-# this file; do not execute it. It needs lib/guardrails.sh, which it sources.
+# this file; do not execute it. It needs lib/guardrails.sh and lib/planning.sh,
+# which it sources.
 #
 # The level is the highest of three sources:
 #
@@ -64,6 +65,10 @@
 if ! declare -F guardrails_rules_refs >/dev/null; then
   source "${BASH_SOURCE[0]%/*}/guardrails.sh"
 fi
+# The planning documents, which the light profile leaves out of its low class.
+if ! declare -F planning_list >/dev/null; then
+  source "${BASH_SOURCE[0]%/*}/planning.sh"
+fi
 
 RISK_CONFIG=".agents/policies/risk.conf"
 # The project's override of the policy: its own file, outside the template's
@@ -113,9 +118,11 @@ RISK_PROFILE_HIGH=(docs/decisions .github/workflows .github/actions .github/CODE
   scripts/check-guardrails.sh scripts/lib/guardrails.sh scripts/check-risk.sh scripts/lib/risk.sh scripts/lib/agent.sh scripts/lib/review-data.sh
   scripts/lib/review-run.sh scripts/lib/fingerprint.sh scripts/review-feature.sh scripts/finish-feature.sh scripts/publish-feature.sh scripts/run-feature.sh
   scripts/verify.conf scripts/verify-workflow.conf)
-RISK_PROFILE_LIGHT_LOW=(docs ":(glob)*.md" .agents/plans .agents/handoffs .agents/summaries
-  ":(exclude)docs/decisions" ":(exclude)docs/PROJECT_DESCRIPTION.md" ":(exclude)docs/PROJECT_REQUIREMENTS.md" ":(exclude)docs/PLANNING_APPROVAL.md"
-  ":(exclude)docs/architecture.md" ":(exclude)docs/roadmap.md" ":(exclude)docs/changes" ":(exclude)AGENTS.md")
+RISK_PROFILE_LIGHT_LOW=(docs ":(glob)*.md" .agents/plans .agents/handoffs .agents/summaries)
+for risk_path in "${PLANNING_SCOPE[@]}" "$PLANNING_APPROVAL_FILE" AGENTS.md; do
+  RISK_PROFILE_LIGHT_LOW+=(":(exclude)$risk_path")
+done
+unset risk_path
 
 # risk_is_level <text>
 risk_is_level() {

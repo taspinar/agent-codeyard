@@ -35,15 +35,22 @@ scope_file_mode() {
   fi
 }
 
+# The documents of the planner (lib/planning.sh).
+if ! declare -F planning_list >/dev/null; then
+  source "${BASH_SOURCE[0]%/*}/planning.sh"
+fi
+
 # Allowed paths of the project planner: the architecture, the roadmap, and
 # direct Markdown ADRs.
 scope_planner_allowed() {
+  local document
+
+  for document in "${PLANNING_PLANNER_DOCUMENTS[@]}"; do
+    [[ "$1" != "$document" ]] || return 0
+  done
   case "$1" in
-    docs/architecture.md | docs/roadmap.md)
-      return 0
-      ;;
-    docs/decisions/*.md)
-      [[ "${1#docs/decisions/}" != */* ]]
+    "$PLANNING_DECISIONS_DIR"/*.md)
+      [[ "${1#"$PLANNING_DECISIONS_DIR"/}" != */* ]]
       return
       ;;
     *)

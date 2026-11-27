@@ -1,0 +1,20 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "f6079a3f435045a93ed064f65956075470d57481",
+  "commit": {
+    "branch": "feature/540-the-planning-document-scope",
+    "parent": "a52cb7d8c920af48fe4940a9e528ab03c3e7f80c",
+    "base": "a52cb7d8c920af48fe4940a9e528ab03c3e7f80c"
+  },
+  "review": {
+    "round": 8,
+    "verdict": "CHANGES REQUIRED",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "scripts/lib/risk.sh: the file defines or carries out the workflow and its gate",
+    "the owner recorded an exception (risk-accepted) to the blocking finding M1 of review round 8: .agents/exceptions/feature-540-the-planning-document-scope-review-08-M1.json sha256 fc87fb50f1a48474456564bd4abf449470832e0789eef84df06dd4bef4d8410d",
+    "the owner recorded an exception (not-applicable) to the blocking finding M2 of review round 8: .agents/exceptions/feature-540-the-planning-document-scope-review-08-M2.json sha256 5e242a206d94fe7c8330161ebc6680ffdc24250857928bb7bc4d9e9922341292"
+  ],
+  "explanation": "Issue #540: The planning-document scope lists come from one library instead of hand-copied arrays (part 4 of #427). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

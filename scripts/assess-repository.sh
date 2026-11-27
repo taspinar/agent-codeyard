@@ -36,6 +36,7 @@ fail() {
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/agent.sh"
 source "$script_dir/lib/records.sh"
+source "$script_dir/lib/planning.sh"
 command -v jq >/dev/null 2>&1 || fail "jq is required."
 
 agent_parse_args "$@"
@@ -589,7 +590,7 @@ starters='^(tests/(unit|e2e|integration)/\.gitkeep|\.env\.example)$'
 {
   git -C "$root" ls-files -- . ${template_exclusions[@]+"${template_exclusions[@]}"} | grep -Ev "$not_carried" |
     awk '!/^docs\/decisions\// || $0 == "docs/decisions/README.md"' || true
-  printf '%s\n' docs/architecture.md docs/PROJECT_REQUIREMENTS.md docs/roadmap.md
+  printf '%s\n' "${PLANNING_BASELINE_DOCUMENTS[@]}"
 } | sort -u >"$work/template-files"
 if [[ -n "$application_directories" ]]; then
   grep -E "$starters" "$work/template-files" | while IFS= read -r path; do
@@ -745,7 +746,7 @@ check_unchanged
 # ------------------------------------------------------------ the assessor
 # assessment_errors <result> <facts>: what is wrong with the assessor's result.
 assessment_errors() {
-  jq -r --slurpfile facts "$2" '
+  jq -r --slurpfile facts "$2" --argjson baseline "$(jq -cn '$ARGS.positional' --args "${PLANNING_BASELINE_DOCUMENTS[@]}")" '
     $facts[0] as $f | ($f.evidence_ids | map({key: ., value: true}) | from_entries) as $known
     | ($f.commands | map({key: .id, value: true}) | from_entries) as $commands
     | ($f.adoption.collisions | map(.path)) as $collisions
@@ -769,11 +770,11 @@ assessment_errors() {
         # A planning document of the baseline is the project'"'"'s: reused when
         # it is sufficient, reconstructed when it is not; the template'"'"'s own
         # planning documents describe the template.
-        (.collisions[]? | select(.path | IN("docs/architecture.md", "docs/PROJECT_REQUIREMENTS.md", "docs/roadmap.md"))
+        (.collisions[]? | select(.path | IN($baseline[]))
           | select(.resolution | IN("keep-project", "reconstruct", "ask-owner") | not)
           | "the collision \(.path) is a planning document of the baseline: resolve it as keep-project (sufficient, reused), reconstruct (not sufficient), or ask-owner"),
         (.collisions[]? | select(.resolution == "reconstruct")
-          | select(.path | IN("docs/architecture.md", "docs/PROJECT_REQUIREMENTS.md", "docs/roadmap.md") | not)
+          | select(.path | IN($baseline[]) | not)
           | "the collision \(.path) cannot be resolved with reconstruct: only a planning document of the baseline is reconstructed"),
         (.verification[]? | . as $v
           | (if $commands[$v.source] then empty else "the verification \($v.name) names \($v.source), which is no command of the facts" end),

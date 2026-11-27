@@ -102,7 +102,7 @@ case "$#:${1:-}" in
           echo "Current: the description, the requirements, the change requests, and the roadmap are as approved."
           echo "The architecture or the ADRs were updated since the approval, by:"
           planning_feature_updates "$root" "$PLANNING_APPROVAL_UPDATED_SINCE" HEAD | sed 's/^/  /'
-          if ! git -C "$root" diff --quiet HEAD -- docs/architecture.md docs/decisions 2>/dev/null; then
+          if ! git -C "$root" diff --quiet HEAD -- "${PLANNING_FEATURE_SCOPE[@]}" 2>/dev/null; then
             echo "  (and uncommitted changes in this working tree)"
           fi
         fi
@@ -125,7 +125,7 @@ records_wrap planning "$name" "$0" ${records_arguments[@]+"${records_arguments[@
 base="$(branch_base "$root" "$branch")" || exit 1
 
 # 1. The planning documents exist and the requirements are approved.
-for required in docs/PROJECT_REQUIREMENTS.md docs/architecture.md docs/roadmap.md; do
+for required in "${PLANNING_BASELINE_DOCUMENTS[@]}"; do
   [[ -f "$root/$required" && ! -L "$root/$required" && -s "$root/$required" ]] ||
     fail "required planning document is missing or empty: $required"
 done

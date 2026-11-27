@@ -67,6 +67,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/base.sh"
 # shellcheck source=lib/fingerprint.sh
 source "$script_dir/lib/fingerprint.sh"
+# shellcheck source=lib/planning.sh
+source "$script_dir/lib/planning.sh"
 
 # The commit where the current feature left its base branch, empty outside a
 # feature.
@@ -77,16 +79,13 @@ if [[ -n "$branch" ]] && base="$(branch_base "$root" 2>/dev/null)" && [[ "$branc
   feature_fork="$(printf '%s\n' "$lines" | sed -n 2p)"
 fi
 
-# The documents that only a planning cycle may change, a directory covering
-# what is under it; PLANNING_PRODUCT_SCOPE in scripts/lib/planning.sh, which
-# this script does not need to run.
-planning_documents=(docs/PROJECT_DESCRIPTION.md docs/changes docs/PROJECT_REQUIREMENTS.md docs/roadmap.md)
-
-# planning_document <file>: whether only a planning cycle may change the file.
+# planning_document <file>: whether only a planning cycle may change the file:
+# a document of PLANNING_PRODUCT_SCOPE (lib/planning.sh), a directory covering
+# what is under it.
 planning_document() {
   local entry
 
-  for entry in "${planning_documents[@]}"; do
+  for entry in "${PLANNING_PRODUCT_SCOPE[@]}"; do
     [[ "$1" == "$entry" || "$1" == "$entry"/* ]] && return 0
   done
   return 1

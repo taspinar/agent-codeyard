@@ -236,7 +236,7 @@ if [[ "$change_cycle" -eq 1 ]]; then
     fail "could not read origin/$base:docs/PROJECT_REQUIREMENTS.md; the requirements are missing or unreadable."
   grep -Fqx "Status: Approved" <<<"$approved_requirements" ||
     fail "origin/$base has no approved docs/PROJECT_REQUIREMENTS.md; a change cycle needs an approved planning. Start the first planning without --change."
-  for document in docs/architecture.md docs/roadmap.md; do
+  for document in "${PLANNING_PLANNER_DOCUMENTS[@]}"; do
     git -C "$repo_root" cat-file -e "origin/$base:$document" 2>/dev/null ||
       fail "origin/$base has no $document; a change cycle needs an approved planning."
   done
@@ -921,7 +921,7 @@ fi
 
 require_scope_unchanged "planner" "$planner_baseline" "project planner"
 
-for artifact in docs/architecture.md docs/roadmap.md; do
+for artifact in "${PLANNING_PLANNER_DOCUMENTS[@]}"; do
   artifact_path="$worktree/$artifact"
   [[ -f "$artifact_path" && ! -L "$artifact_path" && -s "$artifact_path" ]] ||
     post_creation_fail "project planner must produce $artifact as a non-empty regular file."
@@ -985,7 +985,7 @@ if [[ "$change_cycle" -eq 1 ]]; then
   completed="Planning change cycle"
 
   # The planner must have produced the change, in whichever document it fits.
-  [[ -n "$(git -C "$worktree" status --porcelain -- docs/architecture.md docs/roadmap.md docs/decisions)" ]] ||
+  [[ -n "$(git -C "$worktree" status --porcelain -- "${PLANNING_PLANNER_DOCUMENTS[@]}" "$PLANNING_DECISIONS_DIR")" ]] ||
     post_creation_fail "project planner changed neither the architecture, the roadmap, nor an ADR; the change was not planned."
 
   # Feature IDs are referred to by Issues, branches, and commits, so a

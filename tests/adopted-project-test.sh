@@ -49,6 +49,7 @@ fixture_tests=(
   "template-repository: .github/workflows/ci.yml, the project's own CI, and the origin of the repository (template_repository)"
   "pipe-grep: every tests/*.sh, the project's own test file too, and template_repository"
   "risk: .agents/policies/risk.conf, which the project edited, and template_repository"
+  "finish-planning: the repository's own scripts (git ls-files of scripts), only where template_repository says it is the template"
 )
 
 mode=listed
