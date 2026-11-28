@@ -3962,14 +3962,16 @@ running, and a second `run` while one is going on ends at once
    pull request, and that the queue has not run yet, starts
    `./scripts/run-feature.sh <issue>` in the background, in the order of the
    file, while fewer than `--max-parallel` steps (runs and updates, default
-   2) are running.
+   2) are running. Every running step in `.agents/queue/` counts, also one
+   of an Issue that was removed from the queue file while it ran.
 
 The process, the log, and the exit status of every step are in
 `.agents/queue/<issue>/` (`run.process`, `run.log`, `run.exit`, and the same
 for `update`), and the state of every Issue with the reason it waits in
 `.agents/queue/overview.json`. A run that ended is not started again: one
 that stopped waits for the owner decision that `status.sh` names, and
-`queue.sh reset <issue>` lets the queue start it again. `status.sh` lists an
+`queue.sh reset <issue>` lets the queue start it again (it waits for no
+pass: while one is going on, it refuses and is given again). `status.sh` lists an
 Issue of the queue that has not started with the phase `queued: <reason>`,
 and adds the owner decisions of the queue to the rows of their Issues.
 
@@ -3992,8 +3994,12 @@ The limits:
 - **Free disk space.** Nothing new starts while the file system of the
   directory around the primary checkout, where the worktrees are made, has
   less than `--min-free-gb` gigabytes free (default 15: a worktree can take
-  about 9 GB with its dependencies). The waiting Issues say so in
-  `status.sh`, with the owner decision to free space.
+  about 9 GB with its dependencies). The free space is read right before
+  every start of a run or an update, so that a step that started earlier in
+  the same pass is seen; it is the space free at that moment, and nothing is
+  reserved: the worktree that a started step makes takes its space later.
+  The waiting Issues say so in `status.sh`, with the owner decision to free
+  space.
 - **Containment.** The queue runs every command with an explicit working
   directory (the primary checkout, or the feature worktree for an update),
   under `set -u`, and writes only into `.agents/queue/` of the primary

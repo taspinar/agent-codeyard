@@ -524,12 +524,14 @@ records_lock_take() {
       return 1
     fi
     # Stale: removed under the recovery lock, only when it is still the lock
-    # that was seen.
+    # that was seen and, checked again under that lock, still stale (or,
+    # without an owner, old): another run may have taken it between the
+    # check above and the recovery lock.
     owner="$(cat "$dir/owner" 2>/dev/null)" || owner=""
     if ! mkdir "$recover" 2>/dev/null; then
       records_lock_old "$recover" && rmdir "$recover" 2>/dev/null && mkdir "$recover" 2>/dev/null || continue
     fi
-    if [[ "$(cat "$dir/owner" 2>/dev/null)" == "$owner" ]] && { [[ -n "$owner" ]] || records_lock_old "$dir"; }; then
+    if [[ -d "$dir" && "$(cat "$dir/owner" 2>/dev/null)" == "$owner" ]] && ! records_lock_holder "$dir" >/dev/null; then
       rm -rf "$dir"
     fi
     rmdir "$recover" 2>/dev/null || true

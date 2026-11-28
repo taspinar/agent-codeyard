@@ -30,10 +30,15 @@ usage() {
   echo "  3. every Issue whose dependencies are merged and that has not run yet:"
   echo "     ./scripts/run-feature.sh <issue> in the background,"
   echo "     up to --max-parallel steps at a time (default 2)."
-  echo "  Nothing new starts below --min-free-gb gigabytes of free space where the"
-  echo "  worktrees are (default 15), nor in a worktree whose lock another session"
-  echo "  holds (lib/records.sh). A run that ended is not started again; reset"
-  echo "  lets the queue start it once more. The process, the log, and the exit"
+  echo "  Every running step in .agents/queue/ counts, also one of an Issue that was"
+  echo "  removed from the queue file. Nothing new starts below --min-free-gb"
+  echo "  gigabytes of free space where the worktrees are (default 15), read right"
+  echo "  before every start; it is the space free at that moment, and no space is"
+  echo "  reserved for the worktree that the step makes. Nor does a step start in a"
+  echo "  worktree whose lock another session holds (lib/records.sh). A run that"
+  echo "  ended is not started again; reset lets the queue start it once more (not"
+  echo "  while a pass is going on)."
+  echo "  The process, the log, and the exit"
   echo "  status of every step are in .agents/queue/<issue>/, and the state of every"
   echo "  Issue in .agents/queue/overview.json, which status.sh shows."
   echo
@@ -177,6 +182,15 @@ printf "%s\n" "$status" >"$exit_file.tmp" && mv "$exit_file.tmp" "$exit_file"' \
 }
 
 if [[ "$action" == reset ]]; then
+  # Under the lock of the queue: a pass could start a step of the Issue
+  # between the check and the removal.
+  lock_status=0
+  records_lock_take "$state/lock" "queue.sh reset" || lock_status=$?
+  case "$lock_status" in
+    0) trap 'records_lock_release "$state/lock" "$RECORDS_LOCK_OWNER"' EXIT ;;
+    1) fail "a queue.sh run is going on: $(records_lock_describe "$RECORDS_LOCK_HOLDER"); run reset again when it has ended." ;;
+    *) fail "the lock of the queue cannot be created in $state/lock." ;;
+  esac
   [[ "$(step_state "$reset_issue" run)" != running && "$(step_state "$reset_issue" update)" != running ]] ||
     fail "a step of #$reset_issue is running; it is not reset."
   rm -f "${state:?}/$reset_issue/run.exit" "${state:?}/$reset_issue/run.process" \
@@ -306,21 +320,33 @@ is_stopped() {
 }
 is_stopped || true
 
-# The free space where the worktrees are made: the directory around the
-# primary checkout (start-feature.sh). QUEUE_FREE_KB is not read: a test
+# check_disk: sets disk_reason when the free space where the worktrees are
+# made (the directory around the primary checkout, start-feature.sh) is
+# below the limit. It is read again right before every start, since a step
+# that started earlier in the pass uses space; it checks the space that is
+# free at that moment and reserves none. QUEUE_FREE_KB is not read: a test
 # puts a fake 'df' on PATH.
-free_kb=""
 worktree_parent="$(dirname "$primary")"
-free_kb="$(df -Pk -- "$worktree_parent" 2>/dev/null | awk 'NR == 2 { print $4 }')" || free_kb=""
 disk_reason=""
-if [[ ! "$free_kb" =~ ^[0-9]+$ ]]; then
-  disk_reason="the free space of $worktree_parent cannot be read with df; nothing new starts"
-elif [[ "$free_kb" -lt $((min_free_gb * 1024 * 1024)) ]]; then
-  disk_reason="$((free_kb / 1024 / 1024)) GB free in $worktree_parent, below the limit of $min_free_gb GB for a new run (a worktree can take about 9 GB); free space, then run ./scripts/queue.sh run"
-fi
+check_disk() {
+  local free_kb
 
+  free_kb="$(df -Pk -- "$worktree_parent" 2>/dev/null | awk 'NR == 2 { print $4 }')" || free_kb=""
+  disk_reason=""
+  if [[ ! "$free_kb" =~ ^[0-9]+$ ]]; then
+    disk_reason="the free space of $worktree_parent cannot be read with df; nothing new starts"
+  elif [[ "$free_kb" -lt $((min_free_gb * 1024 * 1024)) ]]; then
+    disk_reason="$((free_kb / 1024 / 1024)) GB free in $worktree_parent, below the limit of $min_free_gb GB for a new run (a worktree can take about 9 GB); free space, then run ./scripts/queue.sh run"
+  fi
+  [[ -z "$disk_reason" ]]
+}
+
+# Every running step counts toward --max-parallel, also one of an Issue that
+# was removed from the queue file while it ran: its step directory stays.
 running=0
-for issue in "${order[@]}"; do
+for dir in "$state"/*/; do
+  issue="$(basename "$dir")"
+  [[ "$issue" =~ ^[0-9]+$ ]] || continue
   [[ "$(step_state "$issue" run)" != running ]] || running=$((running + 1))
   [[ "$(step_state "$issue" update)" != running ]] || running=$((running + 1))
 done
@@ -404,6 +430,8 @@ for issue in "${order[@]}"; do
     continue
   fi
   holder="$(lock_holder "$issue")"
+  # The free space now, before the stop marker is read for the last time.
+  check_disk || true
   if is_stopped; then
     reason[$issue]="pull request #$number conflicts with its base; the queue is stopped"
   elif [[ -n "$holder" ]]; then
@@ -454,6 +482,8 @@ for issue in "${order[@]}"; do
     continue
   fi
   holder="$(lock_holder "$issue")"
+  # The free space now, before the stop marker is read for the last time.
+  check_disk || true
   if is_stopped; then
     reason[$issue]="ready; the queue is stopped (./scripts/queue.sh resume)"
   elif [[ -n "$holder" ]]; then

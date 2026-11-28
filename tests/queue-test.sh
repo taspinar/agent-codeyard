@@ -8,7 +8,9 @@ set -euo pipefail
 # twice, the update of the primary checkout and the removal of the merged
 # worktree (the real cleanup-worktree.sh), the worktree lock of
 # lib/records.sh, the disk limit and its reason in status.sh, the update of
-# a conflicting pull request and the owner decision when it stops, and stop.
+# a conflicting pull request and the owner decision when it stops, and stop;
+# also a running step of an Issue removed from the queue file, the free
+# space read before every start, and the stale-lock recovery race.
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
@@ -23,7 +25,7 @@ cleanup() {
   local file
 
   # Every fake step that still waits ends now.
-  for file in 1 2 3 4 5 6 7 8; do
+  for file in 1 2 3 4 5 6 7 8 9 10 11; do
     [[ -e "$fake/release-$file" ]] || echo 0 >"$fake/release-$file"
   done
   echo 0 >"$fake/release-hold" 2>/dev/null || true
@@ -83,8 +85,14 @@ if [[ -n "${FAKE_DF_HOLD:-}" ]]; then
   touch "$FAKE_DF_HOLD.waiting"
   until [[ -e "$FAKE_DF_HOLD" ]]; do sleep 0.1; done
 fi
+# FAKE_DF_SEQ: a file of values, one per call; the last one stays.
+kb="${FAKE_DF_KB:-99999999999}"
+if [[ -n "${FAKE_DF_SEQ:-}" && -s "$FAKE_DF_SEQ" ]]; then
+  kb="$(sed -n 1p "$FAKE_DF_SEQ")"
+  [[ "$(wc -l <"$FAKE_DF_SEQ")" -le 1 ]] || sed -i 1d "$FAKE_DF_SEQ"
+fi
 echo "Filesystem 1024-blocks Used Available Capacity Mounted on"
-echo "/dev/fake 999999999 1 ${FAKE_DF_KB:-99999999999} 1% /"
+echo "/dev/fake 999999999 1 $kb 1% /"
 DF
 chmod +x "$tmp/bin/gh" "$tmp/bin/df"
 echo '[]' >"$tmp/gh/open.json"
@@ -189,6 +197,15 @@ sleep 1
 [[ "$(wc -l <"$fake/started")" -eq 2 ]] || fail "a second queue.sh run started a run twice: $(cat "$fake/started")"
 [[ -f "$repo/.agents/queue/1/run.process" && -f "$repo/.agents/queue/1/run.log" ]] ||
   fail "the process and the log of the run are not recorded"
+# A running step counts toward --max-parallel also when its Issue was
+# removed from the queue file: #2 runs, is no longer listed, and #9 waits.
+cp "$repo/.agents/queue.conf" "$tmp/queue.conf.saved"
+printf '1\n9\n' >"$repo/.agents/queue.conf"
+queue run --max-parallel 2 >/dev/null
+sleep 1
+! grep -q '^9 ' "$fake/started" || fail "#9 started beyond --max-parallel while the removed #2 still runs"
+grep -q "ready; 2 of 2 steps are running" <<<"$(overview 9)" || fail "#9 does not count the running step of the removed #2: $(overview 9)"
+cp "$tmp/queue.conf.saved" "$repo/.agents/queue.conf"
 
 # ------------------------------------------------------------ the worktree lock
 
@@ -200,6 +217,41 @@ holder="$(sed -n 's/^pid=//p' "$repo/.git/workflow-locks/feature-1/owner")"
 grep -q "has a session or a verification running already: run-feature.sh (PID $holder" <<<"$out" ||
   fail "the refusal does not name the holder (PID $holder): $out"
 [[ "$(wc -l <"$fake/started")" -eq 2 ]] || fail "the refused session ran"
+
+# A stale lock is removed only when it is still stale under the recovery
+# lock: another run may install a live lock between the first check and the
+# recovery lock. The first check is made to see the lock as stale; the live
+# holder must keep it.
+sleep 60 &
+live=$!
+race="$tmp/race-lock"
+mkdir "$race"
+printf 'pid=%s\nstarted=%s\nid=live\ncommand=a live run\n' "$live" \
+  "$(LC_ALL=C ps -o lstart= -p "$live" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')" >"$race/owner"
+race_status=0
+(
+  cd "$repo"
+  source ./scripts/lib/records.sh
+  eval "real_$(declare -f records_lock_holder)"
+  # A file, since records_lock_take calls it in a command substitution.
+  records_lock_holder() {
+    if [[ ! -e "$race.seen" ]]; then
+      touch "$race.seen"
+      return 1
+    fi
+    real_records_lock_holder "$@"
+  }
+  records_lock_take "$race" "a second run"
+) >/dev/null 2>&1 || race_status=$?
+grep -q '^id=live$' "$race/owner" 2>/dev/null || fail "the recovery of a stale lock removed a live lock (status $race_status)"
+[[ "$race_status" -eq 1 ]] || fail "records_lock_take did not report the live holder: status $race_status"
+kill "$live" 2>/dev/null || true
+wait "$live" 2>/dev/null || true
+# Once its holder is gone, the lock is taken over.
+race_status=0
+(cd "$repo" && source ./scripts/lib/records.sh && records_lock_take "$race" "a second run") >/dev/null 2>&1 || race_status=$?
+[[ "$race_status" -eq 0 ]] || fail "a stale lock was not taken over: status $race_status"
+rm -rf "$race" "$race.seen"
 
 # ------------------------------------------------------------ after a merge
 
@@ -303,6 +355,10 @@ echo "8" >>"$repo/.agents/queue.conf"
 (cd "$repo" && FAKE_DF_HOLD="$fake/df-release" PATH="$tmp/bin:$ISOLATED_PATH" ./scripts/queue.sh run --max-parallel 3) >"$fake/pass.out" 2>&1 &
 pass=$!
 wait_for "$fake/df-release.waiting"
+# reset waits for no pass: it would remove the records of a step that the
+# pass may start.
+out="$(queue reset 2 2>&1)" && fail "queue.sh reset ran while a pass was going on: $out"
+grep -q "a queue.sh run is going on" <<<"$out" || fail "reset does not name the pass: $out"
 queue stop >"$fake/stop.out" 2>&1 &
 stop=$!
 sleep 1
@@ -331,5 +387,22 @@ queue resume >/dev/null
 queue run --max-parallel 3 >/dev/null
 wait_started 8
 grep -q '^7 ' "$fake/started" && grep -q '^8 ' "$fake/started" || fail "resume did not start the ready Issues: $(cat "$fake/started")"
+
+# ------------------------------------------------------------ free space before every start
+
+# The free space is read again before every start: the first start of a
+# pass takes space, and the second Issue sees the lower value.
+echo 0 >"$fake/release-7"
+echo 0 >"$fake/release-8"
+wait_for "$repo/.agents/queue/7/run.exit"
+wait_for "$repo/.agents/queue/8/run.exit"
+printf '10\n11\n' >>"$repo/.agents/queue.conf"
+printf '%s\n%s\n' $((16 * 1024 * 1024)) $((10 * 1024 * 1024)) >"$fake/df-seq"
+FAKE_DF_SEQ="$fake/df-seq" queue run --max-parallel 5 >/dev/null
+wait_started 9
+sleep 1
+grep -q '^10 ' "$fake/started" || fail "#10 did not start with 16 GB free"
+! grep -q '^11 ' "$fake/started" || fail "#11 started although the free space fell below the limit after the start of #10"
+grep -q "ready; 10 GB free in $tmp, below the limit of 15 GB" <<<"$(overview 11)" || fail "#11 does not name the free space read before its start: $(overview 11)"
 
 echo "queue test passed"
