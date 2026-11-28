@@ -1,0 +1,19 @@
+{
+  "schema": "approval-request/v1",
+  "content_tree": "9d3cc2840eba725845dd56a6cd0e99bda9600d65",
+  "commit": {
+    "branch": "feature/364-queue-sh-features-with",
+    "parent": "570fd5abac3f814b6c8ae803c6f3879792573c29",
+    "base": "ddd36341c8bc89790dbceda334eeb5290785cecd"
+  },
+  "review": {
+    "round": 5,
+    "verdict": "CHANGES REQUIRED",
+    "reviewer": "codex (gpt-6-luna)"
+  },
+  "reasons": [
+    "the independent review classified the impact on the architecture as major: The feature adds shared worktree locking in scripts/lib/records.sh and a queue supervisor that coordinates runs, updates, cleanup, and status across worktrees. These shared workflow capabilities extend beyond a local script. The architecture document remains a template placeholder, and no accepted ADRs were present. ",
+    "the owner recorded an exception (risk-accepted) to the blocking finding M1 of review round 5: .agents/exceptions/feature-364-queue-sh-features-with-review-05-M1.json sha256 dd7ebe2087051f53a6d3df58c78dabcb8017e812ed5191ee378be19e7bf62f87"
+  ],
+  "explanation": "Issue #364: queue.sh: features with explicit dependencies, parallel within worktree and disk limits (supervisor 3 of 5). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
+}

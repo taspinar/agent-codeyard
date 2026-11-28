@@ -51,6 +51,10 @@ credentials*.json
 # The previous overview of scripts/status.sh --changes, against which the
 # next one reports what changed. Local.
 .agents/status/
+# The queue of queue.sh: the queue file of the supervisor of this machine,
+# and the processes, logs, exit statuses, and overview of its steps. Local.
+.agents/queue.conf
+.agents/queue/
 # Files that earlier versions of the workflow wrote here; ignored so that a
 # file left in a worktree is never committed with a feature (git add -A).
 .agents/experience/

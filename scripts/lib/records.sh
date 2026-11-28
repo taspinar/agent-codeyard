@@ -378,18 +378,221 @@ records_wrap() {
     records_trap_unexpected
     return 0
   fi
+  # One session or verification in a worktree at a time (records_worktree_lock).
+  [[ -z "$subject" ]] || records_worktree_lock "$kind" "$subject" "$(basename "$script")" || exit 75
   [[ -z "${RECORDS_DISABLED:-}" && -n "$subject" ]] || return 0
   records_begin "$kind" "$subject" "$(basename "$script")"
   if [[ -z "${RECORDS_RUN_ID:-}" ]]; then
     # The run could not be started; the work goes on without a record.
     RECORDS_DISABLED=1 "$script" "$@" || status=$?
+    records_worktree_unlock
     exit "$status"
   fi
-  trap 'records_end 130; exit 130' INT TERM
+  trap 'records_end 130; records_worktree_unlock; exit 130' INT TERM
   "$script" "$@" || status=$?
   trap - INT TERM
   records_end "$status"
+  records_worktree_unlock
   exit "$status"
+}
+
+# ------------------------------------------------------------ the worktree lock
+#
+# A run of a feature or a planning (records_wrap) holds the lock of its
+# subject while it runs, so that a worktree never has two sessions or two
+# verifications at the same time: a second run-feature.sh, start-feature.sh,
+# update-feature.sh, finish-feature.sh, or full verify.sh of the same Issue is
+# refused with status 75 and the holder named (Issue 364). The commands that
+# a run starts itself, its agent sessions among them, are inside the holder:
+# they inherit WORKFLOW_WORKTREE_LOCK, the id of the lock, and pass. The name
+# has no TOKEN, KEY, or SECRET in it, which Codex removes from the
+# environment of its sessions.
+#
+# The lock is the directory <git-common-dir>/workflow-locks/<kind>-<subject>
+# with its file 'owner': the same for every worktree of the repository, also
+# before the feature's worktree exists, and never part of the content. The
+# run that creates 'owner' (an exclusive create, noclobber) holds it, as the
+# lock of status.sh --changes. A lock whose holder is gone (its PID does not
+# exist or now belongs to a process with another start time) is stale and is
+# taken over under a second lock; a holder that cannot be inspected holds it.
+# A lock that cannot be created (a read-only Git directory) is reported and
+# the work goes on, as with a record that cannot be written.
+
+# records_process_started <pid>: the start time of the process, or nothing.
+records_process_started() {
+  LC_ALL=C ps -o lstart= -p "$1" 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' || true
+}
+
+# records_process_exists <pid>: 0 when it exists, 1 when it confirmedly does
+# not, 2 when that cannot be told.
+records_process_exists() {
+  local out
+
+  out="$(export LC_ALL=C; kill -0 -- "$1" 2>&1)" && return 0
+  [[ "$out" != *"No such process"* ]] || return 1
+  return 2
+}
+
+# records_lock_field <owner-text> <field>
+records_lock_field() {
+  sed -n "s/^$2=//p" <<<"$1" | sed -n 1p
+}
+
+# records_lock_stale <owner-text>: whether the holder is confirmedly gone.
+records_lock_stale() {
+  local pid started now exists=0
+
+  pid="$(records_lock_field "$1" pid)"
+  started="$(records_lock_field "$1" started)"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  records_process_exists "$pid" || exists=$?
+  case "$exists" in
+    0)
+      now="$(records_process_started "$pid")"
+      [[ -n "$now" && -n "$started" && "$now" != "$started" ]]
+      ;;
+    1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# records_lock_old <dir>: whether the directory is older than a minute; a
+# lock without an owner is being taken, or was left by a run killed while it
+# took it.
+records_lock_old() {
+  local mtime
+
+  mtime="$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0)"
+  [[ "$mtime" =~ ^[0-9]+$ && "$mtime" -gt 0 && -e "$1" && $(($(date +%s) - mtime)) -gt 60 ]]
+}
+
+# records_lock_holder <dir>: prints the owner text of the lock and succeeds
+# when a process that exists (or cannot be inspected) holds it; fails when
+# the lock is free or stale.
+records_lock_holder() {
+  local owner
+
+  [[ -d "$1" ]] || return 1
+  owner="$(cat "$1/owner" 2>/dev/null)" || owner=""
+  if [[ -z "$owner" ]]; then
+    ! records_lock_old "$1" || return 1
+    printf 'pid=\ncommand=a run that is taking the lock\n'
+    return 0
+  fi
+  ! records_lock_stale "$owner" || return 1
+  printf '%s\n' "$owner"
+}
+
+# records_lock_describe <owner-text>: the holder in one line.
+records_lock_describe() {
+  local pid command since worktree
+
+  pid="$(records_lock_field "$1" pid)"
+  command="$(records_lock_field "$1" command)"
+  since="$(records_lock_field "$1" since)"
+  worktree="$(records_lock_field "$1" worktree)"
+  printf '%s' "${command:-a run}"
+  [[ -z "$pid" ]] || printf ' (PID %s' "$pid"
+  [[ -z "$since" ]] || printf ', since %s' "$since"
+  [[ -z "$worktree" ]] || printf ', in %s' "$worktree"
+  [[ -z "$pid" ]] || printf ')'
+}
+
+# records_lock_take <dir> <command>: takes the lock. Status 0 when taken
+# (RECORDS_LOCK_OWNER holds its text), 1 when another holder has it
+# (RECORDS_LOCK_HOLDER holds its text), 2 when it cannot be created.
+records_lock_take() {
+  local dir="$1"
+  local owner
+  local tries=0
+  local recover="$dir.recover"
+
+  RECORDS_LOCK_HOLDER=""
+  RECORDS_LOCK_OWNER="$(printf 'pid=%s\nstarted=%s\nid=%s-%s-%s\ncommand=%s\nworktree=%s\nsince=%s' \
+    "$$" "$(records_process_started "$$")" "$$" "$(date +%s)" "$RANDOM" "$2" \
+    "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
+  mkdir -p "${dir%/*}" 2>/dev/null || return 2
+  while [[ "$tries" -lt 5 ]]; do
+    tries=$((tries + 1))
+    if mkdir "$dir" 2>/dev/null; then
+      if (set -C && printf '%s\n' "$RECORDS_LOCK_OWNER" >"$dir/owner") 2>/dev/null; then
+        return 0
+      fi
+    fi
+    [[ -d "$dir" ]] || return 2
+    if RECORDS_LOCK_HOLDER="$(records_lock_holder "$dir")"; then
+      return 1
+    fi
+    # Stale: removed under the recovery lock, only when it is still the lock
+    # that was seen and, checked again under that lock, still stale (or,
+    # without an owner, old): another run may have taken it between the
+    # check above and the recovery lock.
+    owner="$(cat "$dir/owner" 2>/dev/null)" || owner=""
+    if ! mkdir "$recover" 2>/dev/null; then
+      records_lock_old "$recover" && rmdir "$recover" 2>/dev/null && mkdir "$recover" 2>/dev/null || continue
+    fi
+    if [[ -d "$dir" && "$(cat "$dir/owner" 2>/dev/null)" == "$owner" ]] && ! records_lock_holder "$dir" >/dev/null; then
+      rm -rf "$dir"
+    fi
+    rmdir "$recover" 2>/dev/null || true
+  done
+  RECORDS_LOCK_HOLDER="$(records_lock_holder "$dir")" || RECORDS_LOCK_HOLDER="command=a run that keeps taking the lock"
+  return 1
+}
+
+# records_lock_release <dir> <owner-text>: removes the lock when it names
+# the owner.
+records_lock_release() {
+  [[ -n "$2" && "$(cat "$1/owner" 2>/dev/null)" == "$2" ]] || return 0
+  rm -rf "$1" 2>/dev/null || true
+}
+
+# records_worktree_lock_dir <kind> <subject>: the directory of the lock of
+# a feature or a planning of the repository of the current directory.
+records_worktree_lock_dir() {
+  local common
+
+  common="$(git rev-parse --git-common-dir 2>/dev/null)" || return 1
+  common="$(cd "$common" 2>/dev/null && pwd -P)" || return 1
+  printf '%s/workflow-locks/%s-%s' "$common" "$1" "$(printf '%s' "$2" | tr -c 'A-Za-z0-9._-' '_')"
+}
+
+# records_worktree_lock <kind> <subject> <command>: takes the lock of the
+# subject for this run, or passes inside the run that holds it. Fails, with
+# the holder named on standard error, when another run holds it.
+RECORDS_WORKTREE_LOCK_DIR=""
+records_worktree_lock() {
+  local dir
+  local held
+  local status=0
+
+  [[ "$1" == feature || "$1" == planning ]] || return 0
+  dir="$(records_worktree_lock_dir "$1" "$2")" || return 0
+  if [[ -n "${WORKFLOW_WORKTREE_LOCK:-}" ]] && held="$(records_lock_holder "$dir")" &&
+    [[ "$(records_lock_field "$held" id)" == "$WORKFLOW_WORKTREE_LOCK" ]]; then
+    return 0
+  fi
+  records_lock_take "$dir" "$3" || status=$?
+  case "$status" in
+    0)
+      RECORDS_WORKTREE_LOCK_DIR="$dir"
+      WORKFLOW_WORKTREE_LOCK="$(records_lock_field "$RECORDS_LOCK_OWNER" id)"
+      export WORKFLOW_WORKTREE_LOCK
+      ;;
+    1)
+      echo "Error: the $1 $2 has a session or a verification running already: $(records_lock_describe "$RECORDS_LOCK_HOLDER"). $3 does not start a second one in the same worktree; nothing was changed. Wait until it has ended, or stop exactly that process (kill <PID>); a lock whose process is gone is taken over by itself ($dir)." >&2
+      return 1
+      ;;
+    *) echo "Warning: the lock of the $1 $2 could not be created in $dir; $3 runs without it." >&2 ;;
+  esac
+  return 0
+}
+
+# records_worktree_unlock: releases the lock that this run took.
+records_worktree_unlock() {
+  [[ -n "$RECORDS_WORKTREE_LOCK_DIR" ]] || return 0
+  records_lock_release "$RECORDS_WORKTREE_LOCK_DIR" "$RECORDS_LOCK_OWNER"
+  RECORDS_WORKTREE_LOCK_DIR=""
 }
 
 # records_stop <step> <reason>: where and why a workflow script stops: the
