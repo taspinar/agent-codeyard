@@ -369,6 +369,20 @@ grep -Fq "./scripts/doctor.sh lists every prerequisite; then run ./scripts/run-f
 if grep -Fq "see .agents/run/11-log" <<<"$r"; then fail "the environment stop is reported as a failed run: $r"; fi
 rm -f "$records/20261101T120000Z-999999999-78.jsonl"
 
+# A run that stopped with status 3 because a fix would depart from a recorded
+# owner decision (Issue 363): the column names the decision and the finding,
+# and the two ways out, even when the handoff note holds another question.
+run_start 11 20261101T120000Z-999999999-63 2000
+event 11 20261101T120000Z-999999999-63 2010 run-end '{"status":3,"step":"fixes for round 2","reason":"the triage of round 2 would fix what a recorded owner decision ruled out, so no fix was made; finding M1 (Migrate the files) departs from owner decision 2: 2. 2026-11-01 (@owner-login): Keep the old format. Only you decide whether the decision stands."}'
+printf '## Open questions\n\nAn older question.\n' >"$tmp/wt-11/.agents/handoffs/11.md"
+r="$(row "$(status)" 11)"
+grep -Fq "a fix would depart from your recorded decision: " <<<"$r" || fail "the departure from an owner decision is not the decision needed: $r"
+grep -Fq "finding M1 (Migrate the files) departs from owner decision 2: 2. 2026-11-01 (@owner-login): Keep the old format." <<<"$r" ||
+  fail "the departure does not name the finding and the decision: $r"
+grep -Fq "./scripts/record-decision.sh 11 \"<decision>\" --source <url> --replaces <n>" <<<"$r" || fail "the departure does not name record-decision.sh: $r"
+if grep -Fq "An older question" <<<"$r"; then fail "the departure was shown as the question of the handoff note: $r"; fi
+rm -f "$records/20261101T120000Z-999999999-63.jsonl" "$tmp/wt-11/.agents/handoffs/11.md"
+
 # Without a worktree, the approval request is read from the head commit of
 # the pull request, which a fetch brought here.
 git -C "$repo" branch -q approval-16 main

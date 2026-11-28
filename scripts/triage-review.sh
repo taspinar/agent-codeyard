@@ -625,7 +625,12 @@ else
       jq '{verdict, limitations, findings}' "$review_path"
     } >"$context_file"
   else
-    # The owner's later comments, as the implementer and the reviewer got them.
+    # The owner's decisions and later comments, as the implementer and the
+    # reviewer got them.
+    issue_decisions_read "$source_issue" ||
+      fail "could not read the body of GitHub Issue #$source_issue for the owner's decisions ($ISSUE_DECISIONS_ERROR). The triage was not started. No artifact or GitHub Issues were created."
+    issue_decisions "$source_issue" "triage agent" "$ISSUE_DECISIONS_BODY" ||
+      fail "$ISSUE_DECISIONS_ERROR. The triage was not started, since it would judge the findings without the owner's decisions. No artifact or GitHub Issues were created."
     issue_comments "$source_issue" "triage agent" ||
       fail "could not read the comments of GitHub Issue #$source_issue ($ISSUE_COMMENTS_ERROR). The triage was not started, since it would judge the findings without the owner's clarifications. No artifact or GitHub Issues were created."
     {
@@ -635,6 +640,10 @@ else
       echo
       printf '%s\n' "$source_issue_context"
       echo
+      if [[ -n "$ISSUE_DECISIONS_SECTION" ]]; then
+        printf '%s\n' "$ISSUE_DECISIONS_SECTION"
+        echo
+      fi
       if [[ -n "$ISSUE_COMMENTS_SECTION" ]]; then
         printf '%s\n' "$ISSUE_COMMENTS_SECTION"
         echo
@@ -798,7 +807,11 @@ jq -n \
         }
         # Only a planning triage has amendments; a feature triage stays as
         # every version of the scripts reads it.
-        + (if $kind == "planning" then {amendment: ($d.amendment // null)} else {} end) ]' >"$proposal_file"
+        + (if $kind == "planning" then {amendment: ($d.amendment // null)} else {} end)
+        # The owner decision a finding departs from, only where there is one:
+        # a triage without it stays as every version of the scripts reads it.
+        + (if $kind == "feature" and ($d.owner_decision // null) != null
+           then {owner_decision: $d.owner_decision} else {} end) ]' >"$proposal_file"
 
 # render_proposal <decisions-json>: the decisions, each with the earlier
 # finding that its finding continues, as the review names it.
@@ -811,6 +824,8 @@ render_proposal() {
        | if ($items | length) == 0 then "- (none)"
          else ($items[] |
            "- \(.finding_id) \(.title) — \(.rationale)",
+           (if (.owner_decision // null) != null
+            then "  Departs from owner decision \(.owner_decision) of the Issue: a fix stops for the owner" else empty end),
            (if ($previous[.finding_id] | type) == "object"
             then "  Continues: \($previous[.finding_id] | previous_text)" else empty end),
            (if .followup != null then

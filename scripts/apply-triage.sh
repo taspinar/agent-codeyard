@@ -14,6 +14,7 @@ source "$script_dir/lib/fingerprint.sh"
 source "$script_dir/lib/verification.sh"
 source "$script_dir/lib/skills.sh"
 source "$script_dir/lib/completion.sh"
+source "$script_dir/lib/issue-comments.sh"
 
 usage() {
   echo "Usage: $0 <triage-json> [--agent <agent>] [--model <model>] [--unattended] [--continue] [--checks <group>[,<group>...] | --caller-verifies]"
@@ -233,6 +234,29 @@ if [[ "$fix_count" -eq 0 ]]; then
   exit 0
 fi
 
+# The owner's decisions (lib/issue-comments.sh): the agent gets them with its
+# scope, and a finding to fix that the triage says departs from one that
+# still stands is not fixed. Only the owner decides whether it stands.
+issue_decisions_read "$source_issue" ||
+  fail "could not read the body of Issue #$source_issue for the owner's decisions ($ISSUE_DECISIONS_ERROR); no implementation agent was started."
+# A decision that a later entry of the current body replaces no longer
+# stands: its fix goes on.
+departures="$(issue_decisions_departures "$triage_path" "$ISSUE_DECISIONS_BODY")"
+if [[ -n "$departures" ]]; then
+  departure_text=""
+  while IFS=$'\t' read -r finding number title; do
+    entry="$(issue_decisions_entry "$ISSUE_DECISIONS_BODY" "$number")"
+    departure_text+="finding $finding ($title) departs from owner decision $number of Issue #$source_issue: ${entry:-the body of the Issue holds no decision $number}"$'\n'
+  done <<<"$departures"
+  echo "The triage would fix what a recorded owner decision ruled out; only you decide whether the decision stands:" >&2
+  printf '%s' "$departure_text" | sed 's/^/  - /' >&2
+  echo "No implementation agent was started. Record a decision that replaces it (./scripts/record-decision.sh $source_issue \"<decision>\" --source <url> --replaces <n>) and triage again, or triage the review yourself (./scripts/triage-review.sh <review> --decisions <file> --reason \"<why>\")." >&2
+  records_stop "${0##*/}" "a fix departs from owner decision: ${departure_text%$'\n'}"
+  exit 3
+fi
+issue_decisions "$source_issue" "triage implementer" "$ISSUE_DECISIONS_BODY" ||
+  fail "$ISSUE_DECISIONS_ERROR. No implementation agent was started, since it would fix without the owner's decisions."
+
 triage_relative="${triage_path#"$root"/}"
 fix_scope="$(jq -r --slurpfile review "$source_review_path" '
   .decisions[] | select(.decision == "FIX_NOW") | . as $d
@@ -287,6 +311,11 @@ Record the check of each finding in checks[] of the completion record
 (.agents/completion/$source_issue.json), one entry per finding with the triage
 '${triage_relative##*/}', as your contract says under 'Each finding: its
 class, and a check before the change'."
+if [[ -n "$ISSUE_DECISIONS_SECTION" ]]; then
+  start_prompt+="
+
+$ISSUE_DECISIONS_SECTION"
+fi
 start_prompt+="$(skills_prompt "$SKILLS_FILES")"
 if [[ -n "$source_issue" && -f "$root/.agents/handoffs/$source_issue.md" ]]; then
   start_prompt+="

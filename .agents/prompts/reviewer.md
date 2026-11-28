@@ -85,6 +85,26 @@ implementer settled without saying so.
 A feature that was committed on purpose as partial work says so in its
 record; then review what is there and report what the record leaves unsaid.
 
+## Owner decisions
+
+The review context holds the owner's decisions, the block `## Owner
+decisions` of the Issue body, in its own section before the comments
+(`.agents/prompts/implementer.md`, "Owner decisions"). Judge the feature
+against them as against the Issue: a result that departs from a decision is
+a finding.
+
+- **A finding that asks for what a decision ruled out** names that decision:
+  start its `recommendation` with "Conflicts with owner decision <n>:" and
+  say why the decision should not stand. The triage then names it too, and
+  the run stops for the owner instead of fixing. Do not recommend the
+  departure as if no decision existed.
+- **An added criterion without a source.** A criterion that was added after
+  the Issue was written (in a later edit of the body, a comment, the plan, or
+  the completion record) and that cites no source (the Issue, the roadmap or
+  the plan, or an entry of the block) is not a requirement. Do not report
+  its absence in the code; report the criterion itself as a `minor` finding
+  about the Issue, titled "Criterion without a source: <criterion>".
+
 ## Approval requests and the content tree
 
 `.agents/approval-requests/<issue>.json` is what the owner is asked to

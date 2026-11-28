@@ -8,7 +8,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["finding_id", "decision", "rationale", "followup", "amendment"],
+        "required": ["finding_id", "decision", "rationale", "followup", "amendment", "owner_decision"],
         "properties": {
           "finding_id": { "type": "string" },
           "decision": {
@@ -38,6 +38,12 @@
             "anyOf": [
               { "type": "null" },
               { "type": "string" }
+            ]
+          },
+          "owner_decision": {
+            "anyOf": [
+              { "type": "null" },
+              { "type": "integer" }
             ]
           }
         }

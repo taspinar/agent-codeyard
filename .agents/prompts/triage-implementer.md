@@ -18,6 +18,15 @@ Read:
   all of the above, as `.agents/prompts/implementer.md` says under "Project
   skills"
 
+Your prompt holds the owner's decisions, the block `## Owner decisions` of
+the Issue body, when there are any. A fix never departs from one
+(`.agents/prompts/implementer.md`, "Owner decisions"): when resolving a
+finding would do what a decision ruled out, change nothing for that
+finding, record the question under "Open questions" in the handoff note,
+naming the finding by its identifier and the decision by its number ("M1
+conflicts with owner decision 2: ..."), and stop as an unattended session
+stops for a decision of the owner.
+
 Treat the supplied `FIX_NOW` findings as exhaustive: resolve no other
 finding. The same defect elsewhere in the feature's own files is part of the
 finding it belongs to (see below). Preserve each finding identifier while

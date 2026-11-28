@@ -156,6 +156,12 @@ case "${1:-} ${2:-}" in
         exit 1
       fi
     fi
+    # The body, for the owner's decisions: issue-body of the control
+    # directory, or the body below.
+    if [[ "$*" == *"--json body "* && -f "$RUN_CONTROL/issue-body" ]]; then
+      cat "$RUN_CONTROL/issue-body"
+      exit 0
+    fi
     case "$*" in
       *"--json number"*) echo "$3" ;;
       *"--json title"*) echo "F02 — Feature file" ;;
@@ -483,6 +489,8 @@ refused
 budget
 budget-as-evidence
 duration-budget
+owner-decision-departure
+owner-decision-replaced
 REGISTER
 }
 

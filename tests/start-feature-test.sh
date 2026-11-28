@@ -29,6 +29,11 @@ set -euo pipefail
 if [[ "${1:-}" == "api" && "${2:-}" == repos/*/comments ]]; then
   exec "$(dirname "$0")/gh-comments" "$@"
 fi
+# The body, for the owner's decisions: MOCK_ISSUE_BODY, a file, or none.
+if [[ "${1:-} ${2:-}" == "issue view" && "$*" == *"--json body"* ]]; then
+  [[ -z "${MOCK_ISSUE_BODY:-}" ]] || cat "$MOCK_ISSUE_BODY"
+  exit 0
+fi
 if [[ "${1:-} ${2:-}" == "issue view" ]]; then
   [[ -z "${MOCK_GH_FAIL:-}" ]] || exit 1
   if [[ -n "${MOCK_GH_NOT_FOUND:-}" ]]; then
@@ -438,6 +443,46 @@ MOCK_ISSUE_COMMENTS="$tmp/comments.json" run_start "$repo" 14 --resume || {
   fail "resuming a feature of an Issue with comments failed"
 }
 expect_owner_comments "$repo.log" "Do not commit, push, merge, or deploy." "the resumed implementer"
+
+# The owner's decisions, the block at the end of the Issue body, reach the
+# implementer in their own marked section before the comments, also when the
+# Issue has more comments than are passed on, for --resume too (Issue 363).
+write_decisions_issue "$tmp/decisions-body.md" "$tmp/many-comments.json"
+repo="$(setup_repo decisions)"
+MOCK_ISSUE_BODY="$tmp/decisions-body.md" MOCK_ISSUE_COMMENTS="$tmp/many-comments.json" run_start "$repo" 19 thing || {
+  cat "$repo.out" >&2
+  fail "starting a feature of an Issue with owner decisions failed"
+}
+expect_decisions "$repo.log" "the implementer"
+grep -Fq "Passing the owner's decisions of Issue #19 to the implementer: 2 numbered entries" "$repo.out" ||
+  fail "the decisions passed on to the implementer were not reported"
+rm -f "$repo.log"
+MOCK_ISSUE_BODY="$tmp/decisions-body.md" MOCK_ISSUE_COMMENTS="$tmp/many-comments.json" run_start "$repo" 19 --resume || {
+  cat "$repo.out" >&2
+  fail "resuming a feature of an Issue with owner decisions failed"
+}
+expect_decisions "$repo.log" "the resumed implementer"
+
+# A block that cannot be used stops the start before anything is created,
+# naming the line; a body too long for an argument still passes the block.
+write_unusable_decisions "$tmp"
+repo="$(setup_repo decisions-malformed)"
+if MOCK_ISSUE_BODY="$tmp/decisions-malformed.md" run_start "$repo" 19 thing; then
+  fail "a feature started with a block of owner decisions that holds a line that is no entry"
+fi
+[[ ! -e "$tmp/decisions-malformed-19-thing" && ! -e "$repo.log" ]] ||
+  fail "a malformed block of owner decisions still created the worktree or started the implementer"
+grep -Fq 'line 6 of the body of Issue #19, in the block "## Owner decisions", is neither a numbered entry' "$repo.out" &&
+  grep -Fq '"PROSE-LINE outside any entry."' "$repo.out" &&
+  grep -Fq "The implementer was not started" "$repo.out" ||
+  fail "the malformed block of owner decisions was not reported with its line: $(cat "$repo.out")"
+repo="$(setup_repo decisions-long)"
+MOCK_ISSUE_BODY="$tmp/decisions-long.md" run_start "$repo" 19 thing || {
+  cat "$repo.out" >&2
+  fail "starting a feature of an Issue with a long body and owner decisions failed"
+}
+grep -Fq "## Owner decisions on Issue #19" "$repo.log" && grep -Fq "DECISION-TOKEN-1" "$repo.log" ||
+  fail "the owner's decisions of a long Issue body did not reach the implementer"
 
 # Without comments to pass on, the prompt ends where it ended before.
 repo="$(setup_repo comments-none)"

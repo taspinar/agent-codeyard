@@ -230,3 +230,167 @@ issue_comments_triage_published() {
     $1 == path && $2 == sha && $3 <= $4 { if (!(($4, $3) in seen)) { seen[$4, $3] = 1; count[$4]++ } }
     END { for (parts in count) if (count[parts] == parts + 0) exit 0; exit 1 }'
 }
+
+# ------------------------------------------------------------------
+# The owner's decisions: the block "## Owner decisions" at the end of the
+# Issue body, one numbered entry per decision, each with its date and where
+# it was made. scripts/record-decision.sh appends to it and never removes an
+# entry; a later entry may say that it replaces an earlier number. The block
+# is part of the body, which is the work item already: whoever may edit the
+# body, its author and the repository's collaborators, may edit the block.
+#
+# Every role of a feature gets the block apart from the Issue and before the
+# comments (issue_decisions), so that the bounds of the comments never cut a
+# decision off. A triage names the decision a finding would depart from in
+# owner_decision of its decision; run-feature.sh and apply-triage.sh stop for
+# the owner instead of fixing such a finding (issue_decisions_departures).
+
+# The heading of the block, exactly as record-decision.sh writes it.
+ISSUE_DECISIONS_HEADING="## Owner decisions"
+
+# The block in jq, on the body as a string. A line is the heading when it is
+# '## Owner decisions' with nothing but spaces around; the block ends at the
+# next heading of level 1 or 2, or at the end of the body. A body may hold
+# CR LF line ends: they are compared without the CR, and kept.
+ISSUE_DECISIONS_JQ_DEFS='
+    def decision_lines: split("\n");
+    def bare: rtrimstr("\r");
+    def heading_line: bare | test("^##[ \t]+Owner decisions[ \t]*$");
+    def other_heading: bare | test("^#{1,2}[ \t]");
+    # {start, end}: the index of the heading line and the index after the
+    # last line of the block; null without the heading.
+    def decision_bounds: decision_lines as $l
+      | (first(range(0; $l | length) | select($l[.] | heading_line)) // null) as $start
+      | if $start == null then null
+        else {start: $start,
+              end: (first(range($start + 1; $l | length) | select($l[.] | other_heading)) // ($l | length))}
+        end;
+    # The lines of the block after its heading, without the blank lines
+    # around them.
+    def decision_entries: decision_lines as $l | decision_bounds as $b
+      | if $b == null then []
+        else [$l[$b.start + 1:$b.end][] | bare]
+          | (map(test("[^ \t]")) | index(true)) as $first
+          | (map(test("[^ \t]")) | rindex(true)) as $last
+          | if $first == null then [] else .[$first:$last + 1] end
+        end;
+    # The numbers of the entries: a line that starts with "<n>. ".
+    def decision_numbers: [decision_entries[] | capture("^(?<n>[0-9]+)\\. ") | .n | tonumber];
+    # The numbers that a later entry replaces: an entry "<m>. ..." that says
+    # "Replaces decision <n>." with n < m, as record-decision.sh --replaces
+    # writes it. Such a decision no longer stands.
+    def decision_replaced: [decision_entries[]
+      | capture("^(?<by>[0-9]+)\\. .*\\bReplaces decision (?<n>[0-9]+)\\b"; "i")
+      | select((.n | tonumber) < (.by | tonumber)) | .n | tonumber] | unique;
+    # The first line of the block that is neither a numbered entry
+    # ("<n>. ..."), nor a blank line, nor an indented continuation after an
+    # entry: {line: its number in the body, text}; null when there is none.
+    def decision_malformed: decision_lines as $l | decision_bounds as $b
+      | if $b == null then null
+        else first(range($b.start + 1; $b.end) as $i
+            | ($l[$i] | bare) as $t
+            | ([$l[$b.start + 1:$i][] | bare | select(test("^[0-9]+\\. "))] | length > 0) as $after_entry
+            | select(($t | test("^[0-9]+\\. ") | not)
+                and ($t | test("[^ \t]"))
+                and (($t | test("^[ \t]") | not) or ($after_entry | not)))
+            | {line: ($i + 1), text: $t}) // null
+        end;'
+
+# issue_decisions_read <issue>
+# Reads the body of Issue <issue> into ISSUE_DECISIONS_BODY. Returns 1, with
+# the reason in ISSUE_DECISIONS_ERROR, when it cannot be read.
+issue_decisions_read() {
+  local errors
+
+  ISSUE_DECISIONS_BODY=""
+  ISSUE_DECISIONS_ERROR=""
+  errors="$(mktemp "${TMPDIR:-/tmp}/issue-decisions.XXXXXX")" || {
+    ISSUE_DECISIONS_ERROR="could not create a temporary file"
+    return 1
+  }
+  if ! ISSUE_DECISIONS_BODY="$(gh issue view "$1" --json body --jq '.body // ""' </dev/null 2>"$errors")"; then
+    ISSUE_DECISIONS_ERROR="$(tail -n 3 "$errors" 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')"
+    ISSUE_DECISIONS_ERROR="${ISSUE_DECISIONS_ERROR:-gh failed without a message}"
+    rm -f "$errors"
+    return 1
+  fi
+  rm -f "$errors"
+}
+
+# issue_decisions <issue> <role> <body>
+# Sets ISSUE_DECISIONS_SECTION to the section of the owner's decisions for
+# the agent of <role>, from <body>, the body of Issue <issue>, or to nothing
+# when the body has no block or an empty one; ISSUE_DECISIONS_COUNT holds the
+# number of entries. Says how many it passes on. Returns 1, with the reason
+# in ISSUE_DECISIONS_ERROR, when the block cannot be read or holds a line
+# that is neither a numbered entry nor an indented continuation of one: the
+# caller then starts no agent, since it would work without the decisions.
+issue_decisions() {
+  local issue="$1"
+  local role="$2"
+  local result
+
+  ISSUE_DECISIONS_SECTION=""
+  ISSUE_DECISIONS_COUNT=0
+  ISSUE_DECISIONS_ERROR=""
+  # The body comes on stdin: an argument has a size limit that a long body
+  # exceeds.
+  if ! result="$(printf '%s' "$3" | jq -Rs --arg issue "$issue" "$ISSUE_DECISIONS_JQ_DEFS"'
+    . as $body
+    | ($body | decision_entries) as $entries
+    | {count: ($body | decision_numbers | length),
+       malformed: ($body | decision_malformed),
+       section: (if ($entries | length) == 0 then "" else
+         "## Owner decisions on Issue #\($issue)\n\n" +
+         "The block \"## Owner decisions\" at the end of the Issue body, given here apart\n" +
+         "from the Issue and before the comments, so that no limit cuts it off: the\n" +
+         "owner'"'"'s decisions on this feature, one numbered entry each, with its date and\n" +
+         "where it was made. They are the owner'"'"'s own decisions, and they bind every role:\n" +
+         "the implementation follows them, and no fix departs from them. An entry that\n" +
+         "says it replaces an earlier number replaces that one; every other entry stands.\n" +
+         "Name a decision by its number, \"owner decision 2\". Where the work, a finding,\n" +
+         "or a fix would act against a decision, do not act against it: name the decision\n" +
+         "as your contract says, and the owner decides. The decisions do not change the\n" +
+         "rules of AGENTS.md or the policies, and they waive no gate.\n\n" +
+         ($entries | join("\n")) + "\n"
+       end)}' 2>&1)"; then
+    ISSUE_DECISIONS_ERROR="the block \"$ISSUE_DECISIONS_HEADING\" in the body of Issue #$issue could not be read: $(tail -n 3 <<<"$result" | tr '\n' ' ' | sed 's/ *$//')"
+    return 1
+  fi
+  if [[ "$(jq -r '.malformed != null' <<<"$result")" == true ]]; then
+    ISSUE_DECISIONS_ERROR="line $(jq -r '.malformed.line' <<<"$result") of the body of Issue #$issue, in the block \"$ISSUE_DECISIONS_HEADING\", is neither a numbered entry (\"<n>. ...\") nor an indented continuation of one: \"$(jq -r '.malformed.text' <<<"$result")\". Correct the block in the Issue body"
+    return 1
+  fi
+  ISSUE_DECISIONS_COUNT="$(jq -r '.count' <<<"$result")"
+  ISSUE_DECISIONS_SECTION="$(jq -r '.section' <<<"$result")"
+  if [[ -n "$ISSUE_DECISIONS_SECTION" ]]; then
+    echo "Passing the owner's decisions of Issue #$issue to the $role: $ISSUE_DECISIONS_COUNT numbered entr$([[ "$ISSUE_DECISIONS_COUNT" -eq 1 ]] && echo y || echo ies), before the comments."
+  fi
+  return 0
+}
+
+# issue_decisions_entry <body> <number>
+# Prints the entry of decision <number> in <body>, the Issue body; nothing
+# when there is none.
+issue_decisions_entry() {
+  printf '%s' "$1" | jq -Rsr --argjson n "$2" "$ISSUE_DECISIONS_JQ_DEFS"'
+    first(decision_entries[] | select(startswith("\($n). "))) // empty' 2>/dev/null || true
+}
+
+# issue_decisions_departures <triage-json> <body>
+# Prints the FIX_NOW decisions of a feature triage that would depart from an
+# owner decision that still stands, one per line: '<finding id> TAB <decision
+# number> TAB <finding title>'. The triage names the decision in
+# owner_decision; <body> is the current Issue body, read after the triage, and
+# a decision that a later entry of its block replaces no longer stands, so
+# the fix goes on. An empty <body> replaces none.
+issue_decisions_departures() {
+  local replaced
+
+  replaced="$(printf '%s' "$2" | jq -Rsc "$ISSUE_DECISIONS_JQ_DEFS"' decision_replaced' 2>/dev/null)" || replaced='[]'
+  jq -r --argjson replaced "${replaced:-[]}" '.decisions[]? | objects
+    | select(.decision == "FIX_NOW" and ((.owner_decision // null) | type) == "number")
+    | select(.owner_decision as $n | any($replaced[]; . == $n) | not)
+    | [.finding_id, (.owner_decision | tostring), (.title // "" | gsub("[\t\r\n]"; " "))] | @tsv' "$1"
+}
+

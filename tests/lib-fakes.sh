@@ -392,6 +392,57 @@ expect_owner_comments() {
   done
 }
 
+# write_decisions_issue <body-file> <comments-file>
+# Writes an Issue body that ends with the block "## Owner decisions" (two
+# entries, each with a token that expect_decisions looks for) and 25 comments
+# of the owner, more than the 20 that are passed on, each a long one, so that
+# the oldest are left out by the bounds of the comments.
+write_decisions_issue() {
+  printf '%s\n' "The marker file must exist." "" "## Owner decisions" "" \
+    "1. 2026-01-01 (@owner-login): DECISION-TOKEN-1: keep the old format." \
+    "2. 2026-01-02 (@owner-login, [source](https://github.com/o/r/issues/1#issuecomment-1)): DECISION-TOKEN-2: no migration." >"$1"
+  jq -n '[range(1; 26) as $i | {user: {login: "owner-login"}, author_association: "OWNER",
+    created_at: ("2026-01-03T10:\($i + 10):00Z"), updated_at: ("2026-01-03T10:\($i + 10):00Z"),
+    body: ("MANY-COMMENT-\($i): " + ("x" * 900))}]' >"$2"
+}
+
+# write_unusable_decisions <dir>
+# Writes two Issue bodies whose block "## Owner decisions" no role may start
+# without: <dir>/decisions-malformed.md, whose block holds a line that is
+# neither a numbered entry nor an indented continuation (line 6), and
+# <dir>/decisions-long.md, a valid block in a body longer than the 128 KiB an
+# argument may hold, which jq --arg could not take.
+write_unusable_decisions() {
+  printf '%s\n' "The marker file must exist." "" "## Owner decisions" "" \
+    "1. 2026-01-01 (@owner-login): DECISION-TOKEN-1: keep the old format." \
+    "PROSE-LINE outside any entry." \
+    "2. 2026-01-02 (@owner-login): DECISION-TOKEN-2: no migration." >"$1/decisions-malformed.md"
+  { printf '%s\n' "The marker file must exist." "" "## Owner decisions" "" \
+      "1. 2026-01-01 (@owner-login): DECISION-TOKEN-1: keep the old format." "" "## Notes" ""
+    head -c 140000 /dev/zero | tr '\0' x
+    printf '\n'; } >"$1/decisions-long.md"
+}
+
+# expect_decisions <file> <what>
+# Fails unless <file> holds the owner's decisions of write_decisions_issue in
+# their marked section, before the comments of the owner, of which the
+# newest is passed on and the oldest is left out.
+expect_decisions() {
+  local heading
+  local first
+  local comments
+
+  heading="$(grep -Fn -- "## Owner decisions on Issue #" "$1" | head -n 1 | cut -d: -f1)" || true
+  [[ -n "$heading" ]] || fail "$2: the owner's decisions were not given in their marked section"
+  first="$(grep -Fn -- "DECISION-TOKEN-1" "$1" | tail -n 1 | cut -d: -f1)" || true
+  [[ -n "$first" && "$first" -gt "$heading" ]] || fail "$2: decision 1 is not in the marked section"
+  grep -Fq -- "DECISION-TOKEN-2: no migration." "$1" || fail "$2: decision 2 was not given"
+  comments="$(grep -Fn -- "## Later clarifications by the owner" "$1" | head -n 1 | cut -d: -f1)" || true
+  [[ -n "$comments" && "$comments" -gt "$first" ]] || fail "$2: the decisions do not come before the comments"
+  grep -Fq -- "MANY-COMMENT-25:" "$1" || fail "$2: the newest comment was not passed on"
+  if grep -Fq -- "MANY-COMMENT-1:" "$1"; then fail "$2: the oldest of 25 comments was passed on, so the bounds were not reached"; fi
+}
+
 # expect_comments_recorded <records-dir> <role>
 # Fails unless the run records in <records-dir> say that three comments were
 # passed on to <role>, and that two comments of others and three reports of

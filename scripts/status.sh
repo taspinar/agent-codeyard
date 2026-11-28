@@ -446,7 +446,15 @@ while IFS= read -r issue; do
       phase="stopped ($(phase_of "$(jq -r '.stop_step // empty' <<<"$run")"))"
       [[ "$command" == "run-feature.sh" ]] || phase="stopped ($command)"
       case "$exit_status" in
-        3) decisions+=("your decision: ${question:-${reason:-an agent needs it}}; answer in .agents/handoffs/$issue.md, then run $continue_command") ;;
+        3)
+          # A fix that would depart from a recorded owner decision
+          # (run-feature.sh, apply-triage.sh): the reason names both.
+          if grep -Fq "departs from owner decision" <<<"$reason"; then
+            decisions+=("a fix would depart from your recorded decision: ${reason}; keep it with your own triage (./scripts/triage-review.sh <review> --decisions <file>), or replace it with ./scripts/record-decision.sh $issue \"<decision>\" --source <url> --replaces <n> and triage again; then run $continue_command")
+          else
+            decisions+=("your decision: ${question:-${reason:-an agent needs it}}; answer in .agents/handoffs/$issue.md, then run $continue_command")
+          fi
+          ;;
         # A prerequisite of the machine that ran it is missing: nothing for
         # the feature to fix, and nothing to answer, only to install.
         78) decisions+=("install what this machine lacks: ${reason:-a prerequisite is missing}; ./scripts/doctor.sh lists every prerequisite; then run $continue_command") ;;

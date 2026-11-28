@@ -29,6 +29,21 @@ Classify every finding exactly once:
 
 Every decision requires a concise rationale.
 
+## Owner decisions
+
+The context holds the owner's decisions, the block `## Owner decisions` of
+the Issue body, in its own section before the comments
+(`.agents/prompts/implementer.md`, "Owner decisions"). A finding that asks
+for what a standing decision ruled out (its recommendation says "Conflicts
+with owner decision <n>", or you see it yourself) gets the number of that
+decision in `owner_decision`, whatever you decide. Decide it as any other
+finding: when it should be fixed, `FIX_NOW` with `owner_decision` stops the
+run for the owner, who decides whether the decision stands; nothing is
+fixed against a decision. A minor finding or a suggestion that the decision
+settles may be `ACCEPT`; a critical or major one stays `FIX_NOW`, so the
+owner sees it. Every other finding has `owner_decision: null`. A decision
+that a later entry replaces no longer stands.
+
 ## Returned findings
 
 The context may hold a section "The implementer's checks of earlier
@@ -81,6 +96,9 @@ add text around it.
     entry in `acceptance_criteria`. A planning triage has no follow-up.
   - `amendment`: `null` unless the decision is `AMEND`; then the diff
     described under "Planning triage".
+  - `owner_decision`: the number of the owner decision that the finding
+    asks to depart from (see "Owner decisions"), or `null`; always `null`
+    in a planning triage.
 
 A result that omits a finding, decides one twice, refers to an unknown finding,
 or breaks the rules above is rejected.

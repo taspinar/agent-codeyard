@@ -27,7 +27,10 @@ cat >"$tmp/bin/gh" <<'GH'
 set -euo pipefail
 case "${1:-} ${2:-}" in
   "auth status") exit 0 ;;
-  "issue view") echo "13"; exit 0 ;;
+  "issue view")
+    # The body, for the owner's decisions: MOCK_ISSUE_BODY, a file.
+    if [[ "$*" == *"--json body "* && -n "${MOCK_ISSUE_BODY:-}" ]]; then cat "$MOCK_ISSUE_BODY"; exit 0; fi
+    echo "13"; exit 0 ;;
 esac
 echo "Unexpected gh invocation: $*" >&2
 exit 1
@@ -152,6 +155,59 @@ run_apply "$repo" y "$triage" || {
   fail "applying a triage of a feature whose plan selects a skill failed"
 }
 grep -Fq -- "- .agents/project-skills/plain-labels/SKILL.md" "$repo.log" || fail "the fix session was not given the skill file"
+
+# The fix session gets the owner's decisions, the block of the Issue body, in
+# their marked section; a finding to fix that the triage says departs from
+# one starts no agent and stops with status 3, naming the finding and the
+# decision (Issue 363).
+write_decisions_issue "$tmp/decisions-body.md" "$tmp/many-comments.json"
+repo="$(setup_repo decisions)"
+MOCK_ISSUE_BODY="$tmp/decisions-body.md" run_apply "$repo" y "$triage" || {
+  cat "$repo.out" >&2
+  fail "applying a triage of an Issue with owner decisions failed"
+}
+grep -Fq "## Owner decisions on Issue #13" "$repo.log" || fail "the fix session was not given the owner's decisions"
+grep -Fq "DECISION-TOKEN-2: no migration." "$repo.log" || fail "the fix session was not given every decision"
+repo="$(setup_repo departure)"
+edit_triage "$repo" '.decisions[0].owner_decision = 2'
+status=0
+MOCK_ISSUE_BODY="$tmp/decisions-body.md" run_apply "$repo" y "$triage" || status=$?
+[[ "$status" -eq 3 ]] || { cat "$repo.out" >&2; fail "a fix that departs from an owner decision exited with $status instead of 3"; }
+[[ ! -e "$repo.log" ]] || fail "an agent was started for a fix that departs from an owner decision"
+grep -Fq "finding C1 (Correctness regression) departs from owner decision 2 of Issue #13: 2. 2026-01-02" "$repo.out" ||
+  fail "the stop does not name the finding and the decision: $(cat "$repo.out")"
+grep -Fq "./scripts/record-decision.sh 13 \"<decision>\" --source <url> --replaces <n>" "$repo.out" || fail "the stop does not say how the owner replaces the decision"
+# A decision that a later entry replaces, recorded after the triage named
+# it, no longer stands: the fix session starts (review 08 of Issue 363, M1).
+cp "$tmp/decisions-body.md" "$tmp/decisions-replaced.md"
+printf '%s\n' "3. 2026-01-04 (@owner-login, [source](https://github.com/o/r/issues/1#issuecomment-5)): Replaces decision 2. Migrate after all." >>"$tmp/decisions-replaced.md"
+repo="$(setup_repo departure-replaced)"
+edit_triage "$repo" '.decisions[0].owner_decision = 2'
+MOCK_ISSUE_BODY="$tmp/decisions-replaced.md" run_apply "$repo" y "$triage" || {
+  cat "$repo.out" >&2
+  fail "a fix stopped for an owner decision that a later entry replaces"
+}
+[[ -e "$repo.log" ]] || fail "no agent was started for a fix whose owner decision was replaced"
+grep -Fq "Replaces decision 2. Migrate after all." "$repo.log" || fail "the fix session was not given the replacing decision"
+
+# A block that cannot be used starts no fix session, naming the line; a body
+# too long for an argument still passes the block.
+write_unusable_decisions "$tmp"
+repo="$(setup_repo decisions-malformed)"
+if MOCK_ISSUE_BODY="$tmp/decisions-malformed.md" run_apply "$repo" y "$triage"; then
+  fail "a triage was applied with a block of owner decisions that holds a line that is no entry"
+fi
+[[ ! -e "$repo.log" ]] || fail "an agent was started with a malformed block of owner decisions"
+grep -Fq 'line 6 of the body of Issue #13, in the block "## Owner decisions", is neither a numbered entry' "$repo.out" &&
+  grep -Fq "No implementation agent was started" "$repo.out" ||
+  fail "the malformed block of owner decisions was not reported with its line: $(cat "$repo.out")"
+repo="$(setup_repo decisions-long)"
+MOCK_ISSUE_BODY="$tmp/decisions-long.md" run_apply "$repo" y "$triage" || {
+  cat "$repo.out" >&2
+  fail "applying a triage of an Issue with a long body and owner decisions failed"
+}
+grep -Fq "## Owner decisions on Issue #13" "$repo.log" && grep -Fq "DECISION-TOKEN-1" "$repo.log" ||
+  fail "the owner's decisions of a long Issue body did not reach the fix session"
 
 # Declining, and a triage without FIX_NOW findings, start no agent.
 repo="$(setup_repo decline)"

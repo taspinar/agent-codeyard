@@ -159,7 +159,7 @@ _review_data_rules='
         elif ($d.finding_id | type) != "string" or ($severity | has($d.finding_id) | not) then
           "decision \($n) refers to an unknown finding: \($d.finding_id | tostring)"
         else
-          ($d | unexpected(["amendment", "decision", "finding_id", "followup", "rationale"]; "decision \($n)")),
+          ($d | unexpected(["amendment", "decision", "finding_id", "followup", "owner_decision", "rationale"]; "decision \($n)")),
           ($d | missing(["decision", "finding_id", "followup", "rationale"]; "decision \($n)")),
           (if ($d.decision | IN("FIX_NOW", "DEFER", "ACCEPT")) then empty
            elif ($d.decision | IN("ESCALATE", "AMEND")) then
@@ -197,6 +197,15 @@ _review_data_rules='
            elif $d.followup != null then
              "finding \($d.finding_id) is not deferred and must not have a follow-up"
            else empty end),
+          # The owner decision that the finding asks to depart from: the
+          # number of an entry of the block "## Owner decisions" of the
+          # Issue, or null. A planning has no such block.
+          (if ($d.owner_decision // null) == null then empty
+           elif $planning then
+             "finding \($d.finding_id) must not name an owner decision: a planning triage has no Issue"
+           elif ($d.owner_decision | type) == "number" and $d.owner_decision >= 1
+                and ($d.owner_decision | floor) == $d.owner_decision then empty
+           else "the owner decision of finding \($d.finding_id) must be null or the number of a decision of the Issue" end),
           # An amendment is a diff of the approved requirements; only AMEND has one.
           (if $d.decision == "AMEND" then
              (if ($d.amendment | nonempty) then empty
@@ -599,7 +608,7 @@ triage_artifact_errors() {
       (if (.decisions | type) == "array" then
          (.decisions[] | objects |
            unexpected(["decision", "finding_id", "followup", "rationale", "severity", "title"]
-                      + (if $planning then ["amendment"] else [] end);
+                      + (if $planning then ["amendment"] else ["owner_decision"] end);
              "the decision for \(.finding_id | tostring)"),
            missing(["decision", "finding_id", "followup", "rationale", "severity", "title"];
              "the decision for \(.finding_id | tostring)"),
@@ -644,6 +653,7 @@ triage_artifact_errors() {
           } + (if has("amendment") then
                  {amendment: (if (.amendment | type) == "object" then .amendment.diff else .amendment end)}
                else {} end)
+            + (if has("owner_decision") then {owner_decision} else {} end)
           else . end))
         else .decisions end)
       } | triage_decision_rules($kind; $severity; if $owner and ($planning | not) then $excepted else [] end))
@@ -659,6 +669,9 @@ triage_render_markdown() {
       "### \(.finding_id). \(.title)\n\n" +
       "- Severity: \(.severity)\n" +
       "- Rationale: \(.rationale)\n" +
+      (if (.owner_decision // null) != null then
+         "- Departs from owner decision \(.owner_decision) of the Issue: only the owner decides whether it stands\n"
+       else "" end) +
       (if .followup != null then
          "- Follow-up Issue: \(.followup.title)" +
          (if .followup.issue_number != null then " ([#\(.followup.issue_number)](\(.followup.issue_url)))" else "" end) + "\n" +
