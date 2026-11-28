@@ -27,6 +27,12 @@ set -euo pipefail
 if [[ "${1:-} ${2:-}" == "auth status" ]]; then
   exit "${MOCK_GH_AUTH_EXIT:-0}"
 fi
+# The body, for the owner's decisions: MOCK_ISSUE_BODY, a file, or the body
+# of the Issue below.
+if [[ "${1:-} ${2:-}" == "issue view" && "$*" == *"--json body "* ]]; then
+  if [[ -n "${MOCK_ISSUE_BODY:-}" ]]; then cat "$MOCK_ISSUE_BODY"; else printf 'The marker file must exist.\n'; fi
+  exit 0
+fi
 if [[ "${1:-} ${2:-}" == "issue view" ]]; then
   # The trusted passes this child of review-feature.sh was given.
   [[ -z "${MOCK_GH_ENV:-}" ]] || printf 'VERIFY_TRUSTED_TREES=%s\n' "${VERIFY_TRUSTED_TREES-unset}" >>"$MOCK_GH_ENV"
@@ -828,6 +834,34 @@ for comments in none others; do
   [[ "$(sed -n '3,9p' "$repo.log.stdin")" == "$expected_issue" ]] ||
     fail "an Issue without comments to pass on ($comments) changed the context of the reviewer: $(sed -n '3,9p' "$repo.log.stdin")"
 done
+
+# The owner's decisions, the block at the end of the Issue body, reach the
+# reviewer in their own marked section before the comments, also when the
+# Issue has more comments than are passed on (Issue 363).
+write_decisions_issue "$tmp/decisions-body.md" "$tmp/many-comments.json"
+repo="$(setup_repo decisions)"
+MOCK_ISSUE_BODY="$tmp/decisions-body.md" MOCK_ISSUE_COMMENTS="$tmp/many-comments.json" run_review "$repo" 7 || {
+  cat "$repo.out" >&2
+  fail "a review of an Issue with owner decisions failed"
+}
+expect_decisions "$repo.log.stdin" "the reviewer"
+
+# A block that cannot be used stops the review before the reviewer starts,
+# naming the line; a body too long for an argument still passes the block.
+write_unusable_decisions "$tmp"
+repo="$(setup_repo decisions-malformed)"
+MOCK_ISSUE_BODY="$tmp/decisions-malformed.md" expect_no_review "$repo" "the block of owner decisions holds a line that is no entry" 7
+[[ ! -e "$repo.log" ]] || fail "the reviewer started with a malformed block of owner decisions"
+grep -Fq 'line 6 of the body of Issue #7, in the block "## Owner decisions", is neither a numbered entry' "$repo.out" &&
+  grep -Fq "The review was not started" "$repo.out" ||
+  fail "the malformed block of owner decisions was not reported with its line: $(cat "$repo.out")"
+repo="$(setup_repo decisions-long)"
+MOCK_ISSUE_BODY="$tmp/decisions-long.md" run_review "$repo" 7 || {
+  cat "$repo.out" >&2
+  fail "a review of an Issue with a long body and owner decisions failed"
+}
+grep -Fq "## Owner decisions on Issue #7" "$repo.log.stdin" && grep -Fq "DECISION-TOKEN-1" "$repo.log.stdin" ||
+  fail "the owner's decisions of a long Issue body did not reach the reviewer"
 
 # Comments that cannot be read stop the review before the reviewer starts.
 repo="$(setup_repo comments-unreadable)"

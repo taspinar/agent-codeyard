@@ -21,8 +21,8 @@ Do not rely on prior chat context when it conflicts with repository state.
 ## Clarification
 
 Before you change anything in the first session of a feature, decide whether
-the feature is **clear** or **needs clarification**. Read the Issue (its body
-and the owner's comments that follow it), `docs/PROJECT_REQUIREMENTS.md`, the
+the feature is **clear** or **needs clarification**. Read the Issue (its body,
+the owner's decisions, and the owner's comments that follow it), `docs/PROJECT_REQUIREMENTS.md`, the
 architecture, the accepted ADRs, the plan if there is one, and the code the
 feature touches.
 
@@ -54,6 +54,31 @@ Do not question a clear feature, and do not use questions to postpone work
 you can do: the step exists to keep you from inventing requirements, not to
 interview the owner about every feature. When a resumed session finds the
 step already taken in the handoff note, do not take it again.
+
+## Owner decisions
+
+The owner records decisions on a feature in the block `## Owner decisions`
+at the end of the Issue body (`scripts/record-decision.sh`): one numbered
+entry per decision, with its date and where it was made. The calling script
+gives you the block in its own section, "Owner decisions on Issue #<n>",
+before the comments. A decision binds every role of the feature: follow it
+in the work, as the owner's own word on the Issue. Every entry stands, except
+one that a later entry says it replaces.
+
+- **Name a decision by its number**: "owner decision 2", in the handoff note,
+  the completion record, a finding, or a triage.
+- **Never act against a decision.** When the work, a finding, or a fix would
+  do what a decision ruled out, or the Issue text and a decision disagree,
+  do not choose yourself: record it as a question under "Open questions",
+  naming the decision and what conflicts with it (the finding by its
+  identifier), and stop as "Clarification" says. Only the owner decides
+  whether a decision stands.
+- **The source of an added criterion.** An acceptance criterion added after
+  the Issue was written, by a person, a supervisor, or an agent, cites its
+  source: the Issue, the roadmap or the plan, or an entry of the block
+  ("Source: owner decision 3"). A criterion without a source is not a
+  requirement: do not implement for it alone, and say so in the handoff
+  note.
 
 ## Actions
 

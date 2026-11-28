@@ -1489,6 +1489,32 @@ if uncommitted || [[ "$owner_review" -eq 1 || "$owner_changed" -eq 1 || "$owner_
       continue
     fi
 
+    # A finding to fix that the triage says departs from a recorded owner
+    # decision (owner_decision, lib/issue-comments.sh) is not fixed: the run
+    # stops for the owner, who decides whether the decision stands. The body
+    # is read now, after the triage: a decision that a later entry replaces
+    # no longer stands, and its fix goes on. A body that cannot be read
+    # replaces none, so the run stops.
+    departures="$(issue_decisions_departures "$triage" "")"
+    if [[ -n "$departures" ]]; then
+      departure_body=""
+      if issue_decisions_read "$issue"; then departure_body="$ISSUE_DECISIONS_BODY"; fi
+      departures="$(issue_decisions_departures "$triage" "$departure_body")"
+      [[ -n "$departures" ]] ||
+        echo "Every owner decision that the triage of round $round names is replaced by a later entry of Issue #$issue; the fixes go on."
+    fi
+    if [[ -n "$departures" ]]; then
+      departure_text=""
+      while IFS=$'\t' read -r finding number title; do
+        entry="$(issue_decisions_entry "$departure_body" "$number")"
+        departure_text+="; finding $finding ($title) departs from owner decision $number: ${entry:-see the block \"## Owner decisions\" of Issue #$issue}"
+      done <<<"$departures"
+      stop 3 "the triage of round $round would fix what a recorded owner decision ruled out, so no fix was made${departure_text}. Only you decide whether the decision stands." \
+        "./scripts/record-decision.sh $issue \"<decision>\" --source <url> --replaces <n>    # the finding is right: a decision that replaces it; then triage again:" \
+        "cd \"$worktree\" && ./scripts/triage-review.sh $review_relative" \
+        "cd \"$worktree\" && ./scripts/triage-review.sh $review_relative --decisions <file> --reason \"<why>\"    # the decision stands: your own triage of the findings"
+    fi
+
     # The implementer refuted what is left to fix, and the reviewer, who was
     # given the refutation, still reports it: another fix session would
     # refute it again. The owner decides, on a review of the complete feature,

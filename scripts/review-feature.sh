@@ -276,7 +276,15 @@ issue_context="$(gh issue view "$issue" \
   --json title,body \
   --template 'Title: {{.title}}{{"\n\n"}}{{.body}}')" ||
   fail "could not read GitHub Issue #$issue."
-# The owner's later comments, after the body, as the implementer got them.
+# The owner's decisions, the block of the body given apart, and the owner's
+# later comments, after the body, as the implementer got them.
+issue_decisions_read "$issue" ||
+  fail "could not read the body of GitHub Issue #$issue for the owner's decisions ($ISSUE_DECISIONS_ERROR). The review was not started."
+issue_decisions "$issue" reviewer "$ISSUE_DECISIONS_BODY" ||
+  fail "$ISSUE_DECISIONS_ERROR. The review was not started, since it would judge the work without the owner's decisions."
+if [[ -n "$ISSUE_DECISIONS_SECTION" ]]; then
+  issue_context+=$'\n\n'"$ISSUE_DECISIONS_SECTION"
+fi
 issue_comments "$issue" reviewer ||
   fail "could not read the comments of GitHub Issue #$issue ($ISSUE_COMMENTS_ERROR). The review was not started, since it would judge the feature without the owner's clarifications."
 if [[ -n "$ISSUE_COMMENTS_SECTION" ]]; then

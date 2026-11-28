@@ -395,6 +395,9 @@ fi
 case "${1:-} ${2:-}" in
   "auth status") exit 0 ;;
   "issue view")
+    # The body, for the owner's decisions (Issue 363): none, and not one of
+    # the reads that MOCK_GH_ISSUE_FLAKY and MOCK_GH_ISSUE_REFUSED count.
+    [[ "$*" != *"--json body "* ]] || exit 0
     # MOCK_GH_ISSUE_FLAKY=<n>: the first n reads of the Issue fail on the
     # connection; MOCK_GH_ISSUE_REFUSED: every read is refused.
     if [[ -n "${MOCK_GH_ISSUE_FLAKY:-}" ]]; then

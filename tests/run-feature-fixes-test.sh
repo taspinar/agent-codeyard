@@ -16,6 +16,48 @@ source_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 source "$source_root/tests/lib-fakes.sh"
 source "$source_root/tests/lib-run-feature.sh"
 
+# A triage that would fix a finding which asks for what a recorded owner
+# decision ruled out (owner_decision) stops the run with status 3 before the
+# fix session, naming the finding and the decision; the triage is
+# published first, so the owner sees it (Issue 363).
+scenario owner-decision-departure
+repo="$(setup_repo owner-decision-departure)"
+printf '%s\n' "The feature file exists." "" "## Owner decisions" "" \
+  "1. 2026-01-01 (@project-owner): Keep the feature file plain." >"$repo.control/issue-body"
+printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
+printf '%s\n' 'reply="{\"decisions\": [
+  {\"finding_id\": \"M1\", \"decision\": \"FIX_NOW\", \"rationale\": \"It is wrong, but decision 1 ruled the fix out.\", \"followup\": null, \"amendment\": null, \"owner_decision\": 1},
+  {\"finding_id\": \"MIN1\", \"decision\": \"ACCEPT\", \"rationale\": \"Fine.\", \"followup\": null, \"amendment\": null, \"owner_decision\": null}
+]}"' >"$repo.control/triage.sh"
+run_feature "$repo" 2 thing
+expect_stopped "$repo" 3 "finding M1 (Wrong content) departs from owner decision 1: 1. 2026-01-01 (@project-owner): Keep the feature file plain."
+expect_sessions "$repo" 1 1 1 0
+grep -Fq "./scripts/record-decision.sh 2 \"<decision>\" --source <url> --replaces <n>" "$repo.out" || fail "the stop does not say how the owner replaces the decision"
+grep -Fq -- "--decisions <file>" "$repo.out" || fail "the stop does not say how the owner keeps the decision"
+grep -Fq "## Owner decisions on Issue #2" "$repo.control/triage-1.context" || fail "the triage agent was not given the owner's decisions"
+grep -Fq "## Owner decisions on Issue #2" "$repo.control/reviewer-1.context" || fail "the reviewer was not given the owner's decisions"
+grep -Fq "## Owner decisions on Issue #2" "$repo.control/implementer.args" || fail "the implementer was not given the owner's decisions"
+grep -Fq "Departs from owner decision 1 of the Issue" "$repo.control/issue-comments.jsonl" || fail "the published triage does not name the owner decision"
+
+# A decision that the owner replaces after the triage named it no longer
+# stands: the run reads the body again before the fix, and the fix goes on
+# (review 08 of Issue 363, M1).
+scenario owner-decision-replaced
+repo="$(setup_repo owner-decision-replaced)"
+printf '%s\n' "The feature file exists." "" "## Owner decisions" "" \
+  "1. 2026-01-01 (@project-owner): Keep the feature file plain." >"$repo.control/issue-body"
+printf '%s\n' "$major_and_minor" >"$repo.control/reviewer-1.sh"
+printf '%s\n' 'printf "%s\n" "2. 2026-01-02 (@project-owner, [source](https://github.com/o/r/issues/2#issuecomment-9)): Replaces decision 1. Fix the feature file." >>"$RUN_CONTROL/issue-body"
+reply="{\"decisions\": [
+  {\"finding_id\": \"M1\", \"decision\": \"FIX_NOW\", \"rationale\": \"It is wrong, but decision 1 ruled the fix out.\", \"followup\": null, \"amendment\": null, \"owner_decision\": 1},
+  {\"finding_id\": \"MIN1\", \"decision\": \"ACCEPT\", \"rationale\": \"Fine.\", \"followup\": null, \"amendment\": null, \"owner_decision\": null}
+]}"' >"$repo.control/triage.sh"
+run_feature "$repo" 2 thing
+expect_published "$repo"
+if grep -Fq "departs from owner decision" "$repo.out"; then fail "a fix stopped for an owner decision that a later entry replaces"; fi
+grep -Fq "is replaced by a later entry of Issue #2; the fixes go on" "$repo.out" || fail "the run does not say that the replaced decision no longer stops the fix"
+[[ "$(cat "$repo.control/fixes.count" 2>/dev/null)" == 1 ]] || fail "no fix session was started for a finding whose owner decision was replaced"
+
 # A verification that fails after the fixes is repaired too, and a review
 # confirms the result.
 scenario fixes-break

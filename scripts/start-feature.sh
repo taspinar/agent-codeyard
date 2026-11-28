@@ -100,17 +100,28 @@ base="${AGENT_POSITIONAL[2]:-}"
 
 [[ "$issue" =~ ^[0-9]+$ ]] || agent_fail "issue number must be numeric: $issue"
 
-# read_comments: the owner's later comments on the Issue, which the reviewer
-# and the triage agent get too, appended to the prompt as
-# COMMENTS_PROMPT. The session does not start without them.
+# read_comments: the owner's decisions, the block "## Owner decisions" of
+# the Issue body, and the owner's later comments on the Issue, which the
+# reviewer and the triage agent get too, appended to the prompt as
+# COMMENTS_PROMPT, the decisions first. The session does not start without
+# them.
 read_comments() {
   command -v gh >/dev/null 2>&1 ||
     agent_fail "GitHub CLI 'gh' is needed to read the comments of Issue #$issue."
+  issue_decisions_read "$issue" ||
+    agent_fail "could not read the body of Issue #$issue for the owner's decisions ($ISSUE_DECISIONS_ERROR). The implementer was not started, since it would work without them."
+  issue_decisions "$issue" implementer "$ISSUE_DECISIONS_BODY" ||
+    agent_fail "$ISSUE_DECISIONS_ERROR. The implementer was not started, since it would work without the owner's decisions."
   issue_comments "$issue" implementer ||
     agent_fail "could not read the comments of Issue #$issue ($ISSUE_COMMENTS_ERROR). The implementer was not started, since it would work without the owner's clarifications."
   COMMENTS_PROMPT=""
-  if [[ -n "$ISSUE_COMMENTS_SECTION" ]]; then
+  if [[ -n "$ISSUE_DECISIONS_SECTION" ]]; then
     COMMENTS_PROMPT="
+
+$ISSUE_DECISIONS_SECTION"
+  fi
+  if [[ -n "$ISSUE_COMMENTS_SECTION" ]]; then
+    COMMENTS_PROMPT+="
 
 $ISSUE_COMMENTS_SECTION"
   fi

@@ -2450,6 +2450,88 @@ the triage agent, so all three judge the same Issue.
 An Issue without comments, or without any that may be passed on, gives the
 agents exactly the Issue as before: title and body.
 
+### Owner decisions
+
+A decision of yours on a feature belongs in one fixed place, so that no role
+misses it: the block `## Owner decisions` at the end of the Issue body. A
+comment can fall out of the 20 that are passed on, sit among machine
+reports, or read as a remark; the block cannot.
+
+```bash
+./scripts/record-decision.sh 12 "Keep the old file format; no migration." --source https://github.com/<owner>/<repo>/issues/12#issuecomment-1
+./scripts/record-decision.sh 12 "Use the second design." --source https://github.com/<owner>/<repo>/pull/14#pullrequestreview-2
+./scripts/record-decision.sh 12 "Migrate after all, in this feature." --source https://github.com/<owner>/<repo>/issues/12#issuecomment-3 --replaces 1
+```
+
+- **The block.** One numbered entry per decision, with its date, the account
+  that recorded it, and the link to where you made it. `--source` is
+  required and takes the comment (`…/issues/<n>#issuecomment-<id>`, also on a
+  pull request) or the pull request (`…/pull/<n>`, with a review, a comment
+  or a line of it after it); the bare Issue is refused, as it does not say
+  where the decision was made. Every entry has its link, for example
+  `2. 2026-11-27 (@you, [source](https://…)): Use the second design.`
+  `record-decision.sh` creates the block at the end of the body when there is
+  none, adds the entry after the last one, moves a block that another
+  section follows to the end of the body, and keeps every other byte of the
+  body in its order. A decision is never removed: `--replaces <n>` writes "Replaces
+  decision <n>. " at the start of the text of the new entry, directly after
+  its link, and the old one no longer stands. Only those words there, exactly
+  so and in that case, replace a decision; the same words elsewhere in an
+  entry are prose and replace nothing, and a text that begins with "Replaces
+  decision" is refused without `--replaces`. The heading is `## Owner decisions`; the block ends at the next heading of
+  level 1 or 2. Between them, a line is a numbered entry (`<n>. …`), a blank
+  line, or an indented continuation of the entry before it; anything else
+  makes the block unusable (see "Every role reads it").
+- **Who.** The account that `gh` is signed in to must have write access to
+  the repository, as the owner, a member, or a collaborator has it; anyone
+  else is refused before the Issue is read. The script is refused in an agent
+  session. The block is part of the body, the work item itself: whoever may
+  edit the body may edit the block, as for the rest of the Issue.
+- **One writer at a time.** GitHub replaces the whole body and has no
+  condition on its version. `record-decision.sh` reads the body again right
+  before it writes, and stops, writing nothing, when the body changed in the
+  meantime (another `record-decision.sh`, an edit in the browser): run it
+  again. After the write it reads the body once more and fails, naming the
+  decision, when the entry is not there exactly once or another entry has its
+  number; then look at the block, restore what a concurrent edit dropped, and
+  record the decision again if it is missing. Record one decision at a time
+  and do not edit the Issue body while the command runs.
+- **Every role reads it.** The implementer (also with `--resume`), the
+  reviewer, the triage agent, and the triage implementer get the block in a
+  section of its own, "Owner decisions on Issue #<n>", before the comments,
+  so the bounds of the comments never cut it off. Each step says how many
+  entries it passed on. The body is read when the session starts; a step
+  whose read of the body fails, or whose block holds a line that is no
+  entry, stops before its agent starts and names the line, for you to
+  correct the block in the Issue body.
+- **A fix that departs from a decision stops.** A reviewer whose finding
+  asks for what a decision ruled out names it ("Conflicts with owner
+  decision 2: …"), and the triage records the number in `owner_decision` of
+  its decision for that finding. When such a finding is `FIX_NOW`,
+  `run-feature.sh` stops with status 3 after the triage is published and
+  before any fix, naming the finding and the decision; `apply-triage.sh`
+  refuses it the same way. Both read the Issue body again for this check,
+  after the triage: a decision that a later entry of the block replaces no
+  longer stands, and its fix goes on without another triage. A triage
+  implementer that finds a fix would depart from a decision that stands
+  stops with a question that names both.
+  `status.sh` shows the stop in **Owner decision needed**. You decide: keep
+  the decision with your own triage (`triage-review.sh <review> --decisions
+  <file> --reason "<why>"`, "Owner-directed triage"), or replace it with
+  `record-decision.sh <issue> "<decision>" --source <url> --replaces <n>`
+  and triage again (`triage-review.sh <review>`), then run `run-feature.sh`
+  again. The field is stored only where it names a decision, so a triage
+  without one is read as before.
+- **The source rule.** An acceptance criterion added after the Issue was
+  written, by you, a supervisor, or an agent, cites its source: the Issue, the
+  roadmap or the plan, or an entry of the block ("Source: owner decision 3").
+  The reviewer treats an added criterion without a source as a `minor`
+  finding about the Issue, not as a requirement of the feature.
+
+The rules for the agents are in `.agents/prompts/implementer.md`, "Owner
+decisions", and in the contracts of the reviewer, the triage, and the triage
+implementer.
+
 ### Clarifying a feature
 
 A feature Issue can leave a decision open that the implementer would
@@ -3811,7 +3893,9 @@ The columns:
   the link that does it, and empty when nothing is needed. A run that stopped
   for your decision (status 3) or a blocked completion record: the question
   that its handoff note holds under "Open questions", to answer in
-  `.agents/handoffs/<issue>.md`. A pull request with an approval
+  `.agents/handoffs/<issue>.md`. A run that stopped because a fix would
+  depart from a recorded owner decision: the finding and the decision, with
+  the two ways to settle it (see "Owner decisions"). A pull request with an approval
   request (`.agents/approval-requests/<issue>.json`) at the head commit of
   the pull request that you have not approved. Review rounds that are used
   up: `--rounds <m>` or an exception. A conflict with the base:

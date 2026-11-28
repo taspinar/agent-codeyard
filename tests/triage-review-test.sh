@@ -39,6 +39,8 @@ case "${1:-} ${2:-}" in
     exit 0
     ;;
   "issue view")
+    # The body, for the owner's decisions: MOCK_ISSUE_BODY, a file.
+    if [[ "$*" == *"--json body "* && -n "${MOCK_ISSUE_BODY:-}" ]]; then cat "$MOCK_ISSUE_BODY"; exit 0; fi
     printf '%s' "${MOCK_ISSUE_CONTEXT:-Title: F02 — Test feature
 
 Test acceptance criteria.}"
@@ -993,6 +995,54 @@ run_triage "$repo" y "$review" || {
 }
 [[ "$(sed -n '3,9p' "$repo.log.stdin")" == "$(printf '## Source feature Issue #5\n\nTitle: F02 — Test feature\n\nTest acceptance criteria.\n\n## Review findings (JSON)')" ]] ||
   fail "an Issue without comments changed the context of the triage agent: $(sed -n '3,9p' "$repo.log.stdin")"
+
+# The owner's decisions, the block at the end of the Issue body, reach the
+# triage agent in their own marked section before the comments, also when
+# the Issue has more comments than are passed on. A finding that asks for
+# what a decision ruled out names it in owner_decision: the triage stores
+# and reports it for that finding only, and a number that is not one is
+# refused (Issue 363).
+write_decisions_issue "$tmp/decisions-body.md" "$tmp/many-comments.json"
+repo="$(setup_repo decisions)"
+departing="$(jq '.decisions[0].owner_decision = 2 | .decisions[2].owner_decision = null' <<<"$valid_decisions")"
+MOCK_OUTPUT="$departing" MOCK_ISSUE_BODY="$tmp/decisions-body.md" MOCK_ISSUE_COMMENTS="$tmp/many-comments.json" \
+  run_triage "$repo" y "$review" || {
+  cat "$repo.out" >&2
+  fail "a triage of an Issue with owner decisions failed"
+}
+expect_decisions "$repo.log.stdin" "the triage agent"
+artifact="$repo/.agents/triage/feature-5-test-review-01-triage"
+[[ "$(jq -c '[.decisions[] | .owner_decision]' "$artifact.json")" == "[2,null,null]" &&
+   "$(jq -c '[.decisions[] | has("owner_decision")]' "$artifact.json")" == "[true,false,false]" ]] ||
+  fail "the owner decision a finding departs from was not stored for that finding alone: $(jq -c '.decisions' "$artifact.json")"
+grep -Fq "Departs from owner decision 2 of the Issue" "$artifact.md" || fail "the triage report does not name the owner decision"
+grep -Fq "Departs from owner decision 2 of the Issue" "$repo.gh.comments" || fail "the published triage does not name the owner decision"
+bad_number=0
+for bad in 0 '"2"' 1.5; do
+  bad_number=$((bad_number + 1))
+  repo="$(setup_repo "decisions-bad-$bad_number")"
+  MOCK_OUTPUT="$(jq --argjson n "$bad" '.decisions[0].owner_decision = $n' <<<"$valid_decisions")" \
+    expect_no_triage "$repo" "the owner decision $bad is not a number of a decision" "$review"
+  grep -Fq "the owner decision of finding C1 must be null or the number of a decision" "$repo.out" ||
+    fail "the owner decision $bad was not refused with its reason: $(cat "$repo.out")"
+done
+
+# A block that cannot be used stops the triage before the agent starts,
+# naming the line; a body too long for an argument still passes the block.
+write_unusable_decisions "$tmp"
+repo="$(setup_repo decisions-malformed)"
+MOCK_ISSUE_BODY="$tmp/decisions-malformed.md" expect_no_triage "$repo" "the block of owner decisions holds a line that is no entry" "$review"
+[[ ! -e "$repo.log" ]] || fail "the triage agent started with a malformed block of owner decisions"
+grep -Fq 'in the block "## Owner decisions", is neither a numbered entry' "$repo.out" &&
+  grep -Fq '"PROSE-LINE outside any entry."' "$repo.out" &&
+  grep -Fq "The triage was not started" "$repo.out" ||
+  fail "the malformed block of owner decisions was not reported with its line: $(cat "$repo.out")"
+repo="$(setup_repo decisions-long)"
+MOCK_ISSUE_BODY="$tmp/decisions-long.md" run_triage "$repo" y "$review" || {
+  cat "$repo.out" >&2
+  fail "a triage of an Issue with a long body and owner decisions failed"
+}
+grep -Fq "DECISION-TOKEN-1" "$repo.log.stdin" || fail "the owner's decisions of a long Issue body did not reach the triage agent"
 
 # Comments that cannot be read stop the triage before the agent starts.
 repo="$(setup_repo comments-unreadable)"
