@@ -18,7 +18,10 @@ usage() {
   echo "the run records (lib/records.sh), the implementer's state from the"
   echo "completion gate (lib/completion.sh), the pull request from GitHub, and the"
   echo "need for the owner's approval from the approval request that"
-  echo "finish-feature.sh committed. Run it from any checkout of the repository."
+  echo "finish-feature.sh committed. The Issues of the queue (queue.sh) that have"
+  echo "not started get a row too, with the reason, and the owner decisions of the"
+  echo "queue (free disk space, an update that stopped) are added to their rows."
+  echo "Run it from any checkout of the repository."
   echo
   echo "  --markdown  a Markdown table, for example to post as a comment"
   echo "  --changes   only what changed since the previous --changes: the changed"
@@ -553,6 +556,38 @@ while IFS= read -r issue; do
     '. + [{issue: ($issue | tonumber), title: ($title | gsub("[\t\r\n]"; " ")), phase: ($phase | gsub("[\t\r\n]"; " ")), exit: $exit,
            verification: $verification, pull_request: $pull_request, url: $url, decisions: $decisions}]' <<<"$rows")"
 done <<<"$issues"
+
+# ------------------------------------------------------------ the queue
+
+# The overview that the last queue.sh run kept (.agents/queue/overview.json
+# of the primary checkout): an Issue of the queue that has no row yet, since
+# it has neither a worktree nor an open pull request, gets one with the
+# reason why it has not started (a dependency, the disk limit, a busy
+# worktree, the stopped queue); the owner decision of the queue (free disk
+# space, an update-feature.sh that stopped, a worktree that was kept) is
+# added to the row of its Issue. A merged Issue of the queue gets no row.
+queue_overview="$primary/.agents/queue/overview.json"
+if [[ -f "$queue_overview" ]] && jq -e 'type == "array"' "$queue_overview" >/dev/null 2>&1; then
+  while IFS=$'\t' read -r q_issue q_phase; do
+    [[ "$q_issue" =~ ^[0-9]+$ ]] || continue
+    if ! jq -e --argjson issue "$q_issue" 'any(.[]; .issue == $issue)' <<<"$rows" >/dev/null; then
+      [[ "$q_phase" != merged && "$q_phase" != published ]] || continue
+      rows="$(jq -c --argjson issue "$q_issue" --arg title "$(issue_title "$q_issue")" \
+        '. + [{issue: $issue, title: ($title | gsub("[\t\r\n]"; " ")), phase: "queued", exit: "",
+               verification: "", pull_request: "", url: "", decisions: []}]' <<<"$rows")"
+    fi
+  done < <(jq -r '.[] | "\(.issue)\t\(.phase)"' "$queue_overview")
+  rows="$(jq -c --slurpfile queue "$queue_overview" '
+    ($queue[0] | map({key: (.issue | tostring), value: .}) | from_entries) as $q
+    | map(. as $row | $q[$row.issue | tostring] as $entry
+      | if $entry == null then $row
+        else $row
+          | (if .phase == "queued" then .phase = ("queued: " + ($entry.reason | gsub("[\t\r\n]"; " "))) else . end)
+          | (if ($entry.decision // "") != "" and ((.decisions | index([$entry.decision])) | not)
+             then .decisions += [$entry.decision | gsub("[\t\r\n]"; " ")] else . end)
+        end)
+    | sort_by(.issue)' <<<"$rows")"
+fi
 
 # ------------------------------------------------------------ the output
 

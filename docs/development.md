@@ -3795,7 +3795,9 @@ The columns:
   `review round <n> of <m>`, `triage of round <n>`, `fixing, round <n>`,
   `committing`, `publishing`, `published` or `finished` when the run ended
   well, `stopped (<phase>)`, `interrupted (<phase>)` for a run that has no
-  recorded end and whose process is gone, and `merged`.
+  recorded end and whose process is gone, and `merged`; `queued: <reason>`
+  for an Issue of the queue that has not started (see "A queue of
+  features").
 - **Exit**: the exit status of that run when it stopped (1, 3, 78, or 130;
   see `docs/workflow.md`).
 - **Verification**: the last full verification of the feature, whether it
@@ -3898,6 +3900,111 @@ loaded with `launchctl load ~/Library/LaunchAgents/local.feature-status.plist`:
 
 A scheduler starts with a short `PATH`: `gh` and `jq` must be on it, and `gh`
 must be logged in for that user.
+
+### A queue of features
+
+`./scripts/queue.sh` starts the features of a queue in the right order, side
+by side where it can, and cleans up after every merge. It is meant for a
+supervisor that runs many features on one machine; one feature at a time
+needs none of it. Run it from the primary checkout.
+
+The queue is `.agents/queue.conf` of the primary checkout, one line per
+Issue. Git ignores it, and `.agents/queue/` with it: it is the plan of this
+machine's supervisor, changed as often as the work moves, not a reviewed
+file of the project.
+
+```text
+# .agents/queue.conf
+351
+352 after-merge 351
+353
+354 after-merge 351 after-merge 353 agents=.agents/agents-fast.conf
+```
+
+- `after-merge <n>`: the Issue starts only when a pull request of
+  `feature/<n>-*` is merged. It is the only dependency: none is guessed
+  from the files two features change. Write one when a feature builds on
+  the logic of another. Two features that only append to the same list do
+  not depend on each other: they run side by side, and the later pull
+  request is brought up to date after the earlier merge (below), at the
+  cost of a small conflict, instead of hours of waiting. Prefer lists that
+  are derived from separate files where you can (a directory of entries
+  instead of one file that every feature appends to): then there is no
+  conflict at all.
+- `agents=<file>`: the agent configuration of this Issue's run
+  (`AGENT_CONFIG_FILE`), relative to the primary checkout.
+
+The commands:
+
+```bash
+./scripts/queue.sh run [--max-parallel <n>] [--min-free-gb <n>]
+./scripts/queue.sh stop       # running steps finish; nothing new starts
+./scripts/queue.sh resume     # undoes stop
+./scripts/queue.sh reset <issue>   # the queue may start a run that ended again
+```
+
+`run` is one pass, and can be called again at any time, by hand or from cron
+or launchd like `status.sh --changes`: it only starts what is ready and not
+running, and a second `run` while one is going on ends at once
+(`.agents/queue/lock`). One pass:
+
+1. **After a merge**: for an Issue of the queue whose pull request is
+   merged, `git pull --ff-only` in the primary checkout, then
+   `./scripts/cleanup-worktree.sh <issue>`. A worktree that it keeps is an
+   owner decision in `status.sh`.
+2. **Conflicts**: an open pull request of the queue that GitHub reports as
+   conflicting is brought up to date with `./scripts/update-feature.sh
+   <issue>` in its worktree, in the background. When it stops (a conflict it
+   cannot resolve, a verification that fails), `status.sh` shows that as an
+   owner decision with the reason and the log, and the queue does not try
+   again until the head of the pull request or its base has changed.
+3. **New runs**: every Issue whose dependencies are merged, that has no open
+   pull request, and that the queue has not run yet, starts
+   `./scripts/run-feature.sh <issue>` in the background, in the order of the
+   file, while fewer than `--max-parallel` steps (runs and updates, default
+   2) are running.
+
+The process, the log, and the exit status of every step are in
+`.agents/queue/<issue>/` (`run.process`, `run.log`, `run.exit`, and the same
+for `update`), and the state of every Issue with the reason it waits in
+`.agents/queue/overview.json`. A run that ended is not started again: one
+that stopped waits for the owner decision that `status.sh` names, and
+`queue.sh reset <issue>` lets the queue start it again. `status.sh` lists an
+Issue of the queue that has not started with the phase `queued: <reason>`,
+and adds the owner decisions of the queue to the rows of their Issues.
+
+The limits:
+
+- **One session per worktree.** A run of a feature or a planning holds the
+  lock of its subject while it runs, whatever starts it: `run-feature.sh`,
+  `start-feature.sh`, `update-feature.sh`, `finish-feature.sh`, a full
+  `verify.sh` in a feature worktree, every script that records a run
+  (`records_wrap` in `scripts/lib/records.sh`). A second one of the same
+  Issue is refused with status 75 and names the holder: its command, PID,
+  since when, and its worktree. What the holder starts itself, its agent
+  sessions and verifications, runs inside it. The lock is
+  `.git/workflow-locks/<kind>-<subject>` in the Git directory of the
+  repository, the same for all worktrees and never part of the content; a
+  lock whose process is gone is taken over, as the lock of `status.sh
+  --changes` is. A partial run (`verify.sh --changed` or `--only`) records
+  nothing and takes no lock. The queue starts no step for an Issue whose
+  lock is held, and says why.
+- **Free disk space.** Nothing new starts while the file system of the
+  directory around the primary checkout, where the worktrees are made, has
+  less than `--min-free-gb` gigabytes free (default 15: a worktree can take
+  about 9 GB with its dependencies). The waiting Issues say so in
+  `status.sh`, with the owner decision to free space.
+- **Containment.** The queue runs every command with an explicit working
+  directory (the primary checkout, or the feature worktree for an update),
+  under `set -u`, and writes only into `.agents/queue/` of the primary
+  checkout; the steps it starts write where they always do.
+- **Stop.** `queue.sh stop` writes `.agents/queue/stopped`: the steps that
+  run finish, and `run` starts nothing and removes no worktree until
+  `queue.sh resume`. A pass that is going on reads the marker again before
+  every pull, cleanup and start, and `stop` waits until that pass has
+  ended: when it returns, nothing new starts.
+
+The queue never merges: a merge is the owner's, as everywhere.
 
 ### The merge approval gate
 
