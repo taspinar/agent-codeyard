@@ -1,13 +1,13 @@
 {
   "schema": "approval-request/v1",
-  "content_tree": "7debea42695fbd26fa569a52ac5d4f3c9c4aebc6",
+  "content_tree": "45787f008eeec5473cd7d55c16638e1e1e2b22f4",
   "commit": {
     "branch": "feature/363-an-owner-decisions-block",
-    "parent": "ddd36341c8bc89790dbceda334eeb5290785cecd",
+    "parent": "f6af68336be8f632c163111ac3b6ffcae76cbc01",
     "base": "ddd36341c8bc89790dbceda334eeb5290785cecd"
   },
   "review": {
-    "round": 10,
+    "round": 12,
     "verdict": "PASS",
     "reviewer": "codex (gpt-6-luna)"
   },
@@ -17,7 +17,8 @@
     "scripts/lib/review-data.sh: the file defines or carries out the workflow and its gate",
     "scripts/review-feature.sh: the file defines or carries out the workflow and its gate",
     "scripts/run-feature.sh: the file defines or carries out the workflow and its gate",
-    "the independent review classified the impact on the architecture as major: The feature adds a shared owner-decision block and changes context delivery, triage data, and run/fix gates across the workflow. This is a cross-cutting workflow change within Issue #363’s scope. I found no conflict with the architecture placeholder or accepted ADRs. "
+    "the independent review classified the impact on the architecture as major: The change adds shared decision-block parsing and changes context delivery, triage data, and run and fix gates across the workflow. This is a cross-cutting workflow change within Issue #363’s scope; I found no conflict with the architecture placeholder or accepted ADRs. ",
+    "the review could not confirm: ./scripts/verify.sh --all passes."
   ],
   "explanation": "Issue #363: An 'Owner decisions' block in the Issue text, read by every role; a fix that departs from it stops (supervisor 2 of 5). The merge of this feature needs the owner's approval for the reasons listed; the approval is the owner's review of the pull request on GitHub, bound to the commit by GitHub. This request asks and records; it grants nothing."
 }

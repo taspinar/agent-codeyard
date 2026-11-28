@@ -24,6 +24,13 @@ usage() {
   echo "access may record a decision: the account that gh is signed in to is checked,"
   echo "and the script is refused in an agent session. Run from any checkout."
   echo
+  echo "One writer at a time: GitHub replaces the whole body. The body is read again"
+  echo "before it is written, and the command stops, writing nothing, when it changed"
+  echo "in the meantime (run it again); after the write it checks that the entry is in"
+  echo "the body exactly once, with a number of its own, and fails otherwise."
+  echo
+  echo "Do not begin the text with 'Replaces decision': use --replaces <n>."
+  echo
   echo "Examples:"
   echo "  $0 12 \"Keep the old file format; no migration.\" --source https://github.com/o/r/issues/12#issuecomment-1"
   echo "  $0 12 \"Use the second design.\" --source https://github.com/o/r/pull/14#pullrequestreview-2"
@@ -71,6 +78,13 @@ url_pattern='^https://[^/[:space:]()]+/[^/[:space:]()]+/[^/[:space:]()]+/((issue
 [[ "$source_url" =~ $url_pattern ]] ||
   fail "--source must be an https:// link without spaces or parentheses to the comment (.../issues/<n>#issuecomment-<id>) or the pull request (.../pull/<n>) where the decision was made: $source_url. Nothing was recorded."
 [[ -z "$replaces" || "$replaces" =~ ^[1-9][0-9]*$ ]] || fail "--replaces needs the number of an earlier decision: $replaces"
+# "Replaces decision <n>. " at the start of the text is what --replaces
+# writes and what ends decision <n>; typed in the text, it would look like a
+# replacement that was not checked.
+shopt -s nocasematch
+[[ -n "$replaces" || ! "$decision" =~ ^replaces[[:space:]]+decision ]] ||
+  fail "the decision begins with 'Replaces decision': give the number with --replaces <n> instead, and the text without those words. Nothing was recorded."
+shopt -u nocasematch
 [[ "${CODEYARD_AGENT_SESSION:-}" != "1" ]] ||
   fail "a decision is the owner's; record-decision.sh is refused in an agent session."
 command -v gh >/dev/null 2>&1 || fail "GitHub CLI 'gh' is not installed."
@@ -138,10 +152,28 @@ jq --arg decision "$decision" --arg source "$source_url" --arg replaces "$replac
 
 number="$(jq -r '.number' "$scratch/new.json")"
 jq '{body}' "$scratch/new.json" >"$scratch/patch.json"
+
+# GitHub replaces the whole body and has no condition on its version, so one
+# writer at a time: the body is read again right before the PATCH, and a body
+# that changed since it was read (another record-decision.sh, an edit in the
+# browser) stops the command before it writes.
+gh api "repos/{owner}/{repo}/issues/$issue" </dev/null >"$scratch/again.json" 2>"$scratch/errors" ||
+  fail "could not read Issue #$issue again before writing: $(tail -n 3 "$scratch/errors" | tr '\n' ' ') Nothing was recorded."
+jq -e --slurpfile first "$scratch/issue.json" '(.body // "") == ($first[0].body // "")' "$scratch/again.json" >/dev/null 2>&1 ||
+  fail "the body of Issue #$issue changed while the decision was prepared (another record-decision.sh or an edit of the Issue). Nothing was recorded; run the command again."
 gh api -X PATCH "repos/{owner}/{repo}/issues/$issue" --input "$scratch/patch.json" </dev/null >"$scratch/patched.json" 2>"$scratch/errors" ||
   fail "could not update the body of Issue #$issue: $(tail -n 3 "$scratch/errors" | tr '\n' ' ') Nothing was recorded."
-jq -e --slurpfile want "$scratch/patch.json" '.body == $want[0].body' "$scratch/patched.json" >/dev/null 2>&1 ||
-  echo "Warning: GitHub returned another body than the one sent; look at Issue #$issue to check decision $number." >&2
+
+# A write between the read and the PATCH is still possible: the body is read
+# once more, and the entry must be in it exactly once, with a number that no
+# other entry has.
+gh api "repos/{owner}/{repo}/issues/$issue" </dev/null >"$scratch/after.json" 2>"$scratch/errors" ||
+  fail "updated Issue #$issue but could not read it back: $(tail -n 3 "$scratch/errors" | tr '\n' ' ') Look at the block '$ISSUE_DECISIONS_HEADING' of Issue #$issue: decision $number should be there exactly once."
+jq -e --slurpfile new "$scratch/new.json" "$ISSUE_DECISIONS_JQ_DEFS"'
+  (.body // "") as $body | $new[0] as $w
+  | ([$body | decision_entries[] | select(. == $w.entry)] | length) == 1
+    and ([$body | decision_numbers[] | select(. == $w.number)] | length) == 1' "$scratch/after.json" >/dev/null 2>&1 ||
+  fail "after the update, Issue #$issue does not hold decision $number exactly once with a number of its own: another write to the body came in at the same time. Look at the block '$ISSUE_DECISIONS_HEADING' of Issue #$issue, restore any entry that is missing or numbered twice by editing the body, and record the decision again if it is not there."
 
 echo "Recorded owner decision $number on Issue #$issue:"
 echo "  $(jq -r '.entry' "$scratch/new.json")"

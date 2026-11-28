@@ -2474,8 +2474,11 @@ reports, or read as a remark; the block cannot.
   none, adds the entry after the last one, moves a block that another
   section follows to the end of the body, and keeps every other byte of the
   body in its order. A decision is never removed: `--replaces <n>` writes "Replaces
-  decision <n>." into the new entry, and the old one no longer stands. The
-  heading is `## Owner decisions`; the block ends at the next heading of
+  decision <n>. " at the start of the text of the new entry, directly after
+  its link, and the old one no longer stands. Only those words there, exactly
+  so and in that case, replace a decision; the same words elsewhere in an
+  entry are prose and replace nothing, and a text that begins with "Replaces
+  decision" is refused without `--replaces`. The heading is `## Owner decisions`; the block ends at the next heading of
   level 1 or 2. Between them, a line is a numbered entry (`<n>. …`), a blank
   line, or an indented continuation of the entry before it; anything else
   makes the block unusable (see "Every role reads it").
@@ -2484,6 +2487,15 @@ reports, or read as a remark; the block cannot.
   else is refused before the Issue is read. The script is refused in an agent
   session. The block is part of the body, the work item itself: whoever may
   edit the body may edit the block, as for the rest of the Issue.
+- **One writer at a time.** GitHub replaces the whole body and has no
+  condition on its version. `record-decision.sh` reads the body again right
+  before it writes, and stops, writing nothing, when the body changed in the
+  meantime (another `record-decision.sh`, an edit in the browser): run it
+  again. After the write it reads the body once more and fails, naming the
+  decision, when the entry is not there exactly once or another entry has its
+  number; then look at the block, restore what a concurrent edit dropped, and
+  record the decision again if it is missing. Record one decision at a time
+  and do not edit the Issue body while the command runs.
 - **Every role reads it.** The implementer (also with `--resume`), the
   reviewer, the triage agent, and the triage implementer get the block in a
   section of its own, "Owner decisions on Issue #<n>", before the comments,

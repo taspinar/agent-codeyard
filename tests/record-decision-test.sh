@@ -46,8 +46,21 @@ case "$*" in
     mv "$MOCK_STATE/issue.new" "$MOCK_STATE/issue.json"
     echo x >>"$MOCK_STATE/patches"
     cat "$MOCK_STATE/issue.json"
+    # Another writer right after this PATCH: MOCK_EDIT_AFTER_PATCH, a jq
+    # filter on the Issue.
+    if [[ -n "${MOCK_EDIT_AFTER_PATCH:-}" ]]; then
+      jq "$MOCK_EDIT_AFTER_PATCH" "$MOCK_STATE/issue.json" >"$MOCK_STATE/issue.new"
+      mv "$MOCK_STATE/issue.new" "$MOCK_STATE/issue.json"
+    fi
     ;;
   "api repos/{owner}/{repo}/issues/"*)
+    # Another writer between two reads: MOCK_EDIT_BEFORE_READ=<n> applies the
+    # jq filter MOCK_EDIT to the Issue before its n-th read.
+    echo x >>"$MOCK_STATE/reads"
+    if [[ -n "${MOCK_EDIT_BEFORE_READ:-}" && "$(wc -l <"$MOCK_STATE/reads" | tr -d ' ')" -eq "$MOCK_EDIT_BEFORE_READ" ]]; then
+      jq "$MOCK_EDIT" "$MOCK_STATE/issue.json" >"$MOCK_STATE/issue.new"
+      mv "$MOCK_STATE/issue.new" "$MOCK_STATE/issue.json"
+    fi
     if [[ -n "$jq_filter" ]]; then jq -r "$jq_filter" "$MOCK_STATE/issue.json"; else cat "$MOCK_STATE/issue.json"; fi
     ;;
   *) echo "Unexpected gh invocation: $*" >&2; exit 97 ;;
@@ -62,7 +75,7 @@ today="$(date -u +%Y-%m-%d)"
 # set_body <body>: the Issue as the fake GitHub returns it.
 set_body() {
   jq -n --arg body "$1" '{number: 12, title: "A feature", body: $body, html_url: "https://github.com/o/r/issues/12"}' >"$MOCK_STATE/issue.json"
-  rm -f "$MOCK_STATE/patches"
+  rm -f "$MOCK_STATE/patches" "$MOCK_STATE/reads"
 }
 # body: the body, with '|' after its last byte, so that a command
 # substitution keeps its final newlines.
@@ -161,6 +174,53 @@ for good in "https://github.com/o/r/pull/14#issuecomment-8" "https://github.com/
   record 12 "Linked." --source "$good" || { cat "$tmp/out" >&2; fail "the source '$good' was refused"; }
   grep -Fq "[source]($good)): Linked." <<<"$(jq -r '.body' "$MOCK_STATE/issue.json")" || fail "the source '$good' was not the link of the entry"
 done
+
+# Text that begins with "Replaces decision" without --replaces is refused:
+# only --replaces writes the words that end a decision. With --replaces the
+# metadata comes first, and prose that mentions a decision replaces none.
+set_body $'## Owner decisions\n\n1. 2026-01-01 (@owner-login, [source]('"$comment"$')): First.\n'
+before="$(body)"
+for text in "Replaces decision 1. Something else." "replaces  decision 1: other."; do
+  if record 12 "$text" --source "$comment"; then fail "the text '$text' was recorded without --replaces"; fi
+  grep -Fq -- "--replaces" "$tmp/out" || fail "the refusal of '$text' did not name --replaces: $(cat "$tmp/out")"
+done
+[[ "$(body)" == "$before" && "$(patches)" -eq 0 ]] || fail "a refused replacement text changed the Issue"
+record 12 "Nothing here replaces decision 1." --source "$comment" || { cat "$tmp/out" >&2; fail "prose that mentions a decision was refused"; }
+source "$source_root/scripts/lib/issue-comments.sh"
+replaced() { jq -r '.body' "$MOCK_STATE/issue.json" | jq -Rsc "$ISSUE_DECISIONS_JQ_DEFS"' decision_replaced'; }
+[[ "$(replaced)" == "[]" ]] || fail "prose in an entry replaced a decision: $(replaced)"
+record 12 "Other." --source "$comment" --replaces 1 || { cat "$tmp/out" >&2; fail "a replacement with --replaces was refused"; }
+[[ "$(replaced)" == "[1]" ]] || fail "the entry written with --replaces did not replace decision 1: $(replaced)"
+# Hand-written or differently cased words after the link replace nothing.
+set_body $'## Owner decisions\n\n1. 2026-01-01 (@o, [source]('"$comment"$')): First.\n2. 2026-01-02 (@o, [source]('"$comment"$')): replaces decision 1. lower case.\n3. 2026-01-02 (@o, [source]('"$comment"$')): See: Replaces decision 1. later in the text.\n'
+[[ "$(replaced)" == "[]" ]] || fail "words that are not the metadata of --replaces replaced a decision: $(replaced)"
+
+# One writer at a time. A body that changes between the first read and the
+# read right before the PATCH stops the command; nothing is written, and it
+# says to run it again.
+race_entry='"2. 2026-01-03 (@other, [source](https://github.com/o/r/issues/12#issuecomment-9)): Theirs."'
+set_body $'## Owner decisions\n\n1. 2026-01-01 (@owner-login, [source]('"$comment"$')): First.\n'
+if MOCK_EDIT_BEFORE_READ=2 MOCK_EDIT=".body += $race_entry + \"\\n\"" record 12 "Mine." --source "$comment"; then
+  fail "a decision was recorded over a body that changed after it was read"
+fi
+grep -Fq "changed while the decision was prepared" "$tmp/out" && grep -Fq "run the command again" "$tmp/out" ||
+  fail "the changed body was not reported with what to do: $(cat "$tmp/out")"
+[[ "$(patches)" -eq 0 ]] || fail "the command wrote over a body that changed after it was read"
+grep -Fq "Theirs." <<<"$(body)" || fail "the other writer's decision was lost"
+# A write right after the PATCH that drops the entry, or gives another entry
+# its number, makes the command fail with what to check.
+set_body $'## Owner decisions\n\n1. 2026-01-01 (@owner-login, [source]('"$comment"$')): First.\n'
+if MOCK_EDIT_AFTER_PATCH=".body = \"## Owner decisions\\n\\n1. x\\n\" + $race_entry + \"\\n\"" record 12 "Mine." --source "$comment"; then
+  fail "a lost decision was reported as recorded"
+fi
+grep -Fq "does not hold decision 2 exactly once" "$tmp/out" && grep -Fq "Look at the block" "$tmp/out" ||
+  fail "the lost decision was not reported with what to check: $(cat "$tmp/out")"
+set_body $'## Owner decisions\n\n1. 2026-01-01 (@owner-login, [source]('"$comment"$')): First.\n'
+if MOCK_EDIT_AFTER_PATCH=".body += $race_entry + \"\\n\"" record 12 "Mine." --source "$comment"; then
+  fail "a decision whose number another entry has was reported as recorded"
+fi
+grep -Fq "with a number of its own" "$tmp/out" || fail "the reused number was not reported: $(cat "$tmp/out")"
+grep -Fq "Mine." <<<"$(body)" || fail "the decision was not written"
 
 # An empty body gets the block alone.
 set_body ""

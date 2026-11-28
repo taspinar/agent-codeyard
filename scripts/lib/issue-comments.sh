@@ -276,11 +276,14 @@ ISSUE_DECISIONS_JQ_DEFS='
         end;
     # The numbers of the entries: a line that starts with "<n>. ".
     def decision_numbers: [decision_entries[] | capture("^(?<n>[0-9]+)\\. ") | .n | tonumber];
-    # The numbers that a later entry replaces: an entry "<m>. ..." that says
-    # "Replaces decision <n>." with n < m, as record-decision.sh --replaces
-    # writes it. Such a decision no longer stands.
+    # The numbers that a later entry replaces: an entry "<m>. ..." whose text
+    # begins, directly after the date, the account and the source link, with
+    # "Replaces decision <n>. " (exactly so, case and all) and n < m, as
+    # record-decision.sh --replaces writes it. Such a decision no longer
+    # stands. The words anywhere else in an entry are prose and replace
+    # nothing.
     def decision_replaced: [decision_entries[]
-      | capture("^(?<by>[0-9]+)\\. .*\\bReplaces decision (?<n>[0-9]+)\\b"; "i")
+      | capture("^(?<by>[0-9]+)\\. [0-9]{4}-[0-9]{2}-[0-9]{2} \\(@[A-Za-z0-9-]+(\\[bot\\])?, \\[source\\]\\(https://[^\\s()]+\\)\\): Replaces decision (?<n>[0-9]+)\\. ")
       | select((.n | tonumber) < (.by | tonumber)) | .n | tonumber] | unique;
     # The first line of the block that is neither a numbered entry
     # ("<n>. ..."), nor a blank line, nor an indented continuation after an
